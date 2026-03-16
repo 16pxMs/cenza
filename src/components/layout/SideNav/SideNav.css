@@ -1,0 +1,60 @@
+.side-nav {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--white);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 32px 20px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.side-nav__logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 40px;
+}
+.side-nav__logo-mark {
+  width: 32px;
+  height: 32px;
+  background: var(--brand-dark);
+  flex-shrink: 0;
+  clip-path: polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);
+}
+.side-nav__logo-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  letter-spacing: 1px;
+  font-family: var(--font-sans);
+}
+.side-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  margin-bottom: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  transition: all 0.15s ease;
+}
+.side-nav__item--active {
+  background: color-mix(in srgb, var(--brand) 33%, transparent);
+  border-color: var(--border);
+}
+.side-nav__item-label {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+.side-nav__item-label--active {
+  font-weight: 600;
+  color: var(--brand-dark);
+}

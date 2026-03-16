@@ -1,0 +1,45 @@
+.card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.card--padded {
+  padding: 16px;
+}
+.card--clickable {
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.card--clickable:hover {
+  border-color: var(--brand-mid);
+}
+.card--selected {
+  background: color-mix(in srgb, var(--brand) 33%, transparent);
+  border-color: var(--brand-deep);
+  border-width: 2px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.section-header__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-family: var(--font-sans);
+  margin: 0;
+}
+.section-header__action {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--brand-deep);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  padding: 0;
+}

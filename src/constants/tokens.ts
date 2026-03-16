@@ -4,47 +4,34 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const T = {
-  // Brand
-  brand:       '#EADFF4',
-  brandMid:    '#C9AEE8',
-  brandDeep:   '#9B6FCC',
-  brandDark:   '#5C3489',
-  brandDarker: '#3B1F60',
-
-  // Dark surfaces (onboarding, summary cards)
-  darkBg:      '#120D1E',
-  darkSurface: '#1E1530',
-  darkBorder:  '#2E2248',
-
-  // Page
-  pageBg:      '#FAFAF8',
-  white:       '#FFFFFF',
-  border:      '#EDE8F5',
-  borderStrong:'#D5CDED',
-
-  // Text
-  text1:       '#1A1025',
-  text2:       '#4A3B66',
-  text3:       '#8B7BA8',
-  textMuted:   '#B8AECE',
-
-  // Semantic: green
-  green:       '#22C55E',
-  greenLight:  '#F0FDF4',
-  greenBorder: '#BBF7D0',
-  greenDark:   '#15803D',
-
-  // Semantic: amber
-  amber:       '#F59E0B',
-  amberLight:  '#FFFBEB',
-  amberBorder: '#FDE68A',
-  amberDark:   '#92400E',
-
-  // Semantic: red
-  red:         '#EF4444',
-  redLight:    '#FFF1F2',
-  redBorder:   '#FECACA',
-  redDark:     '#991B1B',
+  brand:        'var(--brand)',
+  brandMid:     'var(--brand-mid)',
+  brandDeep:    'var(--brand-deep)',
+  brandDark:    'var(--brand-dark)',
+  brandDarker:  'var(--brand-darker)',
+  darkBg:       'var(--dark-bg)',
+  darkSurface:  'var(--dark-surface)',
+  darkBorder:   'var(--dark-dark-border)',
+  pageBg:       'var(--page-bg)',
+  white:        'var(--white)',
+  border:       'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  text1:        'var(--text-1)',
+  text2:        'var(--text-2)',
+  text3:        'var(--text-3)',
+  textMuted:    'var(--text-muted)',
+  green:        'var(--green)',
+  greenLight:   'var(--green-light)',
+  greenBorder:  'var(--green-border)',
+  greenDark:    'var(--green-dark)',
+  amber:        'var(--amber)',
+  amberLight:   'var(--amber-light)',
+  amberBorder:  'var(--amber-border)',
+  amberDark:    'var(--amber-dark)',
+  red:          'var(--red)',
+  redLight:     'var(--red-light)',
+  redBorder:    'var(--red-border)',
+  redDark:      'var(--red-dark)',
 } as const
 
 // ─── Typography ───────────────────────────────────────────────────────────────

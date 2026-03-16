@@ -1,0 +1,82 @@
+:root {
+  /* Brand */
+  --brand:        #EADFF4;
+  --brand-mid:    #C9AEE8;
+  --brand-deep:   #9B6FCC;
+  --brand-dark:   #5C3489;
+  --brand-darker: #3B1F60;
+
+  /* Dark surfaces */
+  --dark-bg:      #120D1E;
+  --dark-surface: #1E1530;
+  --dark-border:  #2E2248;
+
+  /* Page */
+  --page-bg:       #FAFAF8;
+  --white:         #FFFFFF;
+  --border:        #EDE8F5;
+  --border-strong: #D5CDED;
+
+  /* Text */
+  --text-1:     #1A1025;
+  --text-2:     #4A3B66;
+  --text-3:     #8B7BA8;
+  --text-muted: #B8AECE;
+
+  /* Green */
+  --green:        #22C55E;
+  --green-light:  #F0FDF4;
+  --green-border: #BBF7D0;
+  --green-dark:   #15803D;
+
+  /* Amber */
+  --amber:        #F59E0B;
+  --amber-light:  #FFFBEB;
+  --amber-border: #FDE68A;
+  --amber-dark:   #92400E;
+
+  /* Red */
+  --red:        #EF4444;
+  --red-light:  #FFF1F2;
+  --red-border: #FECACA;
+  --red-dark:   #991B1B;
+
+  /* Typography */
+  --font-serif: 'Lora', Georgia, serif;
+  --font-sans:  'DM Sans', system-ui, sans-serif;
+
+  /* Spacing */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+  --space-xxl: 48px;
+
+  /* Radii */
+  --radius-sm:   10px;
+  --radius-md:   14px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 999px;
+
+  /* Breakpoints */
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+
+  /* Layout */
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1200px;
+
+  --page-padding-mobile: 16px;
+  --page-padding-desktop: 32px;
+
+  --space-page-mobile: 16px;
+  --space-page-desktop: 32px;
+
+
+}

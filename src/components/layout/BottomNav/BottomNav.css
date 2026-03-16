@@ -1,0 +1,41 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 60px;
+  background: var(--white);
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 50;
+}
+.bottom-nav__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  font-family: var(--font-sans);
+}
+.bottom-nav__label {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.bottom-nav__label--active {
+  font-weight: 600;
+  color: var(--brand-dark);
+}
+.bottom-nav__indicator {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 2.5px;
+  border-radius: var(--radius-full);
+  background: var(--brand-dark);
+}

@@ -30,7 +30,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public routes that don't need auth
-  const publicRoutes = ['/login', '/auth/callback']
+  const publicRoutes = ['/login', '/demo', '/auth/callback']
   const isPublic = publicRoutes.some(r => pathname.startsWith(r))
 
   // Redirect unauthenticated users to login
@@ -43,7 +43,7 @@ export async function updateSession(request: NextRequest) {
   // Redirect authenticated users away from login
   if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
-    url.pathname = '/'
+    url.pathname = '/app'
     return NextResponse.redirect(url)
   }
 

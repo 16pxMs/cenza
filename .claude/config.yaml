@@ -1,0 +1,20 @@
+project:
+  name: Cenza
+  description: Personal finance app built with Next.js and Supabase
+
+stack:
+  framework: Next.js App Router
+  language: TypeScript
+  backend: Supabase
+
+rules:
+  - Use TypeScript only
+  - Prefer server components
+  - Use server actions for mutations
+  - Keep Supabase logic inside src/lib/supabase
+  - Do not modify migrations unless asked
+
+context:
+  include:
+    - src
+    - supabase/migrations

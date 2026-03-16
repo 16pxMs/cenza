@@ -1,83 +1,120 @@
 'use client'
 
+import { useState } from 'react'
 import { signInWithGoogle } from '@/app/auth/actions'
-import { T, FONTS } from '@/constants/tokens'
+import styles from './login.module.css'
+
+const T = {
+  brand: '#EADFF4', brandMid: '#C9AEE8', brandDeep: '#9B6FCC', brandDark: '#5C3489',
+  pageBg: '#FAFAF8', white: '#FFFFFF', border: '#EDE8F5', borderStrong: '#D5CDED',
+  text1: '#1A1025', text2: '#4A3B66', text3: '#8B7BA8', textMuted: '#B8AECE',
+  greenBorder: '#BBF7D0', greenDark: '#15803D',
+}
+
+function WelcomeScreen({ onNext }: { onNext: () => void }) {
+  return (
+    <div className={styles.pageWrapper} style={{
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {/* Background glow */}
+      <div style={{
+        position: 'absolute', top: -80, right: -80, width: 300, height: 300,
+        background: 'radial-gradient(circle, rgba(155,111,204,0.18) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }} />
+      <div className={styles.content} style={{ flex: 1 }}>
+        {/* Logo mark */}
+        <div style={{
+          fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
+          color: '#C9AEE8', letterSpacing: 2, textTransform: 'uppercase' as const,
+          marginBottom: 80, marginTop: 48,
+        }}>CENZA</div>
+        {/* Headline */}
+        <h1 style={{
+          fontFamily: 'var(--font-serif)', fontSize: 42, fontWeight: 700,
+          color: '#fff', margin: '0 0 20px', lineHeight: 1.15,
+        }}>
+          See your money clearly, {' '}
+          <span style={{ color: '#C9AEE8', fontStyle: 'italic' }}>
+           Make<br />better moves.
+          </span>
+        </h1>
+        <p style={{
+          fontFamily: 'var(--font-sans)', fontSize: 15,
+          color: 'rgb(250, 250, 250)', lineHeight: 1.65,
+          margin: 0, maxWidth: 320,
+        }}>
+         Track spending, understand your patterns, and get simple guidance on what to do next. Cenza helps you stay aware and build habits that move your finances forward.
+        </p>
+      </div>
+      {/* CTAs */}
+      <div className={styles.ctaArea}>
+        <button onClick={onNext} style={{
+          width: '100%', height: 56, borderRadius: 16,
+          background: '#9B6FCC', border: 'none', color: '#fff',
+          fontSize: 16, fontWeight: 600, fontFamily: 'var(--font-sans)',
+          cursor: 'pointer', marginBottom: 16,
+        }}>
+          Get started
+        </button>
+        <p style={{
+          textAlign: 'center', margin: 0,
+          fontFamily: 'var(--font-sans)', fontSize: 14,
+          color: 'rgba(234,223,244,0.4)',
+        }}>
+          Already have an account?{' '}
+          <span onClick={onNext} style={{ color: '#C9AEE8', fontWeight: 600, cursor: 'pointer' }}>
+            Sign in
+          </span>
+        </p>
+      </div>
+    </div>
+  )
+}
 
 export default function LoginPage() {
+  const [showLogin, setShowLogin] = useState(false)
+
+  if (!showLogin) {
+    return <WelcomeScreen onNext={() => setShowLogin(true)} />
+  }
+
   return (
-    <div style={{
-      minHeight: '100dvh',
-      background: T.darkBg,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '32px 24px',
-    }}>
-      {/* Logo mark */}
-      <div style={{
-        width: 52, height: 52, borderRadius: 16,
-        background: T.brandDark,
-        marginBottom: 32,
-      }} />
-
-      <h1 style={{
-        fontFamily: FONTS.serif,
-        fontSize: 28, fontWeight: 600,
-        color: '#fff',
-        margin: '0 0 12px',
-        textAlign: 'center',
-      }}>
-        Know your numbers.
-      </h1>
-
-      <p style={{
-        fontSize: 15, color: 'rgba(234,223,244,0.55)',
-        margin: '0 0 48px',
-        textAlign: 'center',
-        lineHeight: 1.6,
-        maxWidth: 300,
-      }}>
-        Your personal finance tracker. Built for clarity, not anxiety.
-      </p>
-
-      <form action={signInWithGoogle} style={{ width: '100%', maxWidth: 360 }}>
-        <button type="submit" style={{
-          width: '100%',
-          height: 52,
-          borderRadius: 14,
-          background: '#fff',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 12,
-          fontSize: 15,
-          fontWeight: 600,
-          color: T.text1,
-          fontFamily: FONTS.sans,
-        }}>
-          {/* Google icon */}
-          <svg width="20" height="20" viewBox="0 0 24 24">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-          </svg>
-          Continue with Google
-        </button>
-      </form>
-
-      <p style={{
-        marginTop: 24,
-        fontSize: 12,
-        color: 'rgba(234,223,244,0.3)',
-        textAlign: 'center',
-        lineHeight: 1.6,
-      }}>
-        Your data is private and never shared.
-      </p>
+    <div className={styles.pageWrapper} style={{ background: T.pageBg }}>
+      <div className={styles.content}>
+        <button onClick={() => setShowLogin(false)} style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: T.text3, fontSize: 14, fontFamily: 'var(--font-sans)',
+          textAlign: 'left', padding: '4px 0', marginBottom: 32, marginTop: 48,
+        }}>← Back</button>
+        <h1 style={{
+          fontFamily: 'var(--font-serif)', fontSize: 30, fontWeight: 700,
+          color: T.text1, margin: '0 0 6px',
+        }}>Create your account</h1>
+        <p style={{
+          fontFamily: 'var(--font-sans)', fontSize: 14, color: T.text3,
+          margin: '0 0 32px',
+        }}>Takes under a minute. No card needed.</p>
+      </div>
+      <div className={styles.ctaArea}>
+        <form action={signInWithGoogle}>
+          <button type="submit" style={{
+            width: '100%', height: 52, borderRadius: 14,
+            border: `1.5px solid ${T.border}`, background: T.white,
+            cursor: 'pointer', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 12, fontSize: 15, fontWeight: 600,
+            fontFamily: 'var(--font-sans)', color: T.text1,
+          }}>
+            <svg width="20" height="20" viewBox="0 0 48 48">
+              <path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.5 20-21 0-1.4-.2-2.7-.5-4z"/>
+              <path fill="#34A853" d="M6.3 14.7l7 5.1C15 16.1 19.1 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3c-7.6 0-14.2 4.6-17.7 11.7z"/>
+              <path fill="#FBBC05" d="M24 45c5.8 0 10.7-1.9 14.3-5.2l-6.6-5.4C29.8 36.1 27.1 37 24 37c-6 0-11.1-4-12.9-9.5l-7 5.4C7.8 40.5 15.4 45 24 45z"/>
+              <path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.5-2.4 4.6-4.5 6l6.6 5.4C41.6 36.5 45 31 45 24c0-1.4-.2-2.7-.5-4z"/>
+            </svg>
+            Continue with Google
+          </button>
+        </form>
+      </div>
     </div>
   )
 }
