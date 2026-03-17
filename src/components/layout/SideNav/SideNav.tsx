@@ -1,36 +1,40 @@
 // ─────────────────────────────────────────────────────────────
-// SideNav — Sticky left navigation for desktop (768px+)
-// Same 4 tabs as BottomNav. Shows Cenza wordmark.
+// SideNav — Sticky left navigation for desktop (1024px+)
+// 3 tabs: Overview (/), Income (/income), Goals (/goals)
+// Active tab derived from current pathname
 // ─────────────────────────────────────────────────────────────
 'use client'
-import './SideNav.css'
-import { IconOverview, IconSpend, IconGoals, IconFinance } from '@/components/ui/Icons'
+import { useRouter, usePathname } from 'next/navigation'
+import styles from './SideNav.module.css'
+import { IconOverview, IconGoals, IconFinance } from '@/components/ui/Icons'
 
 const TABS = [
-  { id: 'overview', label: 'Overview', Icon: IconOverview },
-  { id: 'spend',    label: 'Spend',    Icon: IconSpend    },
-  { id: 'goals',    label: 'Goals',    Icon: IconGoals    },
-  { id: 'finance',  label: 'Finance',  Icon: IconFinance  },
+  { href: '/',       label: 'Overview', Icon: IconOverview },
+  { href: '/income', label: 'Income',   Icon: IconFinance  },
+  { href: '/goals',  label: 'Goals',    Icon: IconGoals    },
 ]
 
-interface Props {
-  active: string
-  onChange: (tab: string) => void
-}
+export function SideNav() {
+  const router = useRouter()
+  const pathname = usePathname()
 
-export function SideNav({ active, onChange }: Props) {
   return (
-    <nav className="side-nav">
-      <div className="side-nav__logo">
-        <div className="side-nav__logo-mark" />
-        <span className="side-nav__logo-name">Cenza</span>
+    <nav className={styles.sideNav}>
+      <div className={styles.logo}>
+        <div className={styles.logoMark} />
+        <span className={styles.logoName}>Cenza</span>
       </div>
       {TABS.map(t => {
-        const on = active === t.id
+        const on = pathname === t.href
         return (
-          <button key={t.id} className={`side-nav__item${on ? ' side-nav__item--active' : ''}`} onClick={() => onChange(t.id)}>
+          <button
+            key={t.href}
+            type="button"
+            className={on ? `${styles.item} ${styles.itemActive}` : styles.item}
+            onClick={() => router.push(t.href)}
+          >
             <t.Icon color={on ? 'var(--brand-dark)' : 'var(--text-3)'} size={19} />
-            <span className={`side-nav__item-label${on ? ' side-nav__item-label--active' : ''}`}>{t.label}</span>
+            <span className={on ? styles.itemLabelActive : styles.itemLabel}>{t.label}</span>
           </button>
         )
       })}

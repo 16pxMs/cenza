@@ -1,27 +1,24 @@
 'use client'
-import './Card.css'
+import styles from './Card.module.css'
 
-interface CardProps {
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode
   padded?: boolean
   clickable?: boolean
   selected?: boolean
-  style?: React.CSSProperties
-  onClick?: () => void
 }
 
-export function Card({ children, padded = true, clickable, selected, style, onClick }: CardProps) {
+export function Card({ children, padded = true, clickable, selected, className, ...props }: CardProps) {
+  const cx = [
+    styles.card,
+    padded    ? styles.cardPadded    : '',
+    clickable ? styles.cardClickable : '',
+    selected  ? styles.cardSelected  : '',
+    className ?? '',
+  ].filter(Boolean).join(' ')
+
   return (
-    <div
-      className={[
-        'card',
-        padded ? 'card--padded' : '',
-        clickable ? 'card--clickable' : '',
-        selected ? 'card--selected' : '',
-      ].filter(Boolean).join(' ')}
-      style={style}
-      onClick={onClick}
-    >
+    <div className={cx} {...props}>
       {children}
     </div>
   )
@@ -35,9 +32,13 @@ interface SectionHeaderProps {
 
 export function SectionHeader({ title, action, onAction }: SectionHeaderProps) {
   return (
-    <div className="section-header">
-      <p className="section-header__title">{title}</p>
-      {action && <button className="section-header__action" onClick={onAction}>{action}</button>}
+    <div className={styles.sectionHeader}>
+      <p className={styles.sectionHeaderTitle}>{title}</p>
+      {action && (
+        <button type="button" className={styles.sectionHeaderAction} onClick={onAction}>
+          {action}
+        </button>
+      )}
     </div>
   )
 }

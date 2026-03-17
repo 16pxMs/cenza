@@ -719,7 +719,8 @@ function AppShell({ screen }: { screen: DemoScreen }) {
     ? <OverviewEmpty name={MOCK.name} goals={MOCK.goals} onAddIncome={() => setIncomeSheetOpen(true)} isDesktop={isDesktop} />
     : <OverviewWithData
         name={MOCK.name} currency={MOCK.currency} goals={MOCK.goals}
-        incomeData={incomeData} expensesData={expensesData} goalTargets={goalTargets}
+        incomeData={incomeData} expensesData={expensesData} budgetsData={null}
+        goalTargets={goalTargets}
         onSetupGoals={() => alert('Goals flow — coming soon')}
         onAddExpenses={() => alert('Fixed expenses flow — coming soon')}
         onAddBudgets={() => alert('Spending flow — coming soon')}

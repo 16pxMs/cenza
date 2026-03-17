@@ -1,13 +1,22 @@
-.back-btn {
+.backBtn {
   background: none;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-xs);
   color: var(--text-3);
-  padding: 4px 0;
+  padding: var(--space-xs) 0;
   font-size: 14px;
   font-family: var(--font-sans);
   font-weight: 500;
+}
+
+.backBtn svg {
+  flex-shrink: 0;
+}
+
+.backBtn:hover {
+  color: var(--text-2);
+  transform: translateX(-1px);
 }

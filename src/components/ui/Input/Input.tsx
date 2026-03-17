@@ -1,34 +1,36 @@
 'use client'
-import { useState } from 'react'
-import './Input.css'
+import styles from './Input.module.css'
 
-interface Props {
+interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   label: string
-  value: string
-  onChange: (val: string) => void
   prefix?: string
-  placeholder?: string
-  type?: string
   hint?: string
+  error?: string
+  onChange?: (val: string) => void
 }
 
-export function Input({ label, value, onChange, prefix, placeholder, type = 'text', hint }: Props) {
-  const [focused, setFocused] = useState(false)
+export function Input({ label, prefix, hint, error, onChange, className, id, ...props }: Props) {
+  const inputId = id ?? label.replace(/\s+/g, '-').toLowerCase()
+
   return (
-    <div className="input-wrap">
-      <label className="input-label">{label}</label>
-      <div className={`input-field${focused ? ' input-field--focused' : ''}`}>
-        {prefix && <span className="input-prefix">{prefix}</span>}
+    <div className={styles.inputWrap}>
+      <label className={styles.inputLabel} htmlFor={inputId}>
+        {label}
+      </label>
+
+      <div className={styles.inputField}>
+        {prefix && <span className={styles.inputPrefix}>{prefix}</span>}
+
         <input
-          type={type}
-          value={value}
-          placeholder={placeholder}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          id={inputId}
+          className={`${styles.input} ${className ?? ''}`}
+          onChange={onChange ? e => onChange(e.target.value) : undefined}
+          {...props}
         />
       </div>
-      {hint && <p className="input-hint">{hint}</p>}
+
+      {error && <p className={styles.inputError}>{error}</p>}
+      {!error && hint && <p className={styles.inputHint}>{hint}</p>}
     </div>
   )
 }

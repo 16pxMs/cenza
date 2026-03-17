@@ -13,6 +13,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewEmpty } from '@/components/flows/overview/OverviewEmpty'
+import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 
 export default function AppPage() {
@@ -24,10 +25,17 @@ export default function AppPage() {
   const [loading, setLoading] = useState(true)
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [incomeData, setIncomeData] = useState<any>(null)
+  const [goalTargets, setGoalTargets] = useState<Record<string, any> | null>(null)
+  const [expensesData, setExpensesData] = useState<{ totalMonthly: number } | null>(null)
+  const [budgetsData, setBudgetsData] = useState<{ totalBudget: number } | null>(null)
 
   const currentMonth = new Date().toISOString().slice(0, 7) // "YYYY-MM"
 
   const saveIncome = useCallback(async (data: { income: number; extraIncome: any[]; total: number }) => {
+    // Server-side guard — never persist zero or negative income
+    if (!data.income || data.income <= 0) {
+      throw new Error('Income must be greater than zero')
+    }
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     const { error } = await (supabase.from('income_entries') as any).upsert({
@@ -71,6 +79,39 @@ export default function AppPage() {
         .single()
 
       if (income) setIncomeData(income)
+
+      // Load saved goal targets
+      const { data: targets } = await (supabase
+        .from('goal_targets') as any)
+        .select('goal_id, amount')
+        .eq('user_id', user.id)
+
+      if (targets && targets.length > 0) {
+        const map: Record<string, any> = {}
+        for (const t of targets) map[t.goal_id] = t.amount
+        setGoalTargets(map)
+      }
+
+      // Load fixed expenses for current month
+      const { data: expenses } = await (supabase
+        .from('fixed_expenses') as any)
+        .select('total_monthly')
+        .eq('user_id', user.id)
+        .eq('month', new Date().toISOString().slice(0, 7))
+        .single()
+
+      if (expenses) setExpensesData({ totalMonthly: expenses.total_monthly })
+
+      // Load spending budgets for current month
+      const { data: budgets } = await (supabase
+        .from('spending_budgets') as any)
+        .select('total_budget')
+        .eq('user_id', user.id)
+        .eq('month', new Date().toISOString().slice(0, 7))
+        .single()
+
+      if (budgets) setBudgetsData({ totalBudget: budgets.total_budget })
+
       setLoading(false)
     }
     load()
@@ -96,7 +137,23 @@ export default function AppPage() {
 
   // Tab content map — swap out as real screens are built
   const tabContent: Record<string, React.ReactNode> = {
-    overview: (
+    overview: incomeData ? (
+      <OverviewWithData
+        name={profile?.name}
+        currency={profile?.currency || 'KES'}
+        goals={profile?.goals || []}
+        incomeData={incomeData}
+        expensesData={expensesData}
+        budgetsData={budgetsData}
+        goalTargets={goalTargets}
+        onSetupGoals={() => {}}
+        onAddExpenses={() => router.push('/expenses')}
+        onAddBudgets={() => router.push('/budgets')}
+        onAddDebts={() => router.push('/debts')}
+        onLogExpense={() => router.push('/log')}
+        isDesktop={isDesktop}
+      />
+    ) : (
       <OverviewEmpty
         name={profile?.name}
         goals={profile?.goals || []}
@@ -146,11 +203,11 @@ export default function AppPage() {
         <AddIncomeSheet
           open={incomeSheetOpen}
           onClose={() => setIncomeSheetOpen(false)}
-          onSave={(data) => { saveIncome(data); setIncomeSheetOpen(false) }}
+          onSave={async (data) => { await saveIncome(data); setIncomeSheetOpen(false) }}
           currency={profile?.currency || 'KES'}
           isDesktop={isDesktop}
         />
-      </div>
+        </div>
     )
   }
 
@@ -176,7 +233,7 @@ export default function AppPage() {
       <AddIncomeSheet
         open={incomeSheetOpen}
         onClose={() => setIncomeSheetOpen(false)}
-        onSave={(data) => { saveIncome(data); setIncomeSheetOpen(false) }}
+        onSave={async (data) => { await saveIncome(data); setIncomeSheetOpen(false) }}
         currency={profile?.currency || 'KES'}
         isDesktop={isDesktop}
       />

@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 'use client'
 import { useEffect } from 'react'
-import './Sheet.css'
+import styles from './Sheet.module.css'
 import { IconChevronX } from '@/components/ui/Icons'
 
 interface Props {
@@ -25,21 +25,21 @@ export function Sheet({ open, onClose, title, children, isDesktop }: Props) {
   if (!open) return null
 
   return (
-    <div className={`sheet-backdrop${isDesktop ? ' sheet-backdrop--desktop' : ''}`}>
-      <div className="sheet-overlay" onClick={onClose} />
-      <div className={`sheet-panel${isDesktop ? ' sheet-panel--desktop' : ''}`}>
+    <div className={isDesktop ? `${styles.backdrop} ${styles.backdropDesktop}` : styles.backdrop}>
+      <div className={styles.overlay} onClick={onClose} />
+      <div className={isDesktop ? `${styles.panel} ${styles.panelDesktop}` : styles.panel}>
         {!isDesktop && (
-          <div className="sheet-handle">
-            <div className="sheet-handle__bar" />
+          <div className={styles.handle}>
+            <div className={styles.handleBar} />
           </div>
         )}
-        <div className={`sheet-header${isDesktop ? ' sheet-header--desktop' : ''}`}>
-          <h2 className="sheet-title">{title}</h2>
-          <button className="sheet-close" onClick={onClose}>
+        <div className={isDesktop ? `${styles.header} ${styles.headerDesktop}` : styles.header}>
+          <h2 className={styles.title}>{title}</h2>
+          <button type="button" className={styles.close} onClick={onClose}>
             <IconChevronX size={16} color="var(--text-2)" />
           </button>
         </div>
-        <div className={`sheet-body${isDesktop ? ' sheet-body--desktop' : ''}`}>
+        <div className={isDesktop ? `${styles.body} ${styles.bodyDesktop}` : styles.body}>
           {children}
         </div>
       </div>

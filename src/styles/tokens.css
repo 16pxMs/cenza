@@ -78,5 +78,8 @@
   --space-page-mobile: 16px;
   --space-page-desktop: 32px;
 
+  /* button */
+  --button-height: 52px;
+
 
 }

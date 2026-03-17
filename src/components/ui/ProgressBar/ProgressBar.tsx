@@ -1,10 +1,25 @@
 'use client'
-import './ProgressBar.css'
-export function ProgressBar({ step, total }: { step: number; total: number }) {
+import styles from './ProgressBar.module.css'
+
+interface Props extends React.HTMLAttributes<HTMLDivElement> {
+  step: number
+  total: number
+}
+
+export function ProgressBar({ step, total, className, ...props }: Props) {
+  const percent = total > 0 ? Math.min(100, Math.max(0, (step / total) * 100)) : 0
+
   return (
-    <div className="progress-track">
-      <div className="progress-track__bar">
-        <div className="progress-track__fill" style={{ width: `${(step / total) * 100}%` }} />
+    <div
+      className={`${styles.track} ${className ?? ''}`}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={step}
+      {...props}
+    >
+      <div className={styles.bar}>
+        <div className={styles.fill} style={{ width: `${percent}%` }} />
       </div>
     </div>
   )

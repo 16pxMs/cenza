@@ -1,0 +1,47 @@
+.tipBox {
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+
+  /* default: info / brand */
+  background: color-mix(in srgb, var(--brand) 27%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-mid) 40%, transparent);
+}
+
+.tipBoxIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.tipBoxText {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-style: italic;
+
+  /* default: info / brand */
+  color: var(--brand-dark);
+}
+
+/* ── Variants ──────────────────────────────────────────────── */
+
+.success {
+  background: var(--green-light);
+  border-color: var(--green-border);
+}
+
+.success .tipBoxText {
+  color: var(--green-dark);
+}
+
+.warning {
+  background: var(--amber-light);
+  border-color: var(--amber-border);
+}
+
+.warning .tipBoxText {
+  color: var(--amber-dark);
+}

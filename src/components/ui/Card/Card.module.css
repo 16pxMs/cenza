@@ -3,28 +3,34 @@
   border: 1.5px solid var(--border);
   border-radius: var(--radius-lg);
 }
-.card--padded {
-  padding: 16px;
+
+.cardPadded {
+  padding: var(--space-md);
 }
-.card--clickable {
+
+.cardClickable {
   cursor: pointer;
   transition: border-color 0.2s ease;
 }
-.card--clickable:hover {
+
+.cardClickable:hover {
   border-color: var(--brand-mid);
 }
-.card--selected {
+
+.cardSelected {
   background: color-mix(in srgb, var(--brand) 33%, transparent);
   border-color: var(--brand-deep);
   border-width: 2px;
 }
-.section-header {
+
+.sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: var(--space-sm);
 }
-.section-header__title {
+
+.sectionHeaderTitle {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
@@ -33,7 +39,8 @@
   font-family: var(--font-sans);
   margin: 0;
 }
-.section-header__action {
+
+.sectionHeaderAction {
   font-size: 13px;
   font-weight: 500;
   color: var(--brand-deep);

@@ -1,7 +1,9 @@
-.input-wrap {
-  margin-bottom: 16px;
+.inputWrap {
+  margin-bottom: var(--space-md);
+  width: 100%;
 }
-.input-label {
+
+.inputLabel {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-2);
@@ -10,20 +12,23 @@
   letter-spacing: 0.2px;
   font-family: var(--font-sans);
 }
-.input-field {
+
+.inputField {
   display: flex;
   align-items: center;
   height: 48px;
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   border: 1.5px solid var(--border);
   background: var(--white);
   overflow: hidden;
   transition: border-color 0.2s ease;
 }
-.input-field--focused {
+
+.inputField:focus-within {
   border-color: var(--brand-deep);
 }
-.input-prefix {
+
+.inputPrefix {
   padding: 0 12px 0 14px;
   font-size: 14px;
   color: var(--text-3);
@@ -35,7 +40,8 @@
   background: color-mix(in srgb, var(--brand) 20%, transparent);
   font-family: var(--font-sans);
 }
-.input-field input {
+
+.input {
   flex: 1;
   height: 100%;
   border: none;
@@ -46,18 +52,43 @@
   color: var(--text-1);
   background: transparent;
 }
-.input-hint {
-  margin: 5px 0 0;
+
+.input[type='number']::-webkit-inner-spin-button,
+.input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.inputHint {
+  margin: var(--space-xs) 0;
   font-size: 12px;
   color: var(--text-3);
   font-family: var(--font-sans);
 }
 
-.input-field input[type="number"]::-webkit-inner-spin-button,
-.input-field input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+.inputError {
+  margin: var(--space-xs) 0;
+  font-size: 12px;
+  color: #C0392B;
+  font-family: var(--font-sans);
+  font-weight: 500;
 }
-.input-field input[type="number"] {
-  -moz-appearance: textfield;
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
+
+.inputField:has(input:disabled) {
+  background: var(--border);
+}
+
+.inputField:focus-within {
+  border-color: var(--brand-deep);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+}
+

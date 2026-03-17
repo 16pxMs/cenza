@@ -1,34 +1,32 @@
 // ─────────────────────────────────────────────────────────────
 // BottomNav — Fixed bottom navigation for mobile
-// 4 tabs: Overview, Spend, Goals, Finance
-// Active tab has a top indicator bar
+// 3 tabs: Overview (/), Income (/income), Goals (/goals)
+// Active tab derived from current pathname
 // ─────────────────────────────────────────────────────────────
 'use client'
-import './BottomNav.css'
-import { IconOverview, IconSpend, IconGoals, IconFinance } from '@/components/ui/Icons'
+import { useRouter, usePathname } from 'next/navigation'
+import styles from './BottomNav.module.css'
+import { IconOverview, IconGoals, IconFinance } from '@/components/ui/Icons'
 
 const TABS = [
-  { id: 'overview', label: 'Overview', Icon: IconOverview },
-  { id: 'spend',    label: 'Spend',    Icon: IconSpend    },
-  { id: 'goals',    label: 'Goals',    Icon: IconGoals    },
-  { id: 'finance',  label: 'Finance',  Icon: IconFinance  },
+  { href: '/',       label: 'Overview', Icon: IconOverview },
+  { href: '/income', label: 'Income',   Icon: IconFinance  },
+  { href: '/goals',  label: 'Goals',    Icon: IconGoals    },
 ]
 
-interface Props {
-  active: string
-  onChange: (tab: string) => void
-}
+export function BottomNav() {
+  const router = useRouter()
+  const pathname = usePathname()
 
-export function BottomNav({ active, onChange }: Props) {
   return (
-    <nav className="bottom-nav">
+    <nav className={styles.bottomNav}>
       {TABS.map(t => {
-        const on = active === t.id
+        const on = pathname === t.href
         return (
-          <button key={t.id} className="bottom-nav__item" onClick={() => onChange(t.id)}>
-            {on && <div className="bottom-nav__indicator" />}
+          <button key={t.href} type="button" className={styles.item} onClick={() => router.push(t.href)}>
+            {on && <div className={styles.indicator} />}
             <t.Icon color={on ? 'var(--brand-dark)' : 'var(--text-muted)'} size={20} />
-            <span className={`bottom-nav__label${on ? ' bottom-nav__label--active' : ''}`}>
+            <span className={on ? styles.labelActive : styles.label}>
               {t.label}
             </span>
           </button>

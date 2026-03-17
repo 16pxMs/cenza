@@ -109,14 +109,14 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
           background: T.white, border: `1.5px solid ${query ? T.brandDeep : T.border}`,
           borderRadius: 14, padding: '0 12px', height: 52, marginBottom: 20,
         }}>
-          <span style={{ fontSize: 16, color: query ? T.brandDeep : T.textMuted, flexShrink: 0 }}>🔍</span>
+          <span style={{ fontSize: 16, color: query ? T.brandDeep : T.textMuted, flexShrink: 0 }}></span>
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search currency, e.g. USD, Euro, Naira..."
             style={{
               flex: 1, border: 'none', background: 'transparent',
-              fontSize: 15, color: T.text1, outline: 'none',
+              fontSize: 14, color: T.text1, outline: 'none',
               fontFamily: 'var(--font-sans)',
             }}
           />
@@ -232,7 +232,7 @@ function OnboardingMonth({ onNext, onBack, data, setData }: any) {
         </div>
         {/* Custom day picker */}
         {data.monthStart === 'custom' && (
-          <div style={{ background: T.brand + '33', border: `1.5px solid ${T.brandMid}88`, borderRadius: 16, padding: '16px 14px 14px' }}>
+          <div style={{ background: '#ffffff', border: `1.5px solid ${T.brandMid}88`, borderRadius: 16, padding: '16px 14px 14px' }}>
             <p style={{ margin: '0 0 12px', fontSize: 12.5, fontWeight: 600, color: T.brandDark, letterSpacing: 0.3, textTransform: 'uppercase' as const, fontFamily: 'var(--font-sans)' }}>Choose the day</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5 }}>
               {Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
@@ -385,7 +385,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
         }}>
           {selected.length === 0 ? 'Select at least one goal' : `Continue with ${selected.length} goal${selected.length > 1 ? 's' : ''}`}
         </button>
-        <button onClick={onNext} style={{
+        <button onClick={() => { setData((d: any) => ({ ...d, goals: [] })); onNext() }} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           color: T.text3, fontSize: 13, fontFamily: 'var(--font-sans)',
           marginTop: 10, textAlign: 'center', width: '100%', padding: '4px 0',
@@ -554,7 +554,7 @@ export default function OnboardingPage() {
         onboarding_complete: true,
       })
       if (error) throw error
-      router.push('/app')
+      router.push('/')
     } catch (err) {
       console.error('Save error:', err)
       setSaving(false)

@@ -1,4 +1,4 @@
-.side-nav {
+.sideNav {
   width: 220px;
   flex-shrink: 0;
   background: var(--white);
@@ -11,27 +11,37 @@
   height: 100vh;
   overflow-y: auto;
 }
-.side-nav__logo {
+
+@media (max-width: 1023px) {
+  .sideNav {
+    display: none;
+  }
+}
+
+.logo {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 40px;
 }
-.side-nav__logo-mark {
+
+.logoMark {
   width: 32px;
   height: 32px;
   background: var(--brand-dark);
   flex-shrink: 0;
-  clip-path: polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
 }
-.side-nav__logo-name {
+
+.logoName {
   font-size: 13px;
   font-weight: 700;
   color: var(--brand-dark);
   letter-spacing: 1px;
   font-family: var(--font-sans);
 }
-.side-nav__item {
+
+.item {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -45,16 +55,19 @@
   font-family: var(--font-sans);
   transition: all 0.15s ease;
 }
-.side-nav__item--active {
+
+.itemActive {
   background: color-mix(in srgb, var(--brand) 33%, transparent);
   border-color: var(--border);
 }
-.side-nav__item-label {
+
+.itemLabel {
   font-size: 14px;
   font-weight: 400;
   color: var(--text-2);
 }
-.side-nav__item-label--active {
+
+.itemLabelActive {
   font-weight: 600;
   color: var(--brand-dark);
 }

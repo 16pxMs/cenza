@@ -42,6 +42,7 @@ function fmt(n: number, cur = 'KES') {
 export function AddIncomeSheet({ open, onClose, onSave, currency, isDesktop }: Props) {
   const [salary, setSalary] = useState('')
   const [extras, setExtras] = useState<ExtraIncome[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   // Extra income row helpers
   const addExtra = () => setExtras(e => [...e, { id: Date.now(), label: '', amount: '' }])
@@ -49,22 +50,39 @@ export function AddIncomeSheet({ open, onClose, onSave, currency, isDesktop }: P
     setExtras(e => e.map(x => x.id === id ? { ...x, [field]: val } : x))
   const removeExtra = (id: number) => setExtras(e => e.filter(x => x.id !== id))
 
-  // Total = salary + sum of all extra income amounts
-  const canSave = salary && Number(salary) > 0
-  const total = (Number(salary) || 0) + extras.reduce((s, x) => s + (Number(x.amount) || 0), 0)
+  const salaryNum = Number(salary)
+  const canSave = salary !== '' && !isNaN(salaryNum) && salaryNum > 0
+
+  // Only include extras with both fields filled and a positive amount
+  const validExtras = extras.filter(x => x.label && Number(x.amount) > 0)
+  const extrasTotal = validExtras.reduce((s, x) => s + Number(x.amount), 0)
+  const total = canSave ? salaryNum + extrasTotal : 0
+
+  const handleSalaryChange = (val: string) => {
+    setSalary(val)
+    if (error) setError(null)
+  }
 
   const handleSave = () => {
+    // Frontend validation — never allow zero or empty
+    if (!salary || isNaN(salaryNum) || salaryNum <= 0) {
+      setError('Please enter your monthly income')
+      return
+    }
+
+    setError(null)
     onSave({
-      income: Number(salary),
-      // Only include extra rows where both label and amount are filled
-      extraIncome: extras
-        .filter(x => x.label && Number(x.amount) > 0)
-        .map(x => ({ id: String(x.id), label: x.label, amount: Number(x.amount) })),
+      income: salaryNum,
+      extraIncome: validExtras.map(x => ({
+        id: String(x.id),
+        label: x.label,
+        amount: Number(x.amount),
+      })),
       total,
     })
     setSalary('')
     setExtras([])
-    onClose()
+    // Do NOT call onClose() here — parent closes only after a successful save
   }
 
   return (
@@ -72,11 +90,12 @@ export function AddIncomeSheet({ open, onClose, onSave, currency, isDesktop }: P
       <Input
         label="Monthly salary / main income"
         value={salary}
-        onChange={setSalary}
+        onChange={handleSalaryChange}
         prefix={currency}
-        placeholder="0"
+        placeholder="e.g. 50,000"
         type="number"
         hint="Your regular take-home pay this month."
+        error={error ?? undefined}
       />
 
       {extras.map((x, i) => (
@@ -98,7 +117,7 @@ export function AddIncomeSheet({ open, onClose, onSave, currency, isDesktop }: P
             value={x.amount}
             onChange={v => updateExtra(x.id, 'amount', v)}
             prefix={currency}
-            placeholder="0"
+            placeholder="e.g. 10,000"
             type="number"
           />
         </div>

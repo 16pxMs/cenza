@@ -1,9 +1,9 @@
 .btnPrimary {
   width: 100%;
-  height: 52px;
+  height: var(--button-height);
   border-radius: var(--radius-md);
   background: var(--brand-dark);
-  border: none;
+  border: 0;
   cursor: pointer;
   color: var(--white);
   font-size: 15px;
@@ -15,7 +15,7 @@
 
 .btnPrimary:disabled {
   opacity: 0.45;
-  cursor: default;
+  cursor: not-allowed;
 }
 
 .btnPrimary:not(:disabled):hover {
