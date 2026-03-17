@@ -123,7 +123,7 @@ export default function PlanPage() {
         .from('user_profiles')
         .select('name, currency')
         .eq('id', user.id)
-        .single() as any)
+        .maybeSingle() as any)
 
       if (profile) {
         setName(profile.name ?? '')
@@ -135,7 +135,7 @@ export default function PlanPage() {
         .select('salary, extra_income')
         .eq('user_id', user.id)
         .eq('month', month)
-        .single() as any)
+        .maybeSingle() as any)
 
       if (incomeRow) {
         const extras = (incomeRow.extra_income ?? []) as { amount: number }[]
@@ -157,7 +157,7 @@ export default function PlanPage() {
         .select('total_monthly')
         .eq('user_id', user.id)
         .eq('month', month)
-        .single() as any)
+        .maybeSingle() as any)
 
       if (expErr) console.error('[plan] fixed_expenses query error:', expErr)
       else console.log('[plan] fixed_expenses row:', expenses, 'month queried:', month)
@@ -168,7 +168,7 @@ export default function PlanPage() {
         .select('total_budget')
         .eq('user_id', user.id)
         .eq('month', month)
-        .single() as any)
+        .maybeSingle() as any)
 
       if (budgetErr) console.error('[plan] spending_budgets query error:', budgetErr)
       else console.log('[plan] spending_budgets row:', budgets, 'month queried:', month)
@@ -235,10 +235,10 @@ export default function PlanPage() {
             fontWeight: 700, color: T.text1,
             margin: '0 0 10px', letterSpacing: '-0.5px', lineHeight: 1.2,
           }}>
-            {firstName ? `Your plan is ready, ${firstName}` : 'Your plan is ready'}
+            {firstName ? `Here's your baseline, ${firstName}` : "Here's your baseline"}
           </h1>
           <p style={{ fontSize: 15, color: T.text2, margin: 0, lineHeight: 1.65 }}>
-            Here is what you have set up. Cenza will use this to help you stay on track.
+            Based on what you have shared so far. The more you track, the more accurate this gets.
           </p>
         </div>
 
@@ -272,9 +272,9 @@ export default function PlanPage() {
           marginBottom: 12,
           ...fade(0.13),
         }}>
-          <div style={{ padding: '12px 24px 10px', background: T.sectionBg }}>
+          <div style={{ padding: '12px 24px 10px', background: T.sectionBg, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '1px', fontFamily: 'var(--font-sans)' }}>
-              Your plan
+              What you told us
             </p>
           </div>
 
@@ -288,16 +288,39 @@ export default function PlanPage() {
           <PlanRow
             icon="🏠"
             label="Fixed costs"
+            sublabel={fixedMonthly !== null ? 'Based on your inputs' : undefined}
             amount={fixedMonthly}
             currency={currency}
           />
-          <div style={{ borderBottom: 'none' }}>
-            <PlanRow
-              icon="🛒"
-              label="Spending budget"
-              amount={spendingTotal}
-              currency={currency}
-            />
+          <PlanRow
+            icon="🛒"
+            label="Spending"
+            sublabel={spendingTotal !== null ? 'Based on your inputs' : undefined}
+            amount={spendingTotal}
+            currency={currency}
+          />
+
+          {/* Saving capacity row */}
+          <div style={{
+            padding: '16px 24px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            background: T.sectionBg,
+          }}>
+            <div>
+              <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 600, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+                Estimated saving capacity
+              </p>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: T.brandDark,
+                background: T.brand, borderRadius: 99, padding: '2px 7px',
+                fontFamily: 'var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                Estimate
+              </span>
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: T.text1, fontFamily: 'var(--font-serif)' }}>
+              {fmt(monthlySavingCapacity > 0 ? monthlySavingCapacity : 0, currency)}/mo
+            </span>
           </div>
         </div>
 
@@ -312,7 +335,7 @@ export default function PlanPage() {
             marginBottom: 12,
             ...fade(0.18),
           }}>
-            {/* Header row: label + optional estimate badge */}
+            {/* Header row: always shows ESTIMATE badge */}
             <div style={{
               padding: '12px 24px 10px', background: T.sectionBg,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -320,15 +343,13 @@ export default function PlanPage() {
               <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '1px', fontFamily: 'var(--font-sans)' }}>
                 Your goal timeline
               </p>
-              {!hasExpenseData && (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: T.brandDark,
-                  background: T.brand, borderRadius: 99, padding: '3px 8px',
-                  fontFamily: 'var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                }}>
-                  Estimate
-                </span>
-              )}
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: T.brandDark,
+                background: T.brand, borderRadius: 99, padding: '3px 8px',
+                fontFamily: 'var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                Estimate
+              </span>
             </div>
 
             <div style={{ padding: '20px 24px' }}>
@@ -342,25 +363,25 @@ export default function PlanPage() {
                     {formatMonths(timeToGoalMonths)}
                   </p>
                   {hasExpenseData ? (
-                    <p style={{ margin: 0, fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
-                      Based on your costs, you have{' '}
+                    <p style={{ margin: '0 0 10px', fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
+                      Based on what you have told us, you have roughly{' '}
                       <strong style={{ color: T.text1 }}>{fmt(monthlySavingCapacity, currency)}/month</strong>{' '}
-                      available to save. At that rate you can reach your{' '}
-                      {goalCount === 1 ? 'goal' : `${goalCount} goals`} in {formatMonths(timeToGoalMonths)}.
+                      available after costs. At that rate, your {goalCount === 1 ? 'goal' : `${goalCount} goals`} could take {formatMonths(timeToGoalMonths)}.
                     </p>
                   ) : (
-                    <p style={{ margin: 0, fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
-                      A common personal finance rule is to save 20% of your income —{' '}
+                    <p style={{ margin: '0 0 10px', fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
+                      We have used the 50/30/20 rule to estimate roughly{' '}
                       <strong style={{ color: T.text1 }}>{fmt(estimatedCapacity, currency)}/month</strong>{' '}
-                      in your case. If your cost of living stays within that range, you could reach your{' '}
-                      {goalCount === 1 ? 'goal' : `${goalCount} goals`} in {formatMonths(timeToGoalMonths)}.
-                      {' '}Add your costs to see your real timeline.
+                      available for saving. At that rate, your {goalCount === 1 ? 'goal' : `${goalCount} goals`} could take {formatMonths(timeToGoalMonths)}.
                     </p>
                   )}
+                  <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.55, fontFamily: 'var(--font-sans)' }}>
+                    This is a starting estimate — it will get more accurate as you track real spending.
+                  </p>
                 </>
               ) : (
                 <p style={{ margin: 0, fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
-                  Your current costs leave little room for saving. Consider adjusting your plan or timeline — Cenza will help you find opportunities as you track your spending.
+                  Based on what you have shared, there is limited room for saving right now. That is okay — tracking real spending often reveals more room than expected. We will help you find it.
                 </p>
               )}
             </div>
@@ -379,14 +400,14 @@ export default function PlanPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}
           >
-            My plan looks good <ArrowRight size={18} />
+            Let's start <ArrowRight size={18} />
           </button>
           <p style={{
             textAlign: 'center', marginTop: 14,
             fontSize: 12.5, color: T.text3, lineHeight: 1.5,
             fontFamily: 'var(--font-sans)',
           }}>
-            You can update any of this at any time.
+            This is your starting point — it gets sharper as you track.
           </p>
         </div>
 

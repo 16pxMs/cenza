@@ -210,19 +210,21 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
       </div>
 
       {/* Footer */}
-      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 80px' : '12px 20px 16px' }}>
-        <button
-          onClick={() => selected.size > 0 && onContinue([...selected])}
-          disabled={selected.size === 0}
-          style={{
-            width: '100%', height: 52, borderRadius: 14,
-            background: selected.size === 0 ? T.border : T.brandDark,
-            border: 'none', color: selected.size === 0 ? T.textMuted : '#fff',
-            fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {selected.size === 0 ? 'Select at least one' : `Continue with ${selected.size} expense${selected.size === 1 ? '' : 's'}`}
-        </button>
+      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
+        <div style={{ maxWidth: isDesktop ? 680 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
+          <button
+            onClick={() => selected.size > 0 && onContinue([...selected])}
+            disabled={selected.size === 0}
+            style={{
+              width: '100%', height: 52, borderRadius: 14,
+              background: selected.size === 0 ? T.border : T.brandDark,
+              border: 'none', color: selected.size === 0 ? T.textMuted : '#fff',
+              fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {selected.size === 0 ? 'Select at least one' : `Continue with ${selected.size} expense${selected.size === 1 ? '' : 's'}`}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -331,16 +333,16 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
     const color  = isHigh ? T.redDark    : isMid ? T.amberDark   : T.greenDark
 
     const headline = isHigh
-      ? `${p}% of income on ${bm.label}. That is high.`
+      ? `${p}% of income on ${bm.label}. That is on the high side.`
       : isMid
-      ? `${p}% of income on ${bm.label}. Worth watching.`
+      ? `${p}% of income on ${bm.label}. Slightly above average.`
       : `${p}% of income on ${bm.label}. That is healthy.`
 
     const body = isHigh
-      ? `Most guidelines suggest keeping ${bm.label} under ${bm.low}% of take-home pay. Above ${bm.high}% leaves very little room for saving.`
+      ? `Most guidelines suggest keeping ${bm.label} under ${bm.low}% of take-home. You are not alone in this — it is one of the most common things we help with. We will factor this in and help you find more room over time.`
       : isMid
-      ? `You are slightly above the ${bm.low}% guideline. Manageable, but worth keeping in mind.`
-      : `Under ${bm.low}% keeps things balanced and leaves room for saving.`
+      ? `Slightly above the ${bm.low}% guideline. Manageable — knowing this helps us build a more accurate picture for you.`
+      : `Under ${bm.low}% keeps things balanced and leaves room for other goals.`
 
     return (
       <div style={{ background: bg, border: `1.5px solid ${border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
@@ -432,21 +434,22 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
       </div>
 
       {/* Footer */}
-      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 80px' : '12px 20px 16px' }}>
-        {next && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
-            <span style={{ fontSize: 13 }}>{next.icon}</span>
-            <span style={{ fontSize: 12.5, color: T.text3 }}>Up next: <strong style={{ color: T.text2 }}>{next.label}</strong></span>
-          </div>
-        )}
-        <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-          {isLast ? 'Save expenses' : 'Next'}
-        </button>
-        {current.canBeUnsure && (
-          <button onClick={handleNotSure} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-            Not sure yet
+      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
+        <div style={{ maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
+          {next && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
+              <span style={{ fontSize: 12.5, color: T.text3 }}>Up next: <strong style={{ color: T.text2 }}>{next.label}</strong></span>
+            </div>
+          )}
+          <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+            {isLast ? 'Save expenses' : 'Next'}
           </button>
-        )}
+          {current.canBeUnsure && (
+            <button onClick={handleNotSure} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+              Not sure yet
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

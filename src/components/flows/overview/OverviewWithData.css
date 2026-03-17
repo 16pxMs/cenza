@@ -5,10 +5,10 @@
 ───────────────────────────────────────────────────────────── */
 
 .overview-data {
-  padding: 28px 0 80px;
+  padding: 28px 16px 80px;
 }
 .overview-data--desktop {
-  padding: 48px 0;
+  padding: 48px 32px;
 }
 
 /* Greeting */

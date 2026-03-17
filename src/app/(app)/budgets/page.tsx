@@ -34,36 +34,55 @@ const fmt = (n: number, cur = 'KES') => {
 // ─── Spending categories ───────────────────────────────────────────────────────
 const ALL_BUDGET_CATEGORIES: { key: string; label: string; icon: string; group: string; tip: string }[] = [
   { key: 'groceries',     label: 'Groceries',        icon: '🛒', group: 'Daily living',
-    tip: 'Your regular food and household supplies. This is usually one of the biggest variable costs. A budget here gives you a clear baseline.' },
+    tip: 'Most households spend between 10–20% of income here. Tell us what you actually spend — even a rough number is enough.' },
   { key: 'eatingOut',     label: 'Eating out',        icon: '🍽️', group: 'Daily living',
-    tip: 'Restaurants, takeaways, coffee. Easy to underestimate. Even a rough number helps you see where it goes.' },
+    tip: 'This one surprises most people when they add it up. Include takeaways, coffee, and casual meals. A rough monthly total is fine.' },
   { key: 'transport',     label: 'Transport',         icon: '🚌', group: 'Daily living',
-    tip: 'Fuel, matatu, Uber, parking. If you commute daily, the monthly cost adds up faster than it feels.' },
+    tip: 'Think about fuel, public transit, and ride-hailing combined. If it varies, use a typical month.' },
   { key: 'entertainment', label: 'Entertainment',     icon: '🎬', group: 'Lifestyle',
-    tip: 'Movies, events, games. The fun stuff. Give it a real budget so it does not creep into savings.' },
+    tip: 'Movies, events, streaming, games. What does a normal month actually look like for you?' },
   { key: 'personalCare',  label: 'Personal care',     icon: '💆', group: 'Lifestyle',
-    tip: 'Haircuts, skincare, salon. These are real recurring costs, not luxuries. They belong in the plan.' },
+    tip: 'Haircuts, skincare, salon visits. These happen regularly — what does a typical month cost you?' },
   { key: 'clothing',      label: 'Clothing & shoes',  icon: '👕', group: 'Lifestyle',
-    tip: 'You probably do not spend this every month, but averaging it out into a monthly budget keeps it from coming as a surprise.' },
+    tip: 'This varies month to month. Think about what you spend in a year and divide by 12 for a fair average.' },
   { key: 'socialising',   label: 'Drinks & going out', icon: '🍻', group: 'Lifestyle',
-    tip: 'Social spending is real spending. A dedicated bucket means you can enjoy it without guilt.' },
+    tip: 'Social spending is real spending. What does a typical month of going out actually cost you?' },
   { key: 'health',        label: 'Health & pharmacy',  icon: '💊', group: 'Health & wellness',
-    tip: 'Medication, doctor visits, supplements. Hard to predict exactly, but worth having a buffer.' },
+    tip: 'Medication, doctor visits, supplements. Use a recent month or your average if it varies.' },
   { key: 'fitness',       label: 'Fitness',            icon: '🏃', group: 'Health & wellness',
-    tip: 'Gym membership, classes, equipment. If it keeps you healthy, it is worth planning for.' },
+    tip: 'Gym membership, classes, equipment. What does this regularly cost you each month?' },
   { key: 'savings',       label: 'Savings',            icon: '💰', group: 'Growth',
-    tip: 'Pay yourself first. Setting a budget here means savings become a line item, not what is left over.' },
+    tip: 'How much do you currently set aside each month? If nothing yet, that is completely fine — that is what we are here to help with.' },
   { key: 'investments',   label: 'Investments',        icon: '📈', group: 'Growth',
-    tip: 'Stocks, SACCO contributions, money market funds. Even small regular amounts compound over time.' },
+    tip: 'Stocks, SACCO contributions, money market. What do you typically invest each month? Zero is a valid answer too.' },
   { key: 'subscriptions', label: 'Subscriptions',      icon: '📱', group: 'Growth',
-    tip: 'Netflix, Spotify, cloud storage, apps. Small individually but they add up. Good to see the total in one place.' },
+    tip: 'Netflix, Spotify, apps, cloud storage. These add up more than people expect — count everything.' },
   { key: 'gifts',         label: 'Gifts & events',     icon: '🎁', group: 'Occasional',
-    tip: 'Birthdays, weddings, celebrations. Spreading the cost across months softens the hit.' },
+    tip: 'Think about what you spend on birthdays, weddings, and celebrations across a year and divide by 12.' },
   { key: 'travel',        label: 'Travel & holidays',  icon: '✈️', group: 'Occasional',
-    tip: 'Even one trip a year benefits from a monthly set-aside. Divide the total cost by 12 and use that as your monthly budget.' },
+    tip: 'Think about your last year of travel and divide by 12. Even a rough number helps build an accurate picture.' },
   { key: 'other',         label: 'Other',              icon: '💸', group: 'Occasional',
-    tip: 'Anything that does not fit elsewhere. A general buffer for the unexpected.' },
+    tip: 'A buffer for things that do not fit elsewhere. What does a typical unexpected spend look like for you in a month?' },
 ]
+
+// ─── Budget benchmarks ────────────────────────────────────────────────────────
+const BUDGET_BENCHMARKS: Record<string, { low: number; high: number; positive?: boolean }> = {
+  groceries:     { low: 15, high: 25 },
+  eatingOut:     { low: 10, high: 20 },
+  transport:     { low: 8,  high: 15 },
+  entertainment: { low: 5,  high: 12 },
+  personalCare:  { low: 5,  high: 12 },
+  clothing:      { low: 5,  high: 12 },
+  socialising:   { low: 5,  high: 12 },
+  health:        { low: 5,  high: 12 },
+  fitness:       { low: 3,  high: 8  },
+  savings:       { low: 10, high: 20, positive: true },
+  investments:   { low: 5,  high: 15, positive: true },
+  subscriptions: { low: 3,  high: 7  },
+  gifts:         { low: 3,  high: 10 },
+  travel:        { low: 3,  high: 12 },
+  other:         { low: 3,  high: 10 },
+}
 
 // ─── AmountInput ──────────────────────────────────────────────────────────────
 function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v: string) => void; prefix: string }) {
@@ -175,21 +194,23 @@ function BudgetSelectPage({ onBack, onContinue, isDesktop }: {
       </div>
 
       {/* Footer */}
-      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 80px' : '12px 20px 16px' }}>
-        <button
-          onClick={() => canContinue && onContinue([...selected])}
-          disabled={!canContinue}
-          style={{
-            width: '100%', height: 52, borderRadius: 14,
-            background: canContinue ? T.brandDark : T.border,
-            border: 'none', color: canContinue ? '#fff' : T.textMuted,
-            fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: canContinue ? 'pointer' : 'not-allowed',
-          }}
-        >
-          {selected.size < 2
-            ? `Pick at least ${2 - selected.size} more`
-            : `Continue with ${selected.size} ${selected.size === 1 ? 'category' : 'categories'}`}
-        </button>
+      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
+        <div style={{ maxWidth: isDesktop ? 680 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
+          <button
+            onClick={() => canContinue && onContinue([...selected])}
+            disabled={!canContinue}
+            style={{
+              width: '100%', height: 52, borderRadius: 14,
+              background: canContinue ? T.brandDark : T.border,
+              border: 'none', color: canContinue ? '#fff' : T.textMuted,
+              fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: canContinue ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {selected.size < 2
+              ? `Pick at least ${2 - selected.size} more`
+              : `Continue with ${selected.size} ${selected.size === 1 ? 'category' : 'categories'}`}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -207,11 +228,50 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
   onDone: (result: { categories: any[]; totalBudget: number }) => void
   isDesktop: boolean
 }) {
-  const [step, setStep]       = useState(0)
-  const [budgets, setBudgets] = useState<Record<string, BudgetState>>(() =>
+  const [step, setStep]             = useState(0)
+  const [budgets, setBudgets]       = useState<Record<string, BudgetState>>(() =>
     Object.fromEntries(selectedKeys.map(k => [k, { amount: '' }]))
   )
-  const [mounted, setMounted] = useState(false)
+  const [otherLabel, setOtherLabel] = useState('')
+  const [mounted, setMounted]       = useState(false)
+
+  const renderBenchmark = (key: string, amountStr: string) => {
+    const amount = Number(amountStr)
+    if (!amount || !totalIncome) return null
+    const bm = BUDGET_BENCHMARKS[key]
+    if (!bm) return null
+    const p = Math.round((amount / totalIncome) * 100)
+
+    if (bm.positive) {
+      // High % is good for savings/investments
+      if (p >= bm.high) return (
+        <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+          <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 700, color: '#15803D' }}>Setting aside {p}% of income — that is excellent.</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: '#15803D', opacity: 0.85, lineHeight: 1.6 }}>Most people save far less. We will build your plan around this strength.</p>
+        </div>
+      )
+      if (p >= bm.low) return (
+        <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#15803D' }}>{p}% going towards this — a solid habit.</p>
+        </div>
+      )
+      return null
+    }
+
+    if (p > bm.high) return (
+      <div style={{ background: '#FFF1F2', border: '1.5px solid #FECACA', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+        <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 700, color: '#991B1B' }}>{p}% of income on this. That is on the high side.</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: '#991B1B', opacity: 0.85, lineHeight: 1.6 }}>You are not alone in this — it is one of the most common areas we help people improve. We will work through this together when we build your plan.</p>
+      </div>
+    )
+    if (p > bm.low) return (
+      <div style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+        <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 700, color: '#92400E' }}>{p}% of income here. Slightly above average.</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: '#92400E', opacity: 0.85, lineHeight: 1.6 }}>Manageable, but worth keeping an eye on. Knowing this helps us build a more accurate picture for you.</p>
+      </div>
+    )
+    return null
+  }
 
   useEffect(() => {
     setMounted(false)
@@ -237,7 +297,8 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
     const cats = selectedKeys.map(k => {
       const cat = ALL_BUDGET_CATEGORIES.find(c => c.key === k)!
       const amount = Number(src[k]?.amount) || 0
-      return { key: k, label: cat.label, budget: amount || null }
+      const label = k === 'other' && otherLabel.trim() ? otherLabel.trim() : cat.label
+      return { key: k, label, budget: amount || null }
     })
     return { categories: cats, totalBudget: cats.reduce((s, c) => s + (c.budget ?? 0), 0) }
   }
@@ -278,19 +339,39 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
       <div style={{ flex: 1, padding: isDesktop ? '48px 80px 200px' : '32px 24px 200px', maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
         <div style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(10px)', transition: 'all 0.35s ease', marginBottom: 28 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>{current.icon}</div>
           <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: '0 0 6px' }}>
-            {current.label}
+            {current.key === 'other' && otherLabel.trim() ? otherLabel.trim() : current.label}
           </h2>
           <p style={{ fontSize: 14, color: T.text3, margin: 0, lineHeight: 1.6 }}>
-            How much do you want to spend on this per month?
+            How much do you usually spend on this per month?
           </p>
         </div>
 
+        {/* Other: custom name input */}
+        {current.key === 'other' && (
+          <div style={{ opacity: mounted ? 1 : 0, transition: 'opacity 0.35s ease', marginBottom: 12 }}>
+            <input
+              type="text"
+              value={otherLabel}
+              onChange={e => setOtherLabel(e.target.value)}
+              placeholder="What is this for? e.g. Pet care"
+              style={{
+                width: '100%', height: 48, borderRadius: 12, boxSizing: 'border-box',
+                border: `1.5px solid ${T.border}`, padding: '0 16px',
+                fontSize: 14, color: T.text1, background: T.white,
+                fontFamily: 'var(--font-sans)', outline: 'none',
+              }}
+            />
+          </div>
+        )}
+
         {/* Amount input */}
-        <div style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(12px)', transition: 'all 0.35s ease 0.1s', marginBottom: 16 }}>
+        <div style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(12px)', transition: 'all 0.35s ease 0.1s', marginBottom: 12 }}>
           <AmountInput value={budget.amount} onChange={v => setBudgets(b => ({ ...b, [current.key]: { amount: v } }))} prefix={currency} />
         </div>
+
+        {/* Reactive benchmark */}
+        {renderBenchmark(current.key, budget.amount)}
 
         {/* Tip */}
         <div style={{ background: T.brand + '22', border: `1px solid ${T.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 24, opacity: mounted ? 1 : 0, transition: 'opacity 0.4s ease 0.2s' }}>
@@ -312,19 +393,20 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
       </div>
 
       {/* Footer */}
-      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 80px' : '12px 20px 16px' }}>
-        {next && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
-            <span style={{ fontSize: 13 }}>{next.icon}</span>
-            <span style={{ fontSize: 12.5, color: T.text3 }}>Up next: <strong style={{ color: T.text2 }}>{next.label}</strong></span>
-          </div>
-        )}
-        <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-          {isLast ? 'Save budgets' : 'Next'}
-        </button>
-        <button onClick={handleSkip} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-          {isLast ? 'Save without amount' : 'Skip for now'}
-        </button>
+      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
+        <div style={{ maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
+          {next && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
+              <span style={{ fontSize: 12.5, color: T.text3 }}>Up next: <strong style={{ color: T.text2 }}>{next.label}</strong></span>
+            </div>
+          )}
+          <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+            {isLast ? 'Save budgets' : 'Next'}
+          </button>
+          <button onClick={handleSkip} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+            {isLast ? 'Save without amount' : 'Skip for now'}
+          </button>
+        </div>
       </div>
     </div>
   )

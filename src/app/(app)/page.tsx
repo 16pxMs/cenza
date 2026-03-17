@@ -14,25 +14,51 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewEmpty } from '@/components/flows/overview/OverviewEmpty'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
+import { CarryForwardScreen, type CarryForwardData } from '@/components/flows/overview/CarryForwardScreen'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
+import { getPrevMonth } from '@/lib/finance'
 
 export default function AppPage() {
   const router = useRouter()
   const supabase = createClient()
   const { isDesktop } = useBreakpoint()
-  const [tab, setTab] = useState('overview')
+  const [tab] = useState('overview')
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [incomeData, setIncomeData] = useState<any>(null)
   const [goalTargets, setGoalTargets] = useState<Record<string, any> | null>(null)
-  const [expensesData, setExpensesData] = useState<{ totalMonthly: number } | null>(null)
-  const [budgetsData, setBudgetsData] = useState<{ totalBudget: number } | null>(null)
+  const [expensesData, setExpensesData] = useState<{ totalMonthly: number; entries?: any[] } | null>(null)
+  const [budgetsData, setBudgetsData] = useState<{ totalBudget: number; categories?: any[] } | null>(null)
+  const [totalSpent, setTotalSpent] = useState(0)
+  const [carryForwardData, setCarryForwardData] = useState<CarryForwardData | null>(null)
 
   const currentMonth = new Date().toISOString().slice(0, 7) // "YYYY-MM"
+  const CARRY_DISMISSED_KEY = `cenza:carry-dismissed:${currentMonth}`
+
+  // Lightweight re-fetch of totalSpent — runs when page regains visibility
+  const refreshSpent = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data: txns } = await (supabase.from('transactions') as any)
+      .select('amount')
+      .eq('user_id', user.id)
+      .eq('month', new Date().toISOString().slice(0, 7))
+    if (txns) {
+      setTotalSpent(txns.reduce((s: number, t: any) => s + Number(t.amount), 0))
+    }
+  }, [supabase])
+
+  // Re-fetch spent total whenever the user returns to this tab/page
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshSpent()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [refreshSpent])
 
   const saveIncome = useCallback(async (data: { income: number; extraIncome: any[]; total: number }) => {
-    // Server-side guard — never persist zero or negative income
     if (!data.income || data.income <= 0) {
       throw new Error('Income must be greater than zero')
     }
@@ -50,92 +76,205 @@ export default function AppPage() {
     }
   }, [supabase])
 
+  const loadOverviewData = useCallback(async (user: any) => {
+    const { data: income } = await (supabase.from('income_entries') as any)
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .single()
+    if (income) setIncomeData(income)
+
+    const { data: targets } = await (supabase.from('goal_targets') as any)
+      .select('goal_id, amount')
+      .eq('user_id', user.id)
+    if (targets && targets.length > 0) {
+      const map: Record<string, any> = {}
+      for (const t of targets) map[t.goal_id] = t.amount
+      setGoalTargets(map)
+    }
+
+    const { data: expenses } = await (supabase.from('fixed_expenses') as any)
+      .select('total_monthly, entries')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .maybeSingle()
+    if (expenses) setExpensesData({ totalMonthly: expenses.total_monthly ?? 0, entries: expenses.entries ?? [] })
+
+    const { data: budgets } = await (supabase.from('spending_budgets') as any)
+      .select('total_budget, categories')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .maybeSingle()
+    if (budgets) setBudgetsData({ totalBudget: budgets.total_budget ?? 0, categories: budgets.categories ?? [] })
+
+    await refreshSpent()
+    setLoading(false)
+  }, [supabase, currentMonth, refreshSpent])
+
   useEffect(() => {
     async function load() {
-      // Redirect to login if no session
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
 
       const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single() as { data: any }
+        .from('user_profiles').select('*').eq('id', user.id).single() as { data: any }
 
-      // Redirect to onboarding if profile incomplete or not found
-      if (!profile || !profile.onboarding_complete) {
-        router.push('/onboarding')
+      if (!profile || !profile.onboarding_complete) { router.push('/onboarding'); return }
+      setProfile(profile)
+
+      // Check if current month already has income
+      const { data: currentIncome } = await (supabase.from('income_entries') as any)
+        .select('salary')
+        .eq('user_id', user.id)
+        .eq('month', currentMonth)
+        .maybeSingle()
+
+      if (currentIncome) {
+        // Normal load — current month has a plan
+        await loadOverviewData(user)
         return
       }
 
-      setProfile(profile)
-
-      // Load existing income for current month if any
-      const { data: income } = await (supabase
-        .from('income_entries') as any)
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('month', new Date().toISOString().slice(0, 7))
-        .single()
-
-      if (income) setIncomeData(income)
-
-      // Load saved goal targets
-      const { data: targets } = await (supabase
-        .from('goal_targets') as any)
-        .select('goal_id, amount')
-        .eq('user_id', user.id)
-
-      if (targets && targets.length > 0) {
-        const map: Record<string, any> = {}
-        for (const t of targets) map[t.goal_id] = t.amount
-        setGoalTargets(map)
+      // No plan for current month — check if already dismissed carry-forward
+      if (typeof window !== 'undefined' && localStorage.getItem(CARRY_DISMISSED_KEY)) {
+        await loadOverviewData(user)
+        return
       }
 
-      // Load fixed expenses for current month
-      const { data: expenses } = await (supabase
-        .from('fixed_expenses') as any)
-        .select('total_monthly')
-        .eq('user_id', user.id)
-        .eq('month', new Date().toISOString().slice(0, 7))
-        .single()
+      // Check if previous month has a plan to carry forward
+      const prevMonth = getPrevMonth(currentMonth)
 
-      if (expenses) setExpensesData({ totalMonthly: expenses.total_monthly })
+      const [{ data: prevIncome }, { data: prevExpenses }, { data: prevBudgets }] = await Promise.all([
+        (supabase.from('income_entries') as any)
+          .select('salary, extra_income, total')
+          .eq('user_id', user.id)
+          .eq('month', prevMonth)
+          .maybeSingle(),
+        (supabase.from('fixed_expenses') as any)
+          .select('total_monthly, entries')
+          .eq('user_id', user.id)
+          .eq('month', prevMonth)
+          .maybeSingle(),
+        (supabase.from('spending_budgets') as any)
+          .select('total_budget, categories')
+          .eq('user_id', user.id)
+          .eq('month', prevMonth)
+          .maybeSingle(),
+      ])
 
-      // Load spending budgets for current month
-      const { data: budgets } = await (supabase
-        .from('spending_budgets') as any)
-        .select('total_budget')
-        .eq('user_id', user.id)
-        .eq('month', new Date().toISOString().slice(0, 7))
-        .single()
+      if (prevIncome) {
+        setCarryForwardData({
+          prevMonth,
+          income: {
+            salary:       prevIncome.salary,
+            extra_income: prevIncome.extra_income ?? [],
+            total:        prevIncome.total,
+          },
+          expenses: prevExpenses
+            ? { total_monthly: prevExpenses.total_monthly, entries: prevExpenses.entries ?? [] }
+            : null,
+          budgets: prevBudgets
+            ? { total_budget: prevBudgets.total_budget, categories: prevBudgets.categories ?? [] }
+            : null,
+        })
+        setLoading(false)
+        return
+      }
 
-      if (budgets) setBudgetsData({ totalBudget: budgets.total_budget })
-
-      setLoading(false)
+      // No previous month data either — normal empty state
+      await loadOverviewData(user)
     }
     load()
-  }, [])
+  }, [loadOverviewData])
 
-  // Loading state — shown while auth + profile check runs
+  // Copy selected items from last month into current month
+  const handleCarryForward = async (selectedEntries: any[], selectedCategories: any[]) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || !carryForwardData) return
+
+    const income = carryForwardData.income
+    await (supabase.from('income_entries') as any).upsert({
+      user_id:      user.id,
+      month:        currentMonth,
+      salary:       income.salary,
+      extra_income: income.extra_income,
+      total:        income.total,
+    }, { onConflict: 'user_id,month' })
+
+    if (carryForwardData.expenses && selectedEntries.length > 0) {
+      const totalMonthly = selectedEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0)
+      await (supabase.from('fixed_expenses') as any).upsert({
+        user_id:       user.id,
+        month:         currentMonth,
+        total_monthly: totalMonthly,
+        entries:       selectedEntries,
+      }, { onConflict: 'user_id,month' })
+    }
+
+    if (carryForwardData.budgets && selectedCategories.length > 0) {
+      const totalBudget = selectedCategories.reduce((s: number, c: any) => s + (c.budget ?? 0), 0)
+      await (supabase.from('spending_budgets') as any).upsert({
+        user_id:      user.id,
+        month:        currentMonth,
+        total_budget: totalBudget,
+        categories:   selectedCategories,
+      }, { onConflict: 'user_id,month' })
+    }
+
+    setCarryForwardData(null)
+    await loadOverviewData(user)
+  }
+
+  // Dismiss carry-forward — remember for this month, go to normal empty state
+  const handleCarryForwardFresh = async () => {
+    if (typeof window !== 'undefined') localStorage.setItem(CARRY_DISMISSED_KEY, '1')
+    setCarryForwardData(null)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) await loadOverviewData(user)
+  }
+
+  // Loading state
   if (loading) {
     return (
       <div style={{
-        minHeight: '100vh',
-        background: 'var(--page-bg)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'var(--font-sans)',
-        color: 'var(--text-3)',
-        fontSize: 14,
+        minHeight: '100vh', background: 'var(--page-bg)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-sans)', color: 'var(--text-3)', fontSize: 14,
       }}>
         Loading...
       </div>
     )
   }
 
-  // Tab content map — swap out as real screens are built
+  // Carry-forward screen — shown at start of new month
+  if (carryForwardData) {
+    const screen = (
+      <CarryForwardScreen
+        data={carryForwardData}
+        currency={profile?.currency || 'KES'}
+        currentMonth={currentMonth}
+        isDesktop={isDesktop}
+        onConfirm={handleCarryForward}
+        onFresh={handleCarryForwardFresh}
+      />
+    )
+    if (isDesktop) {
+      return (
+        <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
+          <SideNav />
+          <main style={{ flex: 1, maxWidth: 720 }}>{screen}</main>
+        </div>
+      )
+    }
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+        <main>{screen}</main>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  // Tab content
   const tabContent: Record<string, React.ReactNode> = {
     overview: incomeData ? (
       <OverviewWithData
@@ -151,6 +290,7 @@ export default function AppPage() {
         onAddBudgets={() => router.push('/budgets')}
         onAddDebts={() => router.push('/debts')}
         onLogExpense={() => router.push('/log')}
+        totalSpent={totalSpent}
         isDesktop={isDesktop}
       />
     ) : (
@@ -178,25 +318,21 @@ export default function AppPage() {
     ),
   }
 
-  // Desktop layout — SideNav on left, content on right
+  // Desktop layout
   if (isDesktop) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
         <button
-          onClick={async () => {
-            const supabase = createClient()
-            await supabase.auth.signOut()
-            window.location.href = '/login'
-          }}
+          onClick={async () => { await createClient().auth.signOut(); window.location.href = '/login' }}
           style={{
             position: 'fixed', top: 12, right: 16, zIndex: 9999,
             background: 'none', border: '1px solid #ccc', borderRadius: 8,
-            padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: '#666'
+            padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: '#666',
           }}
         >
           Sign out
         </button>
-        <SideNav active={tab} onChange={setTab} />
+        <SideNav />
         <main style={{ flex: 1, maxWidth: 720, padding: '0 0 40px' }}>
           {tabContent[tab]}
         </main>
@@ -207,29 +343,25 @@ export default function AppPage() {
           currency={profile?.currency || 'KES'}
           isDesktop={isDesktop}
         />
-        </div>
+      </div>
     )
   }
 
-  // Mobile layout — BottomNav fixed at bottom
+  // Mobile layout
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
       <button
-        onClick={async () => {
-          const supabase = createClient()
-          await supabase.auth.signOut()
-          window.location.href = '/login'
-        }}
+        onClick={async () => { await createClient().auth.signOut(); window.location.href = '/login' }}
         style={{
           position: 'fixed', top: 12, right: 16, zIndex: 9999,
           background: 'none', border: '1px solid #ccc', borderRadius: 8,
-          padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: '#666'
+          padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: '#666',
         }}
       >
         Sign out
       </button>
       <main>{tabContent[tab]}</main>
-      <BottomNav active={tab} onChange={setTab} />
+      <BottomNav />
       <AddIncomeSheet
         open={incomeSheetOpen}
         onClose={() => setIncomeSheetOpen(false)}

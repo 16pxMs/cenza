@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npx vitest:*)",
+      "Bash(ls /Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\\\\\(app\\\\\\)/)"
     ]
   }
 }

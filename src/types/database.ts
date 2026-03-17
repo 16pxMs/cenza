@@ -41,10 +41,13 @@ export interface IncomeEntry {
 export interface FixedExpense {
   id: string
   user_id: string
-  key: string
-  amount: number
-  frequency: Frequency
-  monthly_equivalent: number
+  key: string | null
+  amount: number | null
+  frequency: Frequency | null
+  monthly_equivalent: number | null
+  month: string | null
+  entries: any[] | null
+  total_monthly: number | null
   created_at: string
   updated_at: string
 }

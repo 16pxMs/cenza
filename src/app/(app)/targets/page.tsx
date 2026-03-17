@@ -39,50 +39,50 @@ const GOAL_META: Record<string, {
   emergency: {
     label: 'Emergency Fund', icon: '🛡️',
     color: T.green, light: T.greenLight, border: T.greenBorder, dark: T.greenDark,
-    description: 'How much do you want in your emergency fund? A common target is 3 to 6 months of expenses.',
-    tip: 'An emergency fund is money set aside for unexpected costs. Having one means you do not have to borrow when things go wrong.',
+    description: 'How much do you want in your emergency fund? A common starting point is 3 months of income.',
+    tip: 'An emergency fund means you do not have to borrow when something unexpected happens. Even a small one makes a real difference.',
   },
   car: {
     label: 'Car Fund', icon: '🚗',
     color: T.brandDeep, light: T.brand + '44', border: T.brandMid, dark: T.brandDark,
     description: 'What is your target for buying or maintaining a car?',
-    tip: 'Set the full amount you are saving towards. The app will tell you how long it will take based on what you put aside each month.',
+    tip: 'Enter the full amount you are working towards. We will show you how long it will take based on what you can realistically set aside.',
   },
   travel: {
     label: 'Travel Buffer', icon: '✈️',
     color: T.amber, light: T.amberLight, border: '#FDE68A', dark: T.amberDark,
-    description: 'How much do you want to set aside for travel this year?',
-    tip: 'Even a small monthly amount adds up. Setting a target helps you know when you can actually book.',
+    description: 'How much do you want to set aside for travel?',
+    tip: 'Setting a number — even a rough one — means you will know when you can actually book, instead of just hoping the money is there.',
   },
   home: {
     label: 'Home', icon: '🏠',
     color: T.brandDeep, light: T.brand + '44', border: T.brandMid, dark: T.brandDark,
     description: 'What is your target? This could be a deposit, rent advance, or renovation fund.',
-    tip: 'Housing goals tend to be large. Breaking them into a monthly savings target makes them more manageable.',
+    tip: 'Housing goals are usually the biggest ones. Knowing your number is the first step — we will help you map a realistic path to get there.',
   },
   education: {
     label: 'Education', icon: '📚',
     color: T.brandDeep, light: T.brand + '44', border: T.brandMid, dark: T.brandDark,
     description: 'What are you saving towards? A course, degree, or professional certification?',
-    tip: 'Education costs are often one-off but large. Saving ahead avoids having to take on debt when the time comes.',
+    tip: 'Saving ahead for education means you get to choose without being forced into debt. Enter the full cost and we will work backwards from there.',
   },
   business: {
     label: 'Business', icon: '💼',
     color: T.brandDeep, light: T.brand + '44', border: T.brandMid, dark: T.brandDark,
     description: 'What amount do you need to get started or grow your business?',
-    tip: 'Having a clear target makes it easier to know how close you are and what you can afford to invest.',
+    tip: 'A clear number makes all the difference. It turns a dream into a deadline. Enter what you genuinely think you need to get started.',
   },
   family: {
     label: 'Family', icon: '👨‍👩‍👧',
     color: T.brandDeep, light: T.brand + '44', border: T.brandMid, dark: T.brandDark,
     description: 'What are you saving towards for your family?',
-    tip: 'Family goals are often the most important ones. Setting a target keeps them visible month to month.',
+    tip: 'Family goals tend to be the ones that matter most. Keeping them visible in your plan means they do not get pushed aside when money is tight.',
   },
   other: {
     label: 'Other Goal', icon: '⭐',
     color: T.brandDeep, light: T.brand + '44', border: T.brandMid, dark: T.brandDark,
     description: 'What is your target for this goal?',
-    tip: 'You can rename and adjust this goal at any time as your plans become clearer.',
+    tip: 'You can update and rename this goal at any time. For now, even a rough number is enough to get started.',
   },
 }
 
@@ -214,28 +214,28 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
       },
       car: () => {
         if (monthsToSave <= 12) return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `Reachable in about ${monthsToSave} months.`, body: 'Saving 10% of income each month gets you there within a year. Very achievable.' }
-        if (isFeasible)         return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'That is realistic. You may get there faster once you know exactly what you can set aside each month.' }
-        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 3 years at 10% of income.', body: 'Consider whether this is a near-term or long-term goal. A lower target to start is still progress.' }
+        if (isFeasible)         return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'Realistic. Once we know your full picture, we can find ways to get you there faster.' }
+        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 3 years at 10% of income.', body: 'A longer-term goal. That is fine — we will help you build a plan that makes steady progress without stretching you thin.' }
       },
       home: () => {
         if (monthsToSave <= 24) return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Within reach in roughly 2 years. A focused savings habit will get you there.' }
-        if (monthsToSave <= 60) return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'A longer horizon. Consider whether you can set aside more than 10% as income grows.' }
-        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 5 years at 10% of income.', body: 'This is a big goal. It is still worth tracking — knowing the number is the first step.' }
+        if (monthsToSave <= 60) return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'A longer horizon — but housing goals usually are. We will help you find ways to accelerate this as your income grows.' }
+        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 5 years at 10% of income.', body: 'This is a big goal. Knowing the number is the first step. We will help you build a realistic path — even if it takes time.' }
       },
       travel: () => {
-        if (monthsToSave <= 6)  return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Very achievable. You could be booking this trip soon.' }
-        if (monthsToSave <= 18) return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Realistic within a year or two. Logging spending will show you where you can save faster.' }
-        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: `Over ${yearsToSave} years at 10% of income.`, body: 'This might be a big trip budget. Consider breaking it into a first-trip target and a longer-term goal.' }
+        if (monthsToSave <= 6)  return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Very achievable. You could be booking this trip sooner than you think.' }
+        if (monthsToSave <= 18) return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Realistic within a year or two. Once we see your full spending picture, we can show you where to find the extra.' }
+        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: `Over ${yearsToSave} years at 10% of income.`, body: 'That is a significant trip budget. Consider setting a smaller first-trip target — progress now motivates the bigger goal later.' }
       },
       education: () => {
-        if (monthsToSave <= 12) return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Reachable within a year. A clear and manageable education goal.' }
-        if (isFeasible)         return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'Consider whether part of this can come from salary increments over time.' }
-        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 3 years at 10% of income.', body: 'A long-horizon education fund. Worth starting now — even small amounts compound over time.' }
+        if (monthsToSave <= 12) return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Reachable within a year. A clear and very manageable education goal.' }
+        if (isFeasible)         return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'Realistic. As your income grows, this becomes easier — we will adjust your plan as things change.' }
+        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 3 years at 10% of income.', body: 'Worth starting now regardless. Even small contributions add up — and we will help you find more room as we build your full plan.' }
       },
       business: () => {
         if (monthsToSave <= 12) return { color: T.greenDark, bg: T.greenLight, border: T.greenBorder, headline: `About ${monthsToSave} months saving 10% of income.`, body: 'Within reach in under a year. A focused savings plan could get you started soon.' }
-        if (isFeasible)         return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'Realistic for a business fund. You may be able to start with less and grow from there.' }
-        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 3 years at 10% of income.', body: 'Consider whether this is a start-up cost or a full capital target. Starting smaller is still progress.' }
+        if (isFeasible)         return { color: T.amberDark, bg: T.amberLight, border: '#FDE68A', headline: `About ${yearsToSave} years saving 10% of income.`, body: 'Realistic for a business fund. You may be able to start with less and grow from there — we will help you see the options.' }
+        return                   { color: T.redDark, bg: T.redLight, border: '#FECACA', headline: 'Over 3 years at 10% of income.', body: 'A long runway — but big goals need to start somewhere. We will help you break this into milestones that feel achievable.' }
       },
     }
 
@@ -284,7 +284,7 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column',
         padding: isDesktop ? '48px 80px 180px' : '32px 24px 180px',
-        maxWidth: isDesktop ? 520 : '100%',
+        maxWidth: isDesktop ? 560 : '100%',
         margin: '0 auto', width: '100%', boxSizing: 'border-box',
       }}>
 
@@ -388,39 +388,40 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
       <div style={{
         position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0,
         background: T.pageBg, borderTop: `1px solid ${T.border}`,
-        padding: isDesktop ? '16px 80px' : '12px 20px 16px',
+        padding: isDesktop ? '16px 0' : '12px 20px 16px',
       }}>
-        {/* Up next peek */}
-        {!isLast && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
-            <span style={{ fontSize: 16 }}>{GOAL_META[goals[step + 1]]?.icon}</span>
-            <span style={{ fontSize: 12.5, color: T.text3 }}>
-              Up next: <strong style={{ color: T.text2 }}>{GOAL_META[goals[step + 1]]?.label}</strong>
-            </span>
-          </div>
-        )}
-        <button
-          onClick={handleSave}
-          style={{
-            width: '100%', height: 52, borderRadius: 14,
-            background: T.brandDark, border: 'none', color: '#fff',
-            fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          {isLast ? 'Save targets' : 'Next goal'}
-        </button>
-        <button
-          onClick={handleSkip}
-          style={{
-            width: '100%', height: 40, marginTop: 8,
-            background: 'none', border: 'none', color: T.textMuted,
-            fontSize: 13, fontFamily: 'var(--font-sans)',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          Skip for now
-        </button>
+        <div style={{ maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
+          {/* Up next peek */}
+          {!isLast && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
+              <span style={{ fontSize: 12.5, color: T.text3 }}>
+                Up next: <strong style={{ color: T.text2 }}>{GOAL_META[goals[step + 1]]?.label}</strong>
+              </span>
+            </div>
+          )}
+          <button
+            onClick={handleSave}
+            style={{
+              width: '100%', height: 52, borderRadius: 14,
+              background: T.brandDark, border: 'none', color: '#fff',
+              fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            {isLast ? 'Save targets' : 'Next goal'}
+          </button>
+          <button
+            onClick={handleSkip}
+            style={{
+              width: '100%', height: 40, marginTop: 8,
+              background: 'none', border: 'none', color: T.textMuted,
+              fontSize: 13, fontFamily: 'var(--font-sans)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            Skip for now
+          </button>
+        </div>
       </div>
     </div>
   )
