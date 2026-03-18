@@ -29,6 +29,7 @@
   position: relative;
   font-family: var(--font-sans);
   min-height: 44px;
+  padding-top: 10px;
 }
 
 .label {
@@ -38,6 +39,7 @@
 }
 
 .labelActive {
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--brand-dark);
 }

@@ -28,8 +28,10 @@ export default function AppPage() {
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [incomeData, setIncomeData] = useState<any>(null)
   const [goalTargets, setGoalTargets] = useState<Record<string, any> | null>(null)
+  const [goalSaved, setGoalSaved] = useState<Record<string, number>>({})
   const [expensesData, setExpensesData] = useState<{ totalMonthly: number; entries?: any[] } | null>(null)
   const [budgetsData, setBudgetsData] = useState<{ totalBudget: number; categories?: any[] } | null>(null)
+  const [budgetsSource, setBudgetsSource] = useState<'onboarding' | 'user_set'>('onboarding')
   const [totalSpent, setTotalSpent] = useState(0)
   const [carryForwardData, setCarryForwardData] = useState<CarryForwardData | null>(null)
 
@@ -77,39 +79,53 @@ export default function AppPage() {
   }, [supabase])
 
   const loadOverviewData = useCallback(async (user: any) => {
-    const { data: income } = await (supabase.from('income_entries') as any)
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth)
-      .single()
+    const [
+      { data: income },
+      { data: targets },
+      { data: goalTxns },
+      { data: expenses },
+      { data: budgets },
+      { data: txns },
+    ] = await Promise.all([
+      (supabase.from('income_entries') as any)
+        .select('*').eq('user_id', user.id).eq('month', currentMonth).single(),
+      (supabase.from('goal_targets') as any)
+        .select('goal_id, amount').eq('user_id', user.id),
+      (supabase.from('transactions') as any)
+        .select('category_key, amount').eq('user_id', user.id).eq('category_type', 'goal'),
+      (supabase.from('fixed_expenses') as any)
+        .select('total_monthly, entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+      (supabase.from('spending_budgets') as any)
+        .select('total_budget, categories, source').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+      (supabase.from('transactions') as any)
+        .select('amount').eq('user_id', user.id).eq('month', currentMonth),
+    ])
+
     if (income) setIncomeData(income)
 
-    const { data: targets } = await (supabase.from('goal_targets') as any)
-      .select('goal_id, amount')
-      .eq('user_id', user.id)
     if (targets && targets.length > 0) {
       const map: Record<string, any> = {}
       for (const t of targets) map[t.goal_id] = t.amount
       setGoalTargets(map)
     }
 
-    const { data: expenses } = await (supabase.from('fixed_expenses') as any)
-      .select('total_monthly, entries')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth)
-      .maybeSingle()
+    if (goalTxns) {
+      const saved: Record<string, number> = {}
+      for (const t of goalTxns) saved[t.category_key] = (saved[t.category_key] ?? 0) + Number(t.amount)
+      setGoalSaved(saved)
+    }
+
     if (expenses) setExpensesData({ totalMonthly: expenses.total_monthly ?? 0, entries: expenses.entries ?? [] })
 
-    const { data: budgets } = await (supabase.from('spending_budgets') as any)
-      .select('total_budget, categories')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth)
-      .maybeSingle()
-    if (budgets) setBudgetsData({ totalBudget: budgets.total_budget ?? 0, categories: budgets.categories ?? [] })
+    if (budgets) {
+      setBudgetsData({ totalBudget: budgets.total_budget ?? 0, categories: budgets.categories ?? [] })
+      setBudgetsSource(budgets.source === 'user_set' ? 'user_set' : 'onboarding')
+    }
 
-    await refreshSpent()
+    if (txns) setTotalSpent(txns.reduce((s: number, t: any) => s + Number(t.amount), 0))
+
     setLoading(false)
-  }, [supabase, currentMonth, refreshSpent])
+  }, [supabase, currentMonth])
 
   useEffect(() => {
     async function load() {
@@ -284,12 +300,14 @@ export default function AppPage() {
         incomeData={incomeData}
         expensesData={expensesData}
         budgetsData={budgetsData}
+        budgetsSource={budgetsSource}
         goalTargets={goalTargets}
+        goalSaved={goalSaved}
         onSetupGoals={() => {}}
         onAddExpenses={() => router.push('/expenses')}
         onAddBudgets={() => router.push('/budgets')}
         onAddDebts={() => router.push('/debts')}
-        onLogExpense={() => router.push('/log')}
+        onLogExpense={() => router.push('/log?open=true')}
         totalSpent={totalSpent}
         isDesktop={isDesktop}
       />

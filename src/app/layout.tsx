@@ -2,18 +2,20 @@ import '@/styles/tokens.css'
 import '../styles/globals.css'
 
 import type { Metadata } from 'next'
-import { DM_Sans, Lora } from 'next/font/google'
+import { Outfit, DM_Serif_Display } from 'next/font/google'
 
-const dmSans = DM_Sans({
+const outfit = Outfit({
   subsets: ['latin'],
-  variable: '--font-dm-sans',
+  variable: '--font-outfit',
   display: 'swap',
+  weight: ['300', '400', '500', '600', '700', '800'],
 })
 
-const lora = Lora({
+const dmSerifDisplay = DM_Serif_Display({
   subsets: ['latin'],
-  variable: '--font-lora',
+  variable: '--font-dm-serif-display',
   display: 'swap',
+  weight: '400',
 })
 
 export const metadata: Metadata = {
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${lora.variable}`}>
+    <html lang="en" className={`${outfit.variable} ${dmSerifDisplay.variable}`}>
       <body>{children}</body>
     </html>
   )

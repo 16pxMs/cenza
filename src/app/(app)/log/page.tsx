@@ -8,13 +8,13 @@
 // Pinned "Other" button at bottom → sheet with group picker
 // ─────────────────────────────────────────────────────────────
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { AddExpenseSheet, type SheetItem, type ExpenseSaveData, type PriorEntry, type DictionaryEntry } from '@/components/flows/log/AddExpenseSheet'
+import { AddExpenseSheet, type SheetItem, type ExpenseSaveData, type PriorEntry, type DictionaryEntry, type QuickItem } from '@/components/flows/log/AddExpenseSheet'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 
@@ -24,15 +24,22 @@ const T = {
   brandMid:     '#C9AEE8',
   brandDeep:    '#9B6FCC',
   brandDark:    '#5C3489',
-  pageBg:       '#FAFAF8',
+  pageBg:       '#F8F9FA',
   white:        '#FFFFFF',
-  border:       '#EDE8F5',
-  borderStrong: '#D5CDED',
-  text1:        '#1A1025',
-  text2:        '#4A3B66',
-  text3:        '#8B7BA8',
-  textMuted:    '#B8AECE',
+  border:       '#E4E7EC',
+  borderStrong: '#D0D5DD',
+  text1:        '#101828',
+  text2:        '#475467',
+  text3:        '#667085',
+  textMuted:    '#98A2B3',
 }
+
+// ─── Debt keywords — typed free-text matching these always resolves to 'debt' ──
+const DEBT_KEYWORDS = [
+  'debt', 'loan', 'repayment', 'credit card', 'overdraft', 'mortgage',
+  'student loan', 'car loan', 'helb', 'bnpl', 'afterpay', 'klarna',
+  'credit', 'borrowing', 'instalment', 'installment',
+]
 
 // ─── Static meta ─────────────────────────────────────────────────────────────
 const GOAL_META: Record<string, string> = {
@@ -52,11 +59,12 @@ const EXPENSE_LABELS: Record<string, string> = {
 type GroupKey = 'fixed' | 'goals' | 'daily' | 'debts' | 'other'
 
 interface SubItem {
-  key:          string
-  label:        string
-  sublabel:     string | null
-  groupType:    string
-  loggedAmount: number
+  key:           string
+  label:         string
+  sublabel:      string | null
+  groupType:     string
+  loggedAmount:  number
+  plannedAmount?: number  // monthly planned amount (fixed expenses only)
 }
 
 interface Section {
@@ -80,56 +88,102 @@ export default function LogPage() {
   const [priorEntry, setPriorEntry]     = useState<PriorEntry | null | undefined>(undefined)
   const [dictionary, setDictionary]     = useState<Record<string, DictionaryEntry>>({})
   const [expanded, setExpanded]         = useState<Set<string>>(new Set())
+  const [autoOpened, setAutoOpened]     = useState(false)
 
   const currentMonth = new Date().toISOString().slice(0, 7)
+
+  // Quick-tap chips for the "What did you spend on?" sheet
+  // Priority: logged this month → planned not yet logged → dictionary history
+  const quickItems = useMemo<QuickItem[]>(() => {
+    const result: QuickItem[] = []
+    const usedKeys = new Set<string>()
+
+    // 1. Logged this month (across all sections)
+    for (const section of sections) {
+      for (const item of section.items) {
+        if (item.loggedAmount > 0 && !usedKeys.has(item.key)) {
+          result.push({ key: item.key, label: item.label, groupType: item.groupType, source: 'logged', loggedAmount: item.loggedAmount, plannedAmount: item.plannedAmount })
+          usedKeys.add(item.key)
+        }
+        if (result.length >= 6) break
+      }
+      if (result.length >= 6) break
+    }
+
+    // 2. Planned but not yet logged
+    if (result.length < 6) {
+      for (const section of sections) {
+        for (const item of section.items) {
+          if (!usedKeys.has(item.key) && item.loggedAmount === 0) {
+            result.push({ key: item.key, label: item.label, groupType: item.groupType, source: 'planned', plannedAmount: item.plannedAmount })
+            usedKeys.add(item.key)
+          }
+          if (result.length >= 6) break
+        }
+        if (result.length >= 6) break
+      }
+    }
+
+    // 3. Dictionary history (most-used first, already ordered by usage_count desc)
+    if (result.length < 6) {
+      for (const entry of Object.values(dictionary)) {
+        const key = entry.key
+        if (key && !usedKeys.has(key)) {
+          result.push({ key, label: entry.label, groupType: entry.groupType, source: 'history' })
+          usedKeys.add(key)
+        }
+        if (result.length >= 6) break
+      }
+    }
+
+    return result
+  }, [sections, dictionary])
 
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('currency, goals')
-      .eq('id', user.id)
-      .single() as { data: any }
+    const [
+      { data: profile },
+      { data: txns },
+      { data: expenses },
+      { data: targets },
+      { data: budgets },
+    ] = await Promise.all([
+      supabase.from('user_profiles').select('currency, goals').eq('id', user.id).single() as any,
+      (supabase.from('transactions') as any)
+        .select('category_key, category_label, category_type, amount')
+        .eq('user_id', user.id).eq('month', currentMonth),
+      (supabase.from('fixed_expenses') as any)
+        .select('entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+      (supabase.from('goal_targets') as any)
+        .select('goal_id, amount').eq('user_id', user.id),
+      (supabase.from('spending_budgets') as any)
+        .select('categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+    ])
 
     const cur = profile?.currency ?? 'KES'
     setCurrency(cur)
 
-    // ── Transactions logged this month ──────────────────────
-    const { data: txns } = await (supabase.from('transactions') as any)
-      .select('category_key, category_label, category_type, amount')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth)
-
-    // Sum per category_key
+    // ── Sum transactions per category_key ───────────────────
     const logged: Record<string, number> = {}
     for (const t of txns ?? []) {
       logged[t.category_key] = (logged[t.category_key] ?? 0) + Number(t.amount)
     }
 
     // ── Fixed expenses ──────────────────────────────────────
-    const { data: expenses } = await (supabase.from('fixed_expenses') as any)
-      .select('entries')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth)
-      .maybeSingle()
-
     const fixedItems: SubItem[] = (expenses?.entries ?? [])
       .filter((e: any) => e.confidence === 'known' && e.monthly > 0)
       .map((e: any) => ({
-        key:          e.key,
-        label:        EXPENSE_LABELS[e.key] ?? e.key,
-        sublabel:     fmt(e.monthly, cur) + '/mo',
-        groupType:    'fixed',
-        loggedAmount: logged[e.key] ?? 0,
+        key:           e.key,
+        label:         EXPENSE_LABELS[e.key] ?? e.key,
+        sublabel:      fmt(e.monthly, cur),
+        groupType:     'fixed',
+        loggedAmount:  logged[e.key] ?? 0,
+        plannedAmount: e.monthly,
       }))
 
     // ── Goals ───────────────────────────────────────────────
-    const { data: targets } = await (supabase.from('goal_targets') as any)
-      .select('goal_id, amount')
-      .eq('user_id', user.id)
-
     const profileGoals: string[] = profile?.goals ?? []
     const goalItems: SubItem[] = profileGoals
       .filter((g: string) => GOAL_META[g])
@@ -138,23 +192,18 @@ export default function LogPage() {
         return {
           key:          g,
           label:        GOAL_META[g],
-          sublabel:     target?.amount ? 'Target: ' + fmt(target.amount, cur) : null,
+          sublabel:     target?.amount ? fmt(target.amount, cur) : null,
           groupType:    'goal',
           loggedAmount: logged[g] ?? 0,
         }
       })
 
     // ── Daily spending ──────────────────────────────────────
-    const { data: budgets } = await (supabase.from('spending_budgets') as any)
-      .select('categories')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth)
-      .maybeSingle()
 
     const dailyItems: SubItem[] = (budgets?.categories ?? []).map((c: any) => ({
       key:          c.key,
       label:        c.label,
-      sublabel:     c.budget ? 'Budget: ' + fmt(c.budget, cur) : null,
+      sublabel:     c.budget ? fmt(c.budget, cur) : null,
       groupType:    'variable',
       loggedAmount: logged[c.key] ?? 0,
     }))
@@ -202,6 +251,15 @@ export default function LogPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // Auto-open the sheet when navigated from overview with ?open=true
+  useEffect(() => {
+    if (loading || autoOpened) return
+    if (typeof window !== 'undefined' && window.location.search.includes('open=true')) {
+      setAutoOpened(true)
+      openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })
+    }
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const openSheet = (item: SheetItem) => {
     setSheetItem(item)
     setSheetOpen(true)
@@ -211,14 +269,33 @@ export default function LogPage() {
       supabase.auth.getUser().then(({ data: { user } }) => {
         if (!user) return
         ;(supabase.from('item_dictionary') as any)
-          .select('name_normalized, label, group_type, usage_count')
+          .select('name_normalized, label, group_type, category_key, usage_count')
           .eq('user_id', user.id)
+          .order('usage_count', { ascending: false })
           .then(({ data }: any) => {
-            if (!data) return
             const dict: Record<string, DictionaryEntry> = {}
-            for (const row of data) {
-              dict[row.name_normalized] = { groupType: row.group_type, label: row.label, count: row.usage_count ?? 1 }
+
+            // Seed common debt keywords so they're always auto-recognised
+            for (const kw of DEBT_KEYWORDS) {
+              dict[kw] = { groupType: 'debt', label: kw, count: 0 }
             }
+
+            // Seed with all known planned items (fixed, goals, daily)
+            // so typing "rent" matches even if never logged via free-text
+            for (const section of sections) {
+              for (const si of section.items) {
+                const normalized = si.label.trim().toLowerCase()
+                if (!dict[normalized]) {
+                  dict[normalized] = { groupType: si.groupType, label: si.label, key: si.key, count: 0 }
+                }
+              }
+            }
+
+            // Overlay user-typed history (higher count wins recognition signal)
+            for (const row of data ?? []) {
+              dict[row.name_normalized] = { groupType: row.group_type, label: row.label, key: row.category_key, count: row.usage_count ?? 1 }
+            }
+
             setDictionary(dict)
           })
       })
@@ -324,8 +401,11 @@ export default function LogPage() {
         >
           <IconBack size={18} color={T.text3} />
         </button>
-        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: 0 }}>
-          Add a payment
+        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
+          {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </p>
+        <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: 0 }}>
+          Track a spend
         </h1>
       </div>
 
@@ -348,18 +428,21 @@ export default function LogPage() {
         const totalLogged  = section.items.reduce((s, i) => s + i.loggedAmount, 0)
 
         // Shared item row renderer
-        const renderItem = (item: SubItem) => {
+        const renderItem = (item: SubItem, index: number) => {
           const isLogged = item.loggedAmount > 0
+          const isLast   = index === visibleItems.length - 1
           return (
             <button
               key={item.key}
-              onClick={() => openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false })}
+              onClick={() => openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center',
                 justifyContent: 'space-between',
                 background: T.white,
-                border: `1px solid ${isLogged ? '#DDD4F0' : '#F0ECF8'}`,
-                borderRadius: 14, padding: '14px 16px',
+                border: 'none',
+                borderBottom: isLast ? 'none' : `1px solid ${T.border}`,
+                borderRadius: 0,
+                minHeight: 48, padding: '10px 16px',
                 cursor: 'pointer', fontFamily: 'var(--font-sans)',
                 textAlign: 'left', boxSizing: 'border-box',
               } as React.CSSProperties}
@@ -367,19 +450,15 @@ export default function LogPage() {
               <span style={{ fontSize: 15, fontWeight: 500, color: T.text1 }}>
                 {item.label}
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
-                {isLogged ? (
-                  <>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: T.brandDark }}>
-                      {fmt(item.loggedAmount, currency)} logged
-                    </span>
-                    {item.sublabel && (
-                      <span style={{ fontSize: 12, color: T.textMuted }}>· {item.sublabel}</span>
-                    )}
-                  </>
-                ) : item.sublabel ? (
-                  <span style={{ fontSize: 12.5, color: T.text3 }}>{item.sublabel}</span>
-                ) : null}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, marginLeft: 8 }}>
+                {isLogged && (
+                  <span style={{ fontSize: 13, fontWeight: 400, color: T.text3 }}>
+                    {fmt(item.loggedAmount, currency)}
+                  </span>
+                )}
+                {item.sublabel && (
+                  <span style={{ fontSize: 12, color: T.textMuted }}>{item.sublabel}</span>
+                )}
               </div>
             </button>
           )
@@ -387,7 +466,7 @@ export default function LogPage() {
 
         // ── All sections rendered as cards ───────────────────
         return (
-          <div key={section.key} style={{ margin: isDesktop ? '0 32px 28px' : '0 16px 28px' }}>
+          <div key={section.key} style={{ margin: isDesktop ? '0 32px 40px' : '0 16px 40px' }}>
             <div style={{
               background: T.white,
               border: `1.5px solid ${T.border}`,
@@ -412,7 +491,7 @@ export default function LogPage() {
                   {isAccordion && (
                     <span style={{
                       fontSize: 11, fontWeight: 600, color: T.text3,
-                      background: '#F4F0FB', borderRadius: 99, padding: '2px 8px',
+                      background: '#F1F3F5', borderRadius: 99, padding: '2px 8px',
                       fontFamily: 'var(--font-sans)',
                     }}>
                       {section.items.length} items
@@ -427,20 +506,20 @@ export default function LogPage() {
               </div>
 
               {/* Items */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 12px 0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
 
                 {section.items.length === 0 && section.key !== 'debts' && (
-                  <p style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)', margin: '0 0 4px', fontStyle: 'italic' }}>
+                  <p style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)', margin: '12px 16px', fontStyle: 'italic' }}>
                     Nothing set up yet.
                   </p>
                 )}
 
-                {visibleItems.map(renderItem)}
+                {visibleItems.map((item, index) => renderItem(item, index))}
 
               </div>
 
-              {/* Debts: always show add button */}
-              {section.key === 'debts' && (
+              {/* Debts: show add button only when no debts logged yet */}
+              {section.key === 'debts' && section.items.length === 0 && (
                 <div style={{ padding: '8px 12px 0' }}>
                   <button
                     onClick={() => openSheet({ key: 'debt_new', label: 'Add a debt', groupType: 'debt', isOther: true })}
@@ -510,6 +589,8 @@ export default function LogPage() {
         item={sheetItem}
         priorEntry={priorEntry}
         dictionary={dictionary}
+        quickItems={quickItems}
+        onSelectQuickItem={(qi) => openSheet(qi)}
         currency={currency}
         isDesktop={isDesktop}
         onSave={handleSave}

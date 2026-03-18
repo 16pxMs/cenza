@@ -12,16 +12,33 @@
   --dark-border:  #2E2248;
 
   /* Page */
-  --page-bg:       #FAFAF8;
-  --white:         #FFFFFF;
-  --border:        #EDE8F5;
-  --border-strong: #D5CDED;
+  --page-bg:       var(--grey-50);
+  --white:         var(--grey-0);
+  --border:        var(--grey-200);
+  --border-strong: var(--grey-300);
+
+  /* Grey scale */
+  --grey-0:   #FFFFFF;
+  --grey-25:  #FCFCFD;
+  --grey-50:  #F8F9FA;
+  --grey-100: #F1F3F5;
+  --grey-200: #E4E7EC;
+  --grey-300: #D0D5DD;
+  --grey-400: #98A2B3;
+  --grey-500: #667085;
+  --grey-600: #475467;
+  --grey-700: #344054;
+  --grey-800: #1D2939;
+  --grey-900: #101828;
 
   /* Text */
-  --text-1:     #1A1025;
-  --text-2:     #4A3B66;
-  --text-3:     #8B7BA8;
-  --text-muted: #B8AECE;
+  --text-1:        var(--grey-900); /* strong — headings, primary labels */
+  --text-2:        var(--grey-600); /* default — body, card text */
+  --text-3:        var(--grey-500); /* subtle — secondary labels */
+  --text-muted:    var(--grey-400); /* muted — placeholders, metadata */
+  --text-disabled: var(--grey-300); /* disabled — inactive states */
+  --text-inverse:  var(--grey-0);   /* inverse — text on dark surfaces */
+  --text-brand:    var(--brand-dark); /* brand — accents, links, CTAs */
 
   /* Green */
   --green:        #22C55E;
@@ -33,7 +50,7 @@
   --amber:        #F59E0B;
   --amber-light:  #FFFBEB;
   --amber-border: #FDE68A;
-  --amber-dark:   #92400E;
+  --amber-dark:   #D97706;
 
   /* Red */
   --red:        #EF4444;
@@ -42,8 +59,8 @@
   --red-dark:   #991B1B;
 
   /* Typography */
-  --font-serif: 'Lora', Georgia, serif;
-  --font-sans:  'DM Sans', system-ui, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+  --font-sans:  'Outfit', system-ui, sans-serif;
 
   /* Spacing */
   --space-xs:  4px;

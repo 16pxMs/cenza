@@ -49,7 +49,7 @@ const freqLabel = (freq: string) => FREQUENCIES.find(f => f.value === freq)?.lab
 // ─── Expense categories ───────────────────────────────────────────────────────
 const ALL_EXPENSE_CATEGORIES: { key: string; label: string; icon: string; group: string; defaultFreq: string; tip: string; canBeUnsure?: boolean }[] = [
   { key: 'rent',         label: 'Rent',          icon: '🏠', group: 'Housing',   defaultFreq: 'monthly',
-    tip: 'Rent is usually the biggest fixed cost. If it is above 30% of your take-home, that is not unusual in cities but worth being aware of as you plan.' },
+    tip: 'Rent is usually the biggest fixed cost. If it is above 30% of your take home, that is not unusual in cities but worth being aware of as you plan.' },
   { key: 'electricity',  label: 'Electricity',   icon: '⚡', group: 'Housing',   defaultFreq: 'monthly', canBeUnsure: true,
     tip: 'Electricity tends to spike in certain months. Use your highest recent bill as your baseline. It gives you a safe buffer.' },
   { key: 'water',        label: 'Water',          icon: '💧', group: 'Housing',   defaultFreq: 'monthly', canBeUnsure: true,
@@ -104,6 +104,20 @@ function FreqSelector({ value, onChange }: { value: string; onChange: (v: string
 // ─── AmountInput ──────────────────────────────────────────────────────────────
 function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v: string) => void; prefix: string }) {
   const [focused, setFocused] = useState(false)
+
+  const displayValue = (() => {
+    if (!value) return ''
+    const parts = value.split('.')
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return parts.join('.')
+  })()
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/,/g, '')
+    if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+    onChange(raw)
+  }
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center',
@@ -122,11 +136,12 @@ function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v:
         {prefix}
       </span>
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         autoFocus
-        value={value}
+        value={displayValue}
         placeholder="0"
-        onChange={e => onChange(e.target.value)}
+        onChange={handleChange}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
@@ -339,9 +354,9 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
       : `${p}% of income on ${bm.label}. That is healthy.`
 
     const body = isHigh
-      ? `Most guidelines suggest keeping ${bm.label} under ${bm.low}% of take-home. You are not alone in this — it is one of the most common things we help with. We will factor this in and help you find more room over time.`
+      ? `Most guidelines suggest keeping ${bm.label} under ${bm.low}% of take home. You are not alone in this, it is one of the most common things we help with. We will factor this in and help you find more room over time.`
       : isMid
-      ? `Slightly above the ${bm.low}% guideline. Manageable — knowing this helps us build a more accurate picture for you.`
+      ? `Slightly above the ${bm.low}% guideline. Manageable, knowing this helps us build a more accurate picture for you.`
       : `Under ${bm.low}% keeps things balanced and leaves room for other goals.`
 
     return (

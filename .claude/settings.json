@@ -5,7 +5,8 @@
       "Bash(npm run:*)",
       "Bash(npm install:*)",
       "Bash(npx vitest:*)",
-      "Bash(ls /Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\\\\\(app\\\\\\)/)"
+      "Bash(ls /Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\\\\\(app\\\\\\)/)",
+      "Bash(ls -la /Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\\\\\(app\\\\\\)/)"
     ]
   }
 }

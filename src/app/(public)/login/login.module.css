@@ -2,7 +2,7 @@
 
 .pageWrapper {
   min-height: 100dvh;
-  background: #120D1E;
+  background: var(--dark-bg);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -20,30 +20,30 @@
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 600;
-  color: #C9AEE8;
+  color: var(--brand-mid);
   letter-spacing: 2px;
   text-transform: uppercase;
   margin-bottom: var(--space-xs);
 }
 
 .headline {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 32px;
-  color: #ffffff;
+  color: var(--text-inverse);
   line-height: 1.2;
   margin: 0;
 }
 
 .headlineAccent {
-  color: #C9AEE8;
+  color: var(--brand-mid);
   font-style: italic;
 }
 
 .description {
   font-family: var(--font-sans);
   font-size: 15px;
-  color: rgba(250, 250, 250, 0.75);
+  color: rgba(255, 255, 255, 0.75);
   line-height: 1.65;
   margin: 0;
 }
@@ -59,9 +59,9 @@
   width: 100%;
   height: 52px;
   border-radius: 12px;
-  background: #9B6FCC;
+  background: var(--brand-deep);
   border: none;
-  color: #ffffff;
+  color: var(--text-inverse);
   font-family: var(--font-sans);
   font-size: 16px;
   font-weight: 600;
@@ -70,11 +70,11 @@
 }
 
 .primaryButton:hover {
-  background: #8A5FBB;
+  background: var(--brand-dark);
 }
 
 .primaryButton:focus-visible {
-  outline: 2px solid #C9AEE8;
+  outline: 2px solid var(--brand-mid);
   outline-offset: 2px;
 }
 
@@ -91,7 +91,7 @@
   border: none;
   padding: 0;
   margin-left: var(--space-xs);
-  color: #C9AEE8;
+  color: var(--brand-mid);
   font-weight: 600;
   cursor: pointer;
   font-family: var(--font-sans);
@@ -99,7 +99,7 @@
 }
 
 .tertiaryButton:focus-visible {
-  outline: 2px solid #C9AEE8;
+  outline: 2px solid var(--brand-mid);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -109,7 +109,7 @@
 
 .authWrapper {
   min-height: 100dvh;
-  background: #ffffff;
+  background: var(--white);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -129,27 +129,27 @@
   padding: 0;
   font-family: var(--font-sans);
   font-size: 14px;
-  color: #555555;
+  color: var(--text-3);
   cursor: pointer;
   align-self: flex-start;
   margin-bottom: var(--space-sm);
 }
 
 .backButton:hover {
-  color: #111111;
+  color: var(--text-1);
 }
 
 .backButton:focus-visible {
-  outline: 2px solid #9B6FCC;
+  outline: 2px solid var(--brand-deep);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
 .authTitle {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 28px;
   font-weight: 700;
-  color: #111111;
+  color: var(--text-1);
   margin: 0;
   line-height: 1.2;
 }
@@ -157,7 +157,7 @@
 .authSubtitle {
   font-family: var(--font-sans);
   font-size: 15px;
-  color: #666666;
+  color: var(--text-3);
   margin: 0;
   line-height: 1.55;
 }
@@ -170,9 +170,9 @@
   width: 100%;
   height: 52px;
   border-radius: 12px;
-  background: #ffffff;
-  border: 1.5px solid #DADCE0;
-  color: #3C4043;
+  background: var(--white);
+  border: 1.5px solid var(--border-strong);
+  color: var(--text-2);
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 500;
@@ -182,12 +182,12 @@
 }
 
 .googleButton:hover {
-  background: #F8F9FA;
+  background: var(--grey-50);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .googleButton:focus-visible {
-  outline: 2px solid #4285F4;
+  outline: 2px solid #4285F4; /* Google brand — intentional */
   outline-offset: 2px;
 }
 
@@ -214,13 +214,13 @@
     align-items: center;
     justify-content: center;
     padding: var(--space-xl);
-    background: #F5F5F5;
+    background: var(--grey-100);
   }
 
   .authCard {
     flex: unset;
     max-width: 420px;
-    background: #ffffff;
+    background: var(--white);
     border-radius: 12px;
     padding: 48px 40px;
     gap: var(--space-md);

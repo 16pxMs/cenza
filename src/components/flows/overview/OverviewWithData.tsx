@@ -12,7 +12,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X } from 'lucide-react'
+import { X, AlertTriangle, TrendingUp, Target, Sparkles, CheckCircle, Lightbulb } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt, getBudgetPace } from '@/lib/finance'
 
@@ -49,7 +49,9 @@ interface Props {
   incomeData: IncomeData
   expensesData: { totalMonthly: number; entries?: any[] } | null
   budgetsData: { totalBudget: number; categories?: any[] } | null
+  budgetsSource?: 'onboarding' | 'user_set'
   goalTargets: Record<string, any> | null
+  goalSaved?: Record<string, number>
   onSetupGoals: () => void
   onAddExpenses: () => void
   onAddBudgets: () => void
@@ -60,13 +62,14 @@ interface Props {
 }
 
 export function OverviewWithData({
-  name, currency, goals, incomeData, expensesData, budgetsData,
-  goalTargets, onSetupGoals: _onSetupGoals, onAddExpenses, onAddBudgets,
+  name, currency, goals, incomeData, expensesData, budgetsData, budgetsSource = 'onboarding',
+  goalTargets, goalSaved = {}, onSetupGoals: _onSetupGoals, onAddExpenses, onAddBudgets,
   onAddDebts, onLogExpense, totalSpent = 0, isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [debtDismissed, setDebtDismissed] = useState(false)
+  const [goalsExpanded, setGoalsExpanded] = useState(false)
 
   useEffect(() => {
     setDebtDismissed(localStorage.getItem(DEBT_DISMISSED_KEY) === '1')
@@ -143,65 +146,67 @@ export function OverviewWithData({
 
           {/* Primary: Track spending card */}
           {(() => {
-            const totalBudget = (budgetsData?.totalBudget ?? 0) + (expensesData?.totalMonthly ?? 0)
-            const pct         = totalBudget > 0 ? Math.min(100, (totalSpent / totalBudget) * 100) : 0
+            // Compare against income — the only complete and honest ceiling.
+            // Comparing against a partial budget (fixed-only) is misleading because
+            // totalSpent includes goals, debt, and other categories not in that budget.
+            const reference   = totalIncome > 0 ? totalIncome : 0
+            const pct         = reference > 0 ? Math.min(100, (totalSpent / reference) * 100) : 0
             const hasLogged   = totalSpent > 0
 
             return (
               <div style={{
-                background: 'var(--brand-dark)',
+                background: '#F5F5F7',
                 borderRadius: 20,
                 padding: '24px',
                 marginTop: 16,
-                boxShadow: '0 4px 20px rgba(92,52,137,0.25)',
                 ...fade(0.08),
               }}>
                 <h2 style={{
-                  fontFamily: 'var(--font-serif)',
-                  fontSize: isDesktop ? 16 : 14,
-                  fontWeight: 600, color: 'rgba(234,223,244,0.7)',
-                  margin: '0 0 6px', letterSpacing: '0.2px',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: 11, fontWeight: 700,
+                  color: 'var(--text-3)',
+                  margin: '0 0 6px', letterSpacing: '0.07em',
                   textTransform: 'uppercase',
                 }}>
-                  This month
+                  {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
                 </h2>
 
                 {hasLogged ? (
                   <>
-                    {/* Spent vs budget numbers */}
+                    {/* Spent vs income */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                      <span style={{ fontSize: 26, fontWeight: 700, color: '#fff', fontFamily: 'var(--font-sans)', letterSpacing: -0.5 }}>
+                      <span style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'var(--font-sans)', letterSpacing: -0.5 }}>
                         {fmt(totalSpent, currency)}
                       </span>
-                      {totalBudget > 0 && (
-                        <span style={{ fontSize: 13, color: 'rgba(234,223,244,0.6)', fontFamily: 'var(--font-sans)' }}>
-                          of {fmt(totalBudget, currency)}
+                      {reference > 0 && (
+                        <span style={{ fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-sans)' }}>
+                          of {fmt(reference, currency)}
                         </span>
                       )}
                     </div>
                     {/* Progress bar + remaining */}
-                    {totalBudget > 0 && (() => {
-                      const remaining = totalBudget - totalSpent
+                    {reference > 0 && (() => {
+                      const remaining = reference - totalSpent
                       const isOver    = remaining < 0
                       return (
                         <>
-                          <div style={{ height: 5, background: 'rgba(255,255,255,0.15)', borderRadius: 99, marginBottom: 8 }}>
+                          <div style={{ height: 5, background: '#E5E5EA', borderRadius: 99, marginBottom: 8 }}>
                             <div style={{
                               height: '100%',
                               width: `${pct}%`,
-                              background: pct > 90 ? '#FCA5A5' : pct > 75 ? '#FCD34D' : '#86EFAC',
+                              background: pct > 90 ? '#D93025' : pct > 75 ? '#F4A01C' : '#5C3489',
                               borderRadius: 99,
                               transition: 'width 0.5s ease',
                             }} />
                           </div>
                           <p style={{
                             margin: '0 0 18px', fontSize: 12,
-                            color: isOver ? '#FCA5A5' : 'rgba(234,223,244,0.6)',
+                            color: isOver ? '#D93025' : 'var(--text-3)',
                             fontFamily: 'var(--font-sans)',
                           }}>
                             {isOver
-                              ? `${fmt(Math.abs(remaining), currency)} over budget`
-                              : `${fmt(remaining, currency)} remaining`}
+                              ? `${fmt(Math.abs(remaining), currency)} over income`
+                              : `${fmt(remaining, currency)} in hand`}
                           </p>
                         </>
                       )
@@ -209,7 +214,7 @@ export function OverviewWithData({
                   </>
                 ) : (
                   <p style={{
-                    fontSize: 14, color: 'rgba(234,223,244,0.72)',
+                    fontSize: 14, color: 'var(--text-3)',
                     margin: '0 0 20px', lineHeight: 1.6,
                     fontFamily: 'var(--font-sans)',
                   }}>
@@ -222,26 +227,26 @@ export function OverviewWithData({
                     onClick={onLogExpense}
                     style={{
                       flex: 1, height: 48, borderRadius: 12,
-                      background: '#fff', color: 'var(--brand-dark)',
+                      background: 'var(--brand-dark)', color: '#fff',
                       border: 'none', fontWeight: 700, fontSize: 14,
                       fontFamily: 'var(--font-sans)', cursor: 'pointer',
                     }}
                   >
-                    Log expense
+                    Track my spend
                   </button>
                   {hasLogged && (
                     <button
                       onClick={() => router.push('/history')}
                       style={{
                         height: 48, borderRadius: 12, padding: '0 18px',
-                        background: 'rgba(255,255,255,0.12)', color: '#fff',
-                        border: '1.5px solid rgba(255,255,255,0.25)',
+                        background: 'transparent', color: 'var(--brand-dark)',
+                        border: '1.5px solid #D1D1D6',
                         fontWeight: 600, fontSize: 14,
                         fontFamily: 'var(--font-sans)', cursor: 'pointer',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      View
+                      Monthly review
                     </button>
                   )}
                 </div>
@@ -253,77 +258,188 @@ export function OverviewWithData({
           {totalGoals > 0 && (
             <div style={{ marginTop: 16, ...fade(0.15) }}>
               <div
-                role={!isComplete ? 'button' : undefined}
-                onClick={!isComplete ? () => router.push('/targets') : undefined}
+                onClick={() => router.push('/goals')}
                 style={{
-                  background: 'var(--white)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 16, padding: '20px',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                  cursor: !isComplete ? 'pointer' : 'default',
-                  fontFamily: 'var(--font-sans)',
+                  background: 'var(--white)', border: '1px solid var(--border)',
+                  borderRadius: 16, padding: '20px', fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Your goals
-                    </p>
-                    {goalTotal > 0 && (
-                      <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'var(--font-serif)', letterSpacing: '-0.3px' }}>
-                        {fmt(goalTotal, currency)}
-                      </p>
-                    )}
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <p style={{ margin: 0, fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Your goals
+                  </p>
                   {!isComplete && (
-                    <div style={{
-                      fontSize: 11, fontWeight: 600, color: 'var(--brand-dark)',
-                      background: '#EADFF4', borderRadius: 99,
-                      padding: '4px 10px', whiteSpace: 'nowrap', alignSelf: 'flex-start',
-                    }}>
-                      {filledGoals === 0 ? 'Not started' : `${filledGoals} / ${totalGoals}`}
-                    </div>
+                    <button
+                      onClick={() => router.push('/targets')}
+                      style={{
+                        fontSize: 11, fontWeight: 600, color: 'var(--brand-dark)',
+                        background: '#EADFF4', borderRadius: 99, padding: '4px 10px',
+                        border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                      }}
+                    >
+                      {filledGoals === 0 ? 'Set targets' : 'Continue'}
+                    </button>
                   )}
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: !isComplete ? 16 : 0 }}>
-                  {goals.map(gid => {
-                    const m = GOAL_META[gid]
-                    if (!m) return null
-                    const isFilled = !!goalTargets?.[gid]
-                    return (
-                      <div key={gid} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        padding: '5px 11px 5px 8px', borderRadius: 99,
-                        background: 'transparent', border: '1.5px solid #D5CDED',
-                      }}>
-                        <span style={{ fontSize: 13 }}>{m.icon}</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 400, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-                          {m.label}
-                        </span>
-                        {isFilled && (
-                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ marginLeft: 1, flexShrink: 0 }} role="img" aria-label="Target set">
-                            <title>Target set</title>
-                            <circle cx="6.5" cy="6.5" r="6" fill="#DCFCE7" />
-                            <path d="M4 6.5l1.8 1.8 3.2-3.6" stroke="#16A34A" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
+                {(() => {
+                  const validGoals   = goals.filter(g => !!GOAL_META[g])
+                  const hiddenCount  = Math.max(0, validGoals.length - 2)
+                  const visibleGoals = goalsExpanded ? validGoals : validGoals.slice(0, 2)
+                  return (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                        {visibleGoals.map(gid => {
+                          const m      = GOAL_META[gid]
+                          const target = goalTargets?.[gid] ? Number(goalTargets[gid]) : 0
+                          const saved  = goalSaved[gid] ?? 0
+                          const pct    = target > 0 ? Math.min(100, (saved / target) * 100) : 0
+                          return (
+                            <div key={gid}>
+                              {/* Row: icon + name | saved amount */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                  <span style={{ fontSize: 16 }}>{m.icon}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{m.label}</span>
+                                </div>
+                                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                                  {fmt(saved, currency)} saved
+                                </span>
+                              </div>
+                              {/* Progress bar */}
+                              <div style={{ height: 4, background: '#EDE8F5', borderRadius: 99, marginBottom: 5 }}>
+                                {target > 0 && (
+                                  <div style={{
+                                    height: '100%', width: `${pct}%`,
+                                    background: pct >= 100 ? '#22C55E' : 'var(--brand-dark)',
+                                    borderRadius: 99, transition: 'width 0.5s ease',
+                                    minWidth: pct > 0 ? 6 : 0,
+                                  }} />
+                                )}
+                              </div>
+                              {/* Sublabel: pct left | target right */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                                  {target > 0 ? `${Math.round(pct)}%` : ''}
+                                </span>
+                                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                                  {target > 0 ? `Target: ${fmt(target, currency)}` : 'No target set'}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                    )
-                  })}
-                </div>
-                {!isComplete && (
-                  <div style={{
-                    width: '100%', height: 44, borderRadius: 12,
-                    background: 'var(--brand-dark)', color: '#fff',
-                    fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-sans)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {filledGoals === 0 ? 'Set targets' : 'Continue'}
-                  </div>
-                )}
+                      {hiddenCount > 0 && (
+                        <button
+                          onClick={() => setGoalsExpanded(e => !e)}
+                          style={{
+                            marginTop: 14, width: '100%', background: 'none', border: 'none',
+                            cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                            color: 'var(--brand-dark)', fontFamily: 'var(--font-sans)',
+                            textAlign: 'left', padding: 0,
+                          }}
+                        >
+                          {goalsExpanded ? 'Show less' : `View ${hiddenCount} more goal${hiddenCount > 1 ? 's' : ''}`}
+                        </button>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}
+
+          {/* Insight / feedback card */}
+          {(() => {
+            const reference = totalIncome > 0 ? totalIncome : 0
+            const remaining = reference - totalSpent
+            const pct       = reference > 0 ? Math.min(100, (totalSpent / reference) * 100) : 0
+            const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
+            const dayOfMonth  = new Date().getDate()
+            const daysLeft    = daysInMonth - dayOfMonth
+
+            // Goal with no contribution this month
+            const neglectedGoal = goals.find(g => goalTargets?.[g] && !(goalSaved[g] > 0))
+            const neglectedMeta = neglectedGoal ? GOAL_META[neglectedGoal] : null
+
+            type InsightIcon = typeof AlertTriangle
+            type Insight = { Icon: InsightIcon; text: string; color: string }
+            const insights: Insight[] = []
+
+            if (totalSpent > 0 && reference > 0 && remaining < 0) {
+              insights.push({
+                Icon: AlertTriangle,
+                text: `You've spent ${fmt(Math.abs(remaining), currency)} more than your income this month.`,
+                color: '#D93025',
+              })
+            }
+            if (pct > 75 && daysLeft > 7) {
+              insights.push({
+                Icon: TrendingUp,
+                text: `${Math.round(pct)}% of your income spent with ${daysLeft} days still to go.`,
+                color: '#D97706',
+              })
+            }
+            if (neglectedMeta) {
+              insights.push({
+                Icon: Target,
+                text: `You haven't added anything to ${neglectedMeta.label} yet this month.`,
+                color: '#4A3B66',
+              })
+            }
+            if (totalSpent === 0) {
+              insights.push({
+                Icon: Sparkles,
+                text: `Nothing logged yet. Start tracking and Cenza will surface insights here.`,
+                color: '#4A3B66',
+              })
+            }
+            if (reference > 0 && pct <= 75 && totalSpent > 0) {
+              insights.push({
+                Icon: CheckCircle,
+                text: `You're on track. ${fmt(remaining, currency)} in hand for the remaining ${daysLeft} days.`,
+                color: '#1A7A45',
+              })
+            }
+
+            // Empty state — financial tip when everything is fine and nothing to flag
+            const TIPS = [
+              'The 50/30/20 rule: 50% on needs, 30% on wants, 20% into savings or goals.',
+              'An emergency fund covering 3 to 6 months of expenses is one of the highest-return things you can build.',
+              'Small, consistent contributions to a goal beat large irregular ones over time.',
+              'Tracking spending is not about restriction — it is about knowing where your money actually goes.',
+              'Paying yourself first means moving money to savings before spending, not after.',
+            ]
+            const tip = TIPS[new Date().getDate() % TIPS.length]
+
+            const displayInsights = insights.length > 0
+              ? insights
+              : [{ Icon: Lightbulb, text: tip, color: '#4A3B66' }]
+
+            return (
+              <div style={{
+                marginTop: 16,
+                background: 'var(--white)', border: '1px solid var(--border)',
+                borderRadius: 16, padding: '4px 20px',
+                fontFamily: 'var(--font-sans)',
+                ...fade(0.2),
+              }}>
+                {displayInsights.map((insight, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                    padding: '16px 0',
+                    borderBottom: i < displayInsights.length - 1 ? '1px solid var(--border)' : 'none',
+                  }}>
+                    <insight.Icon size={17} color={insight.color} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: insight.color }}>
+                      {insight.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
 
           {/* Dismissible debt card */}
           {!debtDismissed && (
@@ -382,7 +498,7 @@ export function OverviewWithData({
             border: '1px solid var(--border)',
             borderRadius: 16, padding: '20px',
             marginTop: 16,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            
             fontFamily: 'var(--font-sans)',
             ...fade(0.1),
           }}>
@@ -401,74 +517,94 @@ export function OverviewWithData({
           {totalGoals > 0 && (
             <div style={{ marginTop: 16, ...fade(0.15) }}>
               <div
-                role={!isComplete ? 'button' : undefined}
-                onClick={!isComplete ? () => router.push('/targets') : undefined}
+                onClick={() => router.push('/goals')}
                 style={{
-                  background: 'var(--white)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 16, padding: '20px',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                  cursor: !isComplete ? 'pointer' : 'default',
-                  fontFamily: 'var(--font-sans)',
+                  background: 'var(--white)', border: '1px solid var(--border)',
+                  borderRadius: 16, padding: '20px', fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Your goals
-                    </p>
-                    {goalTotal > 0 && (
-                      <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'var(--font-serif)', letterSpacing: '-0.3px' }}>
-                        {fmt(goalTotal, currency)}
-                      </p>
-                    )}
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <p style={{ margin: 0, fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Your goals
+                  </p>
                   {!isComplete && (
-                    <div style={{
-                      fontSize: 11, fontWeight: 600, color: 'var(--brand-dark)',
-                      background: '#EADFF4', borderRadius: 99,
-                      padding: '4px 10px', whiteSpace: 'nowrap', alignSelf: 'flex-start',
-                    }}>
-                      {filledGoals === 0 ? 'Not started' : `${filledGoals} / ${totalGoals}`}
-                    </div>
+                    <button
+                      onClick={() => router.push('/targets')}
+                      style={{
+                        fontSize: 11, fontWeight: 600, color: 'var(--brand-dark)',
+                        background: '#EADFF4', borderRadius: 99, padding: '4px 10px',
+                        border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                      }}
+                    >
+                      {filledGoals === 0 ? 'Set targets' : 'Continue'}
+                    </button>
                   )}
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: !isComplete ? 16 : 0 }}>
-                  {goals.map(gid => {
-                    const m = GOAL_META[gid]
-                    if (!m) return null
-                    const isFilled = !!goalTargets?.[gid]
-                    return (
-                      <div key={gid} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        padding: '5px 11px 5px 8px', borderRadius: 99,
-                        background: 'transparent', border: '1.5px solid #D5CDED',
-                      }}>
-                        <span style={{ fontSize: 13 }}>{m.icon}</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 400, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-                          {m.label}
-                        </span>
-                        {isFilled && (
-                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ marginLeft: 1, flexShrink: 0 }} role="img" aria-label="Target set">
-                            <title>Target set</title>
-                            <circle cx="6.5" cy="6.5" r="6" fill="#DCFCE7" />
-                            <path d="M4 6.5l1.8 1.8 3.2-3.6" stroke="#16A34A" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
+                {(() => {
+                  const validGoals   = goals.filter(g => !!GOAL_META[g])
+                  const hiddenCount  = Math.max(0, validGoals.length - 2)
+                  const visibleGoals = goalsExpanded ? validGoals : validGoals.slice(0, 2)
+                  return (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                        {visibleGoals.map(gid => {
+                          const m      = GOAL_META[gid]
+                          const target = goalTargets?.[gid] ? Number(goalTargets[gid]) : 0
+                          const saved  = goalSaved[gid] ?? 0
+                          const pct    = target > 0 ? Math.min(100, (saved / target) * 100) : 0
+                          return (
+                            <div key={gid}>
+                              {/* Row: icon + name | saved amount */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                  <span style={{ fontSize: 16 }}>{m.icon}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{m.label}</span>
+                                </div>
+                                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                                  {fmt(saved, currency)} saved
+                                </span>
+                              </div>
+                              {/* Progress bar */}
+                              <div style={{ height: 4, background: '#EDE8F5', borderRadius: 99, marginBottom: 5 }}>
+                                {target > 0 && (
+                                  <div style={{
+                                    height: '100%', width: `${pct}%`,
+                                    background: pct >= 100 ? '#22C55E' : 'var(--brand-dark)',
+                                    borderRadius: 99, transition: 'width 0.5s ease',
+                                    minWidth: pct > 0 ? 6 : 0,
+                                  }} />
+                                )}
+                              </div>
+                              {/* Sublabel: pct left | target right */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                                  {target > 0 ? `${Math.round(pct)}%` : ''}
+                                </span>
+                                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                                  {target > 0 ? `Target: ${fmt(target, currency)}` : 'No target set'}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                    )
-                  })}
-                </div>
-                {!isComplete && (
-                  <div style={{
-                    width: '100%', height: 44, borderRadius: 12,
-                    background: 'var(--brand-dark)', color: '#fff',
-                    fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-sans)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  }}>
-                    {filledGoals === 0 ? 'Set targets' : 'Continue'}
-                  </div>
-                )}
+                      {hiddenCount > 0 && (
+                        <button
+                          onClick={() => setGoalsExpanded(e => !e)}
+                          style={{
+                            marginTop: 14, width: '100%', background: 'none', border: 'none',
+                            cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                            color: 'var(--brand-dark)', fontFamily: 'var(--font-sans)',
+                            textAlign: 'left', padding: 0,
+                          }}
+                        >
+                          {goalsExpanded ? 'Show less' : `View ${hiddenCount} more goal${hiddenCount > 1 ? 's' : ''}`}
+                        </button>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}
@@ -484,7 +620,7 @@ export function OverviewWithData({
                 <div style={{
                   background: 'var(--white)', border: '1px solid var(--border)',
                   borderRadius: 16, padding: '18px 20px', marginTop: 16,
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  
                   fontFamily: 'var(--font-sans)',
                   ...fade(0.25),
                 }}>
@@ -589,7 +725,7 @@ export function OverviewWithData({
                 <div style={{
                   background: 'var(--white)', border: '1px solid var(--border)',
                   borderRadius: 16, padding: '18px 20px', marginTop: 16,
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  
                   fontFamily: 'var(--font-sans)',
                   ...fade(0.3),
                 }}>

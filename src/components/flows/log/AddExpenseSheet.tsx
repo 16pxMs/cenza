@@ -26,20 +26,21 @@ const T = {
   brand:        '#EADFF4',
   brandDark:    '#5C3489',
   white:        '#FFFFFF',
-  border:       '#EDE8F5',
-  borderStrong: '#D5CDED',
-  text1:        '#1A1025',
-  text2:        '#4A3B66',
-  text3:        '#8B7BA8',
-  textMuted:    '#B8AECE',
+  border:       '#E4E7EC',
+  borderStrong: '#D0D5DD',
+  text1:        '#101828',
+  text2:        '#475467',
+  text3:        '#667085',
+  textMuted:    '#98A2B3',
 }
 
 
 export interface SheetItem {
-  key:       string
-  label:     string
-  groupType: string
-  isOther:   boolean
+  key:           string
+  label:         string
+  groupType:     string
+  isOther:       boolean
+  plannedAmount?: number  // monthly planned amount (e.g. from fixed_expenses) — used as default
 }
 
 export interface ExpenseSaveData {
@@ -59,18 +60,30 @@ export interface PriorEntry {
 export interface DictionaryEntry {
   groupType: string  // 'fixed' | 'variable'
   label:     string
+  key?:      string  // category_key stored in transactions
   count?:    number  // times this item has been logged (for confidence)
 }
 
+export interface QuickItem {
+  key:           string
+  label:         string
+  groupType:     string
+  source:        'logged' | 'planned' | 'history'
+  loggedAmount?: number
+  plannedAmount?: number
+}
+
 interface Props {
-  open:        boolean
-  onClose:     () => void
-  item:        SheetItem | null
-  priorEntry:  PriorEntry | null | undefined
-  dictionary?: Record<string, DictionaryEntry>  // normalized name → entry
-  currency:    string
-  isDesktop?:  boolean
-  onSave:      (data: ExpenseSaveData) => Promise<void>
+  open:               boolean
+  onClose:            () => void
+  item:               SheetItem | null
+  priorEntry:         PriorEntry | null | undefined
+  dictionary?:        Record<string, DictionaryEntry>  // normalized name → entry
+  quickItems?:        QuickItem[]
+  onSelectQuickItem?: (item: SheetItem) => void
+  currency:           string
+  isDesktop?:         boolean
+  onSave:             (data: ExpenseSaveData) => Promise<void>
 }
 
 function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -91,15 +104,45 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
   )
 }
 
+function QuickChip({ item, currency, onClick }: { item: QuickItem; currency: string; onClick: () => void }) {
+  const s = item.source === 'logged'
+    ? { bg: T.brandDark, color: '#fff',  border: '1.5px solid rgba(255,255,255,0.2)', shadow: '0 1px 4px rgba(92,52,137,0.25)' }
+    : item.source === 'planned'
+    ? { bg: T.white,     color: T.text2, border: `1.5px solid ${T.borderStrong}`,     shadow: 'none' }
+    : { bg: T.white,     color: T.text3, border: `1.5px solid ${T.border}`,           shadow: 'none' }
+
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '7px 14px', borderRadius: 99,
+        background: s.bg, border: s.border, color: s.color, boxShadow: s.shadow,
+        fontSize: 13, fontWeight: item.source === 'logged' ? 600 : 400,
+        cursor: 'pointer', fontFamily: 'var(--font-sans)',
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {item.label}
+      {item.source === 'logged' && item.loggedAmount != null && (
+        <span style={{ opacity: 0.75, fontSize: 12 }}>
+          · {currency} {Number(item.loggedAmount).toLocaleString()}
+        </span>
+      )}
+    </button>
+  )
+}
+
 const GROUP_LABEL: Record<string, string> = {
   fixed:    'Monthly bill',
   variable: 'Day-to-day spending',
+  debt:     'Debt repayment',
 }
 
-export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, currency, isDesktop, onSave }: Props) {
+export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, quickItems, onSelectQuickItem, currency, isDesktop, onSave }: Props) {
   const [otherName, setOtherName]           = useState('')
   const [otherFrequency, setOtherFrequency] = useState<'recurring' | 'oneoff' | null>(null)
-  const [otherType, setOtherType]           = useState<'bill' | 'everyday' | null>(null)
+  const [otherType, setOtherType]           = useState<'bill' | 'everyday' | 'debt' | null>(null)
   const [dictMatch, setDictMatch]           = useState<DictionaryEntry | null>(null)
   const [overrideDict, setOverrideDict]     = useState(false)
   const [amount, setAmount]                 = useState('')
@@ -149,10 +192,15 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
     if (priorEntry !== undefined) { setTimeout(() => amountRef.current?.focus(), 50) }
   }, [open, priorEntry]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-fill amount with prior entry when in update mode
+  // Auto-fill amount once priorEntry resolves:
+  //   - prior transaction exists + update mode → fill with prior amount
+  //   - no prior transaction + planned amount set → fill with planned amount
   useEffect(() => {
+    if (priorEntry === undefined) return  // still loading
     if (priorEntry && mode === 'update' && amount === '') {
       setAmount(String(priorEntry.amount))
+    } else if (!priorEntry && item?.plannedAmount && amount === '') {
+      setAmount(String(item.plannedAmount))
     }
   }, [priorEntry]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -171,7 +219,9 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
       ? dictMatch.groupType
       : otherFrequency === 'recurring' && otherType === 'bill'
         ? 'fixed'
-        : 'variable'
+        : otherFrequency === 'recurring' && otherType === 'debt'
+          ? 'debt'
+          : 'variable'
 
   // Questions answered?
   const otherQuestionsReady = isDebtFlow
@@ -227,7 +277,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
     }
   }
 
-  const title = isDebtFlow ? 'Add a debt' : item?.isOther ? 'Something else' : (item?.label ?? 'Add a payment')
+  const title = isDebtFlow ? 'Add a debt' : item?.isOther ? 'What did you spend on?' : (item?.label ?? 'Log a payment')
 
   return (
     <Sheet open={open} onClose={onClose} title={title} isDesktop={isDesktop}>
@@ -236,11 +286,32 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
         {/* ══ OTHER FLOW ══════════════════════════════════════ */}
         {item?.isOther && (
           <>
+            {/* Quick-tap chips — shown when no name typed, non-debt */}
+            {!isDebtFlow && quickItems && quickItems.length > 0 && otherName.trim().length === 0 && (
+              <div>
+                <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: T.textMuted, fontFamily: 'var(--font-sans)' }}>
+                  Recent
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {quickItems.map(qi => (
+                    <QuickChip
+                      key={qi.key}
+                      item={qi}
+                      currency={currency}
+                      onClick={() => onSelectQuickItem?.({ key: qi.key, label: qi.label, groupType: qi.groupType, isOther: false, plannedAmount: qi.plannedAmount })}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Name input */}
             <div>
-              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
-                {isDebtFlow ? 'What\'s this debt?' : 'What\'s this payment for?'}
-              </p>
+              {isDebtFlow && (
+                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+                  What&apos;s this debt?
+                </p>
+              )}
               <input
                 ref={nameRef}
                 type="text"
@@ -303,11 +374,12 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
             {!isDebtFlow && !dictMatch && otherFrequency === 'recurring' && (
               <div>
                 <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
-                  More like a bill or day-to-day spending?
+                  What kind of payment is this?
                 </p>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Chip label="Monthly bill" active={otherType === 'bill'}     onClick={() => { setOtherType('bill');     setTimeout(() => amountRef.current?.focus(), 50) }} />
-                  <Chip label="Day-to-day"   active={otherType === 'everyday'} onClick={() => { setOtherType('everyday'); setTimeout(() => amountRef.current?.focus(), 50) }} />
+                  <Chip label="Monthly bill"    active={otherType === 'bill'}     onClick={() => { setOtherType('bill');     setTimeout(() => amountRef.current?.focus(), 50) }} />
+                  <Chip label="Debt repayment"  active={otherType === 'debt'}     onClick={() => { setOtherType('debt');     setTimeout(() => amountRef.current?.focus(), 50) }} />
+                  <Chip label="Day-to-day"      active={otherType === 'everyday'} onClick={() => { setOtherType('everyday'); setTimeout(() => amountRef.current?.focus(), 50) }} />
                 </div>
               </div>
             )}
@@ -317,13 +389,15 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
         {/* ══ KNOWN ITEM — mode chips ═════════════════════════ */}
         {hasPrior && priorEntry && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ alignSelf: 'flex-start', background: '#F2F2F0', borderRadius: 8, padding: '7px 11px' }}>
+            <div style={{ background: '#F2F2F0', borderRadius: 8, padding: '7px 11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: '#6B6B6B', fontFamily: 'var(--font-sans)' }}>
                 Last entry:{' '}
                 <span style={{ fontWeight: 600, color: '#1A1A1A' }}>
                   {currency} {Number(priorEntry.amount).toLocaleString()}
                 </span>
-                {' '}· {formatDate(priorEntry.date)}
+              </span>
+              <span style={{ fontSize: 13, color: '#6B6B6B', fontFamily: 'var(--font-sans)' }}>
+                {formatDate(priorEntry.date)}
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -339,8 +413,8 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, c
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
               padding: '12px 0 8px',
+              marginBottom: 24,
               borderTop: (item?.isOther || hasPrior) ? `1px solid ${T.border}` : 'none',
-              borderBottom: `1.5px solid ${T.border}`,
             }}>
               <span style={{ fontSize: 12.5, color: T.text3, fontFamily: 'var(--font-sans)', marginBottom: 4 }}>
                 {currency}

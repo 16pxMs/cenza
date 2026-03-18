@@ -87,6 +87,20 @@ const BUDGET_BENCHMARKS: Record<string, { low: number; high: number; positive?: 
 // ─── AmountInput ──────────────────────────────────────────────────────────────
 function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v: string) => void; prefix: string }) {
   const [focused, setFocused] = useState(false)
+
+  const displayValue = (() => {
+    if (!value) return ''
+    const parts = value.split('.')
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return parts.join('.')
+  })()
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/,/g, '')
+    if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+    onChange(raw)
+  }
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center',
@@ -105,11 +119,12 @@ function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v:
         {prefix}
       </span>
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         autoFocus
-        value={value}
+        value={displayValue}
         placeholder="0"
-        onChange={e => onChange(e.target.value)}
+        onChange={handleChange}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
@@ -343,7 +358,7 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
             {current.key === 'other' && otherLabel.trim() ? otherLabel.trim() : current.label}
           </h2>
           <p style={{ fontSize: 14, color: T.text3, margin: 0, lineHeight: 1.6 }}>
-            How much do you usually spend on this per month?
+            Roughly how much do you spend on this each month?
           </p>
         </div>
 
@@ -381,7 +396,7 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
         {/* Running total */}
         {runningBudget > 0 && remainingAfterExpenses > 0 && (
           <div style={{ background: T.white, border: `1.5px solid ${T.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: T.text2 }}>Budgeted so far</span>
+            <span style={{ fontSize: 13, color: T.text2 }}>Picture so far</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{fmt(runningBudget, currency)}/mo</span>
               <span style={{ fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 99, color: T.greenDark, background: T.greenLight }}>
@@ -401,10 +416,10 @@ function BudgetEntryFlow({ selectedKeys, currency, totalIncome, remainingAfterEx
             </div>
           )}
           <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-            {isLast ? 'Save budgets' : 'Next'}
+            {isLast ? 'Looks good' : 'Next'}
           </button>
           <button onClick={handleSkip} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-            {isLast ? 'Save without amount' : 'Skip for now'}
+            Skip for now
           </button>
         </div>
       </div>
@@ -482,6 +497,7 @@ export default function BudgetsPage() {
       month,
       categories:   result.categories,
       total_budget: result.totalBudget,
+      source:       'onboarding',
     }, { onConflict: 'user_id,month' })
 
     router.push('/plan')

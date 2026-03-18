@@ -1,4 +1,4 @@
-.overview-empty { padding: 28px 0 80px; }
+.overview-empty { padding: 28px 16px 80px; }
 .overview-empty--desktop { padding: 48px 28px; }
 .overview-empty__greeting { margin-bottom: 28px; opacity: 0; transform: translateY(8px); transition: all 0.4s ease 0.05s; }
 .overview-empty__greeting--mounted { opacity: 1; transform: translateY(0); }

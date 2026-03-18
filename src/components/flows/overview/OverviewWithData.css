@@ -16,7 +16,7 @@
   margin-bottom: 20px;
 }
 .overview-data__heading {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 24px;
   font-weight: 600;
   color: var(--text-1);
@@ -112,7 +112,7 @@
   font-size: 16px;
   font-weight: 700;
   color: var(--text-1);
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
 }
 .overview-data__next-step-sub {
   margin: 0 0 14px;

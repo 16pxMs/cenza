@@ -94,7 +94,7 @@ export function AddIncomeSheet({ open, onClose, onSave, currency, isDesktop }: P
         prefix={currency}
         placeholder="e.g. 50,000"
         type="number"
-        hint="Your regular take-home pay this month."
+        hint="Your regular take home pay this month."
         error={error ?? undefined}
       />
 

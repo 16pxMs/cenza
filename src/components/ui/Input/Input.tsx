@@ -1,16 +1,38 @@
 'use client'
 import styles from './Input.module.css'
 
-interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
+interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
   label: string
   prefix?: string
   hint?: string
   error?: string
+  value?: string
   onChange?: (val: string) => void
 }
 
-export function Input({ label, prefix, hint, error, onChange, className, id, ...props }: Props) {
+function addCommas(raw: string): string {
+  if (!raw) return raw
+  const parts = raw.split('.')
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return parts.join('.')
+}
+
+export function Input({ label, prefix, hint, error, onChange, className, id, type, value, ...props }: Props) {
   const inputId = id ?? label.replace(/\s+/g, '-').toLowerCase()
+  const isNumeric = type === 'number'
+
+  const displayValue = isNumeric ? addCommas(value ?? '') : (value ?? '')
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!onChange) return
+    if (isNumeric) {
+      const raw = e.target.value.replace(/,/g, '')
+      if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+      onChange(raw)
+    } else {
+      onChange(e.target.value)
+    }
+  }
 
   return (
     <div className={styles.inputWrap}>
@@ -24,7 +46,10 @@ export function Input({ label, prefix, hint, error, onChange, className, id, ...
         <input
           id={inputId}
           className={`${styles.input} ${className ?? ''}`}
-          onChange={onChange ? e => onChange(e.target.value) : undefined}
+          type={isNumeric ? 'text' : type}
+          inputMode={isNumeric ? 'decimal' : undefined}
+          value={displayValue}
+          onChange={handleChange}
           {...props}
         />
       </div>
