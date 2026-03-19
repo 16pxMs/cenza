@@ -234,8 +234,7 @@ export default function HistoryPage() {
     return (
       <div style={{
         minHeight: '100vh', background: 'var(--page-bg)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--font-sans)', color: T.textMuted, fontSize: 14,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textMuted, fontSize: 14,
       }}>Loading...</div>
     )
   }
@@ -279,10 +278,10 @@ export default function HistoryPage() {
         >
           <IconBack size={18} color={T.text3} />
         </button>
-        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
+        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Monthly review
         </p>
-        <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: isDesktop ? 28 : 24, fontWeight: 700, color: T.text1, margin: 0 }}>
+        <h1 style={{ fontSize: isDesktop ? 28 : 24, color: T.text1, margin: 0 }}>
           {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </h1>
       </div>
@@ -292,7 +291,7 @@ export default function HistoryPage() {
         <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 12px` }}>
           <div style={{
             background: '#F5F5F7', borderRadius: 16,
-            display: 'flex', alignItems: 'stretch', fontFamily: 'var(--font-sans)',
+            display: 'flex', alignItems: 'stretch',
           }}>
             {[
               { label: 'Income',      value: totalIncome, color: T.text1 },
@@ -301,13 +300,13 @@ export default function HistoryPage() {
             ].map((col, i) => (
               <div key={col.label} style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
                 {i > 0 && (
-                  <div style={{ width: 1, background: '#EBEBF0', margin: '16px 0', flexShrink: 0 }} />
+                  <div style={{ width: 1, background: 'var(--border-subtle)', margin: '16px 0', flexShrink: 0 }} />
                 )}
                 <div style={{ flex: 1, padding: '24px 0', textAlign: 'center' }}>
                   <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                     {col.label}
                   </p>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: col.color }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: col.color }}>
                     {fmt(Math.abs(col.value), currency)}
                   </span>
                 </div>
@@ -320,9 +319,8 @@ export default function HistoryPage() {
       {/* Breakdown card */}
       <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 40px` }}>
         <div style={{
-          background: T.white, border: `1px solid ${T.border}`,
+          background: T.white, border: `1px solid var(--border)`,
           borderRadius: 16, padding: '18px 20px',
-          fontFamily: 'var(--font-sans)',
         }}>
           <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
             Where it went
@@ -337,10 +335,10 @@ export default function HistoryPage() {
           </div>
           {breakdown.length > 1 && (
             <>
-              <div style={{ height: 1, background: T.border, margin: '14px 0' }} />
+              <div style={{ height: 1, background: 'var(--border-subtle)', margin: '14px 0' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>Total</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>{fmt(totalSpent, currency)}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{fmt(totalSpent, currency)}</span>
               </div>
             </>
           )}
@@ -358,13 +356,13 @@ export default function HistoryPage() {
             <p style={{
               margin: '0 0 10px', fontSize: 11, fontWeight: 600,
               color: T.textMuted, textTransform: 'uppercase',
-              letterSpacing: '0.08em', fontFamily: 'var(--font-sans)',
+              letterSpacing: '0.08em',
             }}>
               {section.label}
             </p>
 
             <div style={{
-              background: T.white, border: `1px solid ${T.border}`,
+              background: T.white, border: `1px solid var(--border)`,
               borderRadius: 16, overflow: 'hidden',
             }}>
               {sectionRows.map((row, idx) => {
@@ -379,11 +377,11 @@ export default function HistoryPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 28 }}>
                       {/* Left: label + budget sublabel */}
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: hasLogged ? T.text1 : T.textMuted, fontFamily: 'var(--font-sans)' }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: hasLogged ? T.text1 : T.textMuted }}>
                           {row.label}
                         </div>
                         {row.planned > 0 && (
-                          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 3, fontFamily: 'var(--font-sans)' }}>
+                          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 3 }}>
                             {fmt(row.planned, currency)} budget
                           </div>
                         )}
@@ -393,13 +391,13 @@ export default function HistoryPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 16 }}>
                         {hasLogged ? (
                           <>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: rowOver ? '#D93025' : T.text1, fontFamily: 'var(--font-sans)' }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, color: rowOver ? '#D93025' : T.text1 }}>
                               {fmt(row.spent, currency)}
                             </span>
                             <IconChevronRight size={16} color={T.textMuted} />
                           </>
                         ) : (
-                          <span style={{ fontSize: 13, color: T.textMuted, fontStyle: 'italic', fontFamily: 'var(--font-sans)' }}>
+                          <span style={{ fontSize: 13, color: T.textMuted, fontStyle: 'italic' }}>
                             Not logged
                           </span>
                         )}
@@ -416,14 +414,13 @@ export default function HistoryPage() {
                 )
 
                 return (
-                  <div key={row.key} style={{ borderBottom: isLast ? 'none' : `1px solid ${T.border}` }}>
+                  <div key={row.key} style={{ borderBottom: isLast ? 'none' : `1px solid var(--border-subtle)` }}>
                     {hasLogged ? (
                       <button
                         onClick={() => router.push(ledgerUrl)}
                         style={{
                           width: '100%', textAlign: 'left', background: 'none',
-                          border: 'none', cursor: 'pointer', padding: 0,
-                          fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+                          border: 'none', cursor: 'pointer', padding: 0, boxSizing: 'border-box',
                           display: 'block',
                         } as React.CSSProperties}
                       >
@@ -443,7 +440,7 @@ export default function HistoryPage() {
       {/* Empty state */}
       {rows.length === 0 && (
         <div style={{ padding: pad, textAlign: 'center', paddingTop: 40 } as React.CSSProperties}>
-          <p style={{ fontSize: 15, color: T.textMuted, fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
+          <p style={{ fontSize: 15, color: T.textMuted, marginBottom: 16 }}>
             Nothing logged yet this month.
           </p>
           <button
@@ -451,7 +448,7 @@ export default function HistoryPage() {
             style={{
               height: 48, borderRadius: 12, background: T.brandDark,
               color: '#fff', border: 'none', padding: '0 28px',
-              fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+              fontWeight: 600, fontSize: 14, cursor: 'pointer',
             }}
           >
             Log a payment

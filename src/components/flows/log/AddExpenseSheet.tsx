@@ -92,11 +92,11 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       onClick={onClick}
       style={{
         flex: 1, padding: '10px 0', borderRadius: 99,
-        border: `1.5px solid ${active ? T.brandDark : T.borderStrong}`,
+        border: active ? `2px solid var(--border-focus)` : `1px solid var(--border-strong)`,
         background: active ? T.brandDark : T.white,
         color: active ? T.white : T.text2,
         fontSize: 13, fontWeight: active ? 600 : 400,
-        cursor: 'pointer', fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+        cursor: 'pointer', transition: 'all 0.15s',
       }}
     >
       {label}
@@ -106,10 +106,10 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 
 function QuickChip({ item, currency, onClick }: { item: QuickItem; currency: string; onClick: () => void }) {
   const s = item.source === 'logged'
-    ? { bg: '#EADFF4', color: '#3D1F63', border: '1.5px solid #C9AEE8', shadow: 'none' }
+    ? { bg: '#EADFF4', color: '#3D1F63', border: '1px solid #C9AEE8', shadow: 'none' }
     : item.source === 'planned'
-    ? { bg: T.white,   color: T.text2,   border: `1.5px solid ${T.borderStrong}`, shadow: 'none' }
-    : { bg: T.white,   color: T.text3,   border: `1.5px solid ${T.border}`,       shadow: 'none' }
+    ? { bg: T.white,   color: T.text2,   border: `1px solid var(--border-strong)`, shadow: 'none' }
+    : { bg: T.white,   color: T.text3,   border: `1px solid var(--border)`,        shadow: 'none' }
 
   return (
     <button
@@ -118,7 +118,7 @@ function QuickChip({ item, currency, onClick }: { item: QuickItem; currency: str
         padding: '7px 14px', borderRadius: 99,
         background: s.bg, border: s.border, color: s.color, boxShadow: s.shadow,
         fontSize: 13, fontWeight: item.source === 'logged' ? 600 : 400,
-        cursor: 'pointer', fontFamily: 'var(--font-sans)',
+        cursor: 'pointer',
         display: 'inline-flex', alignItems: 'center', gap: 5,
         whiteSpace: 'nowrap',
       }}
@@ -289,7 +289,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
             {/* Quick-tap chips — shown when no name typed, non-debt */}
             {!isDebtFlow && quickItems && quickItems.length > 0 && otherName.trim().length === 0 && (
               <div>
-                <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: T.textMuted, fontFamily: 'var(--font-sans)' }}>
+                <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: T.textMuted }}>
                   Recent
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -308,7 +308,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
             {/* Name input */}
             <div>
               {isDebtFlow && (
-                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: T.text2 }}>
                   What&apos;s this debt?
                 </p>
               )}
@@ -320,9 +320,8 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                 placeholder={isDebtFlow ? 'e.g. Car loan, Credit card, HELB' : 'e.g. Netflix, Dog food, Haircut'}
                 onKeyDown={e => { if (e.key === 'Enter' && otherName.trim()) e.currentTarget.blur() }}
                 style={{
-                  height: 46, borderRadius: 12, border: `1.5px solid ${T.border}`,
-                  padding: '0 14px', fontSize: 14, color: T.text1, background: T.white,
-                  fontFamily: 'var(--font-sans)', outline: 'none', width: '100%', boxSizing: 'border-box',
+                  height: 46, borderRadius: 12, border: `1px solid var(--border)`,
+                  padding: '0 14px', fontSize: 14, color: T.text1, background: T.white, outline: 'none', width: '100%', boxSizing: 'border-box',
                 }}
               />
             </div>
@@ -336,10 +335,10 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                 background: '#F2F2F0', borderRadius: 10, padding: '10px 14px',
               }}>
                 <div>
-                  <p style={{ margin: 0, fontSize: 12, color: CONFIDENCE_COLOR[level], fontFamily: 'var(--font-sans)' }}>
+                  <p style={{ margin: 0, fontSize: 12, color: CONFIDENCE_COLOR[level] }}>
                     {CONFIDENCE_LABEL[level]}
                   </p>
-                  <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 600, color: T.text1, fontFamily: 'var(--font-sans)' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 600, color: T.text1 }}>
                     {GROUP_LABEL[dictMatch.groupType] ?? dictMatch.groupType}
                   </p>
                 </div>
@@ -347,7 +346,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                   onClick={() => { setOverrideDict(true); setDictMatch(null) }}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 12, color: T.text3, fontFamily: 'var(--font-sans)',
+                    fontSize: 12, color: T.text3,
                     padding: '4px 6px',
                   }}
                 >
@@ -360,7 +359,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
             {/* Q1 — shown when no dict match and name is typed (not for debts) */}
             {!isDebtFlow && !dictMatch && otherName.trim().length > 0 && (
               <div>
-                <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+                <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2 }}>
                   Do you pay this most months?
                 </p>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -373,7 +372,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
             {/* Q2 — shown only when "Most months" and no dict match (not for debts) */}
             {!isDebtFlow && !dictMatch && otherFrequency === 'recurring' && (
               <div>
-                <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+                <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2 }}>
                   What kind of payment is this?
                 </p>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -390,13 +389,13 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
         {hasPrior && priorEntry && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ background: '#F2F2F0', borderRadius: 8, padding: '7px 11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: '#6B6B6B', fontFamily: 'var(--font-sans)' }}>
+              <span style={{ fontSize: 13, color: '#6B6B6B' }}>
                 Last entry:{' '}
                 <span style={{ fontWeight: 600, color: '#1A1A1A' }}>
                   {currency} {Number(priorEntry.amount).toLocaleString()}
                 </span>
               </span>
-              <span style={{ fontSize: 13, color: '#6B6B6B', fontFamily: 'var(--font-sans)' }}>
+              <span style={{ fontSize: 13, color: '#6B6B6B' }}>
                 {formatDate(priorEntry.date)}
               </span>
             </div>
@@ -414,9 +413,9 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
               display: 'flex', flexDirection: 'column', alignItems: 'center',
               padding: '12px 0 8px',
               marginBottom: 24,
-              borderTop: (item?.isOther || hasPrior) ? `1px solid ${T.border}` : 'none',
+              borderTop: (item?.isOther || hasPrior) ? `1px solid var(--border)` : 'none',
             }}>
-              <span style={{ fontSize: 12.5, color: T.text3, fontFamily: 'var(--font-sans)', marginBottom: 4 }}>
+              <span style={{ fontSize: 12.5, color: T.text3, marginBottom: 4 }}>
                 {currency}
               </span>
               <input
@@ -428,10 +427,9 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                 placeholder="0"
                 onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
                 style={{
-                  fontSize: 52, fontWeight: 700, textAlign: 'center',
+                  fontSize: 52, fontWeight: 600, textAlign: 'center',
                   background: 'none', border: 'none', outline: 'none', width: '100%',
-                  color: amount ? T.text1 : T.textMuted,
-                  fontFamily: 'var(--font-sans)', letterSpacing: -1, lineHeight: 1, padding: 0,
+                  color: amount ? T.text1 : T.textMuted, letterSpacing: -1, lineHeight: 1, padding: 0,
                 }}
               />
             </div>
@@ -442,9 +440,8 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
               onChange={e => setNote(e.target.value)}
               placeholder="Add a note (optional)"
               style={{
-                height: 46, borderRadius: 12, border: `1.5px solid ${T.border}`,
-                padding: '0 14px', fontSize: 14, color: T.text1, background: T.white,
-                fontFamily: 'var(--font-sans)', outline: 'none', width: '100%', boxSizing: 'border-box',
+                height: 46, borderRadius: 12, border: `1px solid var(--border)`,
+                padding: '0 14px', fontSize: 14, color: T.text1, background: T.white, outline: 'none', width: '100%', boxSizing: 'border-box',
               }}
             />
 
@@ -457,8 +454,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                 border: 'none',
                 color: canSave || saved ? '#fff' : T.textMuted,
                 fontSize: 15, fontWeight: 600,
-                cursor: canSave ? 'pointer' : 'not-allowed',
-                fontFamily: 'var(--font-sans)', width: '100%', transition: 'background 0.2s',
+                cursor: canSave ? 'pointer' : 'not-allowed', width: '100%', transition: 'background 0.2s',
               }}
             >
               {saved ? 'Saved' : saving ? 'Saving...' : amountNum > 0 ? `Log ${currency} ${displayAmount}` : 'Enter an amount'}

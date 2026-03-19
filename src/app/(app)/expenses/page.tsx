@@ -87,10 +87,9 @@ function FreqSelector({ value, onChange }: { value: string; onChange: (v: string
           <button key={f.value} onClick={() => onChange(f.value)} style={{
             height: 32, padding: '0 14px', borderRadius: 99,
             background: active ? T.brandDark : T.white,
-            border: `1.5px solid ${active ? T.brandDark : T.border}`,
+            border: active ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
             color: active ? '#fff' : T.text3,
-            fontSize: 13, fontWeight: active ? 600 : 400,
-            fontFamily: 'var(--font-sans)', cursor: 'pointer',
+            fontSize: 13, fontWeight: active ? 600 : 400, cursor: 'pointer',
             transition: 'all 0.15s ease',
           }}>
             {f.label}
@@ -122,16 +121,15 @@ function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v:
     <div style={{
       display: 'flex', alignItems: 'center',
       height: 54, borderRadius: 14,
-      border: `1.5px solid ${focused ? T.brandDeep : T.border}`,
+      border: focused ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
       background: T.white, overflow: 'hidden',
       transition: 'border-color 0.2s ease',
     }}>
       <span style={{
         padding: '0 14px 0 16px', fontSize: 15, color: T.text3,
-        fontWeight: 600, borderRight: `1px solid ${T.border}`,
+        fontWeight: 600, borderRight: `1px solid var(--border-subtle)`,
         height: '100%', display: 'flex', alignItems: 'center',
         background: T.brand + '33', flexShrink: 0,
-        fontFamily: 'var(--font-sans)',
       }}>
         {prefix}
       </span>
@@ -147,7 +145,7 @@ function AmountInput({ value, onChange, prefix }: { value: string; onChange: (v:
         style={{
           flex: 1, height: '100%', border: 'none', outline: 'none',
           padding: '0 16px', fontSize: 22, fontWeight: 600,
-          fontFamily: 'var(--font-serif)', color: T.text1, background: 'transparent',
+          fontFamily: 'var(--font-display)', color: T.text1, background: 'transparent',
         }}
       />
     </div>
@@ -171,11 +169,11 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
   const bleedMargin = isDesktop ? 0 : -16
 
   return (
-    <div style={{ minHeight: '100vh', background: T.pageBg, fontFamily: 'var(--font-sans)', display: 'flex', flexDirection: 'column', marginLeft: bleedMargin, marginRight: bleedMargin }}>
+    <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', flexDirection: 'column', marginLeft: bleedMargin, marginRight: bleedMargin }}>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid ${T.border}`, height: 56, display: 'flex', alignItems: 'center', padding: isDesktop ? '0 80px' : '0 16px', gap: 16 }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', gap: 4, color: T.text2, fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid var(--border-subtle)`, height: 56, display: 'flex', alignItems: 'center', padding: isDesktop ? '0 80px' : '0 16px', gap: 16 }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', gap: 4, color: T.text2, fontSize: 13 }}>
           ← Back
         </button>
         <span style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: 600, color: T.text1 }}>Fixed expenses</span>
@@ -185,7 +183,7 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: isDesktop ? '40px 80px 140px' : '24px 20px 140px', maxWidth: isDesktop ? 680 : '100%', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(8px)', transition: 'all 0.4s ease', marginBottom: 28 }}>
-          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: '0 0 8px' }}>
+          <h1 style={{ fontSize: isDesktop ? 28 : 24, color: T.text1, margin: '0 0 8px' }}>
             What are your living costs?
           </h1>
           <p style={{ fontSize: 14, color: T.text2, margin: 0, lineHeight: 1.65 }}>
@@ -195,7 +193,7 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
 
         {groups.map((group, gi) => (
           <div key={group} style={{ marginBottom: 24, opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(10px)', transition: `all 0.4s ease ${0.05 * gi + 0.1}s` }}>
-            <p style={{ fontSize: 11.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '1.2px', margin: '0 0 10px' }}>{group}</p>
+            <p style={{ fontSize: 11.5, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '1.2px', margin: '0 0 10px' }}>{group}</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {ALL_EXPENSE_CATEGORIES.filter(c => c.group === group).map(cat => {
                 const on = selected.has(cat.key)
@@ -204,9 +202,8 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '13px 14px', borderRadius: 14, textAlign: 'left',
                     background: on ? T.brand + '55' : T.white,
-                    border: `1.5px solid ${on ? T.brandDeep : T.border}`,
+                    border: on ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
                     cursor: 'pointer', transition: 'all 0.15s ease',
-                    fontFamily: 'var(--font-sans)',
                   }}>
                     <span style={{ fontSize: 22, flexShrink: 0 }}>{cat.icon}</span>
                     <span style={{ fontSize: 13, fontWeight: on ? 600 : 400, color: on ? T.brandDark : T.text2, lineHeight: 1.3, flex: 1 }}>{cat.label}</span>
@@ -225,7 +222,7 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
       </div>
 
       {/* Footer */}
-      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
+      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid var(--border-subtle)`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
         <div style={{ maxWidth: isDesktop ? 680 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
           <button
             onClick={() => selected.size > 0 && onContinue([...selected])}
@@ -234,7 +231,7 @@ function ExpenseSelectPage({ onBack, onContinue, isDesktop }: {
               width: '100%', height: 52, borderRadius: 14,
               background: selected.size === 0 ? T.border : T.brandDark,
               border: 'none', color: selected.size === 0 ? T.textMuted : '#fff',
-              fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
+              fontSize: 15, fontWeight: 600, cursor: selected.size === 0 ? 'not-allowed' : 'pointer',
             }}
           >
             {selected.size === 0 ? 'Select at least one' : `Continue with ${selected.size} expense${selected.size === 1 ? '' : 's'}`}
@@ -360,8 +357,8 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
       : `Under ${bm.low}% keeps things balanced and leaves room for other goals.`
 
     return (
-      <div style={{ background: bg, border: `1.5px solid ${border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
-        <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 700, color, lineHeight: 1.4 }}>{headline}</p>
+      <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+        <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 600, color, lineHeight: 1.4 }}>{headline}</p>
         <p style={{ margin: 0, fontSize: 12.5, color, opacity: 0.85, lineHeight: 1.6 }}>{body}</p>
       </div>
     )
@@ -371,13 +368,13 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
   const bleedMargin = isDesktop ? 0 : -16
 
   return (
-    <div style={{ minHeight: '100vh', background: T.pageBg, fontFamily: 'var(--font-sans)', display: 'flex', flexDirection: 'column', marginLeft: bleedMargin, marginRight: bleedMargin }}>
+    <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', flexDirection: 'column', marginLeft: bleedMargin, marginRight: bleedMargin }}>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid ${T.border}` }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid var(--border-subtle)` }}>
         <div style={{ height: 56, display: 'flex', alignItems: 'center', padding: isDesktop ? '0 80px' : '0 16px' }}>
           <div style={{ flex: 1 }}>
-            <button onClick={handleBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text2, fontFamily: 'var(--font-sans)', padding: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={handleBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text2, padding: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               ← Back
             </button>
           </div>
@@ -393,7 +390,7 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
       <div style={{ flex: 1, padding: isDesktop ? '48px 80px 180px' : '32px 24px 180px', maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
         <div style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(10px)', transition: 'all 0.35s ease', marginBottom: 28 }}>
-          <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: '0 0 6px' }}>
+          <h2 style={{ fontSize: isDesktop ? 28 : 24, color: T.text1, margin: '0 0 6px' }}>
             {current.label}
           </h2>
           <p style={{ fontSize: 14, color: T.text3, margin: 0, lineHeight: 1.6 }}>How often do you pay this?</p>
@@ -418,7 +415,7 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
 
         {/* Monthly equivalent pill */}
         {monthly !== null && Number(entry.amount) > 0 && (
-          <div style={{ background: T.greenLight, border: `1.5px solid ${T.greenBorder}`, borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ background: T.greenLight, border: `1px solid ${T.greenBorder}`, borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
             <p style={{ margin: 0, fontSize: 13.5, color: T.greenDark, lineHeight: 1.5 }}>
               {currency} {Number(entry.amount).toLocaleString()} {freqLabel(entry.frequency).toLowerCase()} = <strong>{fmt(monthly, currency)} per month</strong>
             </p>
@@ -429,14 +426,14 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
 
         {/* Tip card */}
         {current.tip && (
-          <div style={{ background: T.brand + '22', border: `1px solid ${T.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 24, opacity: mounted ? 1 : 0, transition: 'opacity 0.4s ease 0.2s' }}>
+          <div style={{ background: T.brand + '22', border: `1px solid var(--border)`, borderRadius: 12, padding: '12px 16px', marginBottom: 24, opacity: mounted ? 1 : 0, transition: 'opacity 0.4s ease 0.2s' }}>
             <p style={{ margin: 0, fontSize: 13, color: T.text2, lineHeight: 1.65 }}>{current.tip}</p>
           </div>
         )}
 
         {/* Running total */}
         {runningMonthly > 0 && totalIncome > 0 && (
-          <div style={{ background: T.white, border: `1.5px solid ${T.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: T.white, border: `1px solid var(--border)`, borderRadius: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: T.text2 }}>Fixed costs so far</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{fmt(runningMonthly, currency)}/mo</span>
@@ -449,18 +446,18 @@ function ExpenseEntryFlow({ selectedKeys, currency, totalIncome, onBack, onDone,
       </div>
 
       {/* Footer */}
-      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid ${T.border}`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
+      <div style={{ position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0, background: T.pageBg, borderTop: `1px solid var(--border-subtle)`, padding: isDesktop ? '16px 0' : '12px 20px 16px' }}>
         <div style={{ maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
           {next && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: T.border + '66', borderRadius: 10 }}>
               <span style={{ fontSize: 12.5, color: T.text3 }}>Up next: <strong style={{ color: T.text2 }}>{next.label}</strong></span>
             </div>
           )}
-          <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+          <button onClick={handleNext} style={{ width: '100%', height: 52, borderRadius: 14, background: T.brandDark, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
             {isLast ? 'Save expenses' : 'Next'}
           </button>
           {current.canBeUnsure && (
-            <button onClick={handleNotSure} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+            <button onClick={handleNotSure} style={{ width: '100%', height: 40, marginTop: 8, borderRadius: 14, background: 'none', border: 'none', color: T.text3, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
               Not sure yet
             </button>
           )}
@@ -536,7 +533,7 @@ export default function ExpensesPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)', color: T.text3, fontSize: 14 }}>
+      <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text3, fontSize: 14 }}>
         Loading...
       </div>
     )

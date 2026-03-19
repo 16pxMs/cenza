@@ -1,24 +1,137 @@
-.overview-empty { padding: 28px 16px 80px; }
-.overview-empty--desktop { padding: 48px 28px; }
-.overview-empty__greeting { margin-bottom: 28px; opacity: 0; transform: translateY(8px); transition: all 0.4s ease 0.05s; }
-.overview-empty__greeting--mounted { opacity: 1; transform: translateY(0); }
-.overview-empty__heading { font-family: var(--font-serif); font-size: 24px; font-weight: 600; color: var(--text-1); margin: 0; line-height: 1.2; }
-.overview-empty__heading--desktop { font-size: 28px; }
-.overview-empty__income-card { opacity: 0; transform: translateY(12px); transition: all 0.45s ease 0.15s; margin-bottom: 20px; }
-.overview-empty__income-card--mounted { opacity: 1; transform: translateY(0); }
-.overview-empty__income-inner { background: var(--brand-dark); border-radius: 20px; padding: 24px 22px; position: relative; overflow: hidden; }
-.overview-empty__income-glow { position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; background: radial-gradient(circle, rgba(155,111,204,0.33) 0%, transparent 70%); pointer-events: none; }
-.overview-empty__income-step { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: rgba(234,223,244,0.45); letter-spacing: 1.5px; text-transform: uppercase; font-family: var(--font-sans); }
-.overview-empty__income-title { font-family: var(--font-serif); font-size: 22px; font-weight: 600; color: #fff; margin: 0 0 8px; line-height: 1.3; }
-.overview-empty__income-sub { font-size: 13.5px; color: rgba(234,223,244,0.55); margin: 0 0 22px; line-height: 1.6; font-family: var(--font-sans); }
-.overview-empty__income-btn { height: 46px; border-radius: 12px; background: var(--brand); border: none; color: var(--brand-dark); font-size: 14px; font-weight: 700; font-family: var(--font-sans); padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
-.overview-empty__goals-fade { opacity: 0; transition: opacity 0.4s ease 0.3s; }
-.overview-empty__goals-fade--mounted { opacity: 1; }
-.overview-empty__goals-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.overview-empty__goals-label { font-size: 13px; font-weight: 700; color: var(--text-2); letter-spacing: 0.5px; text-transform: uppercase; font-family: var(--font-sans); }
-.overview-empty__goals-hint { font-size: 11.5px; color: var(--text-muted); font-style: italic; font-family: var(--font-sans); }
-.overview-empty__goal-row { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-lg); padding: 13px 16px; display: flex; align-items: center; gap: 12px; opacity: 0.45; margin-bottom: 8px; }
-.overview-empty__goal-icon { width: 36px; height: 36px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.overview-empty__goal-name { font-size: 14px; font-weight: 600; color: var(--text-1); font-family: var(--font-sans); }
-.overview-empty__goal-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; font-style: italic; font-family: var(--font-sans); }
-.overview-empty__goal-bar { height: 4px; width: 60px; background: var(--border); border-radius: var(--radius-full); margin-left: auto; flex-shrink: 0; }
+/* ─────────────────────────────────────────────────────────────
+   OverviewEmpty — full-page inline income entry
+───────────────────────────────────────────────────────────── */
+
+.overview-empty {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 56px 24px 32px;
+  background: var(--page-bg);
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.overview-empty__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 36px;
+}
+
+.overview-empty__greeting {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.overview-empty__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-dark);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0;
+}
+
+/* ── Heading ─────────────────────────────────────────────── */
+.overview-empty__heading {
+  font-size: 32px;
+  color: var(--text-1);
+  margin: 0 0 10px;
+  line-height: 1.15;
+  letter-spacing: -0.4px;
+}
+
+.overview-empty__sub {
+  font-size: 15px;
+  color: var(--text-3);
+  margin: 0 0 40px;
+  line-height: 1.6;
+}
+
+/* ── Income input ────────────────────────────────────────── */
+.overview-empty__input-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0 32px;
+}
+
+.overview-empty__currency-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.overview-empty__amount-input {
+  font-weight: 300;
+  color: var(--text-1);
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: center;
+  width: 100%;
+  padding: 0;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.overview-empty__amount-input::placeholder { color: var(--text-muted); }
+
+/* Formatted value shown below the raw number */
+.overview-empty__amount-formatted {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+
+/* ── Bottom section — always visible ─────────────────────── */
+.overview-empty__bottom {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.overview-empty__cta {
+  height: 54px;
+  border-radius: var(--radius-md);
+  background: var(--brand-dark);
+  border: none;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.overview-empty__cta:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* ── Desktop ─────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .overview-empty {
+    max-width: 480px;
+    margin: 0 auto;
+    padding-top: 72px;
+  }
+}

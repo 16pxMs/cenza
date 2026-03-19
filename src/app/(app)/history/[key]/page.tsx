@@ -179,10 +179,10 @@ function LedgerInner() {
         >
           <IconBack size={18} color={T.text3} />
         </button>
-        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
+        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
-        <h1 style={{ margin: 0, fontSize: isDesktop ? 26 : 22, fontWeight: 700, color: T.text1, fontFamily: 'var(--font-sans)' }}>
+        <h1 style={{ margin: 0, fontSize: isDesktop ? 26 : 22, color: T.text1 }}>
           {categoryLabel}
         </h1>
       </div>
@@ -190,23 +190,22 @@ function LedgerInner() {
       {/* Summary card — includes refund button/form */}
       <div style={{ padding: pad, marginBottom: 24 }}>
         <div style={{
-          background: T.white, border: `1.5px solid ${T.border}`,
+          background: T.white, border: `1px solid var(--border)`,
           borderRadius: 16, overflow: 'hidden',
-          fontFamily: 'var(--font-sans)',
         }}>
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
                   Total spent
                 </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: overBudget ? '#D93025' : T.text1, lineHeight: 1 }}>
+                <div style={{ fontSize: 28, fontWeight: 600, color: overBudget ? '#D93025' : T.text1, lineHeight: 1 }}>
                   {fmt(totalSpent, currency)}
                 </div>
               </div>
               {planned > 0 && (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
                     Budget
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 600, color: T.text3 }}>
@@ -241,10 +240,9 @@ function LedgerInner() {
               style={{
                 width: '100%', padding: '13px',
                 background: 'none', border: 'none',
-                borderTop: `1px solid ${T.border}`,
+                borderTop: `1px solid var(--border-subtle)`,
                 cursor: 'pointer',
                 fontSize: 13, fontWeight: 500, color: T.text3,
-                fontFamily: 'var(--font-sans)',
               }}
             >
               + Log a refund
@@ -254,7 +252,7 @@ function LedgerInner() {
           {/* Refund form — expands inside the card */}
           {showRefundForm && (
             <>
-              <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ padding: '14px 20px', borderTop: `1px solid var(--border-subtle)`, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input
                   ref={refundRef}
                   type="text" inputMode="decimal"
@@ -269,9 +267,9 @@ function LedgerInner() {
                   placeholder="Refund amount"
                   style={{
                     width: '100%', height: 44, borderRadius: 10,
-                    border: `1.5px solid ${T.borderStrong}`, padding: '0 12px',
+                    border: `1px solid var(--border-strong)`, padding: '0 12px',
                     fontSize: 16, fontWeight: 600, color: T.text1,
-                    background: T.white, fontFamily: 'var(--font-sans)',
+                    background: T.white,
                     outline: 'none', boxSizing: 'border-box',
                   }}
                 />
@@ -281,21 +279,19 @@ function LedgerInner() {
                   placeholder="Note (optional)"
                   style={{
                     width: '100%', height: 40, borderRadius: 10,
-                    border: `1.5px solid ${T.border}`, padding: '0 12px',
-                    fontSize: 13, color: T.text1, background: T.white,
-                    fontFamily: 'var(--font-sans)', outline: 'none',
+                    border: `1px solid var(--border)`, padding: '0 12px',
+                    fontSize: 13, color: T.text1, background: T.white, outline: 'none',
                     boxSizing: 'border-box',
                   }}
                 />
               </div>
-              <div style={{ display: 'flex', borderTop: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', borderTop: `1px solid var(--border-subtle)` }}>
                 <button
                   onClick={() => { setShowRefundForm(false); setRefundAmount(''); setRefundNote('') }}
                   style={{
                     flex: 1, height: 44, background: 'transparent',
-                    border: 'none', borderRight: `1px solid ${T.border}`,
-                    fontSize: 13, fontWeight: 500, color: T.text3,
-                    fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                    border: 'none', borderRight: `1px solid var(--border-subtle)`,
+                    fontSize: 13, fontWeight: 500, color: T.text3, cursor: 'pointer',
                   }}
                 >
                   Cancel
@@ -306,8 +302,7 @@ function LedgerInner() {
                   style={{
                     flex: 1, height: 44, background: 'transparent', border: 'none',
                     fontSize: 13, fontWeight: 600,
-                    color: parseFloat(refundAmount) > 0 ? '#1A7A45' : T.textMuted,
-                    fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                    color: parseFloat(refundAmount) > 0 ? '#1A7A45' : T.textMuted, cursor: 'pointer',
                   }}
                 >
                   {savingRefund ? 'Saving…' : 'Save refund'}
@@ -321,15 +316,15 @@ function LedgerInner() {
       {/* Entry list — grouped by date */}
       <div style={{ padding: pad }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: T.textMuted, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+          <div style={{ textAlign: 'center', padding: '40px 0', color: T.textMuted, fontSize: 14 }}>
             Loading…
           </div>
         ) : txns.length === 0 ? (
           <div style={{
             textAlign: 'center', padding: '48px 24px',
-            background: T.white, border: `1.5px solid ${T.border}`, borderRadius: 16,
+            background: T.white, border: `1px solid var(--border)`, borderRadius: 16,
           }}>
-            <div style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)' }}>
+            <div style={{ fontSize: 13, color: T.textMuted }}>
               No entries logged yet this month.
             </div>
           </div>
@@ -339,8 +334,7 @@ function LedgerInner() {
               <div key={date}>
                 {/* Date label */}
                 <div style={{
-                  fontSize: 12, fontWeight: 600, color: T.text3,
-                  fontFamily: 'var(--font-sans)', marginBottom: 8,
+                  fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 8,
                   textTransform: 'uppercase', letterSpacing: '0.06em',
                 }}>
                   {formatDate(date)}
@@ -357,20 +351,19 @@ function LedgerInner() {
                         key={txn.id}
                         style={{
                           background: isRefund ? '#F0FDF4' : T.white,
-                          border: `1.5px solid ${isRefund ? '#BBF7D0' : T.border}`,
+                          border: isRefund ? `1px solid #BBF7D0` : `1px solid var(--border)`,
                           borderRadius: 14, overflow: 'hidden',
-                          fontFamily: 'var(--font-sans)',
                         }}
                       >
                         {/* Main row */}
                         <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 17, fontWeight: 700, color: isRefund ? '#1A7A45' : T.text1, marginBottom: hasNote ? 4 : 0 }}>
+                            <div style={{ fontSize: 17, fontWeight: 600, color: isRefund ? '#1A7A45' : T.text1, marginBottom: hasNote ? 4 : 0 }}>
                               {fmt(txn.amount, currency)}
                             </div>
                             {isRefund && !hasNote && (
                               <span style={{
-                                fontSize: 10, fontWeight: 700, color: '#1A7A45',
+                                fontSize: 10, fontWeight: 600, color: '#1A7A45',
                                 background: '#DCFCE7', borderRadius: 4, padding: '1px 6px',
                                 textTransform: 'uppercase', letterSpacing: '0.06em',
                                 display: 'inline-block',
@@ -395,7 +388,7 @@ function LedgerInner() {
                                   background: '#F1F3F5', border: 'none',
                                   borderRadius: 8,
                                   fontSize: 12, fontWeight: 500, color: T.text2,
-                                  cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                                  cursor: 'pointer',
                                 }}
                               >
                                 {isEditing ? 'Cancel' : 'Edit'}
@@ -407,7 +400,7 @@ function LedgerInner() {
                                   background: '#F1F3F5', border: 'none',
                                   borderRadius: 8,
                                   fontSize: 12, fontWeight: 500, color: '#D93025',
-                                  cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                                  cursor: 'pointer',
                                 }}
                               >
                                 Delete
@@ -418,7 +411,7 @@ function LedgerInner() {
 
                         {/* Inline edit form */}
                         {isEditing && (
-                          <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFA' }}>
+                          <div style={{ padding: '12px 16px', borderTop: `1px solid var(--border-subtle)`, display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFA' }}>
                             <input
                               ref={amountRef}
                               type="text" inputMode="decimal"
@@ -431,10 +424,9 @@ function LedgerInner() {
                               }}
                               onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
                               style={{
-                                height: 44, borderRadius: 10, border: `1.5px solid ${T.brandDark}`,
+                                height: 44, borderRadius: 10, border: `2px solid var(--border-focus)`,
                                 padding: '0 12px', fontSize: 16, fontWeight: 600,
-                                color: T.text1, background: T.white,
-                                fontFamily: 'var(--font-sans)', outline: 'none',
+                                color: T.text1, background: T.white, outline: 'none',
                                 width: '100%', boxSizing: 'border-box',
                               }}
                             />
@@ -443,10 +435,9 @@ function LedgerInner() {
                               onChange={e => setEditNote(e.target.value)}
                               placeholder="Note (optional)"
                               style={{
-                                height: 40, borderRadius: 10, border: `1.5px solid ${T.border}`,
+                                height: 40, borderRadius: 10, border: `1px solid var(--border)`,
                                 padding: '0 12px', fontSize: 13,
-                                color: T.text1, background: T.white,
-                                fontFamily: 'var(--font-sans)', outline: 'none',
+                                color: T.text1, background: T.white, outline: 'none',
                                 width: '100%', boxSizing: 'border-box',
                               }}
                             />
@@ -457,8 +448,7 @@ function LedgerInner() {
                                 height: 42, borderRadius: 10,
                                 background: saving ? T.border : T.brandDark,
                                 border: 'none', color: '#fff',
-                                fontSize: 14, fontWeight: 600,
-                                fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                fontSize: 14, fontWeight: 600, cursor: 'pointer',
                               }}
                             >
                               {saving ? 'Saving…' : 'Save changes'}
@@ -510,9 +500,8 @@ function LedgerInner() {
                   onClick={opt.action}
                   style={{
                     width: '100%', textAlign: 'left', padding: '14px 16px',
-                    background: T.white, border: `1.5px solid ${T.border}`,
-                    borderRadius: 14, cursor: 'pointer',
-                    fontFamily: 'var(--font-sans)', marginBottom: 10, display: 'block',
+                    background: T.white, border: `1px solid var(--border)`,
+                    borderRadius: 14, cursor: 'pointer', marginBottom: 10, display: 'block',
                   }}
                 >
                   <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{opt.label}</div>
@@ -524,7 +513,7 @@ function LedgerInner() {
                 style={{
                   marginTop: 4, width: '100%', padding: '12px',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+                  fontSize: 14, color: T.textMuted,
                 }}
               >
                 Cancel
@@ -544,8 +533,7 @@ function LedgerInner() {
                 style={{
                   width: '100%', padding: '14px', borderRadius: 14,
                   background: '#D93025', border: 'none', cursor: 'pointer',
-                  fontSize: 15, fontWeight: 600, color: '#fff',
-                  fontFamily: 'var(--font-sans)', opacity: deleting ? 0.6 : 1,
+                  fontSize: 15, fontWeight: 600, color: '#fff', opacity: deleting ? 0.6 : 1,
                 }}
               >
                 {deleting ? 'Removing…' : 'Yes, remove it'}
@@ -555,7 +543,7 @@ function LedgerInner() {
                 style={{
                   marginTop: 10, width: '100%', padding: '12px',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                  fontSize: 14, color: T.text3,
                 }}
               >
                 Go back

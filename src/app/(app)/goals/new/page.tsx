@@ -213,10 +213,10 @@ function NewGoalInner() {
       >
         <IconBack size={18} color={T.text3} />
       </button>
-      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
+      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
         {step === 'pick' ? 'New goal' : step === 'name' ? 'Name your goal' : step === 'destination' ? 'Where to?' : 'Set a target'}
       </p>
-      <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: isDesktop ? 26 : 22, fontWeight: 700, color: T.text1, margin: 0 }}>
+      <h1 style={{ fontSize: isDesktop ? 26 : 22, color: T.text1, margin: 0 }}>
         {step === 'pick'
           ? 'What are you saving for?'
           : step === 'name'
@@ -234,7 +234,7 @@ function NewGoalInner() {
   const step1 = (
     <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
       {availableGoals.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: T.text3, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: T.text3, fontSize: 14 }}>
           You've added all available goal types.
         </div>
       ) : (
@@ -246,10 +246,9 @@ function NewGoalInner() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 14,
                 padding: '16px', borderRadius: 14,
-                border: `1.5px solid ${T.border}`,
+                border: `1px solid var(--border)`,
                 background: T.white,
                 cursor: 'pointer', textAlign: 'left',
-                fontFamily: 'var(--font-sans)',
               }}
             >
               <div style={{
@@ -275,7 +274,7 @@ function NewGoalInner() {
   // ── Step: Destination (travel only) ──────────────────────────
   const stepDestination = (
     <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
-      <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)', lineHeight: 1.5 }}>
+      <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
         Where do you want to go? Even a rough idea helps make the goal feel real.
       </p>
       <input
@@ -287,9 +286,9 @@ function NewGoalInner() {
         placeholder="e.g. Zanzibar, Amsterdam, Japan"
         style={{
           width: '100%', height: 52, borderRadius: 12,
-          border: `1.5px solid ${destination.trim() ? T.brandDark : T.border}`,
+          border: destination.trim() ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
           padding: '0 16px', fontSize: 16, color: T.text1,
-          background: T.white, fontFamily: 'var(--font-sans)',
+          background: T.white,
           outline: 'none', boxSizing: 'border-box',
           transition: 'border-color 0.15s',
         }}
@@ -302,9 +301,8 @@ function NewGoalInner() {
           width: '100%', height: 52, borderRadius: 14,
           background: destination.trim() ? T.brandDark : T.border,
           border: 'none', color: destination.trim() ? '#fff' : T.textMuted,
-          fontSize: 15, fontWeight: 700,
-          cursor: destination.trim() ? 'pointer' : 'not-allowed',
-          fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
+          fontSize: 15, fontWeight: 600,
+          cursor: destination.trim() ? 'pointer' : 'not-allowed', transition: 'background 0.15s',
         }}
       >
         Continue
@@ -315,7 +313,6 @@ function NewGoalInner() {
           marginTop: 10, width: '100%', padding: '12px',
           background: 'none', border: 'none', cursor: 'pointer',
           fontSize: 13, color: T.textMuted, fontStyle: 'italic',
-          fontFamily: 'var(--font-sans)',
         }}
       >
         Skip for now
@@ -326,7 +323,7 @@ function NewGoalInner() {
   // ── Step 2: Custom name (other only) ─────────────────────────
   const step2 = (
     <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
-      <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)', lineHeight: 1.5 }}>
+      <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
         Give it a name that means something to you — you can always change it later.
       </p>
       <Input
@@ -343,9 +340,8 @@ function NewGoalInner() {
           width: '100%', height: 52, borderRadius: 14,
           background: customName.trim() ? T.brandDark : T.border,
           border: 'none', color: customName.trim() ? '#fff' : T.textMuted,
-          fontSize: 15, fontWeight: 700,
+          fontSize: 15, fontWeight: 600,
           cursor: customName.trim() ? 'pointer' : 'not-allowed',
-          fontFamily: 'var(--font-sans)',
           transition: 'background 0.15s',
         }}
       >
@@ -373,7 +369,7 @@ function NewGoalInner() {
         <div style={{
           marginTop: 10, padding: '10px 14px', borderRadius: 10,
           background: '#F0FDF4', border: '1px solid #BBF7D0',
-          fontSize: 13, color: '#1A7A45', fontFamily: 'var(--font-sans)',
+          fontSize: 13, color: '#1A7A45',
         }}>
           You've already saved {fmt(alreadySaved, currency)} toward this goal.
         </div>
@@ -383,8 +379,7 @@ function NewGoalInner() {
       {benchmarkTip && (
         <p style={{
           margin: '10px 0 0',
-          fontSize: 13, color: T.text3,
-          fontFamily: 'var(--font-sans)', lineHeight: 1.6,
+          fontSize: 13, color: T.text3, lineHeight: 1.6,
           fontStyle: 'italic',
         }}>
           💡 {benchmarkTip}
@@ -396,7 +391,7 @@ function NewGoalInner() {
         <div style={{ marginTop: 24 }}>
           <p style={{
             margin: '0 0 12px', fontSize: 13, fontWeight: 600,
-            color: T.text2, fontFamily: 'var(--font-sans)',
+            color: T.text2,
           }}>
             How fast do you want to get there?
           </p>
@@ -411,11 +406,11 @@ function NewGoalInner() {
                   onClick={() => setSelectedMonths(opt.months)}
                   style={{
                     flex: 1, padding: '9px 0', borderRadius: 99,
-                    border: `1.5px solid ${active ? T.brandDark : T.borderStrong}`,
+                    border: active ? `2px solid var(--border-focus)` : `1px solid var(--border-strong)`,
                     background: active ? T.brandDark : T.white,
                     color: active ? '#fff' : T.text2,
                     fontSize: 12, fontWeight: active ? 600 : 400,
-                    cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                    cursor: 'pointer',
                     transition: 'all 0.15s',
                   }}
                 >
@@ -431,10 +426,9 @@ function NewGoalInner() {
               padding: '16px', borderRadius: 14,
               background: signal.bg,
               border: `1px solid ${signal.color}22`,
-              fontFamily: 'var(--font-sans)',
             }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 22, fontWeight: 700, color: T.text1 }}>
+                <span style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>
                   {fmt(monthlyRequired, currency)}
                 </span>
                 <span style={{ fontSize: 13, color: T.text3 }}>/ month</span>
@@ -466,7 +460,7 @@ function NewGoalInner() {
                 <p style={{
                   margin: '10px 0 0', fontSize: 12.5, color: T.text2,
                   lineHeight: 1.5, paddingTop: 10,
-                  borderTop: `1px solid ${T.border}`,
+                  borderTop: `1px solid var(--border-subtle)`,
                 }}>
                   That's a significant portion of your income. Consider a longer timeline — even small consistent saves add up.
                 </p>
@@ -486,9 +480,8 @@ function NewGoalInner() {
             background: target > 0 ? T.brandDark : T.border,
             border: 'none',
             color: target > 0 ? '#fff' : T.textMuted,
-            fontSize: 15, fontWeight: 700,
+            fontSize: 15, fontWeight: 600,
             cursor: target > 0 ? 'pointer' : 'not-allowed',
-            fontFamily: 'var(--font-sans)',
             transition: 'background 0.15s',
           }}
         >
@@ -500,7 +493,7 @@ function NewGoalInner() {
           style={{
             marginTop: 10, width: '100%', padding: '12px',
             background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: 13, color: T.text3, fontFamily: 'var(--font-sans)',
+            fontSize: 13, color: T.text3,
           }}
         >
           Add without a target
@@ -514,7 +507,7 @@ function NewGoalInner() {
     <div style={{ paddingBottom: isDesktop ? 60 : 100 }}>
       {header}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMuted, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMuted, fontSize: 14 }}>
           Loading…
         </div>
       ) : step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}

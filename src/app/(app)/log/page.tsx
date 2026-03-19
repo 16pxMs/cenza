@@ -438,8 +438,7 @@ export default function LogPage() {
     return (
       <div style={{
         minHeight: '100vh', background: 'var(--page-bg)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--font-sans)', color: 'var(--text-3)', fontSize: 14,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 14,
       }}>
         Loading...
       </div>
@@ -459,10 +458,10 @@ export default function LogPage() {
         >
           <IconBack size={18} color={T.text3} />
         </button>
-        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
+        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
-        <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: 0 }}>
+        <h1 style={{ fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: 0 }}>
           Track a spend
         </h1>
       </div>
@@ -496,7 +495,7 @@ export default function LogPage() {
               style={{
                 display: 'flex', alignItems: 'center',
                 background: T.white,
-                borderBottom: isLast ? 'none' : `1px solid ${T.border}`,
+                borderBottom: isLast ? 'none' : `1px solid var(--border-subtle)`,
                 minHeight: 48,
               }}
             >
@@ -508,7 +507,7 @@ export default function LogPage() {
                   justifyContent: 'space-between',
                   border: 'none', background: 'transparent',
                   padding: '10px 16px', minHeight: 48,
-                  cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
                   textAlign: 'left', boxSizing: 'border-box',
                 } as React.CSSProperties}
               >
@@ -534,7 +533,7 @@ export default function LogPage() {
                   style={{
                     width: 40, height: 48, flexShrink: 0,
                     background: 'transparent', border: 'none',
-                    borderLeft: `1px solid ${T.border}`,
+                    borderLeft: `1px solid var(--border-subtle)`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     cursor: 'pointer', opacity: isDeleting ? 0.4 : 1,
                   }}
@@ -551,7 +550,7 @@ export default function LogPage() {
           <div key={section.key} style={{ margin: isDesktop ? '0 32px 40px' : '0 16px 40px' }}>
             <div style={{
               background: T.white,
-              border: `1.5px solid ${T.border}`,
+              border: `1px solid var(--border)`,
               borderRadius: 16,
               overflow: 'hidden',
             }}>
@@ -559,14 +558,14 @@ export default function LogPage() {
               {/* Card header */}
               <div style={{
                 padding: '14px 16px',
-                borderBottom: `1px solid ${T.border}`,
+                borderBottom: `1px solid var(--border-subtle)`,
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <p style={{
-                    margin: 0, fontSize: 11, fontWeight: 700,
+                    margin: 0, fontSize: 11, fontWeight: 600,
                     letterSpacing: '0.08em', textTransform: 'uppercase',
-                    color: T.textMuted, fontFamily: 'var(--font-sans)',
+                    color: T.textMuted,
                   }}>
                     {section.label}
                   </p>
@@ -574,14 +573,13 @@ export default function LogPage() {
                     <span style={{
                       fontSize: 11, fontWeight: 600, color: T.text3,
                       background: '#F1F3F5', borderRadius: 99, padding: '2px 8px',
-                      fontFamily: 'var(--font-sans)',
                     }}>
                       {section.items.length} items
                     </span>
                   )}
                 </div>
                 {totalLogged > 0 && (
-                  <span style={{ fontSize: 13, fontWeight: 600, color: T.brandDark, fontFamily: 'var(--font-sans)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: T.brandDark }}>
                     {fmt(totalLogged, currency)} logged
                   </span>
                 )}
@@ -591,7 +589,7 @@ export default function LogPage() {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
 
                 {section.items.length === 0 && section.key !== 'debts' && (
-                  <p style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)', margin: '12px 16px', fontStyle: 'italic' }}>
+                  <p style={{ fontSize: 13, color: T.textMuted, margin: '12px 16px', fontStyle: 'italic' }}>
                     Nothing set up yet.
                   </p>
                 )}
@@ -607,10 +605,9 @@ export default function LogPage() {
                     onClick={() => openSheet({ key: 'debt_new', label: 'Add a debt', groupType: 'debt', isOther: true })}
                     style={{
                       width: '100%', background: 'transparent',
-                      border: `1.5px dashed ${T.borderStrong}`,
+                      border: `1px dashed var(--border-strong)`,
                       borderRadius: 14, padding: '13px 16px', cursor: 'pointer',
-                      fontSize: 14, fontWeight: 500, color: T.text2,
-                      fontFamily: 'var(--font-sans)', textAlign: 'left', boxSizing: 'border-box',
+                      fontSize: 14, fontWeight: 500, color: T.text2, textAlign: 'left', boxSizing: 'border-box',
                     } as React.CSSProperties}
                   >
                     + Add a debt payment
@@ -626,7 +623,7 @@ export default function LogPage() {
                     width: '100%', background: 'none', border: 'none',
                     padding: '12px 16px', cursor: 'pointer',
                     fontSize: 13, fontWeight: 500,
-                    color: T.brandDark, fontFamily: 'var(--font-sans)',
+                    color: T.brandDark,
                     textAlign: 'left',
                   }}
                 >
@@ -655,7 +652,6 @@ export default function LogPage() {
               cursor: 'pointer',
               fontSize: 14, fontWeight: 600,
               color: '#fff',
-              fontFamily: 'var(--font-sans)',
               boxSizing: 'border-box',
             } as React.CSSProperties}
           >
@@ -703,9 +699,8 @@ export default function LogPage() {
                   onClick={opt.action}
                   style={{
                     width: '100%', textAlign: 'left', padding: '14px 16px',
-                    background: T.white, border: `1.5px solid ${T.border}`,
-                    borderRadius: 14, cursor: 'pointer',
-                    fontFamily: 'var(--font-sans)', marginBottom: 10, display: 'block',
+                    background: T.white, border: `1px solid var(--border)`,
+                    borderRadius: 14, cursor: 'pointer', marginBottom: 10, display: 'block',
                   }}
                 >
                   <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{opt.label}</div>
@@ -717,7 +712,7 @@ export default function LogPage() {
                 style={{
                   marginTop: 4, width: '100%', padding: '12px',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+                  fontSize: 14, color: T.textMuted,
                 }}
               >
                 Cancel
@@ -738,7 +733,6 @@ export default function LogPage() {
                   width: '100%', padding: '14px', borderRadius: 14,
                   background: '#D93025', border: 'none', cursor: 'pointer',
                   fontSize: 15, fontWeight: 600, color: '#fff',
-                  fontFamily: 'var(--font-sans)',
                   opacity: deletingKey === pendingDelete.key ? 0.6 : 1,
                 }}
               >
@@ -749,7 +743,7 @@ export default function LogPage() {
                 style={{
                   marginTop: 10, width: '100%', padding: '12px',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                  fontSize: 14, color: T.text3,
                 }}
               >
                 Go back
@@ -764,13 +758,12 @@ export default function LogPage() {
               </p>
               <div style={{
                 display: 'flex', alignItems: 'center',
-                border: `1.5px solid ${T.borderStrong}`, borderRadius: 12,
+                border: `1px solid var(--border-strong)`, borderRadius: 12,
                 background: T.white, overflow: 'hidden', marginBottom: 12,
               }}>
                 <span style={{
                   padding: '0 14px', fontSize: 14, fontWeight: 600,
-                  color: T.text3, borderRight: `1px solid ${T.border}`,
-                  fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+                  color: T.text3, borderRight: `1px solid var(--border-subtle)`, whiteSpace: 'nowrap',
                 }}>
                   {currency}
                 </span>
@@ -784,7 +777,7 @@ export default function LogPage() {
                   style={{
                     flex: 1, height: 52, border: 'none', outline: 'none',
                     padding: '0 14px', fontSize: 18, fontWeight: 600,
-                    color: T.text1, fontFamily: 'var(--font-sans)',
+                    color: T.text1,
                     background: 'transparent',
                   }}
                 />
@@ -796,8 +789,8 @@ export default function LogPage() {
                 onChange={e => setRefundNote(e.target.value)}
                 style={{
                   width: '100%', height: 46, borderRadius: 12,
-                  border: `1.5px solid ${T.border}`, padding: '0 14px',
-                  fontSize: 14, color: T.text1, fontFamily: 'var(--font-sans)',
+                  border: `1px solid var(--border)`, padding: '0 14px',
+                  fontSize: 14, color: T.text1,
                   background: T.white, outline: 'none', boxSizing: 'border-box',
                   marginBottom: 20,
                 }}
@@ -811,7 +804,6 @@ export default function LogPage() {
                   border: 'none', cursor: 'pointer',
                   fontSize: 15, fontWeight: 600,
                   color: refundAmount && parseFloat(refundAmount) > 0 ? '#fff' : T.textMuted,
-                  fontFamily: 'var(--font-sans)',
                 }}
               >
                 {savingRefund ? 'Saving…' : 'Log refund'}
@@ -821,7 +813,7 @@ export default function LogPage() {
                 style={{
                   marginTop: 10, width: '100%', padding: '12px',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                  fontSize: 14, color: T.text3,
                 }}
               >
                 Go back
@@ -856,7 +848,7 @@ export default function LogPage() {
       left: 0, right: 0,
       padding: '10px 16px',
       background: T.pageBg,
-      borderTop: `1px solid ${T.border}`,
+      borderTop: `1px solid var(--border-subtle)`,
       zIndex: 40,
     }}>
       <button
@@ -869,7 +861,6 @@ export default function LogPage() {
           cursor: 'pointer',
           fontSize: 14, fontWeight: 600,
           color: '#fff',
-          fontFamily: 'var(--font-sans)',
           boxSizing: 'border-box',
         } as React.CSSProperties}
       >

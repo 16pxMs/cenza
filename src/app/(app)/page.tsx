@@ -16,6 +16,7 @@ import { OverviewEmpty } from '@/components/flows/overview/OverviewEmpty'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
 import { CarryForwardScreen, type CarryForwardData } from '@/components/flows/overview/CarryForwardScreen'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { getPrevMonth } from '@/lib/finance'
 
 export default function AppPage() {
@@ -34,6 +35,7 @@ export default function AppPage() {
   const [budgetsSource, setBudgetsSource] = useState<'onboarding' | 'user_set'>('onboarding')
   const [totalSpent, setTotalSpent] = useState(0)
   const [carryForwardData, setCarryForwardData] = useState<CarryForwardData | null>(null)
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false)
 
   const currentMonth = new Date().toISOString().slice(0, 7) // "YYYY-MM"
   const CARRY_DISMISSED_KEY = `cenza:carry-dismissed:${currentMonth}`
@@ -254,8 +256,7 @@ export default function AppPage() {
     return (
       <div style={{
         minHeight: '100vh', background: 'var(--page-bg)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--font-sans)', color: 'var(--text-3)', fontSize: 14,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 14,
       }}>
         Loading...
       </div>
@@ -314,42 +315,85 @@ export default function AppPage() {
     ) : (
       <OverviewEmpty
         name={profile?.name}
-        goals={profile?.goals || []}
-        onAddIncome={() => setIncomeSheetOpen(true)}
-        isDesktop={isDesktop}
+        currency={profile?.currency || 'KES'}
+        onSave={async (data) => { await saveIncome(data); setIncomeSheetOpen(false) }}
       />
     ),
     spend: (
-      <div style={{ padding: '24px 28px', fontFamily: 'var(--font-sans)', color: 'var(--text-3)', fontSize: 14 }}>
+      <div style={{ padding: '24px 28px', color: 'var(--text-3)', fontSize: 14 }}>
         Spend tab coming soon
       </div>
     ),
     goals: (
-      <div style={{ padding: '24px 28px', fontFamily: 'var(--font-sans)', color: 'var(--text-3)', fontSize: 14 }}>
+      <div style={{ padding: '24px 28px', color: 'var(--text-3)', fontSize: 14 }}>
         Goals tab coming soon
       </div>
     ),
     finance: (
-      <div style={{ padding: '24px 28px', fontFamily: 'var(--font-sans)', color: 'var(--text-3)', fontSize: 14 }}>
+      <div style={{ padding: '24px 28px', color: 'var(--text-3)', fontSize: 14 }}>
         Finance tab coming soon
       </div>
     ),
   }
 
+  const initial = (profile?.name ?? '?')[0].toUpperCase()
+
+  // Persistent avatar button — shown in all states except loading
+  const avatar = (
+    <button
+      onClick={() => setProfileSheetOpen(true)}
+      style={{
+        position: 'fixed', top: 14, right: 16, zIndex: 9999,
+        width: 36, height: 36, borderRadius: '50%',
+        background: 'var(--brand-dark)', border: 'none',
+        color: '#fff', fontSize: 14, fontWeight: 600,
+        cursor: 'pointer', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
+      {initial}
+    </button>
+  )
+
+  // Profile sheet — sign out + future settings home
+  const profileSheet = (
+    <Sheet open={profileSheetOpen} onClose={() => setProfileSheetOpen(false)} title="Account">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: '50%',
+          background: 'var(--brand-dark)', color: '#fff',
+          fontSize: 18, fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          {initial}
+        </div>
+        <div>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{profile?.name}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-3)' }}>{profile?.currency} account</p>
+        </div>
+      </div>
+
+      <button
+        onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }}
+        style={{
+          width: '100%', height: 48, borderRadius: 'var(--radius-md)',
+          background: '#FEF2F2', border: '1px solid #FECACA',
+          color: '#DC2626', fontSize: 15, fontWeight: 500,
+          cursor: 'pointer',
+        }}
+      >
+        Sign out
+      </button>
+    </Sheet>
+  )
+
   // Desktop layout
   if (isDesktop) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
-        <button
-          onClick={async () => { await createClient().auth.signOut(); window.location.href = '/login' }}
-          style={{
-            position: 'fixed', top: 12, right: 16, zIndex: 9999,
-            background: 'none', border: '1px solid #ccc', borderRadius: 8,
-            padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: '#666',
-          }}
-        >
-          Sign out
-        </button>
+        {avatar}
+        {profileSheet}
         <SideNav />
         <main style={{ flex: 1, maxWidth: 720, padding: '0 0 40px' }}>
           {tabContent[tab]}
@@ -368,16 +412,8 @@ export default function AppPage() {
   // Mobile layout
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
-      <button
-        onClick={async () => { await createClient().auth.signOut(); window.location.href = '/login' }}
-        style={{
-          position: 'fixed', top: 12, right: 16, zIndex: 9999,
-          background: 'none', border: '1px solid #ccc', borderRadius: 8,
-          padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: '#666',
-        }}
-      >
-        Sign out
-      </button>
+      {avatar}
+      {profileSheet}
       <main>{tabContent[tab]}</main>
       <BottomNav />
       <AddIncomeSheet

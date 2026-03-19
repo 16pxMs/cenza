@@ -106,8 +106,7 @@ function CelebrationContent({
     <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
       <div style={{ fontSize: 60, marginBottom: 16, lineHeight: 1 }}>{meta.icon}</div>
       <div style={{
-        fontSize: 22, fontWeight: 700, color: '#101828',
-        fontFamily: 'var(--font-sans)', marginBottom: 8,
+        fontSize: 22, fontWeight: 600, color: '#101828', marginBottom: 8,
       }}>
         You reached your goal!
       </div>
@@ -120,9 +119,8 @@ function CelebrationContent({
         borderRadius: 12,
         padding: '8px 20px',
         fontSize: 20,
-        fontWeight: 700,
+        fontWeight: 600,
         color: meta.dark,
-        fontFamily: 'var(--font-sans)',
       }}>
         {fmt(saved, currency)} saved
       </div>
@@ -138,7 +136,7 @@ function CelebrationContent({
           width: '100%', padding: '14px',
           background: meta.dark, border: 'none', borderRadius: 14,
           fontSize: 15, fontWeight: 600, color: '#fff',
-          cursor: 'pointer', fontFamily: 'var(--font-sans)',
+          cursor: 'pointer',
         }}
       >
         Thank you 🎉
@@ -180,9 +178,9 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
       style={{
         display: 'block', width: '100%', textAlign: 'left',
         background: T.white,
-        border: `1.5px solid ${isDone ? meta.border : T.border}`,
+        border: `1px solid ${isDone ? meta.border : 'var(--border)'}`,
         borderRadius: 16, padding: 16,
-        cursor: 'pointer', fontFamily: 'var(--font-sans)',
+        cursor: 'pointer',
       }}
     >
       {/* Header row */}
@@ -208,7 +206,7 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
             fontSize: 12, fontWeight: 600,
             color: isDone ? meta.dark : T.text2,
             background: isDone ? meta.light : '#F1F3F5',
-            border: `1px solid ${isDone ? meta.border : T.border}`,
+            border: `1px solid ${isDone ? meta.border : 'var(--border)'}`,
             borderRadius: 20, padding: '3px 10px',
           }}>
             {isDone ? '✓ Done' : `${pct}%`}
@@ -231,7 +229,7 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
       {/* Amounts row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: T.text1 }}>{fmt(goal.totalSaved, currency)}</div>
+          <div style={{ fontSize: 19, fontWeight: 600, color: T.text1 }}>{fmt(goal.totalSaved, currency)}</div>
           <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>saved</div>
         </div>
         {goal.target != null && (
@@ -246,7 +244,7 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
       {projected && (
         <div style={{
           marginTop: 12, paddingTop: 12,
-          borderTop: `1px solid ${T.border}`,
+          borderTop: `1px solid var(--border-subtle)`,
           fontSize: 12, color: T.text3,
         }}>
           On track for {projected}
@@ -432,14 +430,14 @@ export default function GoalsPage() {
       {/* Page header */}
       <div style={{ marginBottom: 28 }}>
         <div style={{
-          fontSize: 11, fontWeight: 700, letterSpacing: '0.1em',
+          fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
           color: T.textMuted, textTransform: 'uppercase', marginBottom: 4,
         }}>
           Goals
         </div>
         <h1 style={{
-          margin: 0, fontSize: 26, fontWeight: 700,
-          color: T.text1, fontFamily: 'var(--font-sans)',
+          margin: 0, fontSize: 26,
+          color: T.text1,
         }}>
           Your goals
         </h1>
@@ -456,7 +454,7 @@ export default function GoalsPage() {
       ) : goalDataList.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '48px 24px',
-          background: T.white, border: `1.5px solid ${T.border}`,
+          background: T.white, border: `1px solid var(--border)`,
           borderRadius: 16, marginBottom: 16,
         }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🎯</div>
@@ -467,8 +465,7 @@ export default function GoalsPage() {
             style={{
               width: '100%', height: 52, borderRadius: 14,
               background: T.brandDark, border: 'none', cursor: 'pointer',
-              fontSize: 15, fontWeight: 700, color: '#fff',
-              fontFamily: 'var(--font-sans)',
+              fontSize: 15, fontWeight: 600, color: '#fff',
             }}
           >
             Add a goal
@@ -488,10 +485,9 @@ export default function GoalsPage() {
           onClick={() => router.push(`/goals/new?exclude=${goals.join(',')}`)}
           style={{
             width: '100%', padding: '14px', borderRadius: 14,
-            border: `1.5px dashed ${T.borderStrong}`,
+            border: `1px dashed var(--border-strong)`,
             background: 'transparent', cursor: 'pointer',
             fontSize: 14, fontWeight: 600, color: T.brandDark,
-            fontFamily: 'var(--font-sans)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}
         >
@@ -558,7 +554,7 @@ export default function GoalsPage() {
             style={{
               marginTop: 12, width: '100%', padding: '12px',
               background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+              fontSize: 14, color: T.textMuted,
             }}
           >
             Remove this goal
@@ -590,9 +586,8 @@ export default function GoalsPage() {
                     onClick={() => setDeleteStep(opt.step)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '14px 16px',
-                      background: T.white, border: `1.5px solid ${T.border}`,
-                      borderRadius: 14, cursor: 'pointer',
-                      fontFamily: 'var(--font-sans)', marginBottom: 10,
+                      background: T.white, border: `1px solid var(--border)`,
+                      borderRadius: 14, cursor: 'pointer', marginBottom: 10,
                       display: 'block',
                     }}
                   >
@@ -605,7 +600,7 @@ export default function GoalsPage() {
                   style={{
                     marginTop: 4, width: '100%', padding: '12px',
                     background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+                    fontSize: 14, color: T.textMuted,
                   }}
                 >
                   Cancel
@@ -619,7 +614,7 @@ export default function GoalsPage() {
             return (
               <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
                 <div style={{ fontSize: 56, marginBottom: 12, lineHeight: 1 }}>🏆</div>
-                <div style={{ fontSize: 21, fontWeight: 700, color: T.text1, marginBottom: 8 }}>
+                <div style={{ fontSize: 21, fontWeight: 600, color: T.text1, marginBottom: 8 }}>
                   You actually did it.
                 </div>
                 <div style={{
@@ -627,7 +622,6 @@ export default function GoalsPage() {
                   background: meta.light, border: `1px solid ${meta.border}`,
                   borderRadius: 10, padding: '6px 18px',
                   fontSize: 15, fontWeight: 600, color: meta.dark,
-                  fontFamily: 'var(--font-sans)',
                 }}>
                   {meta.label} ✓
                 </div>
@@ -641,7 +635,6 @@ export default function GoalsPage() {
                     width: '100%', padding: '14px', borderRadius: 14,
                     background: meta.dark, border: 'none', cursor: 'pointer',
                     fontSize: 15, fontWeight: 600, color: '#fff',
-                    fontFamily: 'var(--font-sans)',
                   }}
                 >
                   Archive this goal 🎉
@@ -656,7 +649,7 @@ export default function GoalsPage() {
             return (
               <div style={{ padding: '4px 0' }}>
                 <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>💛</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: T.text1, marginBottom: 10 }}>
+                <div style={{ fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 10 }}>
                   Life happens.
                 </div>
                 <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 16px' }}>
@@ -684,7 +677,6 @@ export default function GoalsPage() {
                     width: '100%', padding: '14px', borderRadius: 14,
                     background: T.brandDark, border: 'none', cursor: 'pointer',
                     fontSize: 15, fontWeight: 600, color: '#fff',
-                    fontFamily: 'var(--font-sans)',
                   }}
                 >
                   Archive this goal
@@ -696,7 +688,7 @@ export default function GoalsPage() {
           {deleteStep === 'leaving' && (
             <div style={{ padding: '4px 0' }}>
               <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>👋</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: T.text1, marginBottom: 10 }}>
+              <div style={{ fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 10 }}>
                 No worries.
               </div>
               <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 24px' }}>
@@ -709,7 +701,6 @@ export default function GoalsPage() {
                   width: '100%', padding: '14px', borderRadius: 14,
                   background: '#D93025', border: 'none', cursor: 'pointer',
                   fontSize: 15, fontWeight: 600, color: '#fff',
-                  fontFamily: 'var(--font-sans)',
                 }}
               >
                 Yes, remove it
@@ -719,7 +710,7 @@ export default function GoalsPage() {
                 style={{
                   marginTop: 10, width: '100%', padding: '12px',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                  fontSize: 14, color: T.text3,
                 }}
               >
                 Go back

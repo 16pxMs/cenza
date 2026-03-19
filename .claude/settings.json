@@ -8,7 +8,12 @@
       "Bash(ls /Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\\\\\(app\\\\\\)/)",
       "Bash(ls -la /Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\\\\\(app\\\\\\)/)",
       "Bash(npm test:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(grep -rn \"fontFamily: ''var\\(--font-serif\\)''\" src/ --include=\"*.tsx\" --include=\"*.ts\")",
+      "Bash(grep -rn \"fontFamily: ''var\\(--font-sans\\)''\" src/ --include=\"*.tsx\" --include=\"*.ts\" --include=\"*.css\")",
+      "Bash(LC_ALL=C sed -i '' \"s/var\\(--font-serif\\)/var\\(--font-display\\)/g\" src/components/flows/overview/OverviewWithData.css src/components/flows/overview/OverviewWithData.tsx src/components/flows/income/AddIncomeSheet.css src/app/\\\\\\(public\\\\\\)/onboarding/page.tsx src/app/\\\\\\(app\\\\\\)/expenses/page.tsx src/app/\\\\\\(app\\\\\\)/targets/page.tsx src/app/\\\\\\(app\\\\\\)/plan/page.tsx src/app/demo/page.tsx src/app/\\\\\\(app\\\\\\)/budgets/page.tsx)",
+      "Bash(grep -rn \"border.*T\\\\.border[^SC]\\\\|borderTop.*T\\\\.border[^SC]\\\\|borderBottom.*T\\\\.border[^SC]\" src --include=*.tsx)"
     ]
   }
 }

@@ -145,14 +145,14 @@ function WelcomeScreen({ onNext }: { onNext: () => void }) {
       }} />
       {/* Logo mark */}
       <div style={{
-        fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
+        fontSize: 12, fontWeight: 600,
         color: '#C9AEE8', letterSpacing: 2, textTransform: 'uppercase' as const,
         marginBottom: 80,
       }}>CENZA</div>
       {/* Headline */}
       <div style={{ flex: 1 }}>
         <h1 style={{
-          fontFamily: 'var(--font-serif)', fontSize: 42, fontWeight: 700,
+          fontSize: 42,
           color: '#fff', margin: '0 0 20px', lineHeight: 1.15,
         }}>
           See your money clearly, {' '}
@@ -161,7 +161,7 @@ function WelcomeScreen({ onNext }: { onNext: () => void }) {
           </span>
         </h1>
         <p style={{
-          fontFamily: 'var(--font-sans)', fontSize: 15,
+          fontSize: 15,
           color: 'rgb(250, 250, 250)', lineHeight: 1.65,
           margin: 0, maxWidth: 320,
         }}>
@@ -173,14 +173,13 @@ function WelcomeScreen({ onNext }: { onNext: () => void }) {
         <button onClick={onNext} style={{
           width: '100%', height: 56, borderRadius: 16,
           background: '#9B6FCC', border: 'none', color: '#fff',
-          fontSize: 16, fontWeight: 600, fontFamily: 'var(--font-sans)',
+          fontSize: 16, fontWeight: 600,
           cursor: 'pointer', marginBottom: 16,
         }}>
           Get started 
         </button>
         <p style={{
-          textAlign: 'center', margin: 0,
-          fontFamily: 'var(--font-sans)', fontSize: 14,
+          textAlign: 'center', margin: 0, fontSize: 14,
           color: 'rgba(234,223,244,0.4)',
         }}>
           Already have an account?{' '}
@@ -202,23 +201,22 @@ function LoginScreen({ onNext }: { onNext: () => void }) {
     }}>
       <button onClick={onNext} style={{
         background: 'none', border: 'none', cursor: 'pointer',
-        color: T.text3, fontSize: 14, fontFamily: 'var(--font-sans)',
+        color: T.text3, fontSize: 14,
         textAlign: 'left', padding: '4px 0', marginBottom: 32,
       }}>← Back</button>
       <h1 style={{
-        fontFamily: 'var(--font-serif)', fontSize: 30, fontWeight: 700,
+        fontSize: 30,
         color: T.text1, margin: '0 0 6px',
       }}>Create your account</h1>
       <p style={{
-        fontFamily: 'var(--font-sans)', fontSize: 14, color: T.text3,
+        fontSize: 14, color: T.text3,
         margin: '0 0 32px',
       }}>Takes under a minute.</p>
       <button onClick={onNext} style={{
         width: '100%', height: 52, borderRadius: 14,
         border: `1.5px solid ${T.border}`, background: T.white,
         cursor: 'pointer', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', gap: 12, fontSize: 15, fontWeight: 600,
-        fontFamily: 'var(--font-sans)', color: T.text1, marginBottom: 24,
+        justifyContent: 'center', gap: 12, fontSize: 15, fontWeight: 600, color: T.text1, marginBottom: 24,
       }}>
         <svg width="20" height="20" viewBox="0 0 48 48">
           <path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.5 20-21 0-1.4-.2-2.7-.5-4z"/>
@@ -230,26 +228,26 @@ function LoginScreen({ onNext }: { onNext: () => void }) {
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <div style={{ flex: 1, height: 1, background: T.border }} />
-        <span style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)' }}>or</span>
+        <span style={{ fontSize: 13, color: T.textMuted }}>or</span>
         <div style={{ flex: 1, height: 1, background: T.border }} />
       </div>
       {/* Name field */}
       <div style={{ marginBottom: 14 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: T.text2, display: 'block', marginBottom: 6, fontFamily: 'var(--font-sans)' }}>First name</label>
+        <label style={{ fontSize: 13, fontWeight: 600, color: T.text2, display: 'block', marginBottom: 6 }}>First name</label>
         <div style={{ height: 48, borderRadius: 12, border: `1.5px solid ${T.border}`, background: T.white, display: 'flex', alignItems: 'center', padding: '0 14px' }}>
-          <span style={{ fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)' }}>Ada</span>
+          <span style={{ fontSize: 14, color: T.textMuted }}>Ada</span>
         </div>
       </div>
       {/* Email field */}
       <div style={{ marginBottom: 14 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: T.text2, display: 'block', marginBottom: 6, fontFamily: 'var(--font-sans)' }}>Email</label>
+        <label style={{ fontSize: 13, fontWeight: 600, color: T.text2, display: 'block', marginBottom: 6 }}>Email</label>
         <div style={{ height: 48, borderRadius: 12, border: `1.5px solid ${T.border}`, background: T.white, display: 'flex', alignItems: 'center', padding: '0 14px' }}>
-          <span style={{ fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)' }}>ada@example.com</span>
+          <span style={{ fontSize: 14, color: T.textMuted }}>ada@example.com</span>
         </div>
       </div>
       {/* Password field */}
       <div style={{ marginBottom: 32 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: T.text2, display: 'block', marginBottom: 6, fontFamily: 'var(--font-sans)' }}>Password</label>
+        <label style={{ fontSize: 13, fontWeight: 600, color: T.text2, display: 'block', marginBottom: 6 }}>Password</label>
         <div style={{ height: 48, borderRadius: 12, border: `1.5px solid ${T.border}`, background: T.white, display: 'flex', alignItems: 'center', padding: '0 14px' }}>
           <span style={{ fontSize: 20, color: T.textMuted, letterSpacing: 4 }}>••••••••</span>
         </div>
@@ -258,10 +256,10 @@ function LoginScreen({ onNext }: { onNext: () => void }) {
       <button onClick={onNext} style={{
         width: '100%', height: 52, borderRadius: 14,
         background: T.brandDark, border: 'none', color: '#fff',
-        fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+        fontSize: 15, fontWeight: 600, cursor: 'pointer',
         marginBottom: 12,
       }}>Create account</button>
-      <p style={{ textAlign: 'center', fontSize: 12, color: T.textMuted, fontFamily: 'var(--font-sans)', margin: 0 }}>
+      <p style={{ textAlign: 'center', fontSize: 12, color: T.textMuted, margin: 0 }}>
         By continuing you agree to our{' '}
         <span style={{ color: T.brandDeep }}>Terms</span> and{' '}
         <span style={{ color: T.brandDeep }}>Privacy Policy</span>
@@ -292,14 +290,13 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
         <div style={{ height: '100%', width: '33%', background: T.brandDeep, borderRadius: 99 }} />
       </div>
       <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer',
-        color: T.text3, fontSize: 14, fontFamily: 'var(--font-sans)',
+        color: T.text3, fontSize: 14,
         textAlign: 'left', padding: '4px 0', marginBottom: 20 }}>← Back</button>
-      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 700,
+      <h1 style={{ fontSize: 28,
         color: T.text1, margin: '0 0 8px', lineHeight: 1.2 }}>
         What currency <br />are you paid in?
       </h1>
-      <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px',
-        fontFamily: 'var(--font-sans)', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
         Pick the currency your day to day life runs on, not where you live.
       </p>
 
@@ -317,7 +314,6 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
           style={{
             flex: 1, border: 'none', background: 'transparent',
             fontSize: 15, color: T.text1, outline: 'none',
-            fontFamily: 'var(--font-sans)',
           }}
         />
         {query && (
@@ -329,9 +325,9 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
       </div>
 
       {/* Section label */}
-      <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted,
+      <p style={{ fontSize: 11, fontWeight: 600, color: T.textMuted,
         letterSpacing: 1.2, textTransform: 'uppercase' as const,
-        margin: '0 0 12px', fontFamily: 'var(--font-sans)' }}>
+        margin: '0 0 12px' }}>
         {isSearching ? `${list.length} result${list.length !== 1 ? 's' : ''}` : 'Common currencies'}
       </p>
 
@@ -339,7 +335,7 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
         {list.length === 0 && (
           <div style={{ textAlign: 'center', padding: '32px 0',
-            color: T.textMuted, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+            color: T.textMuted, fontSize: 14 }}>
             No results for "{query}"
           </div>
         )}
@@ -366,16 +362,14 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
                 <div style={{
                 fontSize: 13,
                 fontWeight: 500,
-                color: T.text1,
-                fontFamily: 'var(--font-sans)'
+                color: T.text1
               }}>
                 {c.code}
               </div>
 
               <div style={{
                 fontSize: 13,
-                color: T.text3,
-                fontFamily: 'var(--font-sans)'
+                color: T.text3
               }}>
                 {c.name}
               </div>
@@ -391,8 +385,7 @@ function OnboardingCurrency({ onNext, onBack, data, setData }: any) {
       <button onClick={onNext} disabled={!selected} style={{
         width: '100%', height: 52, borderRadius: 14,
         background: selected ? T.brandDark : T.textMuted,
-        border: 'none', color: '#fff', fontSize: 15, fontWeight: 600,
-        fontFamily: 'var(--font-sans)', cursor: selected ? 'pointer' : 'default',
+        border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: selected ? 'pointer' : 'default',
         marginTop: 16, opacity: selected ? 1 : 0.45, flexShrink: 0,
       }}>
         {selected ? `Continue with ${selected}` : 'Continue'}
@@ -418,9 +411,9 @@ function OnboardingMonth({ onNext, onBack, data, setData }: any) {
       <div style={{ height: 3, background: T.border, borderRadius: 99, overflow: 'hidden', marginBottom: 20 }}>
         <div style={{ height: '100%', width: '66%', background: T.brandDeep, borderRadius: 99 }} />
       </div>
-      <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.text3, fontSize: 14, fontFamily: 'var(--font-sans)', textAlign: 'left', padding: '4px 0', marginBottom: 20 }}>← Back</button>
-      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 700, color: T.text1, margin: '0 0 8px', lineHeight: 1.2 }}>When does your<br />month start?</h1>
-      <p style={{ fontSize: 14, color: T.text3, margin: '0 0 24px', fontFamily: 'var(--font-sans)', lineHeight: 1.6 }}>
+      <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.text3, fontSize: 14, textAlign: 'left', padding: '4px 0', marginBottom: 20 }}>← Back</button>
+      <h1 style={{ fontSize: 28, color: T.text1, margin: '0 0 8px', lineHeight: 1.2 }}>When does your<br />month start?</h1>
+      <p style={{ fontSize: 14, color: T.text3, margin: '0 0 24px', lineHeight: 1.6 }}>
         Your month starts when your money arrives, <br />not on the 1st of the calendar.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
@@ -432,8 +425,8 @@ function OnboardingMonth({ onNext, onBack, data, setData }: any) {
               border: `${sel ? 2 : 1.5}px solid ${sel ? T.brandDeep : T.border}`,
               borderRadius: 16, padding: '18px 16px', cursor: 'pointer', textAlign: 'left',
             }}>
-              <div style={{ fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, color: sel ? T.brandDark : T.text1 }}>{o.label}</div>
-              <div style={{ fontSize: 12, color: T.text3, marginTop: 4, fontFamily: 'var(--font-sans)' }}>{o.sub}</div>
+              <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 600, color: sel ? T.brandDark : T.text1 }}>{o.label}</div>
+              <div style={{ fontSize: 12, color: T.text3, marginTop: 4 }}>{o.sub}</div>
             </button>
           )
         })}
@@ -441,7 +434,7 @@ function OnboardingMonth({ onNext, onBack, data, setData }: any) {
       {/* Custom day picker */}
       {data.monthStart === 'custom' && (
         <div style={{ background: T.brand + '33', border: `1.5px solid ${T.brandMid}88`, borderRadius: 16, padding: '16px 14px 14px' }}>
-          <p style={{ margin: '0 0 12px', fontSize: 12.5, fontWeight: 600, color: T.brandDark, letterSpacing: 0.3, textTransform: 'uppercase' as const, fontFamily: 'var(--font-sans)' }}>Choose the day</p>
+          <p style={{ margin: '0 0 12px', fontSize: 12.5, fontWeight: 600, color: T.brandDark, letterSpacing: 0.3, textTransform: 'uppercase' as const }}>Choose the day</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5 }}>
             {Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
               const sel = data.customDay === d
@@ -452,13 +445,12 @@ function OnboardingMonth({ onNext, onBack, data, setData }: any) {
                   border: `1.5px solid ${sel ? T.brandDeep : T.border}`,
                   color: sel ? '#fff' : T.text2, fontSize: 12.5,
                   fontWeight: sel ? 600 : 400, cursor: 'pointer', padding: 0,
-                  fontFamily: 'var(--font-sans)',
                 }}>{d}</button>
               )
             })}
           </div>
           {data.customDay && (
-            <p style={{ margin: '12px 0 0', fontSize: 13, color: T.brandDark, fontStyle: 'italic', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>
+            <p style={{ margin: '12px 0 0', fontSize: 13, color: T.brandDark, fontStyle: 'italic', textAlign: 'center' }}>
               Your month starts on the <strong>{data.customDay}{suffix(data.customDay)}</strong>
             </p>
           )}
@@ -468,8 +460,7 @@ function OnboardingMonth({ onNext, onBack, data, setData }: any) {
       <button onClick={onNext} disabled={!data.monthStart || (data.monthStart === 'custom' && !data.customDay)} style={{
         width: '100%', height: 52, borderRadius: 14,
         background: (data.monthStart && (data.monthStart !== 'custom' || data.customDay)) ? T.brandDark : T.textMuted,
-        border: 'none', color: '#fff', fontSize: 15, fontWeight: 600,
-        fontFamily: 'var(--font-sans)', cursor: 'pointer', marginTop: 36,
+        border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', marginTop: 36,
         opacity: (data.monthStart && (data.monthStart !== 'custom' || data.customDay)) ? 1 : 0.45,
       }}>Continue</button>
     </div>
@@ -509,7 +500,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
         <IconBadge size={38} bg={sel ? 'color-mix(in srgb, var(--brand-mid) 30%, transparent)' : 'color-mix(in srgb, var(--border) 50%, transparent)'} radius={999}>
           <Icon size={18} color={sel ? 'var(--brand-dark)' : 'var(--text-3)'} />
         </IconBadge>
-        <span style={{ fontSize: 14, fontWeight: 500, color: T.text1, fontFamily: 'var(--font-sans)' }}>{label}</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: T.text1 }}>{label}</span>
       </button>
     )
   }
@@ -522,9 +513,9 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
       <div style={{ height: 3, background: T.border, borderRadius: 99, overflow: 'hidden', marginBottom: 20 }}>
         <div style={{ height: '100%', width: '100%', background: T.brandDeep, borderRadius: 99 }} />
       </div>
-      <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.text3, fontSize: 14, fontFamily: 'var(--font-sans)', textAlign: 'left', padding: '4px 0', marginBottom: 20 }}>← Back</button>
-      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 700, color: T.text1, margin: '0 0 6px', lineHeight: 1.2 }}>What are you saving towards?</h1>
-      <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', fontStyle: 'italic', fontFamily: 'var(--font-sans)' }}>You don&apos;t need to know the numbers yet.</p>
+      <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.text3, fontSize: 14, textAlign: 'left', padding: '4px 0', marginBottom: 20 }}>← Back</button>
+      <h1 style={{ fontSize: 28, color: T.text1, margin: '0 0 6px', lineHeight: 1.2 }}>What are you saving towards?</h1>
+      <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', fontStyle: 'italic' }}>You don&apos;t need to know the numbers yet.</p>
 
       {/* Emergency fund featured card */}
       <button onClick={() => toggle('emergency')} style={{
@@ -535,8 +526,8 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
       }}>
         <div style={{ padding: '18px 18px 14px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: T.text1, fontFamily: 'var(--font-serif)', marginBottom: 6 }}>Emergency Fund</div>
-            <div style={{ fontSize: 13.5, color: T.text2, lineHeight: 1.55, fontFamily: 'var(--font-sans)' }}>
+            <div style={{ fontSize: 17, fontWeight: 500, color: T.text1, fontFamily: 'var(--font-display)', marginBottom: 6 }}>Emergency Fund</div>
+            <div style={{ fontSize: 13.5, color: T.text2, lineHeight: 1.55 }}>
               Start here before any other goal, even if you already have one, we helps you track what you have.
             </div>
           </div>
@@ -550,7 +541,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
           </div>
         </div>
         <div style={{ background: '#DCFCE7', borderTop: '1px solid #BBF7D0', padding: '10px 18px', borderRadius: '0 0 14px 14px' }}>
-          <p style={{ margin: 0, fontSize: 13.5, color: '#15803D', lineHeight: 1.55, fontFamily: 'var(--font-sans)' }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: '#15803D', lineHeight: 1.55 }}>
             Having an emergency fund means one bad month doesn&apos;t send you into debt.
           </p>
         </div>
@@ -570,7 +561,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
           <IconBadge size={38} bg={selected.includes('other') ? 'color-mix(in srgb, var(--brand-mid) 30%, transparent)' : 'color-mix(in srgb, var(--border) 50%, transparent)'} radius={10}>
             <IconGoalOther size={18} color={selected.includes('other') ? 'var(--brand-dark)' : 'var(--text-3)'} />
           </IconBadge>
-          <span style={{ fontSize: 14, fontWeight: 500, color: T.text1, fontFamily: 'var(--font-sans)' }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: T.text1 }}>
             {otherLabel || 'Other'}
           </span>
         </button>
@@ -581,8 +572,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
       <button onClick={onNext} disabled={selected.length === 0} style={{
         width: '100%', height: 52, borderRadius: 14,
         background: selected.length > 0 ? T.brandDark : T.textMuted,
-        border: 'none', color: '#fff', fontSize: 15, fontWeight: 600,
-        fontFamily: 'var(--font-sans)', cursor: selected.length > 0 ? 'pointer' : 'default',
+        border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: selected.length > 0 ? 'pointer' : 'default',
         marginTop: 16, opacity: selected.length > 0 ? 1 : 0.45,
       }}>
         {selected.length === 0 ? 'Select at least one goal' : `Continue with ${selected.length} goal${selected.length > 1 ? 's' : ''}`}
@@ -590,7 +580,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
 
       <button onClick={onNext} style={{
         background: 'none', border: 'none', cursor: 'pointer',
-        color: T.text3, fontSize: 13, fontFamily: 'var(--font-sans)',
+        color: T.text3, fontSize: 13,
         marginTop: 14, textAlign: 'center', width: '100%', padding: '4px 0',
       }}>
         I'll set my goals later
@@ -609,10 +599,9 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
           }}>
             <div style={{ width: 36, height: 4, borderRadius: 99,
               background: T.border, margin: '0 auto 24px' }} />
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 700,
+            <h2 style={{ fontSize: 20,
               color: T.text1, margin: '0 0 6px' }}>What are you saving for?</h2>
-            <p style={{ fontSize: 13, color: T.text3, margin: '0 0 20px',
-              fontFamily: 'var(--font-sans)' }}>Give your goal a name so we can track it.</p>
+            <p style={{ fontSize: 13, color: T.text3, margin: '0 0 20px' }}>Give your goal a name so we can track it.</p>
             <input
               autoFocus
               value={otherInput}
@@ -621,8 +610,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
               style={{
                 width: '100%', height: 48, borderRadius: 12,
                 border: `1.5px solid ${otherInput ? T.brandDeep : T.border}`,
-                padding: '0 14px', fontSize: 15, color: T.text1,
-                fontFamily: 'var(--font-sans)', outline: 'none',
+                padding: '0 14px', fontSize: 15, color: T.text1, outline: 'none',
                 boxSizing: 'border-box', background: T.pageBg,
               }}
             />
@@ -639,8 +627,7 @@ function OnboardingGoals({ onNext, onBack, data, setData }: any) {
               style={{
                 width: '100%', height: 52, borderRadius: 14, marginTop: 16,
                 background: otherInput.trim() ? T.brandDark : T.textMuted,
-                border: 'none', color: '#fff', fontSize: 15, fontWeight: 600,
-                fontFamily: 'var(--font-sans)', cursor: otherInput.trim() ? 'pointer' : 'default',
+                border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: otherInput.trim() ? 'pointer' : 'default',
                 opacity: otherInput.trim() ? 1 : 0.45,
               }}>
               Add goal
@@ -665,11 +652,11 @@ function OnboardingDone({ onNext, data }: any) {
       padding: '20px 16px 36px', background: T.pageBg, maxWidth: 480, margin: '0 auto',
     }}>
       <div style={{ textAlign: 'center', marginTop: 48, marginBottom: 28 }}>
-        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 26, fontWeight: 600, color: T.text1, margin: '0 0 8px' }}>
+        <h1 style={{ fontSize: 26, color: T.text1, margin: '0 0 8px' }}>
           You&apos;re all set,{' '}
           <span style={{ color: T.brandDeep, fontStyle: 'italic' }}>{data.name || MOCK.name}!</span>
         </h1>
-        <p style={{ fontSize: 14, color: T.text2, margin: 0, lineHeight: 1.6, fontFamily: 'var(--font-sans)' }}>
+        <p style={{ fontSize: 14, color: T.text2, margin: 0, lineHeight: 1.6 }}>
           Your first month is a blank slate.<br />Start by adding your income.
         </p>
       </div>
@@ -677,15 +664,15 @@ function OnboardingDone({ onNext, data }: any) {
         <div style={{ background: T.white, border: `1.5px solid ${T.border}`, borderRadius: 14, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ width: 36, height: 36, borderRadius: 999, background: T.brand + '55', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💱</div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, textTransform: 'uppercase' as const, letterSpacing: 1, fontFamily: 'var(--font-sans)' }}>Currency</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginTop: 2, fontFamily: 'var(--font-sans)' }}>{data.currency || MOCK.currency}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Currency</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginTop: 2 }}>{data.currency || MOCK.currency}</div>
           </div>
         </div>
         <div style={{ background: T.white, border: `1.5px solid ${T.border}`, borderRadius: 14, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8, fontFamily: 'var(--font-sans)' }}>Your Goals</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Your Goals</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
             {(data.goals || MOCK.goals).map((g: string) => (
-              <span key={g} style={{ background: T.brand + '55', color: T.brandDark, border: `1px solid ${T.brandMid}`, borderRadius: 99, padding: '4px 12px', fontSize: 12.5, fontWeight: 500, fontFamily: 'var(--font-sans)' }}>
+              <span key={g} style={{ background: T.brand + '55', color: T.brandDark, border: `1px solid ${T.brandMid}`, borderRadius: 99, padding: '4px 12px', fontSize: 12.5, fontWeight: 500 }}>
                 {goalLabels[g]}
               </span>
             ))}
@@ -696,7 +683,7 @@ function OnboardingDone({ onNext, data }: any) {
       <button onClick={onNext} style={{
         width: '100%', height: 52, borderRadius: 14,
         background: T.brandDark, border: 'none', color: '#fff',
-        fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)',
+        fontSize: 15, fontWeight: 600,
         cursor: 'pointer', marginTop: 36,
       }}>
         Go to my overview
@@ -729,9 +716,9 @@ function AppShell({ screen }: { screen: DemoScreen }) {
 
   const content: Record<string, React.ReactNode> = {
     overview,
-    spend:   <div style={{ padding: 28, color: 'var(--text-3)', fontFamily: 'var(--font-sans)', fontSize: 14 }}>Spend tab — coming soon</div>,
-    goals:   <div style={{ padding: 28, color: 'var(--text-3)', fontFamily: 'var(--font-sans)', fontSize: 14 }}>Goals tab — coming soon</div>,
-    finance: <div style={{ padding: 28, color: 'var(--text-3)', fontFamily: 'var(--font-sans)', fontSize: 14 }}>Finance tab — coming soon</div>,
+    spend:   <div style={{ padding: 28, color: 'var(--text-3)', fontSize: 14 }}>Spend tab — coming soon</div>,
+    goals:   <div style={{ padding: 28, color: 'var(--text-3)', fontSize: 14 }}>Goals tab — coming soon</div>,
+    finance: <div style={{ padding: 28, color: 'var(--text-3)', fontSize: 14 }}>Finance tab — coming soon</div>,
   }
 
   return (

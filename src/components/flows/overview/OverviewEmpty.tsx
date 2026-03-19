@@ -1,71 +1,89 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import './OverviewEmpty.css'
-import { Plus } from 'lucide-react'
-
-const GOAL_META: Record<string, { label: string; icon: string; lightColor: string; borderColor: string }> = {
-  emergency: { label: 'Emergency Fund', icon: '🛡️', lightColor: '#F0FDF4', borderColor: '#BBF7D0' },
-  car:       { label: 'Car Fund',       icon: '🚗', lightColor: '#EADFF4', borderColor: '#C9AEE8' },
-  travel:    { label: 'Travel',         icon: '✈️', lightColor: '#FFFBEB', borderColor: '#FDE68A' },
-  home:      { label: 'Home',           icon: '🏠', lightColor: '#EADFF4', borderColor: '#C9AEE8' },
-  education: { label: 'Education',      icon: '📚', lightColor: '#EADFF4', borderColor: '#C9AEE8' },
-  business:  { label: 'Business',       icon: '💼', lightColor: '#EADFF4', borderColor: '#C9AEE8' },
-  family:    { label: 'Family',         icon: '👨‍👩‍👧', lightColor: '#EADFF4', borderColor: '#C9AEE8' },
-  other:     { label: 'Other Goal',     icon: '⭐', lightColor: '#EADFF4', borderColor: '#C9AEE8' },
-}
+import { fmt } from '@/lib/finance'
 
 interface Props {
   name: string
-  goals: string[]
-  onAddIncome: () => void
-  isDesktop?: boolean
+  currency: string
+  onSave: (data: { income: number; extraIncome: { id: string; label: string; amount: number }[]; total: number }) => void
 }
 
-export function OverviewEmpty({ name, goals, onAddIncome, isDesktop }: Props) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t) }, [])
+function getGreeting(name: string) {
+  const hour = new Date().getHours()
+  if (hour < 12) return `Morning, ${name}`
+  if (hour < 18) return `Hey, ${name}`
+  return `Evening, ${name}`
+}
+
+export function OverviewEmpty({ name, currency, onSave }: Props) {
+  const [display, setDisplay] = useState('')   // formatted string shown in input
+  const [raw, setRaw]         = useState(0)    // actual number used for saving
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const canSave = raw > 0
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/[^0-9]/g, '')
+    const num = digits ? parseInt(digits, 10) : 0
+    setRaw(num)
+    setDisplay(num > 0 ? num.toLocaleString() : '')
+  }
+
+  const handleSave = () => {
+    if (!canSave) return
+    onSave({ income: raw, extraIncome: [], total: raw })
+  }
+
+  const initial = (name ?? '?')[0].toUpperCase()
+
+  // Scale font down as number grows so it always fits one line
+  const fontSize = display.length <= 5 ? 64
+    : display.length <= 8  ? 52
+    : display.length <= 11 ? 38
+    : 28
 
   return (
-    <div className={`overview-empty${isDesktop ? ' overview-empty--desktop' : ''}`}>
-      <div className={`overview-empty__greeting${mounted ? ' overview-empty__greeting--mounted' : ''}`}>
-        <h1 className={`overview-empty__heading${isDesktop ? ' overview-empty__heading--desktop' : ''}`}>
-          Morning, {name} ✦
-        </h1>
+    <div className="overview-empty">
+
+      {/* Top bar */}
+      <div className="overview-empty__topbar">
+        <p className="overview-empty__greeting">{getGreeting(name)}</p>
+        <div className="overview-empty__avatar">{initial}</div>
       </div>
-      <div className={`overview-empty__income-card${mounted ? ' overview-empty__income-card--mounted' : ''}`}>
-        <div className="overview-empty__income-inner">
-          <div className="overview-empty__income-glow" />
-          <p className="overview-empty__income-step">Step 1 of 1</p>
-          <h2 className="overview-empty__income-title">Add your income</h2>
-          <p className="overview-empty__income-sub">Everything else flows from here: expenses, goals, budgets. Takes 30 seconds.</p>
-          <button className="overview-empty__income-btn" onClick={onAddIncome}>
-            <Plus size={16} />
-            Add income
-          </button>
-        </div>
+
+      {/* Heading */}
+      <h1 className="overview-empty__heading">What do you earn<br />each month?</h1>
+      <p className="overview-empty__sub">The amount that actually lands in your account each month.</p>
+
+      {/* Income input */}
+      <div className="overview-empty__input-zone" onClick={() => inputRef.current?.focus()}>
+        <span className="overview-empty__currency-label">{currency}</span>
+        <input
+          ref={inputRef}
+          className="overview-empty__amount-input"
+          type="text"
+          inputMode="numeric"
+          placeholder="0"
+          value={display}
+          onChange={handleChange}
+          autoFocus
+          style={{ fontSize }}
+        />
+        {canSave && (
+          <span className="overview-empty__amount-formatted">
+            {fmt(raw, currency)}
+          </span>
+        )}
       </div>
-      <div className={`overview-empty__goals-fade${mounted ? ' overview-empty__goals-fade--mounted' : ''}`}>
-        <div className="overview-empty__goals-header">
-          <span className="overview-empty__goals-label">Your Goals</span>
-          <span className="overview-empty__goals-hint">Available after income added</span>
-        </div>
-        {goals.map(gid => {
-          const meta = GOAL_META[gid]
-          if (!meta) return null
-          return (
-            <div key={gid} className="overview-empty__goal-row">
-              <div className="overview-empty__goal-icon" style={{ background: meta.lightColor, border: `1.5px solid ${meta.borderColor}` }}>
-                {meta.icon}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div className="overview-empty__goal-name">{meta.label}</div>
-                <div className="overview-empty__goal-sub">Target not set yet</div>
-              </div>
-              <div className="overview-empty__goal-bar" />
-            </div>
-          )
-        })}
+
+      {/* Bottom — always visible */}
+      <div className="overview-empty__bottom">
+        <button className="overview-empty__cta" onClick={handleSave} disabled={!canSave}>
+          Add my income
+        </button>
       </div>
+
     </div>
   )
 }

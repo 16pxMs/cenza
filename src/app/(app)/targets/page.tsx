@@ -102,16 +102,15 @@ function AmountInput({ value, onChange, prefix, placeholder }: {
     <div style={{
       display: 'flex', alignItems: 'center',
       height: 54, borderRadius: 14,
-      border: `1.5px solid ${focused ? T.brandDeep : T.border}`,
+      border: focused ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
       background: T.white, overflow: 'hidden',
       transition: 'border-color 0.2s ease',
     }}>
       <span style={{
         padding: '0 14px 0 16px', fontSize: 15, color: T.text3,
-        fontWeight: 600, borderRight: `1px solid ${T.border}`,
+        fontWeight: 600, borderRight: `1px solid var(--border-subtle)`,
         height: '100%', display: 'flex', alignItems: 'center',
         background: T.brand + '33', flexShrink: 0,
-        fontFamily: 'var(--font-sans)',
       }}>
         {prefix}
       </span>
@@ -126,7 +125,7 @@ function AmountInput({ value, onChange, prefix, placeholder }: {
         style={{
           flex: 1, height: '100%', border: 'none', outline: 'none',
           padding: '0 16px', fontSize: 24, fontWeight: 600,
-          fontFamily: 'var(--font-serif)', color: T.text1, background: 'transparent',
+          fontFamily: 'var(--font-display)', color: T.text1, background: 'transparent',
         }}
       />
     </div>
@@ -243,8 +242,8 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
     if (!result) return null
 
     return (
-      <div style={{ background: result.bg, border: `1.5px solid ${result.border}`, borderRadius: 12, padding: '12px 16px', marginTop: 10, marginBottom: 4 }}>
-        <p style={{ margin: result.body ? '0 0 3px' : 0, fontSize: 13, fontWeight: 700, color: result.color, lineHeight: 1.4 }}>{result.headline}</p>
+      <div style={{ background: result.bg, border: `1px solid ${result.border}`, borderRadius: 12, padding: '12px 16px', marginTop: 10, marginBottom: 4 }}>
+        <p style={{ margin: result.body ? '0 0 3px' : 0, fontSize: 13, fontWeight: 600, color: result.color, lineHeight: 1.4 }}>{result.headline}</p>
         {result.body && <p style={{ margin: 0, fontSize: 12.5, color: result.color, opacity: 0.85, lineHeight: 1.6 }}>{result.body}</p>}
       </div>
     )
@@ -257,17 +256,17 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
 
   return (
     <div style={{
-      minHeight: '100vh', background: T.pageBg, fontFamily: 'var(--font-sans)',
+      minHeight: '100vh', background: T.pageBg,
       display: 'flex', flexDirection: 'column',
       marginLeft: bleedMargin, marginRight: bleedMargin,
     }}>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid ${T.border}` }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid var(--border-subtle)` }}>
         <div style={{ height: 56, display: 'flex', alignItems: 'center', padding: isDesktop ? '0 80px' : '0 16px' }}>
           {/* Back button — always visible */}
           <div style={{ flex: 1 }}>
-            <button onClick={handleBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text2, fontFamily: 'var(--font-sans)', padding: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={handleBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text2, padding: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               ← Back
             </button>
           </div>
@@ -294,8 +293,8 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
           transition: 'all 0.35s ease', marginBottom: goalId === 'travel' ? 16 : 24,
         }}>
           <h2 style={{
-            fontFamily: 'var(--font-serif)', fontSize: isDesktop ? 30 : 26,
-            fontWeight: 600, color: T.text1, margin: '0 0 8px', transition: 'all 0.2s ease',
+            fontSize: isDesktop ? 30 : 26,
+            color: T.text1, margin: '0 0 8px', transition: 'all 0.2s ease',
           }}>
             {goalId === 'travel'
               ? destination.trim() ? `Travel to ${destination.trim()}` : 'Where to?'
@@ -322,10 +321,9 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
               maxLength={40}
               style={{
                 width: '100%', height: 54, borderRadius: 14, boxSizing: 'border-box',
-                border: `1.5px solid ${destFocused ? T.brandDeep : T.border}`,
+                border: destFocused ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
                 padding: '0 16px', fontSize: 16, color: T.text1,
-                background: T.white, outline: 'none',
-                fontFamily: 'var(--font-sans)', transition: 'border-color 0.2s ease',
+                background: T.white, outline: 'none', transition: 'border-color 0.2s ease',
               }}
             />
             <p style={{ margin: '8px 0 0', fontSize: 13, color: T.text3, lineHeight: 1.55 }}>
@@ -346,14 +344,13 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
                   <button key={months} onClick={() => setAmount(String(suggested))} style={{
                     flex: 1, padding: '11px 12px', borderRadius: 12, cursor: 'pointer',
                     background: isSelected ? T.brandDark : T.white,
-                    border: `1.5px solid ${isSelected ? T.brandDark : T.border}`,
+                    border: isSelected ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
                     textAlign: 'left', transition: 'all 0.15s ease',
-                    fontFamily: 'var(--font-sans)',
                   }}>
                     <div style={{ fontSize: 12, color: isSelected ? 'rgba(234,223,244,0.6)' : T.text3, marginBottom: 2 }}>
                       {months} months
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: isSelected ? '#fff' : T.text1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: isSelected ? '#fff' : T.text1 }}>
                       {fmt(suggested, currency)}
                     </div>
                   </button>
@@ -387,7 +384,7 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
       {/* Footer — sits above BottomNav on mobile */}
       <div style={{
         position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0,
-        background: T.pageBg, borderTop: `1px solid ${T.border}`,
+        background: T.pageBg, borderTop: `1px solid var(--border-subtle)`,
         padding: isDesktop ? '16px 0' : '12px 20px 16px',
       }}>
         <div style={{ maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
@@ -404,7 +401,7 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
             style={{
               width: '100%', height: 52, borderRadius: 14,
               background: T.brandDark, border: 'none', color: '#fff',
-              fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-sans)',
+              fontSize: 15, fontWeight: 600,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
@@ -415,7 +412,7 @@ function GoalSetupFlow({ goals, currency, totalIncome, onDone, isDesktop, onBack
             style={{
               width: '100%', height: 40, marginTop: 8,
               background: 'none', border: 'none', color: T.textMuted,
-              fontSize: 13, fontFamily: 'var(--font-sans)',
+              fontSize: 13,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
@@ -520,8 +517,7 @@ export default function TargetsPage() {
     return (
       <div style={{
         minHeight: '100vh', background: T.pageBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--font-sans)', color: T.text3, fontSize: 14,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text3, fontSize: 14,
       }}>
         Loading...
       </div>

@@ -37,7 +37,6 @@ export function AddGoalTargetsSheet({ open, onClose, goals = [], currency }: Pro
       <p style={{
         fontSize: 13,
         color: 'var(--text-3)',
-        fontFamily: 'var(--font-sans)',
         margin: '0 0 20px',
         lineHeight: 1.5,
       }}>

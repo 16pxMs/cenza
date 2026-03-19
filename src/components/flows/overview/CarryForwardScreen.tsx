@@ -89,7 +89,6 @@ export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, on
     <div style={{
       minHeight: '100vh',
       background: T.pageBg,
-      fontFamily: 'var(--font-sans)',
       padding: isDesktop ? '48px 0' : '32px 0 48px',
     }}>
       <div style={{ maxWidth: isDesktop ? 520 : '100%', margin: '0 auto', padding: '0 20px' }}>
@@ -97,9 +96,7 @@ export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, on
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
           <h1 style={{
-            fontFamily: 'var(--font-serif)',
             fontSize: isDesktop ? 30 : 26,
-            fontWeight: 700,
             color: T.text1,
             margin: '0 0 8px',
             letterSpacing: '-0.3px',
@@ -117,7 +114,7 @@ export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, on
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '13px 16px',
             background: T.white,
-            border: `1.5px solid ${T.border}`,
+            border: `1px solid var(--border)`,
             borderRadius: 12,
           }}>
             <span style={{ fontSize: 14, color: T.text2 }}>
@@ -178,8 +175,8 @@ export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, on
               height: 54, borderRadius: 14,
               background: T.brandDark,
               border: 'none', color: '#fff',
-              fontSize: 15, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              fontSize: 15, fontWeight: 600,
+              cursor: 'pointer',
               width: '100%',
               opacity: saving ? 0.7 : 1,
             }}
@@ -192,7 +189,7 @@ export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, on
             style={{
               height: 44, background: 'none', border: 'none',
               fontSize: 13, color: T.text3,
-              cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
             }}
           >
             Start fresh instead
@@ -210,7 +207,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
     <div style={{ marginBottom: 24 }}>
       <p style={{
         margin: '0 0 10px',
-        fontSize: 11, fontWeight: 700,
+        fontSize: 11, fontWeight: 600,
         letterSpacing: '0.08em',
         textTransform: 'uppercase',
         color: T.textMuted,
@@ -234,7 +231,7 @@ function ItemRow({ label, sublabel, on, onToggle }: {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '13px 16px',
       background: on ? T.white : '#F7F7F5',
-      border: `1.5px solid ${on ? T.border : T.borderStrong}`,
+      border: on ? `1px solid var(--border)` : `1px solid var(--border-strong)`,
       borderRadius: 12,
       opacity: on ? 1 : 0.45,
       transition: 'all 0.15s',
@@ -255,7 +252,6 @@ function ItemRow({ label, sublabel, on, onToggle }: {
           background: 'none', border: 'none', cursor: 'pointer',
           padding: '4px 6px', fontSize: 13,
           color: on ? T.text3 : T.brandDark,
-          fontFamily: 'var(--font-sans)',
           fontWeight: 500,
           flexShrink: 0,
         }}

@@ -61,7 +61,7 @@ function PlanRow({
     <div style={{
       padding: '16px 24px',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      borderBottom: `1px solid ${T.border}`,
+      borderBottom: `1px solid var(--border-subtle)`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{
@@ -73,11 +73,11 @@ function PlanRow({
           {icon}
         </div>
         <div>
-          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500, color: T.text2 }}>
             {label}
           </p>
           {sublabel && (
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: T.text3, fontFamily: 'var(--font-sans)' }}>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: T.text3 }}>
               {sublabel}
             </p>
           )}
@@ -87,7 +87,7 @@ function PlanRow({
         fontSize: isNotSet ? 12 : 16,
         fontWeight: isNotSet ? 400 : 600,
         color: isNotSet ? T.text3 : T.text1,
-        fontFamily: isNotSet ? 'var(--font-sans)' : 'var(--font-serif)',
+        fontFamily: isNotSet ? 'var(--font-sans)' : 'var(--font-display)',
         fontStyle: isNotSet ? 'italic' : 'normal',
       }}>
         {isNotSet ? 'Not set yet' : fmt(amount!, currency)}
@@ -205,8 +205,7 @@ export default function PlanPage() {
     return (
       <div style={{
         minHeight: '100vh', background: T.pageBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--font-sans)', color: T.text3, fontSize: 14,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text3, fontSize: 14,
       }}>
         Loading...
       </div>
@@ -218,7 +217,6 @@ export default function PlanPage() {
   return (
     <div style={{
       minHeight: '100vh', background: T.pageBg,
-      fontFamily: 'var(--font-sans)',
       marginLeft: bleed, marginRight: bleed,
       paddingBottom: isDesktop ? 80 : 120,
     }}>
@@ -230,9 +228,8 @@ export default function PlanPage() {
         {/* ── Header ── */}
         <div style={{ marginBottom: 32, ...fade(0) }}>
           <h1 style={{
-            fontFamily: 'var(--font-serif)',
             fontSize: isDesktop ? 32 : 27,
-            fontWeight: 700, color: T.text1,
+            color: T.text1,
             margin: '0 0 10px', letterSpacing: '-0.5px', lineHeight: 1.2,
           }}>
             {firstName ? `Here's your baseline, ${firstName}` : "Here's your baseline"}
@@ -245,19 +242,18 @@ export default function PlanPage() {
         {/* ── Summary card: income ── */}
         <div style={{
           background: T.white,
-          border: `1px solid ${T.border}`,
+          border: `1px solid var(--border)`,
           borderRadius: 16, padding: '20px 24px',
-          boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           marginBottom: 12,
           ...fade(0.08),
         }}>
           <div>
-            <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.8px', fontFamily: 'var(--font-sans)' }}>
+            <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
               Monthly income
             </p>
           </div>
-          <span style={{ fontSize: 22, fontWeight: 700, color: T.text1, fontFamily: 'var(--font-serif)' }}>
+          <span style={{ fontSize: 22, fontWeight: 600, color: T.text1, fontFamily: 'var(--font-display)' }}>
             {fmt(income, currency)}
           </span>
         </div>
@@ -265,15 +261,14 @@ export default function PlanPage() {
         {/* ── Plan card ── */}
         <div style={{
           background: T.white,
-          border: `1px solid ${T.border}`,
+          border: `1px solid var(--border)`,
           borderRadius: 20,
           overflow: 'hidden',
-          boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
           marginBottom: 12,
           ...fade(0.13),
         }}>
           <div style={{ padding: '12px 24px 10px', background: T.sectionBg, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '1px', fontFamily: 'var(--font-sans)' }}>
+            <p style={{ margin: 0, fontSize: 10.5, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '1px' }}>
               What you told us
             </p>
           </div>
@@ -307,18 +302,17 @@ export default function PlanPage() {
             background: T.sectionBg,
           }}>
             <div>
-              <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 600, color: T.text2, fontFamily: 'var(--font-sans)' }}>
+              <p style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 600, color: T.text2 }}>
                 Estimated saving capacity
               </p>
               <span style={{
-                fontSize: 10, fontWeight: 700, color: T.brandDark,
-                background: T.brand, borderRadius: 99, padding: '2px 7px',
-                fontFamily: 'var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.5px',
+                fontSize: 10, fontWeight: 600, color: T.brandDark,
+                background: T.brand, borderRadius: 99, padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.5px',
               }}>
                 Estimate
               </span>
             </div>
-            <span style={{ fontSize: 16, fontWeight: 700, color: T.text1, fontFamily: 'var(--font-serif)' }}>
+            <span style={{ fontSize: 16, fontWeight: 600, color: T.text1, fontFamily: 'var(--font-display)' }}>
               {fmt(monthlySavingCapacity > 0 ? monthlySavingCapacity : 0, currency)}/mo
             </span>
           </div>
@@ -328,10 +322,10 @@ export default function PlanPage() {
         {goalTotal > 0 && (
           <div style={{
             background: T.white,
-            border: `1px solid ${T.border}`,
+            border: `1px solid var(--border)`,
             borderRadius: 20,
             overflow: 'hidden',
-            boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+            boxShadow: 'var(--shadow-sm)',
             marginBottom: 12,
             ...fade(0.18),
           }}>
@@ -340,13 +334,12 @@ export default function PlanPage() {
               padding: '12px 24px 10px', background: T.sectionBg,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '1px', fontFamily: 'var(--font-sans)' }}>
+              <p style={{ margin: 0, fontSize: 10.5, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '1px' }}>
                 Your goal timeline
               </p>
               <span style={{
-                fontSize: 10, fontWeight: 700, color: T.brandDark,
-                background: T.brand, borderRadius: 99, padding: '3px 8px',
-                fontFamily: 'var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.5px',
+                fontSize: 10, fontWeight: 600, color: T.brandDark,
+                background: T.brand, borderRadius: 99, padding: '3px 8px', textTransform: 'uppercase', letterSpacing: '0.5px',
               }}>
                 Estimate
               </span>
@@ -357,30 +350,30 @@ export default function PlanPage() {
                 <>
                   <p style={{
                     margin: '0 0 8px',
-                    fontSize: 22, fontWeight: 700, color: T.text1,
-                    fontFamily: 'var(--font-serif)', letterSpacing: '-0.3px',
+                    fontSize: 22, fontWeight: 600, color: T.text1,
+                    fontFamily: 'var(--font-display)', letterSpacing: '-0.3px',
                   }}>
                     {formatMonths(timeToGoalMonths)}
                   </p>
                   {hasExpenseData ? (
-                    <p style={{ margin: '0 0 10px', fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: 13.5, color: T.text2, lineHeight: 1.65 }}>
                       Based on what you have told us, you have roughly{' '}
                       <strong style={{ color: T.text1 }}>{fmt(monthlySavingCapacity, currency)}/month</strong>{' '}
                       available after costs. At that rate, your {goalCount === 1 ? 'goal' : `${goalCount} goals`} could take {formatMonths(timeToGoalMonths)}.
                     </p>
                   ) : (
-                    <p style={{ margin: '0 0 10px', fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: 13.5, color: T.text2, lineHeight: 1.65 }}>
                       We have used the 50/30/20 rule to estimate roughly{' '}
                       <strong style={{ color: T.text1 }}>{fmt(estimatedCapacity, currency)}/month</strong>{' '}
                       available for saving. At that rate, your {goalCount === 1 ? 'goal' : `${goalCount} goals`} could take {formatMonths(timeToGoalMonths)}.
                     </p>
                   )}
-                  <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.55, fontFamily: 'var(--font-sans)' }}>
+                  <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.55 }}>
                     This is a starting estimate — it will get more accurate as you track real spending.
                   </p>
                 </>
               ) : (
-                <p style={{ margin: 0, fontSize: 13.5, color: T.text2, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
+                <p style={{ margin: 0, fontSize: 13.5, color: T.text2, lineHeight: 1.65 }}>
                   Based on what you have shared, there is limited room for saving right now. That is okay — tracking real spending often reveals more room than expected. We will help you find it.
                 </p>
               )}
@@ -395,7 +388,7 @@ export default function PlanPage() {
             style={{
               width: '100%', height: 56, borderRadius: 16,
               background: T.brandDark, border: 'none', color: '#fff',
-              fontSize: 16, fontWeight: 600, fontFamily: 'var(--font-sans)',
+              fontSize: 16, fontWeight: 600,
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}
@@ -405,7 +398,6 @@ export default function PlanPage() {
           <p style={{
             textAlign: 'center', marginTop: 14,
             fontSize: 12.5, color: T.text3, lineHeight: 1.5,
-            fontFamily: 'var(--font-sans)',
           }}>
             This is your starting point — it gets sharper as you track.
           </p>

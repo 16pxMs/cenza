@@ -29,7 +29,7 @@
   padding: 0 0 48px;
   overflow-y: auto;
   animation: sheetSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 -4px 40px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-lg);
 }
 
 .panelDesktop {

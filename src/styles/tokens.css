@@ -14,8 +14,16 @@
   /* Page */
   --page-bg:       var(--grey-50);
   --white:         var(--grey-0);
-  --border:        var(--grey-200);
-  --border-strong: var(--grey-300);
+
+  /* Borders
+     Rule: structural = 1px subtle, interactive selected = 2px brand,
+     list dividers = border-subtle, never use border-strong structurally */
+  --border:        rgba(0, 0, 0, 0.08);  /* cards, inputs, containers      */
+  --border-subtle: rgba(0, 0, 0, 0.05);  /* list dividers, section splits   */
+  --border-strong: rgba(0, 0, 0, 0.14);  /* prominent separators, emphasis  */
+  --border-focus:  var(--brand-deep);    /* focused inputs                  */
+  --border-width:       1px;             /* structural default              */
+  --border-width-thick: 2px;             /* selected / active states        */
 
   /* Grey scale */
   --grey-0:   #FFFFFF;
@@ -58,9 +66,39 @@
   --red-border: #FECACA;
   --red-dark:   #991B1B;
 
-  /* Typography */
-  --font-serif: 'DM Serif Display', Georgia, serif;
-  --font-sans:  'Outfit', system-ui, sans-serif;
+  /* Shadows
+     Rule: never a single-layer shadow. Always 2 layers — one tight (ambient),
+     one diffuse (depth). Opacity stays low — light creates depth, not drama.
+     Use shadow OR border on a card, not both.
+     sm  = resting card / subtle lift
+     md  = tappable / interactive card
+     lg  = sheet, modal, floating panel
+     xl  = dropdown, tooltip — highest elevation */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.04),  0 2px 8px  rgba(0,0,0,0.04);
+  --shadow-md:  0 2px 6px rgba(0,0,0,0.06),  0 6px 20px rgba(0,0,0,0.06);
+  --shadow-lg:  0 4px 16px rgba(0,0,0,0.08), 0 16px 40px rgba(0,0,0,0.08);
+  --shadow-xl:  0 8px 24px rgba(0,0,0,0.10), 0 24px 56px rgba(0,0,0,0.10);
+
+  /* Typography — variables injected by next/font in layout.tsx */
+  --font-display: var(--font-space-grotesk);
+  --font-sans:    var(--font-outfit);
+  /* --font-space-grotesk and --font-outfit are set on <html> by next/font */
+
+  /* Font sizes */
+  --text-xs:   11px; /* caps, badges, eyebrow labels    */
+  --text-sm:   13px; /* secondary labels, captions      */
+  --text-base: 15px; /* primary body                    */
+  --text-md:   17px; /* slightly emphasised body        */
+  --text-lg:   20px; /* large labels, sub-headings      */
+  --text-xl:   24px; /* small display figures           */
+  --text-2xl:  28px; /* page headings                   */
+  --text-3xl:  32px; /* hero / display numbers          */
+
+  /* Font weights — use these names, never bare numbers */
+  --weight-regular:   400;
+  --weight-medium:    500;
+  --weight-semibold:  600;
+  --weight-bold:      700; /* headings only */
 
   /* Spacing */
   --space-xs:  4px;

@@ -2,7 +2,7 @@ import '@/styles/tokens.css'
 import '../styles/globals.css'
 
 import type { Metadata } from 'next'
-import { Outfit, DM_Serif_Display } from 'next/font/google'
+import { Outfit, Space_Grotesk } from 'next/font/google'
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -11,11 +11,11 @@ const outfit = Outfit({
   weight: ['300', '400', '500', '600', '700', '800'],
 })
 
-const dmSerifDisplay = DM_Serif_Display({
+const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
-  variable: '--font-dm-serif-display',
+  variable: '--font-space-grotesk',
   display: 'swap',
-  weight: '400',
+  weight: ['300', '400', '500', '600', '700'],
 })
 
 export const metadata: Metadata = {
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${outfit.variable} ${dmSerifDisplay.variable}`}>
+    <html lang="en" className={`${outfit.variable} ${spaceGrotesk.variable}`}>
       <body>{children}</body>
     </html>
   )
