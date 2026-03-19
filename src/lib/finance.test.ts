@@ -35,6 +35,12 @@ describe('fmt', () => {
   it('uses default currency KES', () => {
     expect(fmt(100)).toBe('KES 100')
   })
+
+  it('handles negative values (refunds)', () => {
+    expect(fmt(-500, 'KES')).toBe('-KES 500')
+    expect(fmt(-1500, 'KES')).toBe('-KES 2K')
+    expect(fmt(-2_000_000, 'KES')).toBe('-KES 2.0M')
+  })
 })
 
 // ─── getPrevMonth ─────────────────────────────────────────────

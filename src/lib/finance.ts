@@ -3,12 +3,14 @@
 // No side-effects, no imports — safe to unit test.
 // ─────────────────────────────────────────────────────────────
 
-/** Format a number as currency, abbreviating large values. */
+/** Format a number as currency, abbreviating large values. Handles negatives. */
 export function fmt(n: number, cur = 'KES'): string {
   if (!n) return `${cur} 0`
-  if (n >= 1_000_000) return `${cur} ${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000)     return `${cur} ${(n / 1_000).toFixed(0)}K`
-  return `${cur} ${n.toLocaleString()}`
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  if (abs >= 1_000_000) return `${sign}${cur} ${(abs / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000)     return `${sign}${cur} ${(abs / 1_000).toFixed(0)}K`
+  return `${sign}${cur} ${abs.toLocaleString()}`
 }
 
 /** "YYYY-MM" → previous month as "YYYY-MM" */

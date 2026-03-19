@@ -8,14 +8,14 @@
 //   3. Inline edit/delete on each transaction row
 // ─────────────────────────────────────────────────────────────
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { IconBack, IconTrash } from '@/components/ui/Icons'
-import { fmt, formatDate } from '@/lib/finance'
+import { IconBack, IconChevronRight } from '@/components/ui/Icons'
+import { fmt } from '@/lib/finance'
 
 const T = {
   brandDark:    '#5C3489',
@@ -98,13 +98,7 @@ export default function HistoryPage() {
   const [totalBudget, setTotalBudget] = useState(0)
   const [totalSpent, setTotalSpent]   = useState(0)
   const [totalIncome, setTotalIncome] = useState(0)
-  const [expandedTxn, setExpandedTxn] = useState<string | null>(null)
-  const [editAmount, setEditAmount]   = useState('')
-  const [editNote, setEditNote]       = useState('')
-  const [saving, setSaving]           = useState(false)
-  const [deleting, setDeleting]       = useState(false)
 
-  const amountRef    = useRef<HTMLInputElement>(null)
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   const loadData = useCallback(async () => {
@@ -235,39 +229,6 @@ export default function HistoryPage() {
   }, [supabase, router, currentMonth])
 
   useEffect(() => { loadData() }, [loadData])
-
-  const openTxn = (txn: Transaction) => {
-    if (expandedTxn === txn.id) { setExpandedTxn(null); return }
-    setExpandedTxn(txn.id)
-    setEditAmount(String(txn.amount))
-    setEditNote(txn.note ?? '')
-    setTimeout(() => amountRef.current?.focus(), 80)
-  }
-
-  const handleSave = async (txn: Transaction) => {
-    const amt = parseFloat(editAmount) || 0
-    if (amt <= 0) return
-    setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setSaving(false); return }
-    await (supabase.from('transactions') as any)
-      .update({ amount: amt, note: editNote || null })
-      .eq('id', txn.id).eq('user_id', user.id)
-    setSaving(false)
-    setExpandedTxn(null)
-    loadData(); router.refresh()
-  }
-
-  const handleDelete = async (txn: Transaction) => {
-    setDeleting(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setDeleting(false); return }
-    await (supabase.from('transactions') as any)
-      .delete().eq('id', txn.id).eq('user_id', user.id)
-    setDeleting(false)
-    setExpandedTxn(null)
-    loadData(); router.refresh()
-  }
 
   if (loading) {
     return (
@@ -407,164 +368,69 @@ export default function HistoryPage() {
               borderRadius: 16, overflow: 'hidden',
             }}>
               {sectionRows.map((row, idx) => {
-                const rowPct     = row.planned > 0 ? (row.spent / row.planned) * 100 : 0
-                const rowOver    = row.planned > 0 && row.spent > row.planned
-                const isLast     = idx === sectionRows.length - 1
-                const hasLogged  = row.spent > 0
-
-                return (
-                  <div key={row.key} style={{
-                    borderBottom: isLast ? 'none' : `1px solid ${T.border}`,
-                  }}>
-                    {/* Category summary row */}
-                    <div style={{ padding: '14px 16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                        <span style={{
-                          fontSize: 14, fontWeight: 500,
-                          color: hasLogged ? T.text1 : T.textMuted,
-                          fontFamily: 'var(--font-sans)',
-                        }}>
+                const rowPct    = row.planned > 0 ? (row.spent / row.planned) * 100 : 0
+                const rowOver   = row.planned > 0 && row.spent > row.planned
+                const isLast    = idx === sectionRows.length - 1
+                const hasLogged = row.spent > 0
+                const showBar   = hasLogged && row.planned > 0
+                const ledgerUrl = `/history/${row.key}?label=${encodeURIComponent(row.label)}&planned=${row.planned}&type=${row.type}`
+                const inner = (
+                  <div style={{ padding: `18px 16px ${showBar ? 10 : 18}px` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 28 }}>
+                      {/* Left: label + budget sublabel */}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: hasLogged ? T.text1 : T.textMuted, fontFamily: 'var(--font-sans)' }}>
                           {row.label}
-                        </span>
-                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                          {hasLogged ? (
-                            <span style={{ fontSize: 14, fontWeight: 600, color: rowOver ? '#D93025' : T.text1, fontFamily: 'var(--font-sans)' }}>
+                        </div>
+                        {row.planned > 0 && (
+                          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 3, fontFamily: 'var(--font-sans)' }}>
+                            {fmt(row.planned, currency)} budget
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: logged amount or placeholder */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 16 }}>
+                        {hasLogged ? (
+                          <>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: rowOver ? '#D93025' : T.text1, fontFamily: 'var(--font-sans)' }}>
                               {fmt(row.spent, currency)}
                             </span>
-                          ) : (
-                            <span style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)' }}>
-                              —
-                            </span>
-                          )}
-                          {row.planned > 0 && (
-                            <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginTop: 1, fontFamily: 'var(--font-sans)' }}>
-                              {fmt(row.planned, currency)}
-                            </span>
-                          )}
-                        </div>
+                            <IconChevronRight size={16} color={T.textMuted} />
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 13, color: T.textMuted, fontStyle: 'italic', fontFamily: 'var(--font-sans)' }}>
+                            Not logged
+                          </span>
+                        )}
                       </div>
-
-                      {/* Progress bar — only if there's a planned amount */}
-                      {row.planned > 0 && (
-                        <BarFill pct={rowPct} type={row.type} />
-                      )}
-                      {/* Thin line for logged-only rows with no planned amount */}
-                      {row.planned === 0 && hasLogged && (
-                        <div style={{ height: 3, background: '#E5E5EA', borderRadius: 99, marginTop: 8 }}>
-                          <div style={{ height: '100%', width: '100%', background: T.brandDark, borderRadius: 99, opacity: 0.3 }} />
-                        </div>
-                      )}
                     </div>
 
-                    {/* Individual transactions — always shown so every entry can be edited/deleted */}
-                    {row.transactions.length > 0 && (
-                      <div style={{ borderTop: `1px solid ${T.border}` }}>
-                        {row.transactions.map(txn => {
-                          const isExpanded = expandedTxn === txn.id
-                          return (
-                            <div key={txn.id} style={{ borderBottom: `1px solid ${T.border}` }}>
-                              <button
-                                onClick={() => openTxn(txn)}
-                                style={{
-                                  width: '100%', display: 'flex', alignItems: 'center',
-                                  justifyContent: 'space-between', padding: '10px 16px 10px 24px',
-                                  background: isExpanded ? '#F8F9FA' : 'transparent',
-                                  border: 'none', cursor: 'pointer',
-                                  fontFamily: 'var(--font-sans)', textAlign: 'left',
-                                  boxSizing: 'border-box',
-                                } as React.CSSProperties}
-                              >
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <span style={{ fontSize: 13, color: T.text3, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {txn.note || formatDate(txn.date)}
-                                  </span>
-                                  {txn.note && (
-                                    <span style={{ fontSize: 11, color: T.textMuted }}>{formatDate(txn.date)}</span>
-                                  )}
-                                </div>
-                                <span style={{ fontSize: 13, color: T.text2, fontWeight: 500, flexShrink: 0, marginLeft: 8, fontFamily: 'var(--font-sans)' }}>
-                                  {fmt(txn.amount, currency)}
-                                </span>
-                              </button>
-
-                              {/* Inline edit */}
-                              {isExpanded && (
-                                <div style={{
-                                  padding: '12px 16px', background: '#F8F9FA',
-                                  display: 'flex', flexDirection: 'column', gap: 8,
-                                }}>
-                                  <input
-                                    ref={amountRef}
-                                    type="text" inputMode="decimal"
-                                    value={editAmount} onChange={e => {
-                                      const val = e.target.value.replace(/[^0-9.]/g, '')
-                                      const parts = val.split('.')
-                                      if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
-                                      setEditAmount(val)
-                                    }}
-                                    onKeyDown={e => { if (e.key === 'Enter') handleSave(txn) }}
-                                    style={{
-                                      height: 40, borderRadius: 8, border: `1.5px solid ${T.border}`,
-                                      padding: '0 12px', fontSize: 14, fontWeight: 600,
-                                      color: T.text1, background: T.white,
-                                      fontFamily: 'var(--font-sans)', outline: 'none',
-                                      width: '100%', boxSizing: 'border-box',
-                                    }}
-                                  />
-                                  <input
-                                    type="text" value={editNote}
-                                    onChange={e => setEditNote(e.target.value)}
-                                    placeholder="Note (optional)"
-                                    style={{
-                                      height: 40, borderRadius: 8, border: `1.5px solid ${T.border}`,
-                                      padding: '0 12px', fontSize: 13,
-                                      color: T.text1, background: T.white,
-                                      fontFamily: 'var(--font-sans)', outline: 'none',
-                                      width: '100%', boxSizing: 'border-box',
-                                    }}
-                                  />
-                                  <div style={{ display: 'flex', gap: 8 }}>
-                                    <button
-                                      onClick={() => handleSave(txn)}
-                                      disabled={saving || parseFloat(editAmount) <= 0}
-                                      style={{
-                                        flex: 1, height: 38, borderRadius: 8,
-                                        background: saving ? T.border : T.brandDark,
-                                        border: 'none', color: '#fff',
-                                        fontSize: 13, fontWeight: 600,
-                                        fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                      }}
-                                    >
-                                      {saving ? 'Saving…' : 'Save'}
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(txn)}
-                                      disabled={deleting}
-                                      style={{
-                                        width: 38, height: 38, borderRadius: 8,
-                                        background: '#FEF2F2', border: '1px solid #FCA5A5',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        cursor: 'pointer', flexShrink: 0,
-                                      }}
-                                    >
-                                      <IconTrash size={15} color="#D93025" />
-                                    </button>
-                                    <button
-                                      onClick={() => setExpandedTxn(null)}
-                                      style={{
-                                        width: 38, height: 38, borderRadius: 8,
-                                        background: 'none', border: `1px solid ${T.border}`,
-                                        fontSize: 13, color: T.text3,
-                                        fontFamily: 'var(--font-sans)', cursor: 'pointer', flexShrink: 0,
-                                      }}
-                                    >✕</button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
+                    {/* Progress bar — only when logged + has budget */}
+                    {showBar && (
+                      <div style={{ marginTop: 10 }}>
+                        <BarFill pct={rowPct} type={row.type} />
                       </div>
+                    )}
+                  </div>
+                )
+
+                return (
+                  <div key={row.key} style={{ borderBottom: isLast ? 'none' : `1px solid ${T.border}` }}>
+                    {hasLogged ? (
+                      <button
+                        onClick={() => router.push(ledgerUrl)}
+                        style={{
+                          width: '100%', textAlign: 'left', background: 'none',
+                          border: 'none', cursor: 'pointer', padding: 0,
+                          fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+                          display: 'block',
+                        } as React.CSSProperties}
+                      >
+                        {inner}
+                      </button>
+                    ) : (
+                      inner
                     )}
                   </div>
                 )

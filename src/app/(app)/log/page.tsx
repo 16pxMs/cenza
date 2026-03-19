@@ -15,7 +15,8 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { AddExpenseSheet, type SheetItem, type ExpenseSaveData, type PriorEntry, type DictionaryEntry, type QuickItem } from '@/components/flows/log/AddExpenseSheet'
-import { IconBack } from '@/components/ui/Icons'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { IconBack, IconTrash } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
@@ -89,6 +90,12 @@ export default function LogPage() {
   const [dictionary, setDictionary]     = useState<Record<string, DictionaryEntry>>({})
   const [expanded, setExpanded]         = useState<Set<string>>(new Set())
   const [autoOpened, setAutoOpened]     = useState(false)
+  const [deletingKey, setDeletingKey]                             = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete]                         = useState<SubItem | null>(null)
+  const [deleteStep, setDeleteStep]                               = useState<'reason' | 'confirm' | 'refund'>('reason')
+  const [refundAmount, setRefundAmount]                           = useState('')
+  const [refundNote, setRefundNote]                               = useState('')
+  const [savingRefund, setSavingRefund]                           = useState(false)
 
   const currentMonth = new Date().toISOString().slice(0, 7)
 
@@ -152,12 +159,12 @@ export default function LogPage() {
     ] = await Promise.all([
       supabase.from('user_profiles').select('currency, goals').eq('id', user.id).single() as any,
       (supabase.from('transactions') as any)
-        .select('category_key, category_label, category_type, amount')
+        .select('category_key, category_label, category_type, amount, date')
         .eq('user_id', user.id).eq('month', currentMonth),
       (supabase.from('fixed_expenses') as any)
         .select('entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
       (supabase.from('goal_targets') as any)
-        .select('goal_id, amount').eq('user_id', user.id),
+        .select('goal_id, amount, added_at').eq('user_id', user.id),
       (supabase.from('spending_budgets') as any)
         .select('categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
     ])
@@ -165,9 +172,20 @@ export default function LogPage() {
     const cur = profile?.currency ?? 'KES'
     setCurrency(cur)
 
+    // ── Build added_at map to filter stale goal transactions ─
+    const addedAtMap: Record<string, string> = {}
+    for (const row of targets ?? []) {
+      if (row.added_at) addedAtMap[row.goal_id] = row.added_at
+    }
+
     // ── Sum transactions per category_key ───────────────────
     const logged: Record<string, number> = {}
     for (const t of txns ?? []) {
+      // Skip goal transactions from before this goal instance was added
+      if (t.category_type === 'goal') {
+        const addedAt = addedAtMap[t.category_key]
+        if (addedAt && t.date < addedAt.slice(0, 10)) continue
+      }
       logged[t.category_key] = (logged[t.category_key] ?? 0) + Number(t.amount)
     }
 
@@ -375,6 +393,46 @@ export default function LogPage() {
     router.refresh()
   }
 
+  const handleSaveRefund = async () => {
+    if (!pendingDelete) return
+    const amount = parseFloat(refundAmount)
+    if (!amount || amount <= 0) return
+    setSavingRefund(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSavingRefund(false); return }
+    await (supabase.from('transactions') as any).insert({
+      user_id:        user.id,
+      date:           new Date().toISOString().slice(0, 10),
+      month:          currentMonth,
+      category_type:  pendingDelete.groupType,
+      category_key:   pendingDelete.key,
+      category_label: pendingDelete.label,
+      amount:         -amount,
+      note:           refundNote.trim() || null,
+    })
+    setSavingRefund(false)
+    setPendingDelete(null)
+    setRefundAmount('')
+    setRefundNote('')
+    loadData()
+    router.refresh()
+  }
+
+  const handleDeleteCategory = async (key: string) => {
+    setDeletingKey(key)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setDeletingKey(null); return }
+    await (supabase.from('transactions') as any)
+      .delete()
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .eq('category_key', key)
+    setDeletingKey(null)
+    setPendingDelete(null)
+    loadData()
+    router.refresh()
+  }
+
   // ─── Loading ─────────────────────────────────────────────────
   if (loading) {
     return (
@@ -429,38 +487,62 @@ export default function LogPage() {
 
         // Shared item row renderer
         const renderItem = (item: SubItem, index: number) => {
-          const isLogged = item.loggedAmount > 0
-          const isLast   = index === visibleItems.length - 1
+          const isLogged   = item.loggedAmount > 0
+          const isLast     = index === visibleItems.length - 1
+          const isDeleting = deletingKey === item.key
           return (
-            <button
+            <div
               key={item.key}
-              onClick={() => openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })}
               style={{
-                width: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between',
+                display: 'flex', alignItems: 'center',
                 background: T.white,
-                border: 'none',
                 borderBottom: isLast ? 'none' : `1px solid ${T.border}`,
-                borderRadius: 0,
-                minHeight: 48, padding: '10px 16px',
-                cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                textAlign: 'left', boxSizing: 'border-box',
-              } as React.CSSProperties}
+                minHeight: 48,
+              }}
             >
-              <span style={{ fontSize: 15, fontWeight: 500, color: T.text1 }}>
-                {item.label}
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, marginLeft: 8 }}>
-                {isLogged && (
-                  <span style={{ fontSize: 13, fontWeight: 400, color: T.text3 }}>
+              {/* Main tap area */}
+              <button
+                onClick={() => openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between',
+                  border: 'none', background: 'transparent',
+                  padding: '10px 16px', minHeight: 48,
+                  cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                  textAlign: 'left', boxSizing: 'border-box',
+                } as React.CSSProperties}
+              >
+                <span style={{ fontSize: 15, fontWeight: 500, color: T.text1 }}>
+                  {item.label}
+                </span>
+                {isLogged ? (
+                  <span style={{ fontSize: 13, fontWeight: 500, color: T.text3, flexShrink: 0, marginLeft: 8 }}>
                     {fmt(item.loggedAmount, currency)}
                   </span>
+                ) : (
+                  <span style={{ fontSize: 13, color: T.textMuted, fontStyle: 'italic', flexShrink: 0, marginLeft: 8 }}>
+                    Tap to log
+                  </span>
                 )}
-                {item.sublabel && (
-                  <span style={{ fontSize: 12, color: T.textMuted }}>{item.sublabel}</span>
-                )}
-              </div>
-            </button>
+              </button>
+
+              {/* Delete — only visible when something is logged */}
+              {isLogged && (
+                <button
+                  onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
+                  disabled={isDeleting}
+                  style={{
+                    width: 40, height: 48, flexShrink: 0,
+                    background: 'transparent', border: 'none',
+                    borderLeft: `1px solid ${T.border}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', opacity: isDeleting ? 0.4 : 1,
+                  }}
+                >
+                  <IconTrash size={15} color={T.textMuted} />
+                </button>
+              )}
+            </div>
           )
         }
 
@@ -580,6 +662,173 @@ export default function LogPage() {
             Log a new payment
           </button>
         </div>
+      )}
+
+      {/* Delete — reason picker + confirm */}
+      {pendingDelete && (
+        <Sheet
+          open={true}
+          onClose={() => setPendingDelete(null)}
+          title={deleteStep === 'reason' ? 'Why are you removing this?' : deleteStep === 'refund' ? 'Log a refund' : 'Are you sure?'}
+        >
+          {deleteStep === 'reason' && (
+            <div>
+              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
+                You logged <strong>{fmt(pendingDelete.loggedAmount, currency)}</strong> for{' '}
+                <strong>{pendingDelete.label}</strong> this month.
+              </p>
+              {[
+                {
+                  label: '✏️ I logged the wrong amount',
+                  sub:   'Correct it right here',
+                  action: () => {
+                    const item = pendingDelete
+                    setPendingDelete(null)
+                    openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })
+                  },
+                },
+                {
+                  label: '💸 I got a refund',
+                  sub:   'Log it here so your totals stay honest',
+                  action: () => { setRefundAmount(''); setRefundNote(''); setDeleteStep('refund') },
+                },
+                {
+                  label: '🚫 This never happened',
+                  sub:   'Remove it entirely',
+                  action: () => setDeleteStep('confirm'),
+                },
+              ].map(opt => (
+                <button
+                  key={opt.label}
+                  onClick={opt.action}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '14px 16px',
+                    background: T.white, border: `1.5px solid ${T.border}`,
+                    borderRadius: 14, cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)', marginBottom: 10, display: 'block',
+                  }}
+                >
+                  <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{opt.label}</div>
+                  <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{opt.sub}</div>
+                </button>
+              ))}
+              <button
+                onClick={() => setPendingDelete(null)}
+                style={{
+                  marginTop: 4, width: '100%', padding: '12px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {deleteStep === 'confirm' && (
+            <div>
+              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 24px', lineHeight: 1.6 }}>
+                This will permanently remove your <strong>{pendingDelete.label}</strong> entry of{' '}
+                <strong>{fmt(pendingDelete.loggedAmount, currency)}</strong> for this month.
+              </p>
+              <button
+                onClick={() => handleDeleteCategory(pendingDelete.key)}
+                disabled={deletingKey === pendingDelete.key}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14,
+                  background: '#D93025', border: 'none', cursor: 'pointer',
+                  fontSize: 15, fontWeight: 600, color: '#fff',
+                  fontFamily: 'var(--font-sans)',
+                  opacity: deletingKey === pendingDelete.key ? 0.6 : 1,
+                }}
+              >
+                {deletingKey === pendingDelete.key ? 'Removing…' : 'Yes, remove it'}
+              </button>
+              <button
+                onClick={() => setDeleteStep('reason')}
+                style={{
+                  marginTop: 10, width: '100%', padding: '12px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Go back
+              </button>
+            </div>
+          )}
+
+          {deleteStep === 'refund' && (
+            <div>
+              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
+                How much was refunded for <strong>{pendingDelete.label}</strong>?
+              </p>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                border: `1.5px solid ${T.borderStrong}`, borderRadius: 12,
+                background: T.white, overflow: 'hidden', marginBottom: 12,
+              }}>
+                <span style={{
+                  padding: '0 14px', fontSize: 14, fontWeight: 600,
+                  color: T.text3, borderRight: `1px solid ${T.border}`,
+                  fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+                }}>
+                  {currency}
+                </span>
+                <input
+                  autoFocus
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={refundAmount}
+                  onChange={e => setRefundAmount(e.target.value)}
+                  style={{
+                    flex: 1, height: 52, border: 'none', outline: 'none',
+                    padding: '0 14px', fontSize: 18, fontWeight: 600,
+                    color: T.text1, fontFamily: 'var(--font-sans)',
+                    background: 'transparent',
+                  }}
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="Note (optional)"
+                value={refundNote}
+                onChange={e => setRefundNote(e.target.value)}
+                style={{
+                  width: '100%', height: 46, borderRadius: 12,
+                  border: `1.5px solid ${T.border}`, padding: '0 14px',
+                  fontSize: 14, color: T.text1, fontFamily: 'var(--font-sans)',
+                  background: T.white, outline: 'none', boxSizing: 'border-box',
+                  marginBottom: 20,
+                }}
+              />
+              <button
+                onClick={handleSaveRefund}
+                disabled={!refundAmount || parseFloat(refundAmount) <= 0 || savingRefund}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14,
+                  background: refundAmount && parseFloat(refundAmount) > 0 ? T.brandDark : T.border,
+                  border: 'none', cursor: 'pointer',
+                  fontSize: 15, fontWeight: 600,
+                  color: refundAmount && parseFloat(refundAmount) > 0 ? '#fff' : T.textMuted,
+                  fontFamily: 'var(--font-sans)',
+                }}
+              >
+                {savingRefund ? 'Saving…' : 'Log refund'}
+              </button>
+              <button
+                onClick={() => setDeleteStep('reason')}
+                style={{
+                  marginTop: 10, width: '100%', padding: '12px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Go back
+              </button>
+            </div>
+          )}
+        </Sheet>
       )}
 
       {/* Sheet */}

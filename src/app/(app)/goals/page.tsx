@@ -280,8 +280,9 @@ export default function GoalsPage() {
   const [editAmount, setEditAmount]           = useState('')
   const [editSaving, setEditSaving]           = useState(false)
 
-  // Delete confirm sheet
+  // Delete / archive flow
   const [deleteGoal, setDeleteGoal]           = useState<GoalId | null>(null)
+  const [deleteStep, setDeleteStep]           = useState<'reason' | 'done' | 'used' | 'leaving'>('reason')
 
   // ── Load ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -291,9 +292,9 @@ export default function GoalsPage() {
 
       const [profileRes, targetsRes, txnsRes] = await Promise.all([
         (supabase.from('user_profiles') as any).select('goals, currency').eq('id', user.id).single(),
-        (supabase.from('goal_targets') as any).select('goal_id, amount').eq('user_id', user.id),
+        (supabase.from('goal_targets') as any).select('goal_id, amount, added_at').eq('user_id', user.id),
         (supabase.from('transactions') as any)
-          .select('category_key, amount, month')
+          .select('category_key, amount, month, date')
           .eq('user_id', user.id)
           .eq('category_type', 'goal'),
       ])
@@ -302,12 +303,19 @@ export default function GoalsPage() {
       setGoals(profileRes.data?.goals ?? [])
 
       const tMap: Record<string, number | null> = {}
-      for (const row of targetsRes.data ?? []) tMap[row.goal_id] = row.amount
+      const addedAtMap: Record<string, string>  = {}
+      for (const row of targetsRes.data ?? []) {
+        tMap[row.goal_id]      = row.amount
+        addedAtMap[row.goal_id] = row.added_at
+      }
       setTargets(tMap)
 
       const savedMap: Record<string, number>                  = {}
       const monthBuckets: Record<string, Record<string, number>> = {}
       for (const t of txnsRes.data ?? []) {
+        // Skip transactions from before the current goal instance was added
+        const addedAt = addedAtMap[t.category_key]
+        if (addedAt && t.date < addedAt.slice(0, 10)) continue
         savedMap[t.category_key] = (savedMap[t.category_key] ?? 0) + Number(t.amount)
         if (!monthBuckets[t.category_key]) monthBuckets[t.category_key] = {}
         monthBuckets[t.category_key][t.month] = (monthBuckets[t.category_key][t.month] ?? 0) + Number(t.amount)
@@ -360,25 +368,49 @@ export default function GoalsPage() {
     setEditSaving(false)
   }, [editGoal, editAmount, supabase])
 
-  // ── Delete goal ───────────────────────────────────────────────
+  // ── Delete / archive goal ─────────────────────────────────────
   const openDelete = () => {
     if (!editGoal) return
     const id = editGoal
     setEditGoal(null)
+    setDeleteStep('reason')
     setDeleteGoal(id)
   }
 
-  const confirmDelete = useCallback(async () => {
+  // Archive: remove from active goals, keep goal_targets for history,
+  // but clear this month's transactions so re-adding starts fresh
+  const archiveGoal = useCallback(async () => {
     if (!deleteGoal) return
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    const newGoals = goals.filter(g => g !== deleteGoal)
+    await Promise.all([
+      (supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', user.id),
+      (supabase.from('transactions') as any).delete()
+        .eq('user_id', user.id).eq('month', currentMonth).eq('category_key', deleteGoal),
+    ])
+    setGoals(newGoals)
+    setSavedByGoal(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
+    setDeleteGoal(null)
+  }, [deleteGoal, goals, supabase])
+
+  // Hard delete: remove from goals + wipe goal_targets + clear this month's transactions
+  const hardDeleteGoal = useCallback(async () => {
+    if (!deleteGoal) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const currentMonth = new Date().toISOString().slice(0, 7)
     const newGoals = goals.filter(g => g !== deleteGoal)
     await Promise.all([
       (supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', user.id),
       (supabase.from('goal_targets') as any).delete().eq('user_id', user.id).eq('goal_id', deleteGoal),
+      (supabase.from('transactions') as any).delete()
+        .eq('user_id', user.id).eq('month', currentMonth).eq('category_key', deleteGoal),
     ])
     setGoals(newGoals)
     setTargets(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
+    setSavedByGoal(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setDeleteGoal(null)
   }, [deleteGoal, goals, supabase])
 
@@ -429,7 +461,18 @@ export default function GoalsPage() {
         }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🎯</div>
           <div style={{ fontSize: 16, fontWeight: 600, color: T.text1, marginBottom: 6 }}>No goals yet</div>
-          <div style={{ fontSize: 14, color: T.text3 }}>Add a goal to start tracking what you're saving towards.</div>
+          <div style={{ fontSize: 14, color: T.text3, marginBottom: 24 }}>Add a goal to start tracking what you're saving towards.</div>
+          <button
+            onClick={() => router.push(`/goals/new`)}
+            style={{
+              width: '100%', height: 52, borderRadius: 14,
+              background: T.brandDark, border: 'none', cursor: 'pointer',
+              fontSize: 15, fontWeight: 700, color: '#fff',
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            Add a goal
+          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
@@ -439,8 +482,8 @@ export default function GoalsPage() {
         </div>
       )}
 
-      {/* Add goal button — navigates to full setup page */}
-      {!loading && goals.length < 8 && (
+      {/* Add goal button — only shown when goals already exist */}
+      {!loading && goalDataList.length > 0 && goals.length < 8 && (
         <button
           onClick={() => router.push(`/goals/new?exclude=${goals.join(',')}`)}
           style={{
@@ -523,34 +566,166 @@ export default function GoalsPage() {
         </Sheet>
       )}
 
-      {/* Delete confirm sheet */}
+      {/* Delete — "What happened?" sheet */}
       {deleteGoal && (
-        <Sheet open={true} onClose={() => setDeleteGoal(null)} title="Remove goal?">
-          <p style={{ fontSize: 14, color: T.text2, margin: '0 0 24px', lineHeight: 1.6 }}>
-            Removing <strong>{GOAL_META[deleteGoal].label}</strong> will delete the target you set.
-            Your saved transactions will still be on record.
-          </p>
-          <button
-            onClick={confirmDelete}
-            style={{
-              width: '100%', padding: '14px', borderRadius: 14,
-              background: '#D93025', border: 'none', cursor: 'pointer',
-              fontSize: 15, fontWeight: 600, color: '#fff',
-              fontFamily: 'var(--font-sans)',
-            }}
-          >
-            Yes, remove it
-          </button>
-          <button
-            onClick={() => setDeleteGoal(null)}
-            style={{
-              marginTop: 10, width: '100%', padding: '12px',
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
-            }}
-          >
-            Cancel
-          </button>
+        <Sheet
+          open={true}
+          onClose={() => setDeleteGoal(null)}
+          title={deleteStep === 'reason' ? 'What happened?' : ''}
+        >
+          {deleteStep === 'reason' && (() => {
+            const meta = GOAL_META[deleteGoal]
+            return (
+              <div>
+                <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
+                  You're removing <strong>{meta.label}</strong>. Help us understand why. We'll handle it the right way.
+                </p>
+                {[
+                  { label: '🎉 I reached this goal', sub: 'Celebrate and keep the history', step: 'done' as const },
+                  { label: '💸 I used the money on something else', sub: 'Acknowledge and archive', step: 'used' as const },
+                  { label: '🔄 I changed my mind', sub: 'Remove it cleanly', step: 'leaving' as const },
+                ].map(opt => (
+                  <button
+                    key={opt.step}
+                    onClick={() => setDeleteStep(opt.step)}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '14px 16px',
+                      background: T.white, border: `1.5px solid ${T.border}`,
+                      borderRadius: 14, cursor: 'pointer',
+                      fontFamily: 'var(--font-sans)', marginBottom: 10,
+                      display: 'block',
+                    }}
+                  >
+                    <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{opt.label}</div>
+                    <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{opt.sub}</div>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setDeleteGoal(null)}
+                  style={{
+                    marginTop: 4, width: '100%', padding: '12px',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )
+          })()}
+
+          {deleteStep === 'done' && deleteGoal && (() => {
+            const meta = GOAL_META[deleteGoal]
+            return (
+              <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+                <div style={{ fontSize: 56, marginBottom: 12, lineHeight: 1 }}>🏆</div>
+                <div style={{ fontSize: 21, fontWeight: 700, color: T.text1, marginBottom: 8 }}>
+                  You actually did it.
+                </div>
+                <div style={{
+                  display: 'inline-block', margin: '0 0 16px',
+                  background: meta.light, border: `1px solid ${meta.border}`,
+                  borderRadius: 10, padding: '6px 18px',
+                  fontSize: 15, fontWeight: 600, color: meta.dark,
+                  fontFamily: 'var(--font-sans)',
+                }}>
+                  {meta.label} ✓
+                </div>
+                <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 24px' }}>
+                  We'll keep your savings history so you can look back on this.
+                  Genuinely well done.
+                </p>
+                <button
+                  onClick={archiveGoal}
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: 14,
+                    background: meta.dark, border: 'none', cursor: 'pointer',
+                    fontSize: 15, fontWeight: 600, color: '#fff',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  Archive this goal 🎉
+                </button>
+              </div>
+            )
+          })()}
+
+          {deleteStep === 'used' && deleteGoal && (() => {
+            const meta = GOAL_META[deleteGoal]
+            const isEmergency = deleteGoal === 'emergency_fund'
+            return (
+              <div style={{ padding: '4px 0' }}>
+                <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>💛</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: T.text1, marginBottom: 10 }}>
+                  Life happens.
+                </div>
+                <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 16px' }}>
+                  You saved for <strong>{meta.label}</strong> and you needed to use it. That's exactly what savings are for.
+                </p>
+                {isEmergency && (
+                  <div style={{
+                    background: '#FFFBEA', border: '1px solid #FDE68A',
+                    borderRadius: 12, padding: '12px 14px', marginBottom: 16,
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>
+                      Consider restarting
+                    </div>
+                    <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.5 }}>
+                      Emergency funds are worth rebuilding. When you're ready, add it back and start fresh.
+                    </div>
+                  </div>
+                )}
+                <p style={{ fontSize: 13, color: T.text3, margin: '0 0 20px' }}>
+                  We'll archive the goal and keep your history.
+                </p>
+                <button
+                  onClick={archiveGoal}
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: 14,
+                    background: T.brandDark, border: 'none', cursor: 'pointer',
+                    fontSize: 15, fontWeight: 600, color: '#fff',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  Archive this goal
+                </button>
+              </div>
+            )
+          })()}
+
+          {deleteStep === 'leaving' && (
+            <div style={{ padding: '4px 0' }}>
+              <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>👋</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: T.text1, marginBottom: 10 }}>
+                No worries.
+              </div>
+              <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 24px' }}>
+                Goals change. We'll remove <strong>{GOAL_META[deleteGoal].label}</strong> and clear the target you set.
+                Any transactions you logged will still show in history.
+              </p>
+              <button
+                onClick={hardDeleteGoal}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14,
+                  background: '#D93025', border: 'none', cursor: 'pointer',
+                  fontSize: 15, fontWeight: 600, color: '#fff',
+                  fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Yes, remove it
+              </button>
+              <button
+                onClick={() => setDeleteStep('reason')}
+                style={{
+                  marginTop: 10, width: '100%', padding: '12px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Go back
+              </button>
+            </div>
+          )}
         </Sheet>
       )}
 

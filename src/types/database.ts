@@ -80,6 +80,7 @@ export interface GoalTarget {
   goal_id: GoalId
   amount: number | null
   destination: string | null   // travel goal only
+  added_at: string             // when this goal instance was (re)activated
   created_at: string
   updated_at: string
 }

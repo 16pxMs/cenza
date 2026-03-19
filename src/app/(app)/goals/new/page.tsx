@@ -68,10 +68,14 @@ function NewGoalInner() {
   const [alreadySaved, setAlreadySaved]     = useState(0)
 
   // Step state
-  const initialStep = typeParam ? (typeParam === 'other' ? 2 : 3) : 1
-  const [step, setStep]                     = useState<1 | 2 | 3>(initialStep as 1 | 2 | 3)
+  type Step = 'pick' | 'name' | 'destination' | 'target'
+  const initialStep: Step = typeParam
+    ? typeParam === 'other' ? 'name' : typeParam === 'travel' ? 'destination' : 'target'
+    : 'pick'
+  const [step, setStep]                     = useState<Step>(initialStep)
   const [selectedGoal, setSelectedGoal]     = useState<GoalId | null>(typeParam)
   const [customName, setCustomName]         = useState('')
+  const [destination, setDestination]       = useState('')
   const [targetAmount, setTargetAmount]     = useState('')
   const [selectedMonths, setSelectedMonths] = useState(12)
   const [saving, setSaving]                 = useState(false)
@@ -127,7 +131,9 @@ function NewGoalInner() {
       return `A healthy emergency fund covers 3–6 months of expenses. Based on your fixed costs, that's ${fmt(min, currency)}–${fmt(max, currency)}.`
     }
     if (selectedGoal === 'home')      return 'A home deposit is usually 10–20% of the property value. Start with a number that feels real, not perfect.'
-    if (selectedGoal === 'travel')    return 'Even a rough number helps. You can always adjust as the trip gets closer.'
+    if (selectedGoal === 'travel')    return destination.trim()
+      ? `Even a rough number works for ${destination.trim()}. You can always adjust as the trip gets closer.`
+      : 'Even a rough number helps. You can always adjust as the trip gets closer.'
     if (selectedGoal === 'education') return 'Start with the first year or semester fee — that makes the goal feel closer and more actionable.'
     if (selectedGoal === 'car')       return 'Consider the full cost: purchase price, insurance, and initial running costs.'
     return null
@@ -135,37 +141,64 @@ function NewGoalInner() {
 
   // ── Navigation helpers ────────────────────────────────────────
   const goBack = () => {
-    if (step === 3 && selectedGoal === 'other') { setStep(2); return }
-    if (step === 3 || step === 2)               { setStep(1); setSelectedGoal(null); return }
+    if (step === 'target' && selectedGoal === 'other')       { setStep('name'); return }
+    if (step === 'target' && selectedGoal === 'travel')      { setStep('destination'); return }
+    if (step === 'target' || step === 'name' || step === 'destination') {
+      setStep('pick'); setSelectedGoal(null); setTargetAmount(''); setDestination(''); return
+    }
     router.push('/goals')
   }
 
   const selectGoal = (id: GoalId) => {
     setSelectedGoal(id)
-    setStep(id === 'other' ? 2 : 3)
+    setTargetAmount('')
+    setDestination('')
+    if (id === 'other')   { setStep('name');        return }
+    if (id === 'travel')  { setStep('destination'); return }
+    setStep('target')
   }
 
   // ── Save ──────────────────────────────────────────────────────
-  const handleSave = async () => {
-    if (!selectedGoal || target <= 0) return
+  const handleSave = async (withTarget = true) => {
+    if (!selectedGoal) return
+    if (withTarget && target <= 0) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const newGoals = existingGoals.includes(selectedGoal)
-      ? existingGoals
-      : [...existingGoals, selectedGoal]
+    const isReAdding = !existingGoals.includes(selectedGoal)
+    const newGoals   = isReAdding ? [...existingGoals, selectedGoal] : existingGoals
 
-    const customLabel = selectedGoal === 'other' && customName.trim() ? customName.trim() : null
+    const customLabel = selectedGoal === 'other' && customName.trim()
+      ? customName.trim()
+      : selectedGoal === 'travel' && destination.trim()
+      ? destination.trim()
+      : null
 
-    await Promise.all([
+    const upsertPayload: Record<string, unknown> = {
+      user_id: user.id,
+      goal_id: selectedGoal,
+      destination: customLabel,
+      added_at: new Date().toISOString(),
+    }
+    if (withTarget && target > 0) upsertPayload.amount = target
+
+    const ops: Promise<unknown>[] = [
       (supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', user.id),
-      (supabase.from('goal_targets') as any).upsert(
-        { user_id: user.id, goal_id: selectedGoal, amount: target, destination: customLabel },
-        { onConflict: 'user_id,goal_id' }
-      ),
-    ])
+      (supabase.from('goal_targets') as any).upsert(upsertPayload, { onConflict: 'user_id,goal_id' }),
+    ]
 
+    // Clear this month's logged amounts so re-adding starts fresh
+    if (isReAdding) {
+      ops.push(
+        (supabase.from('transactions') as any).delete()
+          .eq('user_id', user.id)
+          .eq('month', currentMonth)
+          .eq('category_key', selectedGoal)
+      )
+    }
+
+    await Promise.all(ops)
     router.push('/goals')
   }
 
@@ -181,15 +214,17 @@ function NewGoalInner() {
         <IconBack size={18} color={T.text3} />
       </button>
       <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
-        {step === 1 ? 'New goal' : step === 2 ? 'Name your goal' : 'Set a target'}
+        {step === 'pick' ? 'New goal' : step === 'name' ? 'Name your goal' : step === 'destination' ? 'Where to?' : 'Set a target'}
       </p>
       <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: isDesktop ? 26 : 22, fontWeight: 700, color: T.text1, margin: 0 }}>
-        {step === 1
+        {step === 'pick'
           ? 'What are you saving for?'
-          : step === 2
+          : step === 'name'
           ? 'What would you call this goal?'
+          : step === 'destination'
+          ? (destination.trim() ? `Travel to ${destination.trim()}` : 'Where to?')
           : meta
-            ? `${meta.icon}  ${customName.trim() || meta.label}`
+            ? `${meta.icon}  ${customName.trim() || (selectedGoal === 'travel' && destination.trim() ? `Travel to ${destination.trim()}` : meta.label)}`
             : 'Set a target'}
       </h1>
     </div>
@@ -234,6 +269,57 @@ function NewGoalInner() {
           ))}
         </div>
       )}
+    </div>
+  )
+
+  // ── Step: Destination (travel only) ──────────────────────────
+  const stepDestination = (
+    <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
+      <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)', lineHeight: 1.5 }}>
+        Where do you want to go? Even a rough idea helps make the goal feel real.
+      </p>
+      <input
+        autoFocus
+        type="text"
+        value={destination}
+        onChange={e => setDestination(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && destination.trim()) setStep('target') }}
+        placeholder="e.g. Zanzibar, Amsterdam, Japan"
+        style={{
+          width: '100%', height: 52, borderRadius: 12,
+          border: `1.5px solid ${destination.trim() ? T.brandDark : T.border}`,
+          padding: '0 16px', fontSize: 16, color: T.text1,
+          background: T.white, fontFamily: 'var(--font-sans)',
+          outline: 'none', boxSizing: 'border-box',
+          transition: 'border-color 0.15s',
+        }}
+      />
+      <div style={{ height: 16 }} />
+      <button
+        onClick={() => setStep('target')}
+        disabled={destination.trim().length === 0}
+        style={{
+          width: '100%', height: 52, borderRadius: 14,
+          background: destination.trim() ? T.brandDark : T.border,
+          border: 'none', color: destination.trim() ? '#fff' : T.textMuted,
+          fontSize: 15, fontWeight: 700,
+          cursor: destination.trim() ? 'pointer' : 'not-allowed',
+          fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
+        }}
+      >
+        Continue
+      </button>
+      <button
+        onClick={() => setStep('target')}
+        style={{
+          marginTop: 10, width: '100%', padding: '12px',
+          background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 13, color: T.textMuted, fontStyle: 'italic',
+          fontFamily: 'var(--font-sans)',
+        }}
+      >
+        Skip for now
+      </button>
     </div>
   )
 
@@ -295,14 +381,14 @@ function NewGoalInner() {
 
       {/* Benchmark tip */}
       {benchmarkTip && (
-        <div style={{
-          marginTop: 12, padding: '12px 14px', borderRadius: 12,
-          background: meta ? meta.light : '#F8F9FA',
-          border: `1px solid ${meta ? meta.border : T.border}`,
-          fontSize: 13, color: T.text2, fontFamily: 'var(--font-sans)', lineHeight: 1.5,
+        <p style={{
+          margin: '10px 0 0',
+          fontSize: 13, color: T.text3,
+          fontFamily: 'var(--font-sans)', lineHeight: 1.6,
+          fontStyle: 'italic',
         }}>
           💡 {benchmarkTip}
-        </div>
+        </p>
       )}
 
       {/* Analysis — only shown once a target is typed */}
@@ -409,7 +495,7 @@ function NewGoalInner() {
           {saving ? 'Saving…' : 'Add to my plan'}
         </button>
         <button
-          onClick={handleSave}
+          onClick={() => handleSave(false)}
           disabled={saving}
           style={{
             marginTop: 10, width: '100%', padding: '12px',
@@ -431,7 +517,7 @@ function NewGoalInner() {
         <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMuted, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
           Loading…
         </div>
-      ) : step === 1 ? step1 : step === 2 ? step2 : step3}
+      ) : step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
     </div>
   )
 

@@ -17,6 +17,7 @@ export {
   Plus             as IconPlus,
   Trash2           as IconTrash,
   ChevronDown      as IconChevronDown,
+  ChevronRight     as IconChevronRight,
   X                as IconChevronX,
   Coins            as IconCurrency,
   Calendar         as IconCalendar,

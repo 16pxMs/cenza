@@ -1,0 +1,590 @@
+// ─────────────────────────────────────────────────────────────
+// /history/[key] — Category ledger
+//
+// Chronological list of every entry for one category in the
+// current month. Edit amount/note inline; delete with confirm.
+// ─────────────────────────────────────────────────────────────
+'use client'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
+import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { IconBack } from '@/components/ui/Icons'
+import { fmt, formatDate } from '@/lib/finance'
+
+const T = {
+  brandDark:    '#5C3489',
+  pageBg:       '#F8F9FA',
+  white:        '#FFFFFF',
+  border:       '#E4E7EC',
+  borderStrong: '#D0D5DD',
+  text1:        '#101828',
+  text2:        '#475467',
+  text3:        '#667085',
+  textMuted:    '#98A2B3',
+}
+
+interface Transaction {
+  id:     string
+  date:   string
+  amount: number
+  note:   string | null
+}
+
+function LedgerInner() {
+  const router        = useRouter()
+  const params        = useParams()
+  const searchParams  = useSearchParams()
+  const supabase      = createClient()
+  const { isDesktop } = useBreakpoint()
+
+  const categoryKey   = params.key as string
+  const categoryLabel = searchParams.get('label') ?? categoryKey
+  const planned       = Number(searchParams.get('planned') ?? 0)
+  const currentMonth  = new Date().toISOString().slice(0, 7)
+
+  const [loading, setLoading]       = useState(true)
+  const [currency, setCurrency]     = useState('')
+  const [txns, setTxns]             = useState<Transaction[]>([])
+  const [totalSpent, setTotalSpent] = useState(0)
+
+  // Edit state
+  const [editId, setEditId]         = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState('')
+  const [editNote, setEditNote]     = useState('')
+  const [saving, setSaving]         = useState(false)
+
+  // Delete state
+  const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null)
+  const [deleteStep, setDeleteStep]       = useState<'reason' | 'confirm'>('reason')
+  const [deleting, setDeleting]           = useState(false)
+
+  // Refund state
+  const [showRefundForm, setShowRefundForm] = useState(false)
+  const [refundAmount, setRefundAmount]     = useState('')
+  const [refundNote, setRefundNote]         = useState('')
+  const [savingRefund, setSavingRefund]     = useState(false)
+
+  const amountRef  = useRef<HTMLInputElement>(null)
+  const refundRef  = useRef<HTMLInputElement>(null)
+
+  const loadData = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/login'); return }
+
+    const [profileRes, txnRes] = await Promise.all([
+      (supabase.from('user_profiles') as any).select('currency').eq('id', user.id).single(),
+      (supabase.from('transactions') as any)
+        .select('id, date, amount, note')
+        .eq('user_id', user.id)
+        .eq('month', currentMonth)
+        .eq('category_key', categoryKey)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false }),
+    ])
+
+    setCurrency(profileRes.data?.currency ?? '')
+    const rows: Transaction[] = (txnRes.data ?? []).map((r: any) => ({ ...r, amount: Number(r.amount) }))
+    setTxns(rows)
+    setTotalSpent(rows.reduce((s, t) => s + t.amount, 0))
+    setLoading(false)
+  }, [supabase, router, currentMonth, categoryKey])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  const openEdit = (txn: Transaction) => {
+    setEditId(txn.id)
+    setEditAmount(String(txn.amount))
+    setEditNote(txn.note ?? '')
+    setTimeout(() => amountRef.current?.focus(), 80)
+  }
+
+  const handleSave = async () => {
+    const amt = parseFloat(editAmount) || 0
+    if (!editId || amt <= 0) return
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSaving(false); return }
+    await (supabase.from('transactions') as any)
+      .update({ amount: amt, note: editNote || null })
+      .eq('id', editId).eq('user_id', user.id)
+    setSaving(false)
+    setEditId(null)
+    loadData()
+    router.refresh()
+  }
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setDeleting(false); return }
+    await (supabase.from('transactions') as any)
+      .delete().eq('id', pendingDelete.id).eq('user_id', user.id)
+    setDeleting(false)
+    setPendingDelete(null)
+    loadData()
+    router.refresh()
+  }
+
+  const handleRefund = async () => {
+    const amt = parseFloat(refundAmount) || 0
+    if (amt <= 0) return
+    setSavingRefund(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSavingRefund(false); return }
+    const categoryType = searchParams.get('type') ?? 'variable'
+    await (supabase.from('transactions') as any).insert({
+      user_id:        user.id,
+      date:           new Date().toISOString().slice(0, 10),
+      month:          currentMonth,
+      category_type:  categoryType,
+      category_key:   categoryKey,
+      category_label: categoryLabel,
+      amount:         -amt,
+      note:           refundNote.trim() || 'Refund',
+    })
+    setSavingRefund(false)
+    setShowRefundForm(false)
+    setRefundAmount('')
+    setRefundNote('')
+    loadData()
+    router.refresh()
+  }
+
+  const overBudget  = planned > 0 && totalSpent > planned
+  const pct         = planned > 0 ? Math.min(100, (totalSpent / planned) * 100) : 0
+  const spendCount  = txns.filter(t => t.amount > 0).length
+  const pad         = isDesktop ? '0 32px' : '0 16px'
+
+  // Group transactions by date, newest date first
+  const dateGroups = txns.reduce<Record<string, Transaction[]>>((acc, txn) => {
+    if (!acc[txn.date]) acc[txn.date] = []
+    acc[txn.date].push(txn)
+    return acc
+  }, {})
+  const sortedDates = Object.keys(dateGroups).sort((a, b) => b.localeCompare(a))
+
+  const content = (
+    <div style={{ paddingBottom: isDesktop ? 80 : 100 }}>
+
+      {/* Header */}
+      <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 20px' }}>
+        <button
+          onClick={() => router.push('/history')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 16px', display: 'flex', alignItems: 'center' }}
+        >
+          <IconBack size={18} color={T.text3} />
+        </button>
+        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-sans)' }}>
+          {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </p>
+        <h1 style={{ margin: 0, fontSize: isDesktop ? 26 : 22, fontWeight: 700, color: T.text1, fontFamily: 'var(--font-sans)' }}>
+          {categoryLabel}
+        </h1>
+      </div>
+
+      {/* Summary card — includes refund button/form */}
+      <div style={{ padding: pad, marginBottom: 24 }}>
+        <div style={{
+          background: T.white, border: `1.5px solid ${T.border}`,
+          borderRadius: 16, overflow: 'hidden',
+          fontFamily: 'var(--font-sans)',
+        }}>
+          <div style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                  Total spent
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: overBudget ? '#D93025' : T.text1, lineHeight: 1 }}>
+                  {fmt(totalSpent, currency)}
+                </div>
+              </div>
+              {planned > 0 && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                    Budget
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: T.text3 }}>
+                    {fmt(planned, currency)}
+                  </div>
+                </div>
+              )}
+            </div>
+            {planned > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ height: 6, background: '#EBEBF0', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 99,
+                    width: `${pct}%`,
+                    background: overBudget ? '#D93025' : pct > 75 ? '#F4A01C' : T.brandDark,
+                    transition: 'width 0.4s ease',
+                  }} />
+                </div>
+              </div>
+            )}
+            {spendCount > 0 && (
+              <div style={{ fontSize: 12, color: T.text3 }}>
+                {spendCount} {spendCount === 1 ? 'entry' : 'entries'} this month
+              </div>
+            )}
+          </div>
+
+          {/* Refund button */}
+          {!showRefundForm && spendCount > 0 && (
+            <button
+              onClick={() => { setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) }}
+              style={{
+                width: '100%', padding: '13px',
+                background: 'none', border: 'none',
+                borderTop: `1px solid ${T.border}`,
+                cursor: 'pointer',
+                fontSize: 13, fontWeight: 500, color: T.text3,
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              + Log a refund
+            </button>
+          )}
+
+          {/* Refund form — expands inside the card */}
+          {showRefundForm && (
+            <>
+              <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  ref={refundRef}
+                  type="text" inputMode="decimal"
+                  value={refundAmount}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[^0-9.]/g, '')
+                    const parts = val.split('.')
+                    if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
+                    setRefundAmount(val)
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleRefund() }}
+                  placeholder="Refund amount"
+                  style={{
+                    width: '100%', height: 44, borderRadius: 10,
+                    border: `1.5px solid ${T.borderStrong}`, padding: '0 12px',
+                    fontSize: 16, fontWeight: 600, color: T.text1,
+                    background: T.white, fontFamily: 'var(--font-sans)',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                <input
+                  type="text" value={refundNote}
+                  onChange={e => setRefundNote(e.target.value)}
+                  placeholder="Note (optional)"
+                  style={{
+                    width: '100%', height: 40, borderRadius: 10,
+                    border: `1.5px solid ${T.border}`, padding: '0 12px',
+                    fontSize: 13, color: T.text1, background: T.white,
+                    fontFamily: 'var(--font-sans)', outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', borderTop: `1px solid ${T.border}` }}>
+                <button
+                  onClick={() => { setShowRefundForm(false); setRefundAmount(''); setRefundNote('') }}
+                  style={{
+                    flex: 1, height: 44, background: 'transparent',
+                    border: 'none', borderRight: `1px solid ${T.border}`,
+                    fontSize: 13, fontWeight: 500, color: T.text3,
+                    fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRefund}
+                  disabled={savingRefund || parseFloat(refundAmount) <= 0}
+                  style={{
+                    flex: 1, height: 44, background: 'transparent', border: 'none',
+                    fontSize: 13, fontWeight: 600,
+                    color: parseFloat(refundAmount) > 0 ? '#1A7A45' : T.textMuted,
+                    fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                  }}
+                >
+                  {savingRefund ? 'Saving…' : 'Save refund'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Entry list — grouped by date */}
+      <div style={{ padding: pad }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: T.textMuted, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+            Loading…
+          </div>
+        ) : txns.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '48px 24px',
+            background: T.white, border: `1.5px solid ${T.border}`, borderRadius: 16,
+          }}>
+            <div style={{ fontSize: 13, color: T.textMuted, fontFamily: 'var(--font-sans)' }}>
+              No entries logged yet this month.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {sortedDates.map(date => (
+              <div key={date}>
+                {/* Date label */}
+                <div style={{
+                  fontSize: 12, fontWeight: 600, color: T.text3,
+                  fontFamily: 'var(--font-sans)', marginBottom: 8,
+                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}>
+                  {formatDate(date)}
+                </div>
+
+                {/* Cards for this date */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {dateGroups[date].map(txn => {
+                    const isEditing = editId === txn.id
+                    const isRefund  = txn.amount < 0
+                    const hasNote   = !!(txn.note && txn.note !== 'Refund')
+                    return (
+                      <div
+                        key={txn.id}
+                        style={{
+                          background: isRefund ? '#F0FDF4' : T.white,
+                          border: `1.5px solid ${isRefund ? '#BBF7D0' : T.border}`,
+                          borderRadius: 14, overflow: 'hidden',
+                          fontFamily: 'var(--font-sans)',
+                        }}
+                      >
+                        {/* Main row */}
+                        <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 17, fontWeight: 700, color: isRefund ? '#1A7A45' : T.text1, marginBottom: hasNote ? 4 : 0 }}>
+                              {fmt(txn.amount, currency)}
+                            </div>
+                            {isRefund && !hasNote && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 700, color: '#1A7A45',
+                                background: '#DCFCE7', borderRadius: 4, padding: '1px 6px',
+                                textTransform: 'uppercase', letterSpacing: '0.06em',
+                                display: 'inline-block',
+                              }}>
+                                Refund
+                              </span>
+                            )}
+                            {hasNote && (
+                              <div style={{ fontSize: 13, fontStyle: 'italic', color: isRefund ? '#166534' : T.text3 }}>
+                                {txn.note}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Edit + Delete inline — only for non-refunds */}
+                          {!isRefund && (
+                            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                              <button
+                                onClick={() => isEditing ? setEditId(null) : openEdit(txn)}
+                                style={{
+                                  height: 32, padding: '0 14px',
+                                  background: '#F1F3F5', border: 'none',
+                                  borderRadius: 8,
+                                  fontSize: 12, fontWeight: 500, color: T.text2,
+                                  cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                                }}
+                              >
+                                {isEditing ? 'Cancel' : 'Edit'}
+                              </button>
+                              <button
+                                onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
+                                style={{
+                                  height: 32, padding: '0 14px',
+                                  background: '#F1F3F5', border: 'none',
+                                  borderRadius: 8,
+                                  fontSize: 12, fontWeight: 500, color: '#D93025',
+                                  cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Inline edit form */}
+                        {isEditing && (
+                          <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFA' }}>
+                            <input
+                              ref={amountRef}
+                              type="text" inputMode="decimal"
+                              value={editAmount}
+                              onChange={e => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '')
+                                const parts = val.split('.')
+                                if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
+                                setEditAmount(val)
+                              }}
+                              onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+                              style={{
+                                height: 44, borderRadius: 10, border: `1.5px solid ${T.brandDark}`,
+                                padding: '0 12px', fontSize: 16, fontWeight: 600,
+                                color: T.text1, background: T.white,
+                                fontFamily: 'var(--font-sans)', outline: 'none',
+                                width: '100%', boxSizing: 'border-box',
+                              }}
+                            />
+                            <input
+                              type="text" value={editNote}
+                              onChange={e => setEditNote(e.target.value)}
+                              placeholder="Note (optional)"
+                              style={{
+                                height: 40, borderRadius: 10, border: `1.5px solid ${T.border}`,
+                                padding: '0 12px', fontSize: 13,
+                                color: T.text1, background: T.white,
+                                fontFamily: 'var(--font-sans)', outline: 'none',
+                                width: '100%', boxSizing: 'border-box',
+                              }}
+                            />
+                            <button
+                              onClick={handleSave}
+                              disabled={saving || parseFloat(editAmount) <= 0}
+                              style={{
+                                height: 42, borderRadius: 10,
+                                background: saving ? T.border : T.brandDark,
+                                border: 'none', color: '#fff',
+                                fontSize: 14, fontWeight: 600,
+                                fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                              }}
+                            >
+                              {saving ? 'Saving…' : 'Save changes'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Delete sheet — reason picker + confirm */}
+      {pendingDelete && (
+        <Sheet
+          open={true}
+          onClose={() => setPendingDelete(null)}
+          title={deleteStep === 'reason' ? 'Why are you removing this?' : 'Are you sure?'}
+        >
+          {deleteStep === 'reason' && (
+            <div>
+              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
+                You logged <strong>{fmt(pendingDelete.amount, currency)}</strong> on{' '}
+                <strong>{formatDate(pendingDelete.date)}</strong>.
+              </p>
+              {[
+                {
+                  label: '✏️ I logged the wrong amount',
+                  sub:   'Correct it right here',
+                  action: () => { setPendingDelete(null); openEdit(pendingDelete) },
+                },
+                {
+                  label: '💸 I got a refund',
+                  sub:   'Log it so your totals stay honest',
+                  action: () => { setPendingDelete(null); setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) },
+                },
+                {
+                  label: '🚫 This never happened',
+                  sub:   'Remove it entirely',
+                  action: () => setDeleteStep('confirm'),
+                },
+              ].map(opt => (
+                <button
+                  key={opt.label}
+                  onClick={opt.action}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '14px 16px',
+                    background: T.white, border: `1.5px solid ${T.border}`,
+                    borderRadius: 14, cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)', marginBottom: 10, display: 'block',
+                  }}
+                >
+                  <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{opt.label}</div>
+                  <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{opt.sub}</div>
+                </button>
+              ))}
+              <button
+                onClick={() => setPendingDelete(null)}
+                style={{
+                  marginTop: 4, width: '100%', padding: '12px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: T.textMuted, fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {deleteStep === 'confirm' && (
+            <div>
+              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 24px', lineHeight: 1.6 }}>
+                This will permanently remove the <strong>{fmt(pendingDelete.amount, currency)}</strong> entry
+                from <strong>{formatDate(pendingDelete.date)}</strong>.
+              </p>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14,
+                  background: '#D93025', border: 'none', cursor: 'pointer',
+                  fontSize: 15, fontWeight: 600, color: '#fff',
+                  fontFamily: 'var(--font-sans)', opacity: deleting ? 0.6 : 1,
+                }}
+              >
+                {deleting ? 'Removing…' : 'Yes, remove it'}
+              </button>
+              <button
+                onClick={() => setDeleteStep('reason')}
+                style={{
+                  marginTop: 10, width: '100%', padding: '12px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: T.text3, fontFamily: 'var(--font-sans)',
+                }}
+              >
+                Go back
+              </button>
+            </div>
+          )}
+        </Sheet>
+      )}
+
+    </div>
+  )
+
+  return isDesktop ? (
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <SideNav />
+      <main style={{ flex: 1, maxWidth: 640 }}>{content}</main>
+    </div>
+  ) : (
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+      <main>{content}</main>
+      <BottomNav />
+    </div>
+  )
+}
+
+export default function CategoryLedgerPage() {
+  return (
+    <Suspense>
+      <LedgerInner />
+    </Suspense>
+  )
+}

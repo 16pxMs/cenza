@@ -106,10 +106,10 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 
 function QuickChip({ item, currency, onClick }: { item: QuickItem; currency: string; onClick: () => void }) {
   const s = item.source === 'logged'
-    ? { bg: T.brandDark, color: '#fff',  border: '1.5px solid rgba(255,255,255,0.2)', shadow: '0 1px 4px rgba(92,52,137,0.25)' }
+    ? { bg: '#EADFF4', color: '#3D1F63', border: '1.5px solid #C9AEE8', shadow: 'none' }
     : item.source === 'planned'
-    ? { bg: T.white,     color: T.text2, border: `1.5px solid ${T.borderStrong}`,     shadow: 'none' }
-    : { bg: T.white,     color: T.text3, border: `1.5px solid ${T.border}`,           shadow: 'none' }
+    ? { bg: T.white,   color: T.text2,   border: `1.5px solid ${T.borderStrong}`, shadow: 'none' }
+    : { bg: T.white,   color: T.text3,   border: `1.5px solid ${T.border}`,       shadow: 'none' }
 
   return (
     <button
