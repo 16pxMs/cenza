@@ -1,10 +1,12 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /onboarding — Currency picker
 // Only step needed upfront. Name pulled from Google OAuth.
 // Goals, fixed costs, budgets are set from the overview.
 // On finish: upserts user_profiles, redirects to /
 // ─────────────────────────────────────────────────────────────
-'use client'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'

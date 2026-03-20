@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /history — Monthly health check
 //
@@ -7,7 +10,6 @@
 //      (unlogged items shown muted so nothing is hidden)
 //   3. Inline edit/delete on each transaction row
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

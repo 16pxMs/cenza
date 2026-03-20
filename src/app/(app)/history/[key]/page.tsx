@@ -1,10 +1,12 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /history/[key] — Category ledger
 //
 // Chronological list of every entry for one category in the
 // current month. Edit amount/note inline; delete with confirm.
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

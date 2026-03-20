@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /settings — User settings
 //
@@ -7,7 +10,6 @@
 //   3. This month    — update declared income
 //   4. Account       — sign out, delete account
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

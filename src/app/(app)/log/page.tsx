@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /log — Add a payment
 //
@@ -7,7 +10,6 @@
 // Tap any item → amount sheet (native keyboard)
 // Pinned "Other" button at bottom → sheet with group picker
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

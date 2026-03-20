@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /goals/new — Add a goal (multi-step)
 //
@@ -9,7 +12,6 @@
 //   - Goal-specific benchmark tip
 //   CTA: "Add to my plan"
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

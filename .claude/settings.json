@@ -25,7 +25,8 @@
       "Bash(grep -r \"calculateBudget\\\\|suggestBudget\\\\|recommended\\\\|inferBudget\\\\|historySpend\\\\|averageSpend\" /Users/mshumaker/Documents/codeFile/publicFinance/src --include=*.ts --include=*.tsx)",
       "Bash(grep -rn \"getPrevMonth\\\\|total_budget\\\\|categories.*budget\" /Users/mshumaker/Documents/codeFile/publicFinance/src --include=*.ts --include=*.tsx)",
       "Bash(ls \"/Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\(public\\)\")",
-      "Bash(ls \"/Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\(app\\)\")"
+      "Bash(ls \"/Users/mshumaker/Documents/codeFile/publicFinance/src/app/\\(app\\)\")",
+      "Bash(git push:*)"
     ]
   }
 }

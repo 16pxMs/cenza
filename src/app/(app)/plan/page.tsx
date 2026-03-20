@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /plan — "Your plan is ready" reveal screen
 //
@@ -9,7 +12,6 @@
 // NO "over plan" or "exceeds income" logic.
 // Goals are total target amounts, not monthly deductions.
 // ─────────────────────────────────────────────────────────────
-'use client'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'

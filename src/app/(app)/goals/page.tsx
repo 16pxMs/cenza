@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /goals — Goal tracker
 //
@@ -7,7 +10,6 @@
 //   3. Add new goal sheet
 //   4. Confetti + celebration modal when a goal hits 100%
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

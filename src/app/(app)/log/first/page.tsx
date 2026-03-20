@@ -1,3 +1,6 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /log/first — First-time expense logger
 //
@@ -6,7 +9,6 @@
 // Step 2: "Every month?" (Rent / School fees only)
 // Step 3: Amount + note + save
 // ─────────────────────────────────────────────────────────────
-'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

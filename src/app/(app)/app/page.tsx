@@ -1,9 +1,11 @@
+'use client'
+export const dynamic = 'force-dynamic'
+
 // ─────────────────────────────────────────────────────────────
 // /app — Main app shell (moved from / to /app)
 // Handles auth check, profile load, tab routing.
 // Mobile: BottomNav. Desktop: SideNav.
 // ─────────────────────────────────────────────────────────────
-'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
