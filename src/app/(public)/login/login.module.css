@@ -1,49 +1,75 @@
-/* ── Welcome screen (dark) ── */
+/* ── Welcome screen (light) ── */
 
 .pageWrapper {
   min-height: 100dvh;
-  background: var(--dark-bg);
+  background: #F8F9FA;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 52px 24px;
+  justify-content: flex-end;
+  padding: 0 24px 52px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Decorative gradient orbs — fill upper void with brand depth */
+.decorTop {
+  position: absolute;
+  top: -140px;
+  right: -120px;
+  width: 440px;
+  height: 440px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(155, 114, 204, 0.2) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.decorMid {
+  position: absolute;
+  top: 60px;
+  left: -160px;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(92, 52, 137, 0.09) 0%, transparent 65%);
+  pointer-events: none;
 }
 
 .content {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  position: relative;
 }
 
 .logo {
   font-family: var(--font-sans);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--brand-mid);
-  letter-spacing: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5C3489;
+  letter-spacing: 2.5px;
   text-transform: uppercase;
-  margin-bottom: var(--space-xs);
+  margin-bottom: 14px;
 }
 
 .headline {
   font-family: var(--font-sans);
   font-weight: 700;
-  font-size: 32px;
-  color: var(--text-inverse);
-  line-height: 1.2;
-  margin: 0;
+  font-size: 34px;
+  color: #101828;
+  line-height: 1.18;
+  letter-spacing: -0.6px;
+  margin: 0 0 16px;
 }
 
 .headlineAccent {
-  color: var(--brand-mid);
+  color: #9B72CC;
   font-style: italic;
 }
 
 .description {
   font-family: var(--font-sans);
   font-size: 15px;
-  color: rgba(255, 255, 255, 0.75);
+  color: #667085;
   line-height: 1.65;
   margin: 0;
 }
@@ -51,30 +77,32 @@
 .ctaArea {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  margin-top: var(--space-xl);
+  gap: 16px;
+  margin-top: 40px;
 }
 
 .primaryButton {
   width: 100%;
-  height: 52px;
-  border-radius: 12px;
-  background: var(--brand-deep);
+  height: 56px;
+  border-radius: 16px;
+  background: #5C3489;
   border: none;
-  color: var(--text-inverse);
+  color: #fff;
   font-family: var(--font-sans);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease;
+  letter-spacing: -0.1px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .primaryButton:hover {
-  background: var(--brand-dark);
+  background: #4A2870;
+  box-shadow: 0 6px 20px rgba(92, 52, 137, 0.28);
 }
 
 .primaryButton:focus-visible {
-  outline: 2px solid var(--brand-mid);
+  outline: 2px solid #9B72CC;
   outline-offset: 2px;
 }
 
@@ -82,7 +110,7 @@
   text-align: center;
   font-family: var(--font-sans);
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #98A2B3;
   margin: 0;
 }
 
@@ -90,8 +118,8 @@
   background: none;
   border: none;
   padding: 0;
-  margin-left: var(--space-xs);
-  color: var(--brand-mid);
+  margin-left: 5px;
+  color: #5C3489;
   font-weight: 600;
   cursor: pointer;
   font-family: var(--font-sans);
@@ -99,7 +127,7 @@
 }
 
 .tertiaryButton:focus-visible {
-  outline: 2px solid var(--brand-mid);
+  outline: 2px solid #9B72CC;
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -109,86 +137,105 @@
 
 .authWrapper {
   min-height: 100dvh;
-  background: var(--white);
+  background: #F8F9FA;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 52px 24px;
+  justify-content: flex-end;
+  padding: 0 24px 52px;
+  position: relative;
+  overflow: hidden;
 }
 
 .authCard {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  position: relative;
 }
 
 .backButton {
+  position: absolute;
+  top: 20px;
+  left: 24px;
   background: none;
   border: none;
-  padding: 0;
+  padding: 8px 0;
   font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--text-3);
+  font-size: 15px;
+  color: #667085;
   cursor: pointer;
-  align-self: flex-start;
-  margin-bottom: var(--space-sm);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 1;
 }
 
 .backButton:hover {
-  color: var(--text-1);
+  color: #101828;
 }
 
 .backButton:focus-visible {
-  outline: 2px solid var(--brand-deep);
+  outline: 2px solid #9B72CC;
   outline-offset: 2px;
   border-radius: 2px;
 }
 
 .authTitle {
   font-family: var(--font-sans);
-  font-size: 28px;
+  font-size: 34px;
   font-weight: 700;
-  color: var(--text-1);
-  margin: 0;
-  line-height: 1.2;
+  color: #101828;
+  margin: 0 0 12px;
+  line-height: 1.18;
+  letter-spacing: -0.6px;
 }
 
 .authSubtitle {
   font-family: var(--font-sans);
   font-size: 15px;
-  color: var(--text-3);
+  color: #667085;
   margin: 0;
-  line-height: 1.55;
+  line-height: 1.65;
 }
 
 .googleButton {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-sm);
+  gap: 10px;
   width: 100%;
-  height: 52px;
-  border-radius: 12px;
-  background: var(--white);
-  border: 1.5px solid var(--border-strong);
-  color: var(--text-2);
+  height: 56px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #E4E7EC;
+  color: #344054;
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  margin-top: var(--space-md);
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  margin-top: 32px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  box-sizing: border-box;
 }
 
 .googleButton:hover {
-  background: var(--grey-50);
-  box-shadow: var(--shadow-sm);
+  border-color: #D0D5DD;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.09);
 }
 
 .googleButton:focus-visible {
-  outline: 2px solid #4285F4; /* Google brand — intentional */
+  outline: 2px solid #4285F4;
   outline-offset: 2px;
+}
+
+.privacyNote {
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: #98A2B3;
+  margin: 16px 0 0;
+  line-height: 1.5;
 }
 
 
@@ -198,36 +245,24 @@
   .pageWrapper {
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: 80px 40px;
   }
 
   .content {
     max-width: 420px;
   }
 
-  .ctaArea {
-    margin-top: var(--space-xl);
-    padding-top: 0;
-  }
-
   .authWrapper {
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
-    background: var(--grey-100);
+    padding: 80px 40px;
   }
 
   .authCard {
-    flex: unset;
     max-width: 420px;
-    background: var(--white);
-    border-radius: 12px;
-    padding: 48px 40px;
-    gap: var(--space-md);
-    box-shadow: var(--shadow-md);
   }
 
-  .googleButton {
-    margin-top: var(--space-xs);
+  .backButton {
+    left: calc(50% - 210px);
   }
 }

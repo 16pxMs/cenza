@@ -167,9 +167,10 @@ interface GoalData {
 }
 
 function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string; onTap: () => void }) {
-  const meta     = GOAL_META[goal.id]
-  const pct      = goal.target ? Math.min(100, Math.round((goal.totalSaved / goal.target) * 100)) : 0
-  const isDone   = goal.target != null && goal.totalSaved >= goal.target
+  const meta      = GOAL_META[goal.id]
+  const pct       = goal.target ? Math.min(100, Math.round((goal.totalSaved / goal.target) * 100)) : 0
+  const isDone    = goal.target != null && goal.totalSaved >= goal.target
+  const hasSaved  = goal.totalSaved > 0
   const projected = projectedLabel(goal.totalSaved, goal.target, goal.monthlyAvg)
 
   return (
@@ -179,18 +180,19 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
         display: 'block', width: '100%', textAlign: 'left',
         background: T.white,
         border: `1px solid ${isDone ? meta.border : 'var(--border)'}`,
-        borderRadius: 16, padding: 16,
+        borderRadius: 18, padding: '18px',
         cursor: 'pointer',
+        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
       }}
     >
-      {/* Header row */}
+      {/* Header: icon + name + progress pill (only when there's progress) */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 38, height: 38, borderRadius: 10,
+            width: 40, height: 40, borderRadius: 12,
             background: meta.light,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20,
+            fontSize: 20, flexShrink: 0,
           }}>
             {meta.icon}
           </div>
@@ -201,42 +203,69 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
             )}
           </div>
         </div>
-        {goal.target != null && (
+        {/* Pill: only shown when there's actual progress or done */}
+        {goal.target != null && (isDone || pct > 0) && (
           <div style={{
             fontSize: 12, fontWeight: 600,
             color: isDone ? meta.dark : T.text2,
             background: isDone ? meta.light : '#F1F3F5',
-            border: `1px solid ${isDone ? meta.border : 'var(--border)'}`,
-            borderRadius: 20, padding: '3px 10px',
+            border: `1px solid ${isDone ? meta.border : 'transparent'}`,
+            borderRadius: 20, padding: '4px 10px', flexShrink: 0,
           }}>
             {isDone ? '✓ Done' : `${pct}%`}
           </div>
         )}
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — always shown when target set */}
       {goal.target != null && (
-        <div style={{ height: 6, background: '#EBEBF0', borderRadius: 99, overflow: 'hidden', marginBottom: 12 }}>
-          <div style={{
-            height: '100%', borderRadius: 99,
-            width: `${pct}%`,
-            background: isDone ? meta.dark : T.brandDark,
-            transition: 'width 0.5s ease',
-          }} />
+        <div style={{ height: 5, background: '#EBEBED', borderRadius: 99, overflow: 'hidden', marginBottom: 14 }}>
+          {pct > 0 && (
+            <div style={{
+              height: '100%', borderRadius: 99,
+              width: `${pct}%`,
+              background: isDone ? meta.dark : T.brandDark,
+              transition: 'width 0.5s ease',
+              minWidth: 4,
+            }} />
+          )}
         </div>
       )}
 
-      {/* Amounts row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div>
-          <div style={{ fontSize: 19, fontWeight: 600, color: T.text1 }}>{fmt(goal.totalSaved, currency)}</div>
-          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>saved</div>
-        </div>
-        {goal.target != null && (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 13, color: T.text3 }}>{fmt(goal.target, currency)}</div>
-            <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>target</div>
-          </div>
+      {/* Amounts: contextual — lead with what's useful, not KES 0 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {hasSaved ? (
+          <>
+            <div>
+              <div style={{ fontSize: 19, fontWeight: 700, color: T.text1, letterSpacing: -0.3 }}>
+                {fmt(goal.totalSaved, currency)}
+              </div>
+              <div style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>saved</div>
+            </div>
+            {goal.target != null && !isDone && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: T.text3 }}>
+                  {fmt(goal.target - goal.totalSaved, currency)}
+                </div>
+                <div style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>to go</div>
+              </div>
+            )}
+            {isDone && goal.target != null && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: meta.dark }}>{fmt(goal.target, currency)}</div>
+                <div style={{ fontSize: 11, color: meta.dark, opacity: 0.75, marginTop: 1 }}>target reached</div>
+              </div>
+            )}
+          </>
+        ) : goal.target != null ? (
+          <>
+            <span style={{ fontSize: 13, color: T.textMuted }}>No contributions yet</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: T.text2 }}>
+              {fmt(goal.target, currency)} target
+            </span>
+          </>
+        ) : (
+          <span style={{ fontSize: 13, color: T.textMuted }}>No target set</span>
         )}
       </div>
 
@@ -244,7 +273,7 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
       {projected && (
         <div style={{
           marginTop: 12, paddingTop: 12,
-          borderTop: `1px solid var(--border-subtle)`,
+          borderTop: '1px solid #F0F0F0',
           fontSize: 12, color: T.text3,
         }}>
           On track for {projected}
@@ -420,7 +449,8 @@ export default function GoalsPage() {
     monthlyAvg: monthlyAvg[id] ?? 0,
   }))
 
-  const totalSaved = Object.values(savedByGoal).reduce((s, v) => s + v, 0)
+  const totalSaved   = Object.values(savedByGoal).reduce((s, v) => s + v, 0)
+  const totalTargets = goals.reduce((s, id) => s + (targets[id] ?? 0), 0)
 
   // ── Content ───────────────────────────────────────────────────
   const pad = isDesktop ? '40px 32px' : '24px 16px'
@@ -443,7 +473,12 @@ export default function GoalsPage() {
         </h1>
         {goals.length > 0 && (
           <div style={{ marginTop: 6, fontSize: 14, color: T.text3 }}>
-            {goals.length} goal{goals.length !== 1 ? 's' : ''} · {fmt(totalSaved, currency)} saved total
+            {goals.length} goal{goals.length !== 1 ? 's' : ''} ·{' '}
+            {totalSaved > 0
+              ? `${fmt(totalSaved, currency)} saved`
+              : totalTargets > 0
+                ? `${fmt(totalTargets, currency)} in targets`
+                : 'No targets set yet'}
           </div>
         )}
       </div>
@@ -645,7 +680,7 @@ export default function GoalsPage() {
 
           {deleteStep === 'used' && deleteGoal && (() => {
             const meta = GOAL_META[deleteGoal]
-            const isEmergency = deleteGoal === 'emergency_fund'
+            const isEmergency = deleteGoal === 'emergency'
             return (
               <div style={{ padding: '4px 0' }}>
                 <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>💛</div>

@@ -59,6 +59,7 @@ function NewGoalInner() {
 
   const typeParam    = searchParams.get('type') as GoalId | null
   const excludeParam = (searchParams.get('exclude') ?? '').split(',').filter(Boolean)
+  const fromParam    = searchParams.get('from')
 
   const [loading, setLoading]               = useState(true)
   const [currency, setCurrency]             = useState('')
@@ -146,7 +147,7 @@ function NewGoalInner() {
     if (step === 'target' || step === 'name' || step === 'destination') {
       setStep('pick'); setSelectedGoal(null); setTargetAmount(''); setDestination(''); return
     }
-    router.push('/goals')
+    router.push(fromParam === 'overview' ? '/' : '/goals')
   }
 
   const selectGoal = (id: GoalId) => {
@@ -334,7 +335,7 @@ function NewGoalInner() {
       />
       <div style={{ height: 16 }} />
       <button
-        onClick={() => setStep(3)}
+        onClick={() => setStep('target')}
         disabled={customName.trim().length === 0}
         style={{
           width: '100%', height: 52, borderRadius: 14,
@@ -473,7 +474,7 @@ function NewGoalInner() {
       {/* CTA */}
       <div style={{ marginTop: 28 }}>
         <button
-          onClick={handleSave}
+          onClick={() => handleSave()}
           disabled={target <= 0 || saving}
           style={{
             width: '100%', height: 52, borderRadius: 14,

@@ -70,11 +70,16 @@ interface CategoryRow {
 }
 
 function BarFill({ pct, type }: { pct: number; type: CategoryRow['type'] }) {
+  // Goals: always brand purple — progress is never a warning
+  // Fixed: green when paid (≤100%), red only if somehow overpaid
+  // Variable/debt/other: traffic light — green <75%, amber 75-100%, red over
   const color = type === 'goal'
     ? T.brandDark
-    : pct > 100 ? '#D93025' : pct > 75 ? '#F4A01C' : T.brandDark
+    : type === 'fixed'
+    ? (pct > 100 ? '#EF4444' : '#22C55E')
+    : pct > 100 ? '#EF4444' : pct > 75 ? '#F59E0B' : '#22C55E'
   return (
-    <div style={{ height: 3, background: '#E5E5EA', borderRadius: 99, marginTop: 8 }}>
+    <div style={{ height: 4, background: '#EBEBED', borderRadius: 99, marginTop: 10 }}>
       <div style={{
         height: '100%',
         width: `${Math.min(100, pct)}%`,
@@ -286,27 +291,26 @@ export default function HistoryPage() {
         </h1>
       </div>
 
-      {/* Income / Spent / Unallocated card — leads the page */}
+      {/* Hero stats — white card, clear hierarchy */}
       {totalIncome > 0 && (
-        <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 12px` }}>
+        <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 16px` }}>
           <div style={{
-            background: '#F5F5F7', borderRadius: 16,
+            background: T.white, borderRadius: 20,
+            boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
             display: 'flex', alignItems: 'stretch',
           }}>
             {[
-              { label: 'Income',      value: totalIncome, color: T.text1 },
-              { label: 'Spent',       value: totalSpent,  color: T.text1 },
-              { label: 'In hand', value: unallocated, color: unallocated >= 0 ? '#1A7A45' : '#D93025' },
+              { label: 'Income',  value: totalIncome, color: T.text1 },
+              { label: 'Spent',   value: totalSpent,  color: T.text1 },
+              { label: 'In hand', value: unallocated,  color: unallocated >= 0 ? '#1A7A45' : '#D93025' },
             ].map((col, i) => (
               <div key={col.label} style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
-                {i > 0 && (
-                  <div style={{ width: 1, background: 'var(--border-subtle)', margin: '16px 0', flexShrink: 0 }} />
-                )}
-                <div style={{ flex: 1, padding: '24px 0', textAlign: 'center' }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                {i > 0 && <div style={{ width: 1, background: '#F0F0F0', margin: '18px 0', flexShrink: 0 }} />}
+                <div style={{ flex: 1, padding: '22px 0', textAlign: 'center' }}>
+                  <p style={{ margin: '0 0 5px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                     {col.label}
                   </p>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: col.color }}>
+                  <span style={{ fontSize: i === 2 ? 17 : 15, fontWeight: 700, color: col.color }}>
                     {fmt(Math.abs(col.value), currency)}
                   </span>
                 </div>
@@ -316,34 +320,63 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {/* Breakdown card */}
-      <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 40px` }}>
-        <div style={{
-          background: T.white, border: `1px solid var(--border)`,
-          borderRadius: 16, padding: '18px 20px',
-        }}>
-          <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Where it went
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {breakdown.map(b => (
-              <div key={b.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, color: b.accent ? '#D93025' : T.text2 }}>{b.label}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, color: b.accent ? '#D93025' : T.text1 }}>{fmt(b.amount, currency)}</span>
+      {/* Where it went — stacked proportion bar + legend */}
+      {breakdown.length > 0 && totalSpent > 0 && (() => {
+        const segments = [
+          { label: 'Fixed',  amount: fixedSpent,  color: '#5C3489' },
+          { label: 'Goals',  amount: goalsSpent,  color: '#9B72CC' },
+          { label: 'Daily',  amount: dailySpent,  color: '#C4A8E0' },
+          { label: 'Debts',  amount: debtSpent,   color: '#EF4444' },
+          { label: 'Other',  amount: otherSpent,  color: '#D1D5DB' },
+        ].filter(s => s.amount > 0)
+        return (
+          <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 24px` }}>
+            <div style={{
+              background: T.white, border: `1px solid var(--border)`,
+              borderRadius: 16, padding: '18px 20px',
+            }}>
+              <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Where it went
+              </p>
+
+              {/* Stacked proportion bar */}
+              <div style={{
+                display: 'flex', height: 8, borderRadius: 99,
+                overflow: 'hidden', marginBottom: 16, gap: 2,
+              }}>
+                {segments.map(s => (
+                  <div
+                    key={s.label}
+                    style={{
+                      height: '100%',
+                      width: `${(s.amount / totalSpent) * 100}%`,
+                      background: s.color,
+                      borderRadius: 99,
+                      transition: 'width 0.4s ease',
+                      minWidth: 4,
+                    }}
+                  />
+                ))}
               </div>
-            ))}
+
+              {/* Legend rows */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {segments.map(s => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13.5, color: T.text2 }}>{s.label}</span>
+                    </div>
+                    <span style={{ fontSize: 13.5, fontWeight: 500, color: s.label === 'Debts' ? '#EF4444' : T.text1 }}>
+                      {fmt(s.amount, currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          {breakdown.length > 1 && (
-            <>
-              <div style={{ height: 1, background: 'var(--border-subtle)', margin: '14px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>Total</span>
-                <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{fmt(totalSpent, currency)}</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+        )
+      })()}
 
 
       {/* Category sections */}
@@ -391,14 +424,14 @@ export default function HistoryPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 16 }}>
                         {hasLogged ? (
                           <>
-                            <span style={{ fontSize: 15, fontWeight: 600, color: rowOver ? '#D93025' : T.text1 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, color: rowOver ? '#EF4444' : T.text1 }}>
                               {fmt(row.spent, currency)}
                             </span>
                             <IconChevronRight size={16} color={T.textMuted} />
                           </>
                         ) : (
-                          <span style={{ fontSize: 13, color: T.textMuted, fontStyle: 'italic' }}>
-                            Not logged
+                          <span style={{ fontSize: 14, color: T.textMuted, fontWeight: 400, letterSpacing: '0.05em' }}>
+                            —
                           </span>
                         )}
                       </div>

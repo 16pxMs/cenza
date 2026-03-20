@@ -11,14 +11,14 @@ interface Props {
 
 function getGreeting(name: string) {
   const hour = new Date().getHours()
-  if (hour < 12) return `Morning, ${name}`
-  if (hour < 18) return `Hey, ${name}`
-  return `Evening, ${name}`
+  if (hour < 12) return `Morning, ${name}.`
+  if (hour < 18) return `Hey, ${name}.`
+  return `Evening, ${name}.`
 }
 
 export function OverviewEmpty({ name, currency, onSave }: Props) {
-  const [display, setDisplay] = useState('')   // formatted string shown in input
-  const [raw, setRaw]         = useState(0)    // actual number used for saving
+  const [display, setDisplay] = useState('')
+  const [raw, setRaw]         = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const canSave = raw > 0
@@ -35,9 +35,7 @@ export function OverviewEmpty({ name, currency, onSave }: Props) {
     onSave({ income: raw, extraIncome: [], total: raw })
   }
 
-  const initial = (name ?? '?')[0].toUpperCase()
-
-  // Scale font down as number grows so it always fits one line
+  // Scale font down as number grows
   const fontSize = display.length <= 5 ? 64
     : display.length <= 8  ? 52
     : display.length <= 11 ? 38
@@ -46,30 +44,55 @@ export function OverviewEmpty({ name, currency, onSave }: Props) {
   return (
     <div className="overview-empty">
 
-      {/* Top bar */}
-      <div className="overview-empty__topbar">
-        <p className="overview-empty__greeting">{getGreeting(name)}</p>
-        <div className="overview-empty__avatar">{initial}</div>
-      </div>
+      {/* Greeting — no avatar, parent page renders it */}
+      <p className="overview-empty__greeting">{getGreeting(name)}</p>
 
       {/* Heading */}
       <h1 className="overview-empty__heading">What do you earn<br />each month?</h1>
-      <p className="overview-empty__sub">The amount that actually lands in your account each month.</p>
+      <p className="overview-empty__sub">The amount that actually lands in your account.</p>
 
-      {/* Income input */}
-      <div className="overview-empty__input-zone" onClick={() => inputRef.current?.focus()}>
+      {/* Income input — visual display decoupled from input so cursor doesn't fight the "0" */}
+      <div
+        className="overview-empty__input-zone"
+        onClick={() => inputRef.current?.focus()}
+      >
         <span className="overview-empty__currency-label">{currency}</span>
-        <input
-          ref={inputRef}
-          className="overview-empty__amount-input"
-          type="text"
-          inputMode="numeric"
-          placeholder="0"
-          value={display}
-          onChange={handleChange}
-          autoFocus
-          style={{ fontSize }}
-        />
+
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', cursor: 'text' }}>
+          {/* Visual number — shown always, dimmed when empty */}
+          <span
+            style={{
+              fontSize,
+              fontWeight: 300,
+              lineHeight: 1.1,
+              color: display ? 'var(--text-1)' : 'var(--text-muted)',
+              userSelect: 'none',
+              pointerEvents: 'none',
+              letterSpacing: -1,
+            }}
+          >
+            {display || '0'}
+          </span>
+
+          {/* Hidden input — captures keyboard, no visible cursor */}
+          <input
+            ref={inputRef}
+            type="text"
+            inputMode="numeric"
+            value={display}
+            onChange={handleChange}
+            autoFocus
+            style={{
+              position: 'absolute', inset: 0,
+              opacity: 0,
+              fontSize: 16, // prevents iOS zoom
+              border: 'none', outline: 'none',
+              background: 'transparent',
+              caretColor: 'transparent',
+            }}
+          />
+        </div>
+
         {canSave && (
           <span className="overview-empty__amount-formatted">
             {fmt(raw, currency)}
@@ -77,10 +100,10 @@ export function OverviewEmpty({ name, currency, onSave }: Props) {
         )}
       </div>
 
-      {/* Bottom — always visible */}
+      {/* CTA */}
       <div className="overview-empty__bottom">
         <button className="overview-empty__cta" onClick={handleSave} disabled={!canSave}>
-          Add my income
+          {canSave ? 'Add my income' : 'Enter your income'}
         </button>
       </div>
 

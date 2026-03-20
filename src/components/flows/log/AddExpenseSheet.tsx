@@ -50,6 +50,7 @@ export interface ExpenseSaveData {
   amount:          number
   note:            string
   replaceExisting: boolean
+  isMonthlyFixed?: boolean  // true when user confirmed this is a recurring fixed payment
 }
 
 export interface PriorEntry {
@@ -73,6 +74,28 @@ export interface QuickItem {
   plannedAmount?: number
 }
 
+// Common categories shown to first-time loggers
+// askFrequency: true → show "Do you pay this every month?" before amount
+const FIRST_TIME_CATEGORIES = [
+  { icon: '🏠', label: 'Rent',           categoryKey: 'rent',       groupType: 'fixed',    askFrequency: true  },
+  { icon: '🛒', label: 'Groceries',      categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🚌', label: 'Transport',      categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🍽️', label: 'Eating out',    categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '📱', label: 'Airtime / Data', categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '💡', label: 'Utilities',      categoryKey: null,         groupType: 'fixed',    askFrequency: false },
+  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🏫', label: 'School fees',    categoryKey: 'schoolFees', groupType: 'fixed',    askFrequency: true  },
+  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'variable', askFrequency: false },
+]
+
+type FirstTimeCat = {
+  icon:         string
+  label:        string
+  categoryKey:  string | null
+  groupType:    string
+  askFrequency: boolean
+}
+
 interface Props {
   open:               boolean
   onClose:            () => void
@@ -83,6 +106,7 @@ interface Props {
   onSelectQuickItem?: (item: SheetItem) => void
   currency:           string
   isDesktop?:         boolean
+  isFirstTime?:       boolean  // true when no transactions logged this month yet
   onSave:             (data: ExpenseSaveData) => Promise<void>
 }
 
@@ -139,7 +163,7 @@ const GROUP_LABEL: Record<string, string> = {
   debt:     'Debt repayment',
 }
 
-export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, quickItems, onSelectQuickItem, currency, isDesktop, onSave }: Props) {
+export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, quickItems, onSelectQuickItem, currency, isDesktop, isFirstTime, onSave }: Props) {
   const [otherName, setOtherName]           = useState('')
   const [otherFrequency, setOtherFrequency] = useState<'recurring' | 'oneoff' | null>(null)
   const [otherType, setOtherType]           = useState<'bill' | 'everyday' | 'debt' | null>(null)
@@ -150,6 +174,14 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
   const [saving, setSaving]                 = useState(false)
   const [saved, setSaved]                   = useState(false)
   const [mode, setMode]                     = useState<'update' | 'add'>('update')
+  // First-time: category selected from grid, bypasses Q1/Q2
+  const [firstTimeCat, setFirstTimeCat]     = useState<FirstTimeCat | null>(null)
+  // First-time: category awaiting "every month?" answer
+  const [pendingCat, setPendingCat]         = useState<FirstTimeCat | null>(null)
+  // First-time: user confirmed it's a monthly fixed payment
+  const [isMonthlyFixed, setIsMonthlyFixed] = useState(false)
+  // First-time: user tapped "Something else" → fall back to free-text
+  const [showFreeText, setShowFreeText]     = useState(false)
 
   const amountRef = useRef<HTMLInputElement>(null)
   const nameRef   = useRef<HTMLInputElement>(null)
@@ -166,6 +198,10 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
     setNote('')
     setSaved(false)
     setMode(item?.groupType === 'goal' ? 'add' : 'update')
+    setFirstTimeCat(null)
+    setPendingCat(null)
+    setIsMonthlyFixed(false)
+    setShowFreeText(false)
   }, [open, item])
 
   // Dictionary lookup as user types
@@ -215,18 +251,21 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
   // Resolved group type for Other items
   const otherGroupType = isDebtFlow
     ? 'debt'
-    : dictMatch && !overrideDict
-      ? dictMatch.groupType
-      : otherFrequency === 'recurring' && otherType === 'bill'
-        ? 'fixed'
-        : otherFrequency === 'recurring' && otherType === 'debt'
-          ? 'debt'
-          : 'variable'
+    : firstTimeCat
+      ? firstTimeCat.groupType
+      : dictMatch && !overrideDict
+        ? dictMatch.groupType
+        : otherFrequency === 'recurring' && otherType === 'bill'
+          ? 'fixed'
+          : otherFrequency === 'recurring' && otherType === 'debt'
+            ? 'debt'
+            : 'variable'
 
   // Questions answered?
   const otherQuestionsReady = isDebtFlow
     ? otherName.trim().length > 0
-    : (!!dictMatch && !overrideDict) ||
+    : !!firstTimeCat ||
+      (!!dictMatch && !overrideDict) ||
       otherFrequency === 'oneoff' ||
       (otherFrequency === 'recurring' && otherType !== null)
 
@@ -257,7 +296,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
     try {
       const finalLabel = item.isOther ? otherName.trim() : item.label
       const finalKey   = item.isOther
-        ? `custom_${finalLabel.toLowerCase().replace(/\s+/g, '_').slice(0, 40)}`
+        ? (firstTimeCat?.categoryKey ?? `custom_${finalLabel.toLowerCase().replace(/\s+/g, '_').slice(0, 40)}`)
         : item.key
       const finalGroup = item.isOther ? otherGroupType : item.groupType
 
@@ -268,6 +307,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
         amount:          amountNum,
         note,
         replaceExisting: hasPrior && mode === 'update',
+        isMonthlyFixed,
       })
       setSaving(false)
       setSaved(true)
@@ -286,8 +326,119 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
         {/* ══ OTHER FLOW ══════════════════════════════════════ */}
         {item?.isOther && (
           <>
-            {/* Quick-tap chips — shown when no name typed, non-debt */}
-            {!isDebtFlow && quickItems && quickItems.length > 0 && otherName.trim().length === 0 && (
+            {/* ── First-time category grid ───────────────────── */}
+            {isFirstTime && !isDebtFlow && !firstTimeCat && !showFreeText && (
+              <div>
+                <p style={{ margin: '0 0 14px', fontSize: 13, color: T.text2, lineHeight: 1.5 }}>
+                  Tap what fits, or use Something else.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {FIRST_TIME_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.label}
+                      onClick={() => {
+                        if (cat.askFrequency) {
+                          setPendingCat(cat)
+                          setOtherName(cat.label)
+                        } else {
+                          setFirstTimeCat(cat)
+                          setOtherName(cat.label)
+                          setTimeout(() => amountRef.current?.focus(), 100)
+                        }
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '13px 14px', borderRadius: 14,
+                        border: `1px solid var(--border)`,
+                        background: T.white, cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ fontSize: 20 }}>{cat.icon}</span>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: T.text1 }}>{cat.label}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setShowFreeText(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '13px 14px', borderRadius: 14,
+                      border: `1px dashed var(--border-strong)`,
+                      background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                      gridColumn: '1 / -1',
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>✏️</span>
+                    <span style={{ fontSize: 14, fontWeight: 500, color: T.text3 }}>Something else</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Frequency question for Rent / School fees ──────── */}
+            {isFirstTime && !isDebtFlow && pendingCat && !firstTimeCat && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: T.text1 }}>
+                  {pendingCat.icon} {pendingCat.label}
+                </p>
+                <p style={{ margin: '0 0 16px', fontSize: 14, color: T.text2, lineHeight: 1.6 }}>
+                  Do you pay this every month?
+                </p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      setFirstTimeCat({ ...pendingCat, groupType: 'fixed' })
+                      setIsMonthlyFixed(true)
+                      setPendingCat(null)
+                      setTimeout(() => amountRef.current?.focus(), 100)
+                    }}
+                    style={{
+                      flex: 1, height: 48, borderRadius: 12,
+                      background: T.brandDark, border: 'none',
+                      color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    Yes, every month
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFirstTimeCat({ ...pendingCat, groupType: 'variable' })
+                      setIsMonthlyFixed(false)
+                      setPendingCat(null)
+                      setTimeout(() => amountRef.current?.focus(), 100)
+                    }}
+                    style={{
+                      flex: 1, height: 48, borderRadius: 12,
+                      background: T.white, border: `1px solid var(--border)`,
+                      color: T.text2, fontSize: 15, fontWeight: 500, cursor: 'pointer',
+                    }}
+                  >
+                    Just this once
+                  </button>
+                </div>
+                <button
+                  onClick={() => { setPendingCat(null); setOtherName('') }}
+                  style={{ marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.textMuted }}
+                >
+                  Back
+                </button>
+              </div>
+            )}
+
+            {/* ── Selected first-time category — show label + change link ── */}
+            {isFirstTime && !isDebtFlow && firstTimeCat && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{firstTimeCat.label}</span>
+                <button
+                  onClick={() => { setFirstTimeCat(null); setOtherName(''); setAmount('') }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text3 }}
+                >
+                  Change
+                </button>
+              </div>
+            )}
+
+            {/* Quick-tap chips — returning users only, when no name typed, non-debt */}
+            {!isFirstTime && !isDebtFlow && quickItems && quickItems.length > 0 && otherName.trim().length === 0 && (
               <div>
                 <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: T.textMuted }}>
                   Recent
@@ -305,8 +456,8 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
               </div>
             )}
 
-            {/* Name input */}
-            <div>
+            {/* Name input — hidden when first-time category selected and not in free-text mode */}
+            {(!isFirstTime || isDebtFlow || showFreeText) && <div>
               {isDebtFlow && (
                 <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: T.text2 }}>
                   What&apos;s this debt?
@@ -324,7 +475,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                   padding: '0 14px', fontSize: 14, color: T.text1, background: T.white, outline: 'none', width: '100%', boxSizing: 'border-box',
                 }}
               />
-            </div>
+            </div>}
 
             {/* Dictionary match — skip questions */}
             {dictMatch && !overrideDict && otherName.trim().length > 0 && (() => {
@@ -356,8 +507,8 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
               )
             })()}
 
-            {/* Q1 — shown when no dict match and name is typed (not for debts) */}
-            {!isDebtFlow && !dictMatch && otherName.trim().length > 0 && (
+            {/* Q1 — shown when no dict match and name is typed (not for debts, not for first-time cat) */}
+            {!isDebtFlow && !dictMatch && !firstTimeCat && !pendingCat && otherName.trim().length > 0 && (
               <div>
                 <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2 }}>
                   Do you pay this most months?
@@ -369,8 +520,8 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
               </div>
             )}
 
-            {/* Q2 — shown only when "Most months" and no dict match (not for debts) */}
-            {!isDebtFlow && !dictMatch && otherFrequency === 'recurring' && (
+            {/* Q2 — shown only when "Most months" and no dict match (not for debts, not first-time cat) */}
+            {!isDebtFlow && !dictMatch && !firstTimeCat && !pendingCat && otherFrequency === 'recurring' && (
               <div>
                 <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: T.text2 }}>
                   What kind of payment is this?
@@ -407,7 +558,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
         )}
 
         {/* ══ AMOUNT + NOTE + SAVE ════════════════════════════ */}
-        {!waitingForPrior && (item?.isOther ? otherQuestionsReady : true) && (
+        {!waitingForPrior && !pendingCat && (item?.isOther ? otherQuestionsReady : true) && (
           <>
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',

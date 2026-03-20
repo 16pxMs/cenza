@@ -15,6 +15,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { AddExpenseSheet, type SheetItem, type ExpenseSaveData, type PriorEntry, type DictionaryEntry, type QuickItem } from '@/components/flows/log/AddExpenseSheet'
+import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack, IconTrash } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
@@ -49,6 +50,20 @@ const GOAL_META: Record<string, string> = {
   family: 'Family', other: 'Other Goal',
 }
 
+const GOAL_ICONS: Record<string, string> = {
+  emergency: '🛡️', car: '🚗', travel: '✈️',
+  home: '🏠', education: '🎓', business: '💼',
+  family: '👨‍👩‍👧', other: '🎯',
+}
+
+const SECTION_EMPTY: Record<string, string> = {
+  fixed:  'No fixed expenses set up for this month.',
+  goals:  'No active goals. Add one from the Goals tab.',
+  daily:  'No spending categories set up yet.',
+  debts:  'No debt payments logged this month.',
+  other:  '',
+}
+
 const EXPENSE_LABELS: Record<string, string> = {
   rent: 'Rent', electricity: 'Electricity', water: 'Water',
   gas: 'Cooking fuel', internet: 'Internet', phone: 'Phone',
@@ -81,11 +96,15 @@ export default function LogPage() {
   const supabase      = createClient()
   const { isDesktop } = useBreakpoint()
 
-  const [loading, setLoading]       = useState(true)
-  const [currency, setCurrency]     = useState('KES')
-  const [sections, setSections]     = useState<Section[]>([])
-  const [sheetOpen, setSheetOpen]   = useState(false)
-  const [sheetItem, setSheetItem]   = useState<SheetItem | null>(null)
+  const [loading, setLoading]             = useState(true)
+  const [currency, setCurrency]           = useState('KES')
+  const [sections, setSections]           = useState<Section[]>([])
+  const [sheetOpen, setSheetOpen]         = useState(false)
+  const [sheetItem, setSheetItem]         = useState<SheetItem | null>(null)
+  const [incomeCheckOpen, setIncomeCheckOpen] = useState(false)
+  const [declaredTotal, setDeclaredTotal] = useState(0)
+  const [payDay, setPayDay]               = useState<number | null>(null)
+  const [isFirstTime, setIsFirstTime]     = useState(false)
   const [priorEntry, setPriorEntry]     = useState<PriorEntry | null | undefined>(undefined)
   const [dictionary, setDictionary]     = useState<Record<string, DictionaryEntry>>({})
   const [expanded, setExpanded]         = useState<Set<string>>(new Set())
@@ -156,8 +175,9 @@ export default function LogPage() {
       { data: expenses },
       { data: targets },
       { data: budgets },
+      { data: incomeEntry },
     ] = await Promise.all([
-      supabase.from('user_profiles').select('currency, goals').eq('id', user.id).single() as any,
+      supabase.from('user_profiles').select('currency, goals, pay_day').eq('id', user.id).single() as any,
       (supabase.from('transactions') as any)
         .select('category_key, category_label, category_type, amount, date')
         .eq('user_id', user.id).eq('month', currentMonth),
@@ -167,10 +187,27 @@ export default function LogPage() {
         .select('goal_id, amount, added_at').eq('user_id', user.id),
       (supabase.from('spending_budgets') as any)
         .select('categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+      (supabase.from('income_entries') as any)
+        .select('total, received, received_confirmed_at').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
     ])
 
     const cur = profile?.currency ?? 'KES'
     setCurrency(cur)
+    setPayDay(profile?.pay_day ?? null)
+
+    // Show income check-in if:
+    // 1. There is a declared income for this month, AND
+    // 2. received has not been confirmed yet
+    const today = new Date().getDate()
+    const profilePayDay: number | null = profile?.pay_day ?? null
+    const needsCheck = incomeEntry &&
+      incomeEntry.received_confirmed_at === null &&
+      (incomeEntry.received === null || today === profilePayDay)
+
+    if (needsCheck) {
+      setDeclaredTotal(Number(incomeEntry.total ?? 0))
+      setIncomeCheckOpen(true)
+    }
 
     // ── Build added_at map to filter stale goal transactions ─
     const addedAtMap: Record<string, string> = {}
@@ -264,19 +301,28 @@ export default function LogPage() {
       ...(otherItems.length > 0 ? [{ key: 'other' as GroupKey, label: 'Other', groupType: 'variable', items: otherItems }] : []),
     ])
 
+    // First-time if no transactions logged this month at all
+    setIsFirstTime((txns ?? []).length === 0)
+
     setLoading(false)
   }, [supabase, router, currentMonth])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Auto-open the sheet when navigated from overview with ?open=true
+  // When navigated from overview with ?open=true, after income check-in:
+  // — first-time users → go to the guided first-log page
+  // — returning users → open the sheet directly
   useEffect(() => {
-    if (loading || autoOpened) return
+    if (loading || autoOpened || incomeCheckOpen) return
     if (typeof window !== 'undefined' && window.location.search.includes('open=true')) {
       setAutoOpened(true)
-      openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })
+      if (isFirstTime) {
+        router.push('/log/first')
+      } else {
+        openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })
+      }
     }
-  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, incomeCheckOpen, isFirstTime]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openSheet = (item: SheetItem) => {
     setSheetItem(item)
@@ -341,6 +387,28 @@ export default function LogPage() {
     }
   }
 
+  const handleIncomeConfirm = async (received: number, day: number | null) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const ops: Promise<unknown>[] = [
+      (supabase.from('income_entries') as any).update({
+        received,
+        received_confirmed_at: new Date().toISOString(),
+      }).eq('user_id', user.id).eq('month', currentMonth),
+    ]
+
+    if (day !== null && payDay === null) {
+      ops.push(
+        (supabase.from('user_profiles') as any).update({ pay_day: day }).eq('id', user.id)
+      )
+      setPayDay(day)
+    }
+
+    await Promise.all(ops)
+    setIncomeCheckOpen(false)
+  }
+
   const handleSave = async (data: ExpenseSaveData) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -364,6 +432,29 @@ export default function LogPage() {
       amount:         data.amount,
       note:           data.note || null,
     })
+
+    // If user confirmed this is a monthly fixed payment, add it to fixed_expenses
+    if (data.isMonthlyFixed) {
+      const { data: existing } = await (supabase.from('fixed_expenses') as any)
+        .select('total_monthly, entries')
+        .eq('user_id', user.id)
+        .eq('month', currentMonth)
+        .maybeSingle()
+
+      const existingEntries: any[] = existing?.entries ?? []
+      const alreadyThere = existingEntries.some((e: any) => e.key === data.key)
+      if (!alreadyThere) {
+        const newEntry = { key: data.key, label: data.label, monthly: data.amount, confidence: 'known' }
+        const newEntries = [...existingEntries, newEntry]
+        const newTotal = newEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0)
+        await (supabase.from('fixed_expenses') as any).upsert({
+          user_id:       user.id,
+          month:         currentMonth,
+          total_monthly: newTotal,
+          entries:       newEntries,
+        }, { onConflict: 'user_id,month' })
+      }
+    }
 
     // Write Other items to the dictionary for future auto-recognition
     if (sheetItem?.isOther) {
@@ -448,26 +539,28 @@ export default function LogPage() {
   // ─── Content ─────────────────────────────────────────────────
   const content = (
     // Extra bottom padding: BottomNav (72) + pinned Other bar (~72) = 144 mobile
-    <div style={{ paddingBottom: isDesktop ? 80 : 144 }}>
+    <div style={{ paddingBottom: isDesktop ? 80 : 144, paddingTop: 4 }}>
 
       {/* Page header */}
       <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 16px' }}>
         <button
           onClick={() => router.push('/')}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 10px', display: 'flex', alignItems: 'center' }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center' }}
         >
           <IconBack size={18} color={T.text3} />
         </button>
-        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: T.textMuted, letterSpacing: 0 }}>
           {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
-        <h1 style={{ fontSize: isDesktop ? 28 : 24, fontWeight: 600, color: T.text1, margin: 0 }}>
-          Track a spend
+        <h1 style={{ fontSize: isDesktop ? 28 : 26, fontWeight: 700, color: T.text1, margin: 0, letterSpacing: -0.5 }}>
+          Add an expense
         </h1>
       </div>
 
       {/* Sections */}
       {sections.map(section => {
+        // Hide empty daily/debt sections — the "Add an expense" CTA covers them
+        if (section.items.length === 0 && (section.key === 'daily' || section.key === 'debts')) return null
         const isAccordion = section.items.length >= 4
         const isOpen      = expanded.has(section.key)
         const toggleOpen  = () => setExpanded(prev => {
@@ -489,14 +582,16 @@ export default function LogPage() {
           const isLogged   = item.loggedAmount > 0
           const isLast     = index === visibleItems.length - 1
           const isDeleting = deletingKey === item.key
+          const goalIcon   = item.groupType === 'goal' ? GOAL_ICONS[item.key] : null
+
           return (
             <div
               key={item.key}
               style={{
                 display: 'flex', alignItems: 'center',
                 background: T.white,
-                borderBottom: isLast ? 'none' : `1px solid var(--border-subtle)`,
-                minHeight: 48,
+                borderBottom: isLast ? 'none' : `1px solid #F2F4F7`,
+                minHeight: 60,
               }}
             >
               {/* Main tap area */}
@@ -504,41 +599,63 @@ export default function LogPage() {
                 onClick={() => openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })}
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between',
+                  gap: 12,
                   border: 'none', background: 'transparent',
-                  padding: '10px 16px', minHeight: 48,
+                  padding: '12px 16px', minHeight: 60,
                   cursor: 'pointer',
                   textAlign: 'left', boxSizing: 'border-box',
                 } as React.CSSProperties}
               >
-                <span style={{ fontSize: 15, fontWeight: 500, color: T.text1 }}>
-                  {item.label}
-                </span>
+                {/* Goal icon */}
+                {goalIcon && (
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                    background: '#F3EDFB',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 17,
+                  }}>
+                    {goalIcon}
+                  </div>
+                )}
+
+                {/* Label + sublabel */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: isLogged ? 500 : 400, color: T.text1, lineHeight: 1.3 }}>
+                    {item.label}
+                  </div>
+                  {item.sublabel && !isLogged && (
+                    <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>
+                      {item.sublabel}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: recorded amount or disclosure chevron */}
                 {isLogged ? (
-                  <span style={{ fontSize: 13, fontWeight: 500, color: T.text3, flexShrink: 0, marginLeft: 8 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
                     {fmt(item.loggedAmount, currency)}
                   </span>
                 ) : (
-                  <span style={{ fontSize: 13, color: T.textMuted, fontStyle: 'italic', flexShrink: 0, marginLeft: 8 }}>
-                    Tap to log
+                  <span style={{ fontSize: 20, color: T.textMuted, flexShrink: 0, lineHeight: 1, marginLeft: 8, opacity: 0.4 }}>
+                    ›
                   </span>
                 )}
               </button>
 
-              {/* Delete — only visible when something is logged */}
+              {/* Delete — only visible when something is recorded */}
               {isLogged && (
                 <button
                   onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
                   disabled={isDeleting}
                   style={{
-                    width: 40, height: 48, flexShrink: 0,
+                    width: 44, height: 60, flexShrink: 0,
                     background: 'transparent', border: 'none',
-                    borderLeft: `1px solid var(--border-subtle)`,
+                    borderLeft: `1px solid #F2F4F7`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     cursor: 'pointer', opacity: isDeleting ? 0.4 : 1,
                   }}
                 >
-                  <IconTrash size={15} color={T.textMuted} />
+                  <IconTrash size={14} color="#C8CCCF" />
                 </button>
               )}
             </div>
@@ -547,7 +664,7 @@ export default function LogPage() {
 
         // ── All sections rendered as cards ───────────────────
         return (
-          <div key={section.key} style={{ margin: isDesktop ? '0 32px 40px' : '0 16px 40px' }}>
+          <div key={section.key} style={{ margin: isDesktop ? '0 32px 16px' : '0 16px 16px' }}>
             <div style={{
               background: T.white,
               border: `1px solid var(--border)`,
@@ -555,32 +672,32 @@ export default function LogPage() {
               overflow: 'hidden',
             }}>
 
-              {/* Card header */}
+              {/* Card header — divider only when there are items below */}
               <div style={{
-                padding: '14px 16px',
-                borderBottom: `1px solid var(--border-subtle)`,
+                padding: '13px 16px 12px',
+                borderBottom: section.items.length > 0 ? `1px solid #F2F4F7` : 'none',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <p style={{
-                    margin: 0, fontSize: 11, fontWeight: 600,
-                    letterSpacing: '0.08em', textTransform: 'uppercase',
-                    color: T.textMuted,
+                    margin: 0, fontSize: 12, fontWeight: 600,
+                    letterSpacing: 0, textTransform: 'none',
+                    color: T.text3,
                   }}>
                     {section.label}
                   </p>
                   {isAccordion && (
                     <span style={{
-                      fontSize: 11, fontWeight: 600, color: T.text3,
-                      background: '#F1F3F5', borderRadius: 99, padding: '2px 8px',
+                      fontSize: 11, fontWeight: 500, color: T.textMuted,
+                      background: '#F1F3F5', borderRadius: 99, padding: '2px 7px',
                     }}>
-                      {section.items.length} items
+                      {section.items.length}
                     </span>
                   )}
                 </div>
                 {totalLogged > 0 && (
                   <span style={{ fontSize: 13, fontWeight: 600, color: T.brandDark }}>
-                    {fmt(totalLogged, currency)} logged
+                    {fmt(totalLogged, currency)}
                   </span>
                 )}
               </div>
@@ -588,9 +705,9 @@ export default function LogPage() {
               {/* Items */}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
 
-                {section.items.length === 0 && section.key !== 'debts' && (
-                  <p style={{ fontSize: 13, color: T.textMuted, margin: '12px 16px', fontStyle: 'italic' }}>
-                    Nothing set up yet.
+                {section.items.length === 0 && SECTION_EMPTY[section.key] && (
+                  <p style={{ fontSize: 13, color: T.textMuted, margin: '12px 16px 16px' }}>
+                    {SECTION_EMPTY[section.key]}
                   </p>
                 )}
 
@@ -598,22 +715,6 @@ export default function LogPage() {
 
               </div>
 
-              {/* Debts: show add button only when no debts logged yet */}
-              {section.key === 'debts' && section.items.length === 0 && (
-                <div style={{ padding: '8px 12px 0' }}>
-                  <button
-                    onClick={() => openSheet({ key: 'debt_new', label: 'Add a debt', groupType: 'debt', isOther: true })}
-                    style={{
-                      width: '100%', background: 'transparent',
-                      border: `1px dashed var(--border-strong)`,
-                      borderRadius: 14, padding: '13px 16px', cursor: 'pointer',
-                      fontSize: 14, fontWeight: 500, color: T.text2, textAlign: 'left', boxSizing: 'border-box',
-                    } as React.CSSProperties}
-                  >
-                    + Add a debt payment
-                  </button>
-                </div>
-              )}
 
               {/* View more / collapse — only when 4+ items */}
               {isAccordion && (
@@ -631,8 +732,8 @@ export default function LogPage() {
                 </button>
               )}
 
-              {/* Bottom padding when no view-more button */}
-              {!isAccordion && <div style={{ height: 12 }} />}
+              {/* Bottom padding when no view-more button and items exist */}
+              {!isAccordion && section.items.length > 0 && <div style={{ height: 4 }} />}
 
             </div>
           </div>
@@ -643,7 +744,7 @@ export default function LogPage() {
       {isDesktop && (
         <div style={{ padding: '0 32px' }}>
           <button
-            onClick={() => openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })}
+            onClick={() => isFirstTime ? router.push('/log/first') : openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })}
             style={{
               width: '100%', height: 50,
               background: T.brandDark,
@@ -655,7 +756,7 @@ export default function LogPage() {
               boxSizing: 'border-box',
             } as React.CSSProperties}
           >
-            Log a new payment
+            Add an expense
           </button>
         </div>
       )}
@@ -823,6 +924,16 @@ export default function LogPage() {
         </Sheet>
       )}
 
+      {/* Income check-in — shown before first log of month / on pay day */}
+      <ReceivedIncomeSheet
+        open={incomeCheckOpen}
+        onClose={() => setIncomeCheckOpen(false)}
+        declaredTotal={declaredTotal}
+        currency={currency}
+        payDay={payDay}
+        onConfirm={handleIncomeConfirm}
+      />
+
       {/* Sheet */}
       <AddExpenseSheet
         open={sheetOpen}
@@ -834,6 +945,7 @@ export default function LogPage() {
         onSelectQuickItem={(qi) => openSheet(qi)}
         currency={currency}
         isDesktop={isDesktop}
+        isFirstTime={isFirstTime}
         onSave={handleSave}
       />
 
@@ -852,7 +964,7 @@ export default function LogPage() {
       zIndex: 40,
     }}>
       <button
-        onClick={() => openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })}
+        onClick={() => isFirstTime ? router.push('/log/first') : openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })}
         style={{
           width: '100%', height: 50,
           background: T.brandDark,
@@ -864,7 +976,7 @@ export default function LogPage() {
           boxSizing: 'border-box',
         } as React.CSSProperties}
       >
-        Log a new payment
+        Add an expense
       </button>
     </div>
   )

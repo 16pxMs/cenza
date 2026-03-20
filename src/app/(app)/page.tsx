@@ -30,10 +30,8 @@ export default function AppPage() {
   const [incomeData, setIncomeData] = useState<any>(null)
   const [goalTargets, setGoalTargets] = useState<Record<string, any> | null>(null)
   const [goalSaved, setGoalSaved] = useState<Record<string, number>>({})
-  const [expensesData, setExpensesData] = useState<{ totalMonthly: number; entries?: any[] } | null>(null)
-  const [budgetsData, setBudgetsData] = useState<{ totalBudget: number; categories?: any[] } | null>(null)
-  const [budgetsSource, setBudgetsSource] = useState<'onboarding' | 'user_set'>('onboarding')
   const [totalSpent, setTotalSpent] = useState(0)
+  const [fixedTotal, setFixedTotal] = useState(0)
   const [carryForwardData, setCarryForwardData] = useState<CarryForwardData | null>(null)
   const [profileSheetOpen, setProfileSheetOpen] = useState(false)
 
@@ -62,6 +60,23 @@ export default function AppPage() {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [refreshSpent])
 
+  const handleContribGoal = useCallback(async (goalId: string, goalLabel: string, amount: number, note: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await (supabase.from('transactions') as any).insert({
+      user_id:        user.id,
+      date:           new Date().toISOString().slice(0, 10),
+      month:          currentMonth,
+      category_type:  'goal',
+      category_key:   goalId,
+      category_label: goalLabel,
+      amount,
+      note:           note.trim() || null,
+    })
+    setGoalSaved(prev => ({ ...prev, [goalId]: (prev[goalId] ?? 0) + amount }))
+    setTotalSpent(prev => prev + amount)
+  }, [supabase, currentMonth])
+
   const saveIncome = useCallback(async (data: { income: number; extraIncome: any[]; total: number }) => {
     if (!data.income || data.income <= 0) {
       throw new Error('Income must be greater than zero')
@@ -85,9 +100,8 @@ export default function AppPage() {
       { data: income },
       { data: targets },
       { data: goalTxns },
-      { data: expenses },
-      { data: budgets },
       { data: txns },
+      { data: fixedExp },
     ] = await Promise.all([
       (supabase.from('income_entries') as any)
         .select('*').eq('user_id', user.id).eq('month', currentMonth).single(),
@@ -95,12 +109,10 @@ export default function AppPage() {
         .select('goal_id, amount').eq('user_id', user.id),
       (supabase.from('transactions') as any)
         .select('category_key, amount').eq('user_id', user.id).eq('category_type', 'goal'),
-      (supabase.from('fixed_expenses') as any)
-        .select('total_monthly, entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
-      (supabase.from('spending_budgets') as any)
-        .select('total_budget, categories, source').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
       (supabase.from('transactions') as any)
         .select('amount').eq('user_id', user.id).eq('month', currentMonth),
+      (supabase.from('fixed_expenses') as any)
+        .select('total_monthly').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
     ])
 
     if (income) setIncomeData(income)
@@ -117,14 +129,8 @@ export default function AppPage() {
       setGoalSaved(saved)
     }
 
-    if (expenses) setExpensesData({ totalMonthly: expenses.total_monthly ?? 0, entries: expenses.entries ?? [] })
-
-    if (budgets) {
-      setBudgetsData({ totalBudget: budgets.total_budget ?? 0, categories: budgets.categories ?? [] })
-      setBudgetsSource(budgets.source === 'user_set' ? 'user_set' : 'onboarding')
-    }
-
     if (txns) setTotalSpent(txns.reduce((s: number, t: any) => s + Number(t.amount), 0))
+    if (fixedExp) setFixedTotal(fixedExp.total_monthly ?? 0)
 
     setLoading(false)
   }, [supabase, currentMonth])
@@ -299,17 +305,13 @@ export default function AppPage() {
         currency={profile?.currency || 'KES'}
         goals={profile?.goals || []}
         incomeData={incomeData}
-        expensesData={expensesData}
-        budgetsData={budgetsData}
-        budgetsSource={budgetsSource}
         goalTargets={goalTargets}
         goalSaved={goalSaved}
-        onSetupGoals={() => {}}
-        onAddExpenses={() => router.push('/expenses')}
-        onAddBudgets={() => router.push('/budgets')}
         onAddDebts={() => router.push('/debts')}
-        onLogExpense={() => router.push('/log?open=true')}
+        onLogExpense={() => router.push(totalSpent === 0 ? '/log/first' : '/log?open=true')}
+        onContribGoal={handleContribGoal}
         totalSpent={totalSpent}
+        fixedTotal={fixedTotal}
         isDesktop={isDesktop}
       />
     ) : (

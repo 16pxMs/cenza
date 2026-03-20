@@ -10,13 +10,9 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { IconChevronX } from '@/components/ui/Icons'
+import { CheckCircle2 } from 'lucide-react'
 import styles from './onboarding.module.css'
 
-const T = {
-  brand: '#EADFF4', brandDeep: '#9B6FCC', brandDark: '#5C3489',
-  pageBg: '#FAFAF8', white: '#FFFFFF',
-  text1: 'var(--text-1)', text3: 'var(--text-3)', textMuted: 'var(--text-muted)',
-}
 
 const CURATED_CURRENCIES = [
   { code: 'KES', name: 'Kenyan Shilling',    flag: '🇰🇪' },
@@ -115,80 +111,135 @@ export default function OnboardingPage() {
     : CURATED_CURRENCIES
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: T.pageBg, maxWidth: 480, margin: '0 auto' }}>
-      <div className={styles.content}>
-        <h1 style={{ fontSize: 28, color: T.text1, margin: '0 0 8px', lineHeight: 1.2 }}>
-          What currency<br />are you paid in?
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#F8F9FA', maxWidth: 480, margin: '0 auto' }}>
+      <div className={styles.content} style={{ paddingTop: 52 }}>
+
+        {/* Warm greeting */}
+        {name && (
+          <p style={{ fontSize: 15, color: '#9B72CC', fontWeight: 500, margin: '0 0 20px' }}>
+            Hi, {name}.
+          </p>
+        )}
+
+        {/* Heading */}
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: '#101828', margin: '0 0 10px', lineHeight: 1.25, letterSpacing: -0.4 }}>
+          What's your main currency?
         </h1>
-        <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
-          Pick the currency your day to day life runs on, not where you live.
+        <p style={{ fontSize: 15, color: '#667085', margin: '0 0 32px', lineHeight: 1.65 }}>
+          Pick the currency your life actually runs on, not just where you live.
         </p>
 
         {/* Search */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          background: T.white,
-          border: query ? '2px solid var(--border-focus)' : '1px solid var(--border)',
-          borderRadius: 14, padding: '0 12px', height: 52, marginBottom: 20,
+          background: '#fff',
+          border: query ? '1.5px solid #9B72CC' : '1px solid #E4E7EC',
+          borderRadius: 14, padding: '0 14px', height: 50, marginBottom: 24,
+          boxShadow: query ? '0 0 0 3px rgba(155,114,204,0.12)' : 'none',
+          transition: 'border-color 0.15s, box-shadow 0.15s',
         }}>
-          <span style={{ fontSize: 16, color: query ? T.brandDeep : T.textMuted, flexShrink: 0 }}>🔍</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="7" cy="7" r="5" stroke={query ? '#9B72CC' : '#98A2B3'} strokeWidth="1.5"/>
+            <path d="M11 11l2.5 2.5" stroke={query ? '#9B72CC' : '#98A2B3'} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search currency, e.g. USD, Euro, Naira..."
-            style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 14, color: T.text1, outline: 'none' }}
+            placeholder="Search, e.g. USD, Naira, Pound…"
+            style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 14, color: '#101828', outline: 'none' }}
           />
           {query && (
             <button onClick={() => setQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
-              <IconChevronX size={16} color={T.textMuted} />
+              <IconChevronX size={15} color="#98A2B3" />
             </button>
           )}
         </div>
 
         {/* Section label */}
-        <p style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 12px' }}>
-          {isSearching ? `${list.length} result${list.length !== 1 ? 's' : ''}` : 'Common currencies'}
-        </p>
+        {!isSearching && (
+          <p style={{ fontSize: 12, fontWeight: 600, color: '#98A2B3', margin: '0 0 10px', letterSpacing: 0 }}>
+            Common currencies
+          </p>
+        )}
+        {isSearching && list.length > 0 && (
+          <p style={{ fontSize: 12, color: '#98A2B3', margin: '0 0 10px' }}>
+            {list.length} result{list.length !== 1 ? 's' : ''}
+          </p>
+        )}
 
-        {/* List */}
-        <div style={{ display: 'grid', gap: 10 }}>
-          {list.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: T.textMuted, fontSize: 14 }}>
-              No results for "{query}"
-            </div>
-          )}
-          {list.map(c => {
-            const sel = currency === c.code
-            return (
-              <button key={c.code} onClick={() => setCurrency(c.code)} style={{
-                background: sel ? T.brand + '88' : T.white,
-                border: sel ? '2px solid var(--border-focus)' : '1px solid var(--border)',
-                borderRadius: 10, padding: '8px 14px',
-                cursor: 'pointer', textAlign: 'left',
-                display: 'flex', alignItems: 'center', gap: 10,
-              }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: T.brand + '55', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontSize: 14 }}>{c.flag}</span>
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 500, color: T.text1 }}>{c.code}</span>
-                <span style={{ fontSize: 13, color: T.text3 }}>{c.name}</span>
-              </button>
-            )
-          })}
-        </div>
+        {/* Grouped list — iOS Settings style */}
+        {list.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#98A2B3', fontSize: 14 }}>
+            No results for "{query}"
+          </div>
+        ) : (
+          <div style={{
+            background: '#fff',
+            border: '1px solid #E4E7EC',
+            borderRadius: 16,
+            overflow: 'hidden',
+          }}>
+            {list.map((c, index) => {
+              const sel = currency === c.code
+              const isLast = index === list.length - 1
+              return (
+                <button
+                  key={c.code}
+                  onClick={() => setCurrency(c.code)}
+                  style={{
+                    width: '100%',
+                    background: sel ? '#F3EDFB' : 'transparent',
+                    border: 'none',
+                    borderBottom: isLast ? 'none' : '1px solid #F2F4F7',
+                    padding: '12px 16px',
+                    cursor: 'pointer', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    boxSizing: 'border-box',
+                    transition: 'background 0.1s',
+                  } as React.CSSProperties}
+                >
+                  {/* Flag */}
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    background: sel ? '#EADFF4' : '#F2F4F7',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 20,
+                  }}>
+                    {c.flag}
+                  </div>
+
+                  {/* Code + name */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: '#101828', lineHeight: 1.3 }}>{c.code}</div>
+                    <div style={{ fontSize: 12, color: '#667085', marginTop: 1 }}>{c.name}</div>
+                  </div>
+
+                  {/* Checkmark */}
+                  {sel && <CheckCircle2 size={22} color="#5C3489" fill="#5C3489" strokeWidth={2} style={{ flexShrink: 0 }} />}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <div style={{ flex: 1, minHeight: 24 }} />
       </div>
 
       <div className={styles.ctaArea}>
-        <button onClick={handleFinish} disabled={!currency || saving} style={{
-          width: '100%', height: 52, borderRadius: 14,
-          background: currency ? T.brandDark : T.textMuted,
-          border: 'none', color: '#fff', fontSize: 15, fontWeight: 600,
-          cursor: currency && !saving ? 'pointer' : 'default',
-          opacity: currency && !saving ? 1 : 0.45,
-        }}>
-          {saving ? 'Saving...' : currency ? `Continue with ${currency}` : 'Continue'}
+        <button
+          onClick={handleFinish}
+          disabled={!currency || saving}
+          style={{
+            width: '100%', height: 56, borderRadius: 16,
+            background: currency ? '#5C3489' : '#E4E7EC',
+            border: 'none', color: currency ? '#fff' : '#98A2B3',
+            fontSize: 16, fontWeight: 600,
+            cursor: currency && !saving ? 'pointer' : 'default',
+            transition: 'background 0.15s, color 0.15s',
+            letterSpacing: -0.1,
+          }}
+        >
+          {saving ? 'Saving…' : 'Continue'}
         </button>
       </div>
     </div>

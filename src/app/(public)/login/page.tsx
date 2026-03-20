@@ -7,8 +7,12 @@ import styles from './login.module.css'
 function WelcomeScreen({ onNext }: { onNext: () => void }) {
   return (
     <div className={styles.pageWrapper}>
+      {/* Decorative background depth */}
+      <div className={styles.decorTop} />
+      <div className={styles.decorMid} />
+
       <div className={styles.content}>
-        <div className={styles.logo}>CENZA</div>
+        <div className={styles.logo}>Cenza</div>
 
         <h1 className={styles.headline}>
           See your money clearly,
@@ -17,7 +21,6 @@ function WelcomeScreen({ onNext }: { onNext: () => void }) {
 
         <p className={styles.description}>
           Track spending, understand your patterns, and get simple guidance on what to do next.
-          Cenza helps you stay aware and build habits that move your finances forward.
         </p>
 
         <div className={styles.ctaArea}>
@@ -69,17 +72,25 @@ export default function LoginPage() {
 
   return (
     <div className={styles.authWrapper}>
+      {/* Same orbs — visual continuity from welcome screen */}
+      <div className={styles.decorTop} />
+      <div className={styles.decorMid} />
+
+      {/* Back — anchored top left, out of content flow */}
+      <button
+        type="button"
+        onClick={() => setShowLogin(false)}
+        className={styles.backButton}
+      >
+        ← Back
+      </button>
+
       <div className={styles.authCard}>
-        <button
-          type="button"
-          onClick={() => setShowLogin(false)}
-          className={styles.backButton}
-        >
-          ← Back
-        </button>
-
+        <div className={styles.logo}>Cenza</div>
         <h1 className={styles.authTitle}>Create your account</h1>
-
+        <p className={styles.authSubtitle}>
+          Sign in securely with Google. It only takes a second.
+        </p>
 
         <form action={signInWithGoogle}>
           <button type="submit" className={styles.googleButton}>
@@ -87,6 +98,10 @@ export default function LoginPage() {
             Continue with Google
           </button>
         </form>
+
+        <p className={styles.privacyNote}>
+          By continuing you agree to our Terms &amp; Privacy Policy.
+        </p>
       </div>
     </div>
   )

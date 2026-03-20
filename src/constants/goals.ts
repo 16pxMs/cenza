@@ -18,7 +18,7 @@ export const GOAL_META: Record<GoalId, GoalMeta> = {
     label:       'Emergency Fund',
     icon:        '🛡️',
     description: 'How much do you want in your emergency fund? A common target is 3 to 6 months of expenses.',
-    tip:         'An emergency fund is money set aside for unexpected costs. Having one means you do not have to borrow when things go wrong.',
+    tip:         'Keep your emergency fund in an account you cannot easily dip into. A money market fund works well — better returns than a current account and just enough friction to protect you from impulse withdrawals. The goal is accessible when you truly need it, but not instant.',
     light:       '#F0FDF4',
     border:      '#BBF7D0',
     dark:        T.greenDark,

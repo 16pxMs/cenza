@@ -695,43 +695,30 @@ function OnboardingDone({ onNext, data }: any) {
 // ── App shell ─────────────────────────────────────────────────
 function AppShell({ screen }: { screen: DemoScreen }) {
   const { isDesktop } = useBreakpoint()
-  const [tab, setTab] = useState('overview')
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
 
-  const incomeData   = screen !== 'app-empty' ? MOCK.income : null
-  const expensesData = screen === 'app-expenses-set' ? MOCK.expenses : null
-  const goalTargets  = (screen === 'app-goals-set' || screen === 'app-expenses-set') ? MOCK.goalTargets : null
+  const incomeData  = screen !== 'app-empty' ? MOCK.income : null
+  const goalTargets = (screen === 'app-goals-set' || screen === 'app-expenses-set') ? MOCK.goalTargets : null
 
   const overview = incomeData === null
-    ? <OverviewEmpty name={MOCK.name} goals={MOCK.goals} onAddIncome={() => setIncomeSheetOpen(true)} isDesktop={isDesktop} />
+    ? <OverviewEmpty name={MOCK.name} currency={MOCK.currency} onSave={() => setIncomeSheetOpen(true)} />
     : <OverviewWithData
         name={MOCK.name} currency={MOCK.currency} goals={MOCK.goals}
-        incomeData={incomeData} expensesData={expensesData} budgetsData={null}
-        goalTargets={goalTargets}
-        onSetupGoals={() => alert('Goals flow — coming soon')}
-        onAddExpenses={() => alert('Fixed expenses flow — coming soon')}
-        onAddBudgets={() => alert('Spending flow — coming soon')}
+        incomeData={incomeData} goalTargets={goalTargets}
         isDesktop={isDesktop}
       />
-
-  const content: Record<string, React.ReactNode> = {
-    overview,
-    spend:   <div style={{ padding: 28, color: 'var(--text-3)', fontSize: 14 }}>Spend tab — coming soon</div>,
-    goals:   <div style={{ padding: 28, color: 'var(--text-3)', fontSize: 14 }}>Goals tab — coming soon</div>,
-    finance: <div style={{ padding: 28, color: 'var(--text-3)', fontSize: 14 }}>Finance tab — coming soon</div>,
-  }
 
   return (
     <>
       {isDesktop ? (
         <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
-          <SideNav active={tab} onChange={setTab} />
-          <main style={{ flex: 1, maxWidth: 720 }}>{content[tab]}</main>
+          <SideNav />
+          <main style={{ flex: 1, maxWidth: 720 }}>{overview}</main>
         </div>
       ) : (
         <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
-          <main>{content[tab]}</main>
-          <BottomNav active={tab} onChange={setTab} />
+          <main>{overview}</main>
+          <BottomNav />
         </div>
       )}
       <AddIncomeSheet

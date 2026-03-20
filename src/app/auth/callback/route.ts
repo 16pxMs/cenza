@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
     // Collect cookies written during the exchange so we can attach
     // them to the redirect response — cookies() from next/headers does
     // not reliably propagate to an explicit NextResponse.redirect().
-    const pendingCookies: Array<{ name: string; value: string; options: object }> = []
+    type CookieEntry = { name: string; value: string; options: object }
+    const pendingCookies: CookieEntry[] = []
 
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
       {
         cookies: {
           getAll: () => request.cookies.getAll(),
-          setAll: (cookiesToSet) => pendingCookies.push(...cookiesToSet),
+          setAll: (cookiesToSet: CookieEntry[]) => pendingCookies.push(...cookiesToSet),
         },
       }
     )
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     if (!error && user) {
       // Check if user_profile exists — create stub if first sign-in
-      const { data: profile } = await supabase
+      const { data: profile } = await (supabase as any)
         .from('user_profiles')
         .select('id, onboarding_complete')
         .eq('id', user.id)
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
 
       if (!profile) {
         // First sign-in — create minimal profile, onboarding will fill the rest
-        await supabase.from('user_profiles').insert({
+        await (supabase as any).from('user_profiles').insert({
           id:                  user.id,
           name:                user.user_metadata?.full_name?.split(' ')[0] ?? 'there',
           currency:            'KES',

@@ -155,8 +155,16 @@ function LedgerInner() {
     router.refresh()
   }
 
-  const overBudget  = planned > 0 && totalSpent > planned
-  const pct         = planned > 0 ? Math.min(100, (totalSpent / planned) * 100) : 0
+  const categoryType = searchParams.get('type') ?? 'variable'
+  const overBudget   = planned > 0 && totalSpent > planned
+  const pct          = planned > 0 ? Math.min(100, (totalSpent / planned) * 100) : 0
+  const barColor     = overBudget
+    ? '#EF4444'
+    : categoryType === 'fixed'
+    ? '#22C55E'
+    : categoryType === 'goal'
+    ? '#5C3489'
+    : pct > 75 ? '#F59E0B' : '#22C55E'
   const spendCount  = txns.filter(t => t.amount > 0).length
   const pad         = isDesktop ? '0 32px' : '0 16px'
 
@@ -190,47 +198,53 @@ function LedgerInner() {
       {/* Summary card — includes refund button/form */}
       <div style={{ padding: pad, marginBottom: 24 }}>
         <div style={{
-          background: T.white, border: `1px solid var(--border)`,
-          borderRadius: 16, overflow: 'hidden',
+          background: T.white, borderRadius: 20,
+          boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
+          overflow: 'hidden',
         }}>
-          <div style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+          <div style={{ padding: '22px 20px' }}>
+            {/* Spent + budget side by side, balanced */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
-                  Total spent
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 600, color: overBudget ? '#D93025' : T.text1, lineHeight: 1 }}>
+                <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                  Spent
+                </p>
+                <p style={{ margin: 0, fontSize: 32, fontWeight: 700, color: overBudget ? '#EF4444' : T.text1, lineHeight: 1, letterSpacing: -1 }}>
                   {fmt(totalSpent, currency)}
-                </div>
+                </p>
               </div>
               {planned > 0 && (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                     Budget
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: T.text3 }}>
+                  </p>
+                  <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: T.text3 }}>
                     {fmt(planned, currency)}
-                  </div>
+                  </p>
                 </div>
               )}
             </div>
+
+            {/* Progress bar — correct color semantics */}
             {planned > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ height: 6, background: '#EBEBF0', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%', borderRadius: 99,
-                    width: `${pct}%`,
-                    background: overBudget ? '#D93025' : pct > 75 ? '#F4A01C' : T.brandDark,
-                    transition: 'width 0.4s ease',
-                  }} />
-                </div>
+              <div style={{ height: 5, background: '#EBEBED', borderRadius: 99, overflow: 'hidden', marginBottom: 10 }}>
+                <div style={{
+                  height: '100%', borderRadius: 99, width: `${pct}%`,
+                  background: barColor, transition: 'width 0.4s ease',
+                }} />
               </div>
             )}
-            {spendCount > 0 && (
-              <div style={{ fontSize: 12, color: T.text3 }}>
-                {spendCount} {spendCount === 1 ? 'entry' : 'entries'} this month
-              </div>
-            )}
+
+            {/* Status line */}
+            <p style={{ margin: 0, fontSize: 12, color: T.text3 }}>
+              {overBudget
+                ? `${fmt(totalSpent - planned, currency)} over budget`
+                : planned > 0 && pct === 100
+                  ? `Exactly on budget · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
+                  : planned > 0
+                    ? `${fmt(planned - totalSpent, currency)} remaining · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
+                    : `${spendCount} ${spendCount === 1 ? 'entry' : 'entries'} this month`}
+            </p>
           </div>
 
           {/* Refund button */}
@@ -240,9 +254,10 @@ function LedgerInner() {
               style={{
                 width: '100%', padding: '13px',
                 background: 'none', border: 'none',
-                borderTop: `1px solid var(--border-subtle)`,
+                borderTop: `1px solid #F0F0F0`,
                 cursor: 'pointer',
                 fontSize: 13, fontWeight: 500, color: T.text3,
+                letterSpacing: '0.01em',
               }}
             >
               + Log a refund
@@ -334,8 +349,8 @@ function LedgerInner() {
               <div key={date}>
                 {/* Date label */}
                 <div style={{
-                  fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 8,
-                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                  fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8,
+                  textTransform: 'uppercase', letterSpacing: '0.07em',
                 }}>
                   {formatDate(date)}
                 </div>
@@ -356,15 +371,15 @@ function LedgerInner() {
                         }}
                       >
                         {/* Main row */}
-                        <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 17, fontWeight: 600, color: isRefund ? '#1A7A45' : T.text1, marginBottom: hasNote ? 4 : 0 }}>
-                              {fmt(txn.amount, currency)}
+                            <div style={{ fontSize: 17, fontWeight: 600, color: isRefund ? '#1A7A45' : T.text1, marginBottom: hasNote ? 3 : 0 }}>
+                              {isRefund ? `−${fmt(Math.abs(txn.amount), currency)}` : fmt(txn.amount, currency)}
                             </div>
                             {isRefund && !hasNote && (
                               <span style={{
                                 fontSize: 10, fontWeight: 600, color: '#1A7A45',
-                                background: '#DCFCE7', borderRadius: 4, padding: '1px 6px',
+                                background: '#DCFCE7', borderRadius: 4, padding: '2px 6px',
                                 textTransform: 'uppercase', letterSpacing: '0.06em',
                                 display: 'inline-block',
                               }}>
@@ -372,39 +387,40 @@ function LedgerInner() {
                               </span>
                             )}
                             {hasNote && (
-                              <div style={{ fontSize: 13, fontStyle: 'italic', color: isRefund ? '#166534' : T.text3 }}>
+                              <div style={{ fontSize: 13, color: isRefund ? '#166534' : T.text3 }}>
                                 {txn.note}
                               </div>
                             )}
                           </div>
 
-                          {/* Edit + Delete inline — only for non-refunds */}
+                          {/* Actions — Edit prominent, Delete subtle */}
                           {!isRefund && (
-                            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                               <button
                                 onClick={() => isEditing ? setEditId(null) : openEdit(txn)}
                                 style={{
                                   height: 32, padding: '0 14px',
-                                  background: '#F1F3F5', border: 'none',
-                                  borderRadius: 8,
-                                  fontSize: 12, fontWeight: 500, color: T.text2,
+                                  background: isEditing ? '#EADFF4' : '#F1F3F5',
+                                  border: 'none', borderRadius: 8,
+                                  fontSize: 12, fontWeight: 500,
+                                  color: isEditing ? T.brandDark : T.text2,
                                   cursor: 'pointer',
                                 }}
                               >
                                 {isEditing ? 'Cancel' : 'Edit'}
                               </button>
-                              <button
-                                onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
-                                style={{
-                                  height: 32, padding: '0 14px',
-                                  background: '#F1F3F5', border: 'none',
-                                  borderRadius: 8,
-                                  fontSize: 12, fontWeight: 500, color: '#D93025',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Delete
-                              </button>
+                              {!isEditing && (
+                                <button
+                                  onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
+                                  style={{
+                                    background: 'none', border: 'none', padding: 0,
+                                    fontSize: 12, fontWeight: 400, color: T.textMuted,
+                                    cursor: 'pointer', textDecoration: 'none',
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>

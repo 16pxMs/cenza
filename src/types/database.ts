@@ -15,6 +15,7 @@ export interface UserProfile {
   currency: string
   month_start: 'first' | 'custom'
   custom_day: number | null
+  pay_day: number | null      // day of month income usually arrives (1–31)
   goals: GoalId[]
   onboarding_complete: boolean
   created_at: string
@@ -30,10 +31,12 @@ export interface ExtraIncomeItem {
 export interface IncomeEntry {
   id: string
   user_id: string
-  month: string            // 'YYYY-MM'
+  month: string                        // 'YYYY-MM'
   salary: number
   extra_income: ExtraIncomeItem[]
-  total: number            // generated column
+  total: number                        // generated column
+  received: number | null              // actual income received this month
+  received_confirmed_at: string | null // when the user confirmed it
   created_at: string
   updated_at: string
 }
