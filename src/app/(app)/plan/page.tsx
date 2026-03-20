@@ -123,7 +123,7 @@ export default function PlanPage() {
       const { data: incomeRow } = await (supabase
         .from('income_entries')
         .select('salary, extra_income')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .eq('month', month)
         .maybeSingle() as any)
 
@@ -135,7 +135,7 @@ export default function PlanPage() {
       const { data: targets } = await (supabase
         .from('goal_targets')
         .select('amount')
-        .eq('user_id', user.id) as any)
+        .eq('user_id', user!.id) as any)
 
       if (targets && targets.length > 0) {
         setGoalTotal(targets.reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0))
@@ -145,7 +145,7 @@ export default function PlanPage() {
       const { data: expenses, error: expErr } = await (supabase
         .from('fixed_expenses')
         .select('total_monthly')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .eq('month', month)
         .maybeSingle() as any)
 
@@ -156,7 +156,7 @@ export default function PlanPage() {
       const { data: budgets, error: budgetErr } = await (supabase
         .from('spending_budgets')
         .select('total_budget')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .eq('month', month)
         .maybeSingle() as any)
 
