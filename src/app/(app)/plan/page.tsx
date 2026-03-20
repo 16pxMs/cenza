@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 
 const T = {
@@ -100,11 +101,11 @@ function PlanRow({
 export default function PlanPage() {
   const router   = useRouter()
   const supabase = createClient()
+  const { user, profile: ctxProfile } = useUser()
   const { isDesktop } = useBreakpoint()
 
   const [loading,       setLoading]       = useState(true)
   const [mounted,       setMounted]       = useState(false)
-  const [name,          setName]          = useState('')
   const [currency,      setCurrency]      = useState('KES')
   const [income,        setIncome]        = useState(0)
   const [goalTotal,     setGoalTotal]     = useState(0)
@@ -113,22 +114,11 @@ export default function PlanPage() {
   const [spendingTotal, setSpendingTotal] = useState<number | null>(null)
 
   useEffect(() => {
+    if (!user) return
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-
       const month = new Date().toISOString().slice(0, 7)
 
-      const { data: profile } = await (supabase
-        .from('user_profiles')
-        .select('name, currency')
-        .eq('id', user.id)
-        .maybeSingle() as any)
-
-      if (profile) {
-        setName(profile.name ?? '')
-        setCurrency(profile.currency ?? 'KES')
-      }
+      setCurrency(ctxProfile?.currency ?? 'KES')
 
       const { data: incomeRow } = await (supabase
         .from('income_entries')
@@ -178,7 +168,7 @@ export default function PlanPage() {
       setTimeout(() => setMounted(true), 60)
     }
     load()
-  }, [])
+  }, [user, ctxProfile])
 
   // ── Timeline calc ────────────────────────────────────────────
   // If we have real expense data, use it.
@@ -212,6 +202,7 @@ export default function PlanPage() {
     )
   }
 
+  const name = ctxProfile?.name ?? ''
   const firstName = name ? name.split(' ')[0] : ''
 
   return (

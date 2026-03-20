@@ -12,6 +12,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { useUser } from '@/lib/context/UserContext'
+import { useToast } from '@/lib/context/ToastContext'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
@@ -159,15 +161,23 @@ function projectedLabel(totalSaved: number, target: number | null, monthlyAvg: n
 
 // ─── Goal card ────────────────────────────────────────────────────────────────
 
+function goalDisplayLabel(id: string, destination: string | null | undefined): string {
+  if (id === 'travel' && destination) return `Travel to ${destination}`
+  if (id === 'other'  && destination) return destination
+  return GOAL_META[id as GoalId]?.label ?? id
+}
+
 interface GoalData {
-  id:         GoalId
-  target:     number | null
-  totalSaved: number
-  monthlyAvg: number
+  id:          GoalId
+  target:      number | null
+  totalSaved:  number
+  monthlyAvg:  number
+  destination: string | null
 }
 
 function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string; onTap: () => void }) {
   const meta      = GOAL_META[goal.id]
+  const label     = goalDisplayLabel(goal.id, goal.destination)
   const pct       = goal.target ? Math.min(100, Math.round((goal.totalSaved / goal.target) * 100)) : 0
   const isDone    = goal.target != null && goal.totalSaved >= goal.target
   const hasSaved  = goal.totalSaved > 0
@@ -182,7 +192,6 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
         border: `1px solid ${isDone ? meta.border : 'var(--border)'}`,
         borderRadius: 18, padding: '18px',
         cursor: 'pointer',
-        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
       }}
     >
       {/* Header: icon + name + progress pill (only when there's progress) */}
@@ -197,7 +206,7 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalData; currency: string;
             {meta.icon}
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>{meta.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>{label}</div>
             {!goal.target && (
               <div style={{ fontSize: 12, color: T.brandDark, fontWeight: 500, marginTop: 2 }}>Set a target →</div>
             )}
@@ -289,11 +298,15 @@ export default function GoalsPage() {
   const router        = useRouter()
   const supabase      = createClient()
   const { isDesktop } = useBreakpoint()
+  const { user, profile: ctxProfile } = useUser()
+
+  const { toast } = useToast()
 
   const [loading, setLoading]                 = useState(true)
   const [currency, setCurrency]               = useState('')
   const [goals, setGoals]                     = useState<GoalId[]>([])
   const [targets, setTargets]                 = useState<Record<string, number | null>>({})
+  const [destinations, setDestinations]       = useState<Record<string, string | null>>({})
   const [savedByGoal, setSavedByGoal]         = useState<Record<string, number>>({})
   const [monthlyAvg, setMonthlyAvg]           = useState<Record<string, number>>({})
 
@@ -313,29 +326,29 @@ export default function GoalsPage() {
 
   // ── Load ──────────────────────────────────────────────────────
   useEffect(() => {
+    if (!user || !ctxProfile) return
     ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-
-      const [profileRes, targetsRes, txnsRes] = await Promise.all([
-        (supabase.from('user_profiles') as any).select('goals, currency').eq('id', user.id).single(),
-        (supabase.from('goal_targets') as any).select('goal_id, amount, added_at').eq('user_id', user.id),
+      const [targetsRes, txnsRes] = await Promise.all([
+        (supabase.from('goal_targets') as any).select('goal_id, amount, added_at, destination').eq('user_id', user.id),
         (supabase.from('transactions') as any)
           .select('category_key, amount, month, date')
           .eq('user_id', user.id)
           .eq('category_type', 'goal'),
       ])
 
-      setCurrency(profileRes.data?.currency ?? '')
-      setGoals(profileRes.data?.goals ?? [])
+      setCurrency(ctxProfile?.currency ?? '')
+      setGoals(ctxProfile?.goals ?? [])
 
-      const tMap: Record<string, number | null> = {}
-      const addedAtMap: Record<string, string>  = {}
+      const tMap: Record<string, number | null>    = {}
+      const addedAtMap: Record<string, string>     = {}
+      const destMap: Record<string, string | null> = {}
       for (const row of targetsRes.data ?? []) {
         tMap[row.goal_id]      = row.amount
         addedAtMap[row.goal_id] = row.added_at
+        destMap[row.goal_id]   = row.destination ?? null
       }
       setTargets(tMap)
+      setDestinations(destMap)
 
       const savedMap: Record<string, number>                  = {}
       const monthBuckets: Record<string, Record<string, number>> = {}
@@ -357,7 +370,7 @@ export default function GoalsPage() {
       setMonthlyAvg(avgMap)
       setLoading(false)
     })()
-  }, [])
+  }, [user, ctxProfile])
 
   // ── Auto-trigger celebration for completed goals ───────────────
   useEffect(() => {
@@ -381,19 +394,18 @@ export default function GoalsPage() {
   }
 
   const saveTarget = useCallback(async () => {
-    if (!editGoal) return
+    if (!editGoal || !user) return
     setEditSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
     const amount = parseFloat(editAmount) || null
     await (supabase.from('goal_targets') as any).upsert(
       { user_id: user.id, goal_id: editGoal, amount },
       { onConflict: 'user_id,goal_id' }
     )
+    toast('Target updated')
     setTargets(prev => ({ ...prev, [editGoal]: amount }))
     setEditGoal(null)
     setEditSaving(false)
-  }, [editGoal, editAmount, supabase])
+  }, [editGoal, editAmount, supabase, user])
 
   // ── Delete / archive goal ─────────────────────────────────────
   const openDelete = () => {
@@ -407,9 +419,7 @@ export default function GoalsPage() {
   // Archive: remove from active goals, keep goal_targets for history,
   // but clear this month's transactions so re-adding starts fresh
   const archiveGoal = useCallback(async () => {
-    if (!deleteGoal) return
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!deleteGoal || !user) return
     const currentMonth = new Date().toISOString().slice(0, 7)
     const newGoals = goals.filter(g => g !== deleteGoal)
     await Promise.all([
@@ -417,16 +427,15 @@ export default function GoalsPage() {
       (supabase.from('transactions') as any).delete()
         .eq('user_id', user.id).eq('month', currentMonth).eq('category_key', deleteGoal),
     ])
+    toast('Goal archived')
     setGoals(newGoals)
     setSavedByGoal(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setDeleteGoal(null)
-  }, [deleteGoal, goals, supabase])
+  }, [deleteGoal, goals, supabase, user])
 
   // Hard delete: remove from goals + wipe goal_targets + clear this month's transactions
   const hardDeleteGoal = useCallback(async () => {
-    if (!deleteGoal) return
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!deleteGoal || !user) return
     const currentMonth = new Date().toISOString().slice(0, 7)
     const newGoals = goals.filter(g => g !== deleteGoal)
     await Promise.all([
@@ -435,18 +444,20 @@ export default function GoalsPage() {
       (supabase.from('transactions') as any).delete()
         .eq('user_id', user.id).eq('month', currentMonth).eq('category_key', deleteGoal),
     ])
+    toast('Goal removed')
     setGoals(newGoals)
     setTargets(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setSavedByGoal(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setDeleteGoal(null)
-  }, [deleteGoal, goals, supabase])
+  }, [deleteGoal, goals, supabase, user])
 
   // ── Derived data ──────────────────────────────────────────────
   const goalDataList: GoalData[] = goals.map(id => ({
     id,
-    target:     targets[id] ?? null,
-    totalSaved: savedByGoal[id] ?? 0,
-    monthlyAvg: monthlyAvg[id] ?? 0,
+    target:      targets[id] ?? null,
+    totalSaved:  savedByGoal[id] ?? 0,
+    monthlyAvg:  monthlyAvg[id] ?? 0,
+    destination: destinations[id] ?? null,
   }))
 
   const totalSaved   = Object.values(savedByGoal).reduce((s, v) => s + v, 0)
@@ -459,18 +470,34 @@ export default function GoalsPage() {
     <div style={{ padding: pad, maxWidth: 600 }}>
       {/* Page header */}
       <div style={{ marginBottom: 28 }}>
-        <div style={{
-          fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
-          color: T.textMuted, textTransform: 'uppercase', marginBottom: 4,
-        }}>
-          Goals
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
+              color: T.textMuted, textTransform: 'uppercase', marginBottom: 4,
+            }}>
+              Goals
+            </div>
+            <h1 style={{ margin: 0, fontSize: 26, color: T.text1 }}>
+              Your goals
+            </h1>
+          </div>
+          {!loading && goalDataList.length > 0 && goals.length < 8 && (
+            <button
+              onClick={() => router.push(`/goals/new?exclude=${goals.join(',')}`)}
+              style={{
+                width: 40, height: 40, borderRadius: 20,
+                background: T.brandDark, border: 'none',
+                color: '#fff', fontSize: 22, lineHeight: 1,
+                cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                marginTop: 4,
+              }}
+            >
+              +
+            </button>
+          )}
         </div>
-        <h1 style={{
-          margin: 0, fontSize: 26,
-          color: T.text1,
-        }}>
-          Your goals
-        </h1>
         {goals.length > 0 && (
           <div style={{ marginTop: 6, fontSize: 14, color: T.text3 }}>
             {goals.length} goal{goals.length !== 1 ? 's' : ''} ·{' '}
@@ -514,21 +541,6 @@ export default function GoalsPage() {
         </div>
       )}
 
-      {/* Add goal button — only shown when goals already exist */}
-      {!loading && goalDataList.length > 0 && goals.length < 8 && (
-        <button
-          onClick={() => router.push(`/goals/new?exclude=${goals.join(',')}`)}
-          style={{
-            width: '100%', padding: '14px', borderRadius: 14,
-            border: `1px dashed var(--border-strong)`,
-            background: 'transparent', cursor: 'pointer',
-            fontSize: 14, fontWeight: 600, color: T.brandDark,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Add a goal
-        </button>
-      )}
     </div>
   )
 
@@ -541,7 +553,7 @@ export default function GoalsPage() {
           <main style={{ flex: 1 }}>{content}</main>
         </div>
       ) : (
-        <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+        <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
           <main>{content}</main>
           <BottomNav />
         </div>

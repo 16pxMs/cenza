@@ -10,7 +10,7 @@ import { IconOverview, IconGoals, IconFinance } from '@/components/ui/Icons'
 
 const TABS = [
   { href: '/',       label: 'Overview', Icon: IconOverview },
-  { href: '/income', label: 'Income',   Icon: IconFinance  },
+  { href: '/income', label: 'Budgets',  Icon: IconFinance  },
   { href: '/goals',  label: 'Goals',    Icon: IconGoals    },
 ]
 

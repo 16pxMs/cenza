@@ -16,6 +16,7 @@ export interface UserProfile {
   month_start: 'first' | 'custom'
   custom_day: number | null
   pay_day: number | null      // day of month income usually arrives (1–31)
+  income_type: 'salaried' | 'variable' | null  // how the user earns — drives pay day and cycle logic
   goals: GoalId[]
   onboarding_complete: boolean
   created_at: string

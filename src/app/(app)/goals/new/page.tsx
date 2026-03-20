@@ -13,6 +13,8 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/context/UserContext'
+import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
@@ -54,12 +56,15 @@ function feasibility(pct: number): { label: string; color: string; bg: string } 
 function NewGoalInner() {
   const router        = useRouter()
   const supabase      = createClient()
+  const { user, profile: ctxProfile } = useUser()
   const { isDesktop } = useBreakpoint()
   const searchParams  = useSearchParams()
 
   const typeParam    = searchParams.get('type') as GoalId | null
   const excludeParam = (searchParams.get('exclude') ?? '').split(',').filter(Boolean)
   const fromParam    = searchParams.get('from')
+
+  const { toast } = useToast()
 
   const [loading, setLoading]               = useState(true)
   const [currency, setCurrency]             = useState('')
@@ -84,10 +89,8 @@ function NewGoalInner() {
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   useEffect(() => {
+    if (!user) return
     ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-
       const fetchSaved = typeParam
         ? (supabase.from('transactions') as any)
             .select('amount')
@@ -96,21 +99,20 @@ function NewGoalInner() {
             .eq('category_key', typeParam)
         : Promise.resolve({ data: [] })
 
-      const [profileRes, incomeRes, expensesRes, savedRes] = await Promise.all([
-        (supabase.from('user_profiles') as any).select('currency, goals').eq('id', user.id).single(),
+      const [incomeRes, expensesRes, savedRes] = await Promise.all([
         (supabase.from('income_entries') as any).select('total').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
         (supabase.from('fixed_expenses') as any).select('total_monthly').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
         fetchSaved,
       ])
 
-      setCurrency(profileRes.data?.currency ?? '')
-      setExistingGoals(profileRes.data?.goals ?? [])
+      setCurrency(ctxProfile?.currency ?? '')
+      setExistingGoals(ctxProfile?.goals ?? [])
       setTotalIncome(Number(incomeRes.data?.total ?? 0))
       setFixedMonthly(Number(expensesRes.data?.total_monthly ?? 0))
       setAlreadySaved((savedRes.data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0))
       setLoading(false)
     })()
-  }, [])
+  }, [user, ctxProfile])
 
   // ── Analysis ──────────────────────────────────────────────────
   const target          = parseFloat(targetAmount) || 0
@@ -164,7 +166,6 @@ function NewGoalInner() {
     if (!selectedGoal) return
     if (withTarget && target <= 0) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const isReAdding = !existingGoals.includes(selectedGoal)
@@ -200,6 +201,7 @@ function NewGoalInner() {
     }
 
     await Promise.all(ops)
+    toast('Goal added')
     router.push('/goals')
   }
 
@@ -352,8 +354,71 @@ function NewGoalInner() {
   )
 
   // ── Step 3: Target + analysis ─────────────────────────────────
+
+  // Suggestion chips for emergency fund — computed from fixed costs
+  const emergencySuggestions = selectedGoal === 'emergency' && fixedMonthly > 0
+    ? [
+        { label: '3 months', amount: Math.round(fixedMonthly * 3) },
+        { label: '6 months', amount: Math.round(fixedMonthly * 6) },
+      ]
+    : []
+
   const step3 = (
     <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
+
+      {/* Emergency fund insight card — shown before input */}
+      {selectedGoal === 'emergency' && (
+        <div style={{
+          marginBottom: 24, padding: '16px',
+          background: '#F5F0FA',
+          border: '1px solid #E4D9F4',
+          borderRadius: 16,
+        }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600, color: T.brandDark }}>
+            What is an emergency fund?
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: T.text2, lineHeight: 1.65 }}>
+            It's money set aside only for genuine emergencies — job loss, a medical bill, an unexpected repair. It sits completely separately from your savings and is never touched for planned purchases.
+          </p>
+        </div>
+      )}
+
+      {/* Suggestion chips — only for emergency when fixed costs are known */}
+      {emergencySuggestions.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 600, color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+            Suggested targets
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {emergencySuggestions.map(s => {
+              const active = parseFloat(targetAmount) === s.amount
+              return (
+                <button
+                  key={s.label}
+                  onClick={() => setTargetAmount(String(s.amount))}
+                  style={{
+                    flex: 1, padding: '12px 10px', borderRadius: 14,
+                    border: active ? `1.5px solid ${T.brandDark}` : '1px solid var(--border)',
+                    background: active ? '#F0E9FA' : T.white,
+                    cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.brandDark, marginBottom: 2 }}>
+                    {s.label}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text1 }}>
+                    {fmt(s.amount, currency)}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>
+                    of fixed expenses
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Target amount input */}
       <Input
@@ -376,8 +441,8 @@ function NewGoalInner() {
         </div>
       )}
 
-      {/* Benchmark tip */}
-      {benchmarkTip && (
+      {/* Benchmark tip for non-emergency goals */}
+      {benchmarkTip && selectedGoal !== 'emergency' && (
         <p style={{
           margin: '10px 0 0',
           fontSize: 13, color: T.text3, lineHeight: 1.6,
@@ -463,7 +528,7 @@ function NewGoalInner() {
                   lineHeight: 1.5, paddingTop: 10,
                   borderTop: `1px solid var(--border-subtle)`,
                 }}>
-                  That's a significant portion of your income. Consider a longer timeline — even small consistent saves add up.
+                  That's a significant portion of your income. Consider a longer timeline. Even small, consistent amounts add up.
                 </p>
               )}
             </div>
@@ -477,11 +542,11 @@ function NewGoalInner() {
           onClick={() => handleSave()}
           disabled={target <= 0 || saving}
           style={{
-            width: '100%', height: 52, borderRadius: 14,
+            width: '100%', height: 56, borderRadius: 16,
             background: target > 0 ? T.brandDark : T.border,
             border: 'none',
             color: target > 0 ? '#fff' : T.textMuted,
-            fontSize: 15, fontWeight: 600,
+            fontSize: 16, fontWeight: 600, letterSpacing: -0.1,
             cursor: target > 0 ? 'pointer' : 'not-allowed',
             transition: 'background 0.15s',
           }}
@@ -492,12 +557,12 @@ function NewGoalInner() {
           onClick={() => handleSave(false)}
           disabled={saving}
           style={{
-            marginTop: 10, width: '100%', padding: '12px',
+            marginTop: 12, width: '100%', padding: '12px',
             background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: 13, color: T.text3,
+            fontSize: 14, color: T.textMuted,
           }}
         >
-          Add without a target
+          I'll set a target later
         </button>
       </div>
     </div>
@@ -521,7 +586,7 @@ function NewGoalInner() {
       <main style={{ flex: 1, maxWidth: 600 }}>{content}</main>
     </div>
   ) : (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
       <main>{content}</main>
       <BottomNav />
     </div>

@@ -41,7 +41,22 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
   const [showCustom, setShowCustom] = useState(false)
   const [saving, setSaving]       = useState(false)
 
-  const parsedAmount = parseFloat(amount) || 0
+  const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0
+
+  const displayAmount = (() => {
+    if (!amount) return ''
+    const raw = amount.replace(/,/g, '')
+    const parts = raw.split('.')
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return parts.join('.')
+  })()
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/,/g, '')
+    if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+    setAmount(raw)
+  }
+
   const effectiveDay = showCustom
     ? (parseInt(customDay) || null)
     : selectedDay
@@ -73,10 +88,19 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
 
   const handleSavePayDay = () => handleSave(effectiveDay)
 
+  const handleClose = () => {
+    setStep('amount')
+    setAmount('')
+    setSelectedDay(null)
+    setCustomDay('')
+    setShowCustom(false)
+    onClose()
+  }
+
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={step === 'amount' ? 'Income check-in' : 'Your pay day'}
     >
       {step === 'amount' && (
@@ -117,11 +141,11 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
             </span>
             <input
               autoFocus
-              type="number"
+              type="text"
               inputMode="decimal"
-              placeholder={String(declaredTotal)}
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
+              placeholder={Number(declaredTotal).toLocaleString()}
+              value={displayAmount}
+              onChange={handleAmountChange}
               style={{
                 flex: 1, height: 52, border: 'none', outline: 'none',
                 padding: '0 14px', fontSize: 18, fontWeight: 600,

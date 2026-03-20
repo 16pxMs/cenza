@@ -11,11 +11,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { IconBack, IconChevronRight } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
+
+function titleCase(s: string) {
+  return s.replace(/\b\w/g, c => c.toUpperCase())
+}
 
 const T = {
   brandDark:    '#5C3489',
@@ -95,6 +100,7 @@ function BarFill({ pct, type }: { pct: number; type: CategoryRow['type'] }) {
 export default function HistoryPage() {
   const router        = useRouter()
   const supabase      = createClient()
+  const { user, profile: ctxProfile } = useUser()
   const { isDesktop } = useBreakpoint()
 
   const [loading, setLoading]         = useState(true)
@@ -107,18 +113,15 @@ export default function HistoryPage() {
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    if (!user) return
 
     const [
-      { data: profile },
       { data: txnRows },
       { data: expenses },
       { data: budgets },
       { data: targets },
       { data: income },
     ] = await Promise.all([
-      supabase.from('user_profiles').select('currency, goals').eq('id', user.id).single() as any,
       (supabase.from('transactions') as any)
         .select('id, date, category_type, category_key, category_label, amount, note')
         .eq('user_id', user.id).eq('month', currentMonth)
@@ -133,7 +136,7 @@ export default function HistoryPage() {
         .select('total').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
     ])
 
-    const cur = profile?.currency ?? 'KES'
+    const cur = ctxProfile?.currency ?? 'KES'
     setCurrency(cur)
 
     const allTxns: Transaction[] = (txnRows ?? []).map((r: any) => ({ ...r, amount: Number(r.amount) }))
@@ -154,7 +157,7 @@ export default function HistoryPage() {
     for (const e of (expenses?.entries ?? []).filter((e: any) => e.confidence === 'known' && e.monthly > 0)) {
       coveredKeys.add(e.key)
       categoryRows.push({
-        key: e.key, label: EXPENSE_LABELS[e.key] ?? e.key,
+        key: e.key, label: EXPENSE_LABELS[e.key] ?? titleCase(e.label ?? e.key),
         type: 'fixed', planned: e.monthly,
         spent: spentByKey(e.key), transactions: txnByKey[e.key] ?? [],
       })
@@ -164,7 +167,7 @@ export default function HistoryPage() {
     const targetMap: Record<string, number> = {}
     for (const t of targets ?? []) targetMap[t.goal_id] = Number(t.amount)
 
-    for (const gid of (profile?.goals ?? [])) {
+    for (const gid of (ctxProfile?.goals ?? [])) {
       if (!GOAL_LABELS[gid]) continue
       coveredKeys.add(gid)
       categoryRows.push({
@@ -178,7 +181,7 @@ export default function HistoryPage() {
     for (const c of (budgets?.categories ?? [])) {
       coveredKeys.add(c.key)
       categoryRows.push({
-        key: c.key, label: c.label,
+        key: c.key, label: titleCase(c.label ?? c.key),
         type: 'variable', planned: c.budget ?? 0,
         spent: spentByKey(c.key), transactions: txnByKey[c.key] ?? [],
       })
@@ -193,7 +196,7 @@ export default function HistoryPage() {
       const isKeywordDebt = !coveredKeys.has(t.category_key) && isDebtByLabel(t.category_label)
       if (!isStoredDebt && !isKeywordDebt) continue
       coveredKeys.add(t.category_key)
-      if (!debtMap[t.category_key]) debtMap[t.category_key] = { label: t.category_label, txns: [] }
+      if (!debtMap[t.category_key]) debtMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), txns: [] }
       debtMap[t.category_key].txns.push(t)
       if (isKeywordDebt) toFixAsDebt.push(t.id)
     }
@@ -215,7 +218,7 @@ export default function HistoryPage() {
     const otherMap: Record<string, { label: string; txns: Transaction[] }> = {}
     for (const t of allTxns) {
       if (coveredKeys.has(t.category_key)) continue
-      if (!otherMap[t.category_key]) otherMap[t.category_key] = { label: t.category_label, txns: [] }
+      if (!otherMap[t.category_key]) otherMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), txns: [] }
       otherMap[t.category_key].txns.push(t)
     }
     for (const [key, { label, txns }] of Object.entries(otherMap)) {
@@ -225,15 +228,15 @@ export default function HistoryPage() {
       })
     }
 
-    const spent = allTxns.reduce((s, t) => s + t.amount, 0)
+    const spent = allTxns.filter(t => t.category_type !== 'goal').reduce((s, t) => s + t.amount, 0)
     setRows(categoryRows)
     setTotalSpent(spent)
     setTotalIncome(Number(income?.total ?? 0))
     setTotalBudget((expenses?.total_monthly ?? 0) + (budgets?.total_budget ?? 0))
     setLoading(false)
-  }, [supabase, router, currentMonth])
+  }, [supabase, currentMonth, user, ctxProfile])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { if (user) loadData() }, [loadData, user])
 
   if (loading) {
     return (
@@ -502,7 +505,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
       <main>{content}</main>
       <BottomNav />
     </div>

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { useUser } from '@/lib/context/UserContext'
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
@@ -115,11 +116,21 @@ function AmountInput({ value, onChange, prefix, placeholder }: {
         {prefix}
       </span>
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         autoFocus
-        value={value}
+        value={(() => {
+          if (!value) return ''
+          const parts = value.replace(/,/g, '').split('.')
+          parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+          return parts.join('.')
+        })()}
         placeholder={placeholder ?? '0'}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => {
+          const raw = e.target.value.replace(/,/g, '')
+          if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+          onChange(raw)
+        }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
@@ -429,38 +440,27 @@ export default function TargetsPage() {
   const router   = useRouter()
   const supabase = createClient()
   const { isDesktop } = useBreakpoint()
+  const { user, profile: ctxProfile } = useUser()
 
   const [loading,      setLoading]      = useState(true)
   const [goals,        setGoals]        = useState<string[]>([])
   const [currency,     setCurrency]     = useState('KES')
   const [totalIncome,  setTotalIncome]  = useState(0)
-  const [userId,       setUserId]       = useState<string | null>(null)
   const [initialStep,  setInitialStep]  = useState(0)
   const [existingTargets, setExistingTargets] = useState<Record<string, GoalTarget | null>>({})
 
   useEffect(() => {
+    if (!user || !ctxProfile) return
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      setUserId(user.id)
-
-      const { data: profile } = await (supabase
-        .from('user_profiles')
-        .select('goals, currency')
-        .eq('id', user.id)
-        .single() as any)
-
-      const profileGoals: string[] = profile?.goals || []
-      if (profile) {
-        setGoals(profileGoals)
-        setCurrency(profile.currency || 'KES')
-      }
+      const profileGoals: string[] = ctxProfile?.goals || []
+      setGoals(profileGoals)
+      setCurrency(ctxProfile?.currency || 'KES')
 
       // Load existing targets to resume at first unfilled goal and prefill inputs
       const { data: savedTargets } = await (supabase
         .from('goal_targets')
         .select('goal_id, amount')
-        .eq('user_id', user.id) as any)
+        .eq('user_id', user!.id) as any)
 
       if (savedTargets && savedTargets.length > 0) {
         const filledIds = new Set(savedTargets.map((t: { goal_id: string }) => t.goal_id))
@@ -478,7 +478,7 @@ export default function TargetsPage() {
       const { data: income } = await (supabase
         .from('income_entries')
         .select('salary, extra_income')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .order('month', { ascending: false })
         .limit(1)
         .single() as any)
@@ -491,16 +491,16 @@ export default function TargetsPage() {
       setLoading(false)
     }
     load()
-  }, [])
+  }, [user, ctxProfile])
 
   const handleDone = async (targets: Record<string, GoalTarget | null>, complete: boolean) => {
-    if (!userId) { router.push('/login'); return }
+    if (!user) return
 
     if (complete) {
       const rows = Object.entries(targets)
         .filter(([, v]) => v !== null && v.amount > 0)
         .map(([goalId, v]) => ({
-          user_id: userId,
+          user_id: user.id,
           goal_id: goalId,
           amount:  v!.amount,
         }))

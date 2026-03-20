@@ -86,10 +86,10 @@ export function getBudgetPace(
     note   = `Projected: ${fmt(projectedSpend, currency)} by month end`
   } else if (projectedRatio < 0.8) {
     status = 'under'
-    note   = `On track — ${daysLeft} day${daysLeft === 1 ? '' : 's'} to go`
+    note   = `On track. ${daysLeft} day${daysLeft === 1 ? '' : 's'} to go`
   } else {
     status = 'on-track'
-    note   = `Pacing well — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`
+    note   = `Pacing well. ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`
   }
 
   return { projectedSpend, status, daysLeft, note }

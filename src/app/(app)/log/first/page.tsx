@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
@@ -44,6 +45,7 @@ type Step = 'pick' | 'frequency' | 'amount'
 export default function FirstLogPage() {
   const router        = useRouter()
   const supabase      = createClient()
+  const { user, profile: ctxProfile } = useUser()
   const { isDesktop } = useBreakpoint()
   const amountRef     = useRef<HTMLInputElement>(null)
   const nameRef       = useRef<HTMLInputElement>(null)
@@ -62,13 +64,10 @@ export default function FirstLogPage() {
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      ;(supabase.from('user_profiles') as any)
-        .select('currency').eq('id', user.id).single()
-        .then(({ data }: any) => setCurrency(data?.currency ?? 'KES'))
-    })
-  }, [])
+    if (ctxProfile) {
+      setCurrency(ctxProfile.currency ?? 'KES')
+    }
+  }, [ctxProfile])
 
   // Auto-focus amount when reaching that step
   useEffect(() => {
@@ -137,7 +136,6 @@ export default function FirstLogPage() {
   const handleSave = async () => {
     if (!canSave) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
 
     await (supabase.from('transactions') as any).insert({
@@ -217,25 +215,22 @@ export default function FirstLogPage() {
   const stepFrequency = selected && (
     <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        marginBottom: 24, padding: '14px',
-        background: T.white, border: `1px solid var(--border)`, borderRadius: 14,
+        display: 'flex', alignItems: 'center', gap: 12,
+        marginBottom: 32, padding: '16px',
+        background: T.white, border: `1px solid var(--border)`, borderRadius: 16,
       }}>
-        <span style={{ fontSize: 28 }}>{selected.icon}</span>
+        <span style={{ fontSize: 30 }}>{selected.icon}</span>
         <span style={{ fontSize: 16, fontWeight: 600, color: T.text1 }}>{selected.label}</span>
       </div>
-
-      <p style={{ margin: '0 0 20px', fontSize: 15, color: T.text2, lineHeight: 1.6 }}>
-        Do you pay {selected.label.toLowerCase()} every month?
-      </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <button
           onClick={() => confirmFrequency(true)}
           style={{
-            height: 52, borderRadius: 14,
+            height: 56, borderRadius: 16,
             background: T.brandDark, border: 'none',
-            color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+            color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer',
+            letterSpacing: -0.1,
           }}
         >
           Yes, every month
@@ -243,9 +238,10 @@ export default function FirstLogPage() {
         <button
           onClick={() => confirmFrequency(false)}
           style={{
-            height: 52, borderRadius: 14,
-            background: T.white, border: `1px solid var(--border)`,
-            color: T.text2, fontSize: 15, fontWeight: 500, cursor: 'pointer',
+            height: 56, borderRadius: 16,
+            background: 'transparent', border: '1.5px solid #C9AEE8',
+            color: T.brandDark, fontSize: 16, fontWeight: 600, cursor: 'pointer',
+            letterSpacing: -0.1,
           }}
         >
           Just this once
@@ -281,8 +277,8 @@ export default function FirstLogPage() {
       {!isSomethingElse && selected && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          marginBottom: 20, padding: '12px 14px',
-          background: T.white, border: `1px solid var(--border)`, borderRadius: 12,
+          marginBottom: 20, padding: '14px 16px',
+          background: T.white, border: `1px solid var(--border)`, borderRadius: 16,
         }}>
           <span style={{ fontSize: 22 }}>{selected.icon}</span>
           <span style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{selected.label}</span>
@@ -299,28 +295,44 @@ export default function FirstLogPage() {
       )}
 
       {/* Amount */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        padding: '20px 0 24px',
-        borderTop: `1px solid var(--border)`,
-        borderBottom: `1px solid var(--border)`,
-        marginBottom: 20,
-      }}>
+      <div
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: '20px 0 24px',
+          borderTop: `1px solid var(--border)`,
+          borderBottom: `1px solid var(--border)`,
+          marginBottom: 20,
+          cursor: 'text',
+        }}
+        onClick={() => amountRef.current?.focus()}
+      >
         <span style={{ fontSize: 13, color: T.text3, marginBottom: 6 }}>{currency}</span>
-        <input
-          ref={amountRef}
-          type="text"
-          inputMode="decimal"
-          value={displayAmount}
-          onChange={handleAmountChange}
-          placeholder="0"
-          onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
-          style={{
-            fontSize: 56, fontWeight: 600, textAlign: 'center',
-            background: 'none', border: 'none', outline: 'none', width: '100%',
-            color: amount ? T.text1 : T.textMuted, letterSpacing: -1, lineHeight: 1, padding: 0,
-          }}
-        />
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+          {/* Visual display — decoupled from input so cursor doesn't appear next to 0 */}
+          <span style={{
+            fontSize: displayAmount.length <= 5 ? 64 : displayAmount.length <= 8 ? 52 : displayAmount.length <= 11 ? 38 : 28,
+            fontWeight: 300, lineHeight: 1.1, letterSpacing: -1,
+            color: displayAmount ? T.text1 : T.textMuted,
+            userSelect: 'none', pointerEvents: 'none',
+          }}>
+            {displayAmount || '0'}
+          </span>
+          {/* Hidden input — captures keyboard, no visible cursor */}
+          <input
+            ref={amountRef}
+            type="text"
+            inputMode="decimal"
+            value={displayAmount}
+            onChange={handleAmountChange}
+            onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+            style={{
+              position: 'absolute', inset: 0,
+              opacity: 0, fontSize: 16,
+              border: 'none', outline: 'none',
+              background: 'transparent', caretColor: 'transparent',
+            }}
+          />
+        </div>
       </div>
 
       {/* Note */}
@@ -330,7 +342,7 @@ export default function FirstLogPage() {
         onChange={e => setNote(e.target.value)}
         placeholder="Add a note (optional)"
         style={{
-          height: 46, borderRadius: 12, border: `1px solid var(--border)`,
+          height: 48, borderRadius: 14, border: `1px solid var(--border)`,
           padding: '0 14px', fontSize: 14, color: T.text1,
           background: T.white, outline: 'none', width: '100%',
           boxSizing: 'border-box', marginBottom: 20,
@@ -341,23 +353,24 @@ export default function FirstLogPage() {
         onClick={handleSave}
         disabled={!canSave || saving}
         style={{
-          width: '100%', height: 52, borderRadius: 14,
+          width: '100%', height: 56, borderRadius: 16,
           background: canSave ? T.brandDark : T.border,
           border: 'none',
           color: canSave ? '#fff' : T.textMuted,
-          fontSize: 15, fontWeight: 600,
+          fontSize: 16, fontWeight: 600,
           cursor: canSave ? 'pointer' : 'not-allowed',
           transition: 'background 0.15s',
+          letterSpacing: -0.1,
         }}
       >
-        {saving ? 'Saving…' : amountNum > 0 ? `Log ${currency} ${displayAmount}` : 'Enter an amount'}
+        {saving ? 'Saving…' : amountNum > 0 ? `Save ${currency} ${displayAmount}` : 'Enter an amount'}
       </button>
     </div>
   )
 
   const heading =
     step === 'pick'      ? 'What did you spend on?' :
-    step === 'frequency' ? (selected?.label ?? '') :
+    step === 'frequency' ? `Do you pay ${selected?.label.toLowerCase()} every month?` :
                            'How much?'
 
   const content = (
@@ -394,7 +407,7 @@ export default function FirstLogPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
       <main>{content}</main>
       <BottomNav />
     </div>

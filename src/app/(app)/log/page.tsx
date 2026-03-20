@@ -11,14 +11,19 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/context/UserContext'
+import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { AddExpenseSheet, type SheetItem, type ExpenseSaveData, type PriorEntry, type DictionaryEntry, type QuickItem } from '@/components/flows/log/AddExpenseSheet'
-import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack, IconTrash } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
+
+function titleCase(s: string) {
+  return s.replace(/\b\w/g, c => c.toUpperCase())
+}
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
@@ -95,15 +100,15 @@ export default function LogPage() {
   const router        = useRouter()
   const supabase      = createClient()
   const { isDesktop } = useBreakpoint()
+  const { user, profile: ctxProfile } = useUser()
+
+  const { toast } = useToast()
 
   const [loading, setLoading]             = useState(true)
   const [currency, setCurrency]           = useState('KES')
   const [sections, setSections]           = useState<Section[]>([])
   const [sheetOpen, setSheetOpen]         = useState(false)
   const [sheetItem, setSheetItem]         = useState<SheetItem | null>(null)
-  const [incomeCheckOpen, setIncomeCheckOpen] = useState(false)
-  const [declaredTotal, setDeclaredTotal] = useState(0)
-  const [payDay, setPayDay]               = useState<number | null>(null)
   const [isFirstTime, setIsFirstTime]     = useState(false)
   const [priorEntry, setPriorEntry]     = useState<PriorEntry | null | undefined>(undefined)
   const [dictionary, setDictionary]     = useState<Record<string, DictionaryEntry>>({})
@@ -166,18 +171,14 @@ export default function LogPage() {
   }, [sections, dictionary])
 
   const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    if (!user) return
 
     const [
-      { data: profile },
       { data: txns },
       { data: expenses },
       { data: targets },
       { data: budgets },
-      { data: incomeEntry },
     ] = await Promise.all([
-      supabase.from('user_profiles').select('currency, goals, pay_day').eq('id', user.id).single() as any,
       (supabase.from('transactions') as any)
         .select('category_key, category_label, category_type, amount, date')
         .eq('user_id', user.id).eq('month', currentMonth),
@@ -187,27 +188,10 @@ export default function LogPage() {
         .select('goal_id, amount, added_at').eq('user_id', user.id),
       (supabase.from('spending_budgets') as any)
         .select('categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
-      (supabase.from('income_entries') as any)
-        .select('total, received, received_confirmed_at').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
     ])
 
-    const cur = profile?.currency ?? 'KES'
+    const cur = ctxProfile?.currency ?? 'KES'
     setCurrency(cur)
-    setPayDay(profile?.pay_day ?? null)
-
-    // Show income check-in if:
-    // 1. There is a declared income for this month, AND
-    // 2. received has not been confirmed yet
-    const today = new Date().getDate()
-    const profilePayDay: number | null = profile?.pay_day ?? null
-    const needsCheck = incomeEntry &&
-      incomeEntry.received_confirmed_at === null &&
-      (incomeEntry.received === null || today === profilePayDay)
-
-    if (needsCheck) {
-      setDeclaredTotal(Number(incomeEntry.total ?? 0))
-      setIncomeCheckOpen(true)
-    }
 
     // ── Build added_at map to filter stale goal transactions ─
     const addedAtMap: Record<string, string> = {}
@@ -231,7 +215,7 @@ export default function LogPage() {
       .filter((e: any) => e.confidence === 'known' && e.monthly > 0)
       .map((e: any) => ({
         key:           e.key,
-        label:         EXPENSE_LABELS[e.key] ?? e.key,
+        label:         EXPENSE_LABELS[e.key] ?? titleCase(e.label ?? e.key),
         sublabel:      fmt(e.monthly, cur),
         groupType:     'fixed',
         loggedAmount:  logged[e.key] ?? 0,
@@ -239,7 +223,7 @@ export default function LogPage() {
       }))
 
     // ── Goals ───────────────────────────────────────────────
-    const profileGoals: string[] = profile?.goals ?? []
+    const profileGoals: string[] = ctxProfile?.goals ?? []
     const goalItems: SubItem[] = profileGoals
       .filter((g: string) => GOAL_META[g])
       .map((g: string) => {
@@ -257,7 +241,7 @@ export default function LogPage() {
 
     const dailyItems: SubItem[] = (budgets?.categories ?? []).map((c: any) => ({
       key:          c.key,
-      label:        c.label,
+      label:        titleCase(c.label ?? c.key),
       sublabel:     c.budget ? fmt(c.budget, cur) : null,
       groupType:    'variable',
       loggedAmount: logged[c.key] ?? 0,
@@ -267,7 +251,7 @@ export default function LogPage() {
     const debtMap: Record<string, { label: string; amount: number }> = {}
     for (const t of txns ?? []) {
       if (t.category_type !== 'debt') continue
-      if (!debtMap[t.category_key]) debtMap[t.category_key] = { label: t.category_label, amount: 0 }
+      if (!debtMap[t.category_key]) debtMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), amount: 0 }
       debtMap[t.category_key].amount += Number(t.amount)
     }
     const debtItems: SubItem[] = Object.entries(debtMap).map(([key, { label, amount }]) => ({
@@ -286,7 +270,7 @@ export default function LogPage() {
     for (const t of txns ?? []) {
       if (knownKeys.has(t.category_key)) continue
       if (t.category_type === 'debt') continue  // already in debts
-      if (!otherMap[t.category_key]) otherMap[t.category_key] = { label: t.category_label, amount: 0 }
+      if (!otherMap[t.category_key]) otherMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), amount: 0 }
       otherMap[t.category_key].amount += Number(t.amount)
     }
     const otherItems: SubItem[] = Object.entries(otherMap).map(([key, { label, amount }]) => ({
@@ -301,19 +285,19 @@ export default function LogPage() {
       ...(otherItems.length > 0 ? [{ key: 'other' as GroupKey, label: 'Other', groupType: 'variable', items: otherItems }] : []),
     ])
 
-    // First-time if no transactions logged this month at all
-    setIsFirstTime((txns ?? []).length === 0)
+    // First-time if no actual expense transactions logged this month (goal contributions don't count)
+    setIsFirstTime((txns ?? []).filter((t: any) => t.category_type !== 'goal').length === 0)
 
     setLoading(false)
-  }, [supabase, router, currentMonth])
+  }, [supabase, router, currentMonth, user, ctxProfile])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { if (user) loadData() }, [loadData, user])
 
   // When navigated from overview with ?open=true, after income check-in:
   // — first-time users → go to the guided first-log page
   // — returning users → open the sheet directly
   useEffect(() => {
-    if (loading || autoOpened || incomeCheckOpen) return
+    if (loading || autoOpened) return
     if (typeof window !== 'undefined' && window.location.search.includes('open=true')) {
       setAutoOpened(true)
       if (isFirstTime) {
@@ -322,7 +306,7 @@ export default function LogPage() {
         openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })
       }
     }
-  }, [loading, incomeCheckOpen, isFirstTime]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, isFirstTime]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openSheet = (item: SheetItem) => {
     setSheetItem(item)
@@ -330,87 +314,60 @@ export default function LogPage() {
 
     // For Other items, fetch the user's item dictionary for auto-recognition
     if (item.isOther) {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (!user) return
-        ;(supabase.from('item_dictionary') as any)
-          .select('name_normalized, label, group_type, category_key, usage_count')
-          .eq('user_id', user.id)
-          .order('usage_count', { ascending: false })
-          .then(({ data }: any) => {
-            const dict: Record<string, DictionaryEntry> = {}
+      if (!user) return
+      ;(supabase.from('item_dictionary') as any)
+        .select('name_normalized, label, group_type, category_key, usage_count')
+        .eq('user_id', user.id)
+        .order('usage_count', { ascending: false })
+        .then(({ data }: any) => {
+          const dict: Record<string, DictionaryEntry> = {}
 
-            // Seed common debt keywords so they're always auto-recognised
-            for (const kw of DEBT_KEYWORDS) {
-              dict[kw] = { groupType: 'debt', label: kw, count: 0 }
-            }
+          // Seed common debt keywords so they're always auto-recognised
+          for (const kw of DEBT_KEYWORDS) {
+            dict[kw] = { groupType: 'debt', label: kw, count: 0 }
+          }
 
-            // Seed with all known planned items (fixed, goals, daily)
-            // so typing "rent" matches even if never logged via free-text
-            for (const section of sections) {
-              for (const si of section.items) {
-                const normalized = si.label.trim().toLowerCase()
-                if (!dict[normalized]) {
-                  dict[normalized] = { groupType: si.groupType, label: si.label, key: si.key, count: 0 }
-                }
+          // Seed with all known planned items (fixed, goals, daily)
+          // so typing "rent" matches even if never logged via free-text
+          for (const section of sections) {
+            for (const si of section.items) {
+              const normalized = si.label.trim().toLowerCase()
+              if (!dict[normalized]) {
+                dict[normalized] = { groupType: si.groupType, label: si.label, key: si.key, count: 0 }
               }
             }
+          }
 
-            // Overlay user-typed history (higher count wins recognition signal)
-            for (const row of data ?? []) {
-              dict[row.name_normalized] = { groupType: row.group_type, label: row.label, key: row.category_key, count: row.usage_count ?? 1 }
-            }
+          // Overlay user-typed history (higher count wins recognition signal)
+          for (const row of data ?? []) {
+            dict[row.name_normalized] = { groupType: row.group_type, label: row.label, key: row.category_key, count: row.usage_count ?? 1 }
+          }
 
-            setDictionary(dict)
-          })
-      })
+          setDictionary(dict)
+        })
     }
 
     if (!item.isOther) {
       // Always check for a prior entry this month — if none found, chips won't show
       setPriorEntry(undefined)
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (!user) { setPriorEntry(null); return }
-        ;(supabase.from('transactions') as any)
-          .select('amount, date')
-          .eq('user_id', user.id)
-          .eq('month', currentMonth)
-          .eq('category_key', item.key)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-          .then(({ data: prior }: any) => {
-            setPriorEntry(prior ? { amount: Number(prior.amount), date: prior.date } : null)
-          })
-      })
+      if (!user) { setPriorEntry(null); return }
+      ;(supabase.from('transactions') as any)
+        .select('amount, date')
+        .eq('user_id', user.id)
+        .eq('month', currentMonth)
+        .eq('category_key', item.key)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data: prior }: any) => {
+          setPriorEntry(prior ? { amount: Number(prior.amount), date: prior.date } : null)
+        })
     } else {
       setPriorEntry(null)
     }
   }
 
-  const handleIncomeConfirm = async (received: number, day: number | null) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const ops: Promise<unknown>[] = [
-      (supabase.from('income_entries') as any).update({
-        received,
-        received_confirmed_at: new Date().toISOString(),
-      }).eq('user_id', user.id).eq('month', currentMonth),
-    ]
-
-    if (day !== null && payDay === null) {
-      ops.push(
-        (supabase.from('user_profiles') as any).update({ pay_day: day }).eq('id', user.id)
-      )
-      setPayDay(day)
-    }
-
-    await Promise.all(ops)
-    setIncomeCheckOpen(false)
-  }
-
   const handleSave = async (data: ExpenseSaveData) => {
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     // Replace mode: delete all existing entries for this category this month first
@@ -432,6 +389,7 @@ export default function LogPage() {
       amount:         data.amount,
       note:           data.note || null,
     })
+    toast('Expense logged')
 
     // If user confirmed this is a monthly fixed payment, add it to fixed_expenses
     if (data.isMonthlyFixed) {
@@ -457,25 +415,22 @@ export default function LogPage() {
     }
 
     // Write Other items to the dictionary for future auto-recognition
-    if (sheetItem?.isOther) {
-      supabase.auth.getUser().then(async ({ data: { user } }) => {
-        if (!user) return
-        const normalized = data.label.trim().toLowerCase()
-        // Fetch existing count so we can increment it
-        const { data: existing } = await (supabase.from('item_dictionary') as any)
-          .select('usage_count')
-          .eq('user_id', user.id)
-          .eq('name_normalized', normalized)
-          .maybeSingle()
-        ;(supabase.from('item_dictionary') as any).upsert({
-          user_id:         user.id,
-          name_normalized: normalized,
-          label:           data.label,
-          group_type:      data.groupType,
-          category_key:    data.key,
-          usage_count:     (existing?.usage_count ?? 0) + 1,
-        }, { onConflict: 'user_id,name_normalized' })
-      })
+    if (sheetItem?.isOther && user) {
+      const normalized = data.label.trim().toLowerCase()
+      // Fetch existing count so we can increment it
+      const { data: existing } = await (supabase.from('item_dictionary') as any)
+        .select('usage_count')
+        .eq('user_id', user.id)
+        .eq('name_normalized', normalized)
+        .maybeSingle()
+      ;(supabase.from('item_dictionary') as any).upsert({
+        user_id:         user.id,
+        name_normalized: normalized,
+        label:           data.label,
+        group_type:      data.groupType,
+        category_key:    data.key,
+        usage_count:     (existing?.usage_count ?? 0) + 1,
+      }, { onConflict: 'user_id,name_normalized' })
     }
 
     // Refresh list so logged amounts update instantly
@@ -489,7 +444,6 @@ export default function LogPage() {
     const amount = parseFloat(refundAmount)
     if (!amount || amount <= 0) return
     setSavingRefund(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSavingRefund(false); return }
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
@@ -501,6 +455,7 @@ export default function LogPage() {
       amount:         -amount,
       note:           refundNote.trim() || null,
     })
+    toast('Refund recorded')
     setSavingRefund(false)
     setPendingDelete(null)
     setRefundAmount('')
@@ -511,13 +466,13 @@ export default function LogPage() {
 
   const handleDeleteCategory = async (key: string) => {
     setDeletingKey(key)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setDeletingKey(null); return }
     await (supabase.from('transactions') as any)
       .delete()
       .eq('user_id', user.id)
       .eq('month', currentMonth)
       .eq('category_key', key)
+    toast('Entry removed')
     setDeletingKey(null)
     setPendingDelete(null)
     loadData()
@@ -870,11 +825,15 @@ export default function LogPage() {
                 </span>
                 <input
                   autoFocus
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   placeholder="0"
-                  value={refundAmount}
-                  onChange={e => setRefundAmount(e.target.value)}
+                  value={refundAmount.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  onChange={e => {
+                    const raw = e.target.value.replace(/,/g, '')
+                    if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+                    setRefundAmount(raw)
+                  }}
                   style={{
                     flex: 1, height: 52, border: 'none', outline: 'none',
                     padding: '0 14px', fontSize: 18, fontWeight: 600,
@@ -923,16 +882,6 @@ export default function LogPage() {
           )}
         </Sheet>
       )}
-
-      {/* Income check-in — shown before first log of month / on pay day */}
-      <ReceivedIncomeSheet
-        open={incomeCheckOpen}
-        onClose={() => setIncomeCheckOpen(false)}
-        declaredTotal={declaredTotal}
-        currency={currency}
-        payDay={payDay}
-        onConfirm={handleIncomeConfirm}
-      />
 
       {/* Sheet */}
       <AddExpenseSheet
@@ -993,7 +942,7 @@ export default function LogPage() {
 
   // ─── Mobile layout ────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
       <main>{content}</main>
       {pinnedOther}
       <BottomNav />

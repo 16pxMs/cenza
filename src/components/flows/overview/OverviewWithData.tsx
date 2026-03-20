@@ -11,7 +11,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, AlertTriangle, TrendingUp, Target, Sparkles, CheckCircle, Lightbulb } from 'lucide-react'
+import { X, AlertTriangle, TrendingUp, Target, Sparkles, CheckCircle, Lightbulb, ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { GoalContribSheet } from './GoalContribSheet'
@@ -42,6 +42,12 @@ interface IncomeData {
   received?: number | null  // confirmed received this month (null = not yet confirmed)
 }
 
+const CATEGORY_EMOJI: Record<string, string> = {
+  groceries: '🛒', transport: '🚌', eating_out: '🍽️', airtime: '📱',
+  entertainment: '🎬', personal_care: '💄', household: '🏠', clothing: '👕',
+  health: '💊', savings: '💰', education: '📚', family: '🤲',
+}
+
 interface Props {
   name: string
   currency: string
@@ -49,17 +55,22 @@ interface Props {
   incomeData: IncomeData
   goalTargets: Record<string, any> | null
   goalSaved?: Record<string, number>
+  goalLabels?: Record<string, string>
   onAddDebts?: () => void
   onLogExpense?: () => void
+  onConfirmIncome?: () => void
   onContribGoal?: (goalId: string, goalLabel: string, amount: number, note: string) => Promise<void>
   totalSpent?: number
   fixedTotal?: number
+  spendingBudget?: { categories: any[] } | null
+  categorySpend?: Record<string, number>
   isDesktop?: boolean
 }
 
 export function OverviewWithData({
   name, currency, goals, incomeData,
-  goalTargets, goalSaved = {}, onAddDebts, onLogExpense, onContribGoal, totalSpent = 0, fixedTotal = 0, isDesktop,
+  goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onLogExpense, onConfirmIncome, onContribGoal,
+  totalSpent = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -90,10 +101,11 @@ export function OverviewWithData({
   const pendingGoals = totalGoals - filledGoals
 
   // ── Spending body copy — contextual once goals exist (idea 4) ─
-  const firstGoalMeta = goals.length > 0 ? GOAL_META[goals[0]] : null
-  const spendBodyCopy = firstGoalMeta
+  const firstGoalMeta  = goals.length > 0 ? GOAL_META[goals[0]] : null
+  const firstGoalLabel = goals.length > 0 ? (goalLabels[goals[0]] ?? firstGoalMeta?.label ?? '') : ''
+  const spendBodyCopy  = firstGoalMeta
     ? goals.length === 1
-      ? `Record your expenses to see what's left for your ${firstGoalMeta.label}.`
+      ? `Record your expenses to see what's left for your ${firstGoalLabel}.`
       : `Record your expenses to see what's left for your goals.`
     : `Add your first expense to see where your money is going.`
 
@@ -201,6 +213,28 @@ export function OverviewWithData({
           </>
         )}
 
+        {/* Income confirmation nudge — contained strip, clearly separated from buttons */}
+        {!receivedConfirmed && onConfirmIncome && (
+          <button
+            onClick={onConfirmIncome}
+            style={{
+              width: '100%', textAlign: 'left', cursor: 'pointer',
+              background: '#F5F0FA', border: '1px solid #E4D9F4',
+              borderRadius: 10, padding: '10px 12px', marginBottom: 12,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <div style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: 'var(--brand-dark)', flexShrink: 0,
+            }} />
+            <span style={{ flex: 1, fontSize: 13, color: 'var(--brand-dark)', fontWeight: 500 }}>
+              Confirm your income for this month
+            </span>
+            <ChevronRight size={16} color="var(--brand-dark)" strokeWidth={2.5} />
+          </button>
+        )}
+
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={onLogExpense}
@@ -252,9 +286,9 @@ export function OverviewWithData({
       <button
         onClick={onLogExpense}
         style={{
-          width: '100%', height: 52, borderRadius: 14,
-          background: 'transparent', color: 'var(--brand-dark)',
-          border: '1.5px solid #C9AEE8', fontWeight: 600, fontSize: 15, cursor: 'pointer',
+          width: '100%', height: 56, borderRadius: 16,
+          background: 'var(--brand-dark)', color: '#fff',
+          border: 'none', fontWeight: 600, fontSize: 16, cursor: 'pointer',
           letterSpacing: -0.1,
         }}
       >
@@ -384,6 +418,7 @@ export function OverviewWithData({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 {visibleGoals.map(gid => {
                   const m      = GOAL_META[gid]
+                  const label  = goalLabels[gid] ?? m.label
                   const target = goalTargets?.[gid] ? Number(goalTargets[gid]) : 0
                   const saved  = goalSaved[gid] ?? 0
                   const pct    = target > 0 ? Math.min(100, (saved / target) * 100) : 0
@@ -393,7 +428,7 @@ export function OverviewWithData({
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                           <span style={{ fontSize: 16 }}>{m.icon}</span>
-                          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{m.label}</span>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{label}</span>
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); setActiveGoalContrib(gid) }}
@@ -485,9 +520,10 @@ export function OverviewWithData({
     })
   }
   if (neglectedMeta) {
+    const neglectedLabel = neglectedGoal ? (goalLabels[neglectedGoal] ?? neglectedMeta.label) : neglectedMeta.label
     insights.push({
       Icon: Target,
-      text: `You haven't added anything to ${neglectedMeta.label} yet this month.`,
+      text: `You haven't added anything to ${neglectedLabel} yet this month.`,
       color: '#4A3B66',
       onTap: () => setActiveGoalContrib(neglectedGoal!),
     })
@@ -541,7 +577,7 @@ export function OverviewWithData({
             {insight.text}
           </p>
           {(insight.href || insight.onTap) && (
-            <span style={{ fontSize: 16, color: insight.color, opacity: 0.5, flexShrink: 0, alignSelf: 'center' }}>→</span>
+            <ChevronRight size={16} color={insight.color} strokeWidth={2} style={{ flexShrink: 0, alignSelf: 'center', opacity: 0.5 }} />
           )}
         </div>
       ))}
@@ -583,6 +619,71 @@ export function OverviewWithData({
           <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>Do it now</span>
         </div>
       )}
+
+      {/* Budget vs actual card — shown when budget is set and spending has been logged */}
+      {(() => {
+        const cats = (spendingBudget?.categories ?? []).filter((c: any) => c.budget > 0)
+        if (cats.length === 0 || !hasLogged) return null
+        return (
+          <div style={{
+            background: 'var(--white)', border: '1px solid var(--border)',
+            borderRadius: 18, overflow: 'hidden', marginTop: 16,
+            ...fade(0.12),
+          }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '14px 16px 12px',
+              borderBottom: '1px solid var(--border-subtle)',
+            }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                Spending budget
+              </p>
+            </div>
+            {cats.map((cat: any, i: number) => {
+              const spent    = categorySpend[cat.key] ?? 0
+              const budgeted = Number(cat.budget)
+              const pct      = budgeted > 0 ? Math.min(100, (spent / budgeted) * 100) : 0
+              const over     = spent > budgeted
+              const barColor = over ? 'var(--red)' : pct > 75 ? '#F59E0B' : 'var(--green)'
+              const emoji    = CATEGORY_EMOJI[cat.key]
+              const isLast   = i === cats.length - 1
+              return (
+                <div key={cat.key} style={{
+                  padding: '12px 16px',
+                  borderBottom: isLast ? 'none' : '1px solid var(--border-subtle)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {emoji && <span style={{ fontSize: 14 }}>{emoji}</span>}
+                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)' }}>{cat.label}</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: over ? 'var(--red-dark)' : 'var(--text-1)' }}>
+                        {fmt(spent, currency)}
+                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 3 }}>
+                        / {fmt(budgeted, currency)}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ height: 4, background: 'var(--grey-100)', borderRadius: 99 }}>
+                    <div style={{
+                      height: '100%', width: `${pct}%`,
+                      background: barColor, borderRadius: 99,
+                      transition: 'width 0.5s ease', minWidth: pct > 0 ? 4 : 0,
+                    }} />
+                  </div>
+                  {over && (
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--red-dark)', fontWeight: 500 }}>
+                      {fmt(spent - budgeted, currency)} over budget
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Card order:
             State A, no goals  → goals empty state first (motivate the why), then spending
@@ -646,16 +747,18 @@ export function OverviewWithData({
           <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 16px', lineHeight: 1.6 }}>
             Credit cards, mobile loans, repayments. Adding them gives you the full picture.
           </p>
-          <button
-            onClick={onAddDebts}
-            style={{
-              width: '100%', height: 42, borderRadius: 12,
-              background: 'var(--brand-dark)', color: '#fff',
-              border: 'none', fontWeight: 600, fontSize: 13.5, cursor: 'pointer',
-            }}
-          >
-            Add debts
-          </button>
+          {onAddDebts && (
+            <button
+              onClick={onAddDebts}
+              style={{
+                width: '100%', height: 42, borderRadius: 12,
+                background: 'var(--brand-dark)', color: '#fff',
+                border: 'none', fontWeight: 600, fontSize: 13.5, cursor: 'pointer',
+              }}
+            >
+              Add debts
+            </button>
+          )}
         </div>
       )}
 

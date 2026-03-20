@@ -1,8 +1,9 @@
 import '@/styles/tokens.css'
 import '../styles/globals.css'
 
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Outfit, Space_Grotesk } from 'next/font/google'
+import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration'
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -21,12 +22,31 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: 'Cenza',
   description: 'Know your numbers.',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Cenza',
+  },
+  icons: {
+    apple: '/icons/apple-touch-icon.svg',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#5C3489',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${outfit.variable} ${spaceGrotesk.variable}`}>
-      <body>{children}</body>
+      <body>
+        <ServiceWorkerRegistration />
+        {children}
+      </body>
     </html>
   )
 }

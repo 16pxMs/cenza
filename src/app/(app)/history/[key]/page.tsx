@@ -8,6 +8,8 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/context/UserContext'
+import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
@@ -39,12 +41,15 @@ function LedgerInner() {
   const params        = useParams()
   const searchParams  = useSearchParams()
   const supabase      = createClient()
+  const { user, profile: ctxProfile } = useUser()
   const { isDesktop } = useBreakpoint()
 
   const categoryKey   = params.key as string
   const categoryLabel = searchParams.get('label') ?? categoryKey
   const planned       = Number(searchParams.get('planned') ?? 0)
   const currentMonth  = new Date().toISOString().slice(0, 7)
+
+  const { toast } = useToast()
 
   const [loading, setLoading]       = useState(true)
   const [currency, setCurrency]     = useState('')
@@ -72,28 +77,24 @@ function LedgerInner() {
   const refundRef  = useRef<HTMLInputElement>(null)
 
   const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    if (!user) return
 
-    const [profileRes, txnRes] = await Promise.all([
-      (supabase.from('user_profiles') as any).select('currency').eq('id', user.id).single(),
-      (supabase.from('transactions') as any)
-        .select('id, date, amount, note')
-        .eq('user_id', user.id)
-        .eq('month', currentMonth)
-        .eq('category_key', categoryKey)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false }),
-    ])
+    const txnRes = await (supabase.from('transactions') as any)
+      .select('id, date, amount, note')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .eq('category_key', categoryKey)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
 
-    setCurrency(profileRes.data?.currency ?? '')
+    setCurrency(ctxProfile?.currency ?? '')
     const rows: Transaction[] = (txnRes.data ?? []).map((r: any) => ({ ...r, amount: Number(r.amount) }))
     setTxns(rows)
     setTotalSpent(rows.reduce((s, t) => s + t.amount, 0))
     setLoading(false)
-  }, [supabase, router, currentMonth, categoryKey])
+  }, [supabase, currentMonth, categoryKey, user, ctxProfile])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { if (user) loadData() }, [loadData, user])
 
   const openEdit = (txn: Transaction) => {
     setEditId(txn.id)
@@ -106,11 +107,11 @@ function LedgerInner() {
     const amt = parseFloat(editAmount) || 0
     if (!editId || amt <= 0) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
     await (supabase.from('transactions') as any)
       .update({ amount: amt, note: editNote || null })
       .eq('id', editId).eq('user_id', user.id)
+    toast('Entry updated')
     setSaving(false)
     setEditId(null)
     loadData()
@@ -120,10 +121,10 @@ function LedgerInner() {
   const handleDelete = async () => {
     if (!pendingDelete) return
     setDeleting(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setDeleting(false); return }
     await (supabase.from('transactions') as any)
       .delete().eq('id', pendingDelete.id).eq('user_id', user.id)
+    toast('Entry deleted')
     setDeleting(false)
     setPendingDelete(null)
     loadData()
@@ -134,7 +135,6 @@ function LedgerInner() {
     const amt = parseFloat(refundAmount) || 0
     if (amt <= 0) return
     setSavingRefund(true)
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSavingRefund(false); return }
     const categoryType = searchParams.get('type') ?? 'variable'
     await (supabase.from('transactions') as any).insert({
@@ -147,6 +147,7 @@ function LedgerInner() {
       amount:         -amt,
       note:           refundNote.trim() || 'Refund',
     })
+    toast('Refund recorded')
     setSavingRefund(false)
     setShowRefundForm(false)
     setRefundAmount('')
@@ -271,9 +272,14 @@ function LedgerInner() {
                 <input
                   ref={refundRef}
                   type="text" inputMode="decimal"
-                  value={refundAmount}
+                  value={(() => {
+                    if (!refundAmount) return ''
+                    const parts = refundAmount.split('.')
+                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                    return parts.join('.')
+                  })()}
                   onChange={e => {
-                    const val = e.target.value.replace(/[^0-9.]/g, '')
+                    const val = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
                     const parts = val.split('.')
                     if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
                     setRefundAmount(val)
@@ -431,9 +437,14 @@ function LedgerInner() {
                             <input
                               ref={amountRef}
                               type="text" inputMode="decimal"
-                              value={editAmount}
+                              value={(() => {
+                                if (!editAmount) return ''
+                                const parts = editAmount.split('.')
+                                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                                return parts.join('.')
+                              })()}
                               onChange={e => {
-                                const val = e.target.value.replace(/[^0-9.]/g, '')
+                                const val = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
                                 const parts = val.split('.')
                                 if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
                                 setEditAmount(val)
@@ -578,7 +589,7 @@ function LedgerInner() {
       <main style={{ flex: 1, maxWidth: 640 }}>{content}</main>
     </div>
   ) : (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
       <main>{content}</main>
       <BottomNav />
     </div>
