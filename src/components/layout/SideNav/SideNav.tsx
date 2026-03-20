@@ -9,7 +9,7 @@ import styles from './SideNav.module.css'
 import { IconOverview, IconGoals, IconFinance } from '@/components/ui/Icons'
 
 const TABS = [
-  { href: '/',       label: 'Overview', Icon: IconOverview },
+  { href: '/app',    label: 'Overview', Icon: IconOverview },
   { href: '/income', label: 'Budgets',  Icon: IconFinance  },
   { href: '/goals',  label: 'Goals',    Icon: IconGoals    },
 ]

@@ -510,7 +510,7 @@ export default function TargetsPage() {
       }
     }
 
-    router.push('/')
+    router.push('/app')
   }
 
   if (loading) {

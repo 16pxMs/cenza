@@ -95,7 +95,7 @@ export default function OnboardingPage() {
         onboarding_complete: true,
       })
       if (error) throw error
-      router.push('/')
+      router.push('/app')
     } catch (err) {
       console.error('Onboarding save error:', err)
       setSaving(false)

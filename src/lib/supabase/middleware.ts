@@ -30,20 +30,20 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public routes that don't need auth
-  const publicRoutes = ['/login', '/demo', '/auth/callback', '/onboarding']
-  const isPublic = publicRoutes.some(r => pathname.startsWith(r))
+  const publicRoutes = ['/', '/login', '/demo', '/auth/callback', '/onboarding']
+  const isPublic = publicRoutes.some(r => pathname === r || pathname.startsWith(r + '/'))
 
-  // Redirect unauthenticated users to login
+  // Redirect unauthenticated users to landing page
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
-    url.pathname = '/login'
+    url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from login
-  if (user && pathname === '/login') {
+  // Redirect authenticated users away from landing and login to app
+  if (user && (pathname === '/' || pathname === '/login')) {
     const url = request.nextUrl.clone()
-    url.pathname = '/'
+    url.pathname = '/app'
     return NextResponse.redirect(url)
   }
 

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 import { signInWithGoogle } from '@/app/auth/actions'
 import styles from './login.module.css'
 
@@ -10,6 +12,11 @@ function WelcomeScreen({ onNext }: { onNext: () => void }) {
       {/* Decorative background depth */}
       <div className={styles.decorTop} />
       <div className={styles.decorMid} />
+
+      <Link href="/" className={styles.backButton}>
+        <ArrowLeft size={16} />
+        Back
+      </Link>
 
       <div className={styles.content}>
         <div className={styles.logo}>Cenza</div>
@@ -82,7 +89,8 @@ export default function LoginPage() {
         onClick={() => setShowLogin(false)}
         className={styles.backButton}
       >
-        ← Back
+        <ArrowLeft size={16} />
+        Back
       </button>
 
       <div className={styles.authCard}>

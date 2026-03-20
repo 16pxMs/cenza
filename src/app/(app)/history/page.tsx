@@ -281,7 +281,7 @@ export default function HistoryPage() {
       {/* Header */}
       <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 20px' }}>
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/app')}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center' }}
         >
           <IconBack size={18} color={T.text3} />

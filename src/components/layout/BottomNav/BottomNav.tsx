@@ -9,7 +9,7 @@ import styles from './BottomNav.module.css'
 import { IconOverview, IconGoals, IconFinance } from '@/components/ui/Icons'
 
 const TABS = [
-  { href: '/',       label: 'Overview', Icon: IconOverview },
+  { href: '/app',    label: 'Overview', Icon: IconOverview },
   { href: '/income', label: 'Budgets',  Icon: IconFinance  },
   { href: '/goals',  label: 'Goals',    Icon: IconGoals    },
 ]
@@ -20,7 +20,7 @@ export function BottomNav() {
   return (
     <nav className={styles.bottomNav}>
       {TABS.map(t => {
-        const on = pathname === t.href
+        const on = pathname === t.href || (t.href === '/app' && pathname === '/app')
         return (
           <Link key={t.href} href={t.href} className={styles.item} prefetch>
             {on && <div className={styles.indicator} />}

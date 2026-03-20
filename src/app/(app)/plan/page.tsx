@@ -375,7 +375,7 @@ export default function PlanPage() {
         {/* ── CTA ── */}
         <div style={{ marginTop: 24, ...fade(0.25) }}>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/app')}
             style={{
               width: '100%', height: 56, borderRadius: 16,
               background: T.brandDark, border: 'none', color: '#fff',
