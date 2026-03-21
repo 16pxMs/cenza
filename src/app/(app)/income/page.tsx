@@ -480,7 +480,7 @@ export default function PlanPage() {
 
   if (isDesktop) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', background: T.pageBg }}>
+      <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
         <SideNav />
         <main style={{ flex: 1, maxWidth: 720 }}>{content}</main>
         {sheets}

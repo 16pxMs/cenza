@@ -385,7 +385,7 @@ export default function AppPage() {
     )
     if (isDesktop) {
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
           <SideNav />
           <main style={{ flex: 1, maxWidth: 720 }}>{screen}</main>
         </div>
@@ -412,7 +412,7 @@ export default function AppPage() {
     )
     if (isDesktop) {
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
           <SideNav />
           <main style={{ flex: 1, maxWidth: 720 }}>{screen}</main>
         </div>
@@ -513,7 +513,7 @@ export default function AppPage() {
 
   if (isDesktop) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
         {avatar}
         {profileSheet}
         <SideNav />
