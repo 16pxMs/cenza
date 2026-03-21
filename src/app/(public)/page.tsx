@@ -38,53 +38,42 @@ export default function LandingPage() {
 
       {/* ── Main content ── */}
       <div style={{
-        maxWidth: 560,
+        maxWidth: 480,
         margin: '0 auto',
         padding: '48px 24px 100px',
       }}>
 
-        {/* Identity — name leads, no avatar circle until photo is ready */}
-        {/*
-          TODO: When a photo is available, add above the name block:
-          <Image src="/michael.jpg" alt="Michael Shumaker" width={56} height={56}
-            style={{ borderRadius: '50%', objectFit: 'cover', marginBottom: 20 }} />
-        */}
-        <div style={{ marginBottom: 48 }}>
+        {/* Hook — leads the page */}
+        <div style={{ marginBottom: 56 }}>
           <p style={{
-            margin: '0 0 4px',
-            fontSize: 28, fontWeight: 700,
-            color: '#1a1a1a', letterSpacing: '-0.6px', lineHeight: 1.1,
+            margin: '0 0 28px',
+            fontSize: 22, fontWeight: 600,
+            color: '#1a1a1a', letterSpacing: '-0.4px', lineHeight: 1.4,
           }}>
-            Michael Shumaker
+            If you're here, you probably feel it too.
           </p>
-          <p style={{ margin: 0, fontSize: 13, color: '#aaa', fontWeight: 400 }}>
-            Product designer
-          </p>
+          <div style={{
+            fontSize: 17, lineHeight: 1.9,
+            color: '#555',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <p style={{ margin: 0 }}>Something about your money doesn't add up.</p>
+            <p style={{ margin: 0 }}>You just can't see why.</p>
+            <p style={{ margin: 0 }}>Month after month, the same feeling.</p>
+          </div>
         </div>
 
         {/* The note */}
         <div style={{
           fontSize: 17, lineHeight: 1.85,
-          color: '#444',
+          color: '#555',
           marginBottom: 64,
-          display: 'flex', flexDirection: 'column', gap: 24,
+          display: 'flex', flexDirection: 'column', gap: 20,
         }}>
+          <p style={{ margin: 0 }}>That's where I was.</p>
+          <p style={{ margin: 0, color: '#1a1a1a', fontWeight: 500 }}>I'm Michael. I built Cenza.</p>
           <p style={{ margin: 0 }}>
-            If you're here, you probably feel it too.
-          </p>
-          <p style={{ margin: 0 }}>
-            Something about your money doesn't add up.<br />
-            You just can't see why.<br />
-            Month after month, the same feeling.
-          </p>
-          <p style={{ margin: 0 }}>
-            That's where I was.
-          </p>
-          <p style={{ margin: 0 }}>
-            I'm Michael. I built Cenza.
-          </p>
-          <p style={{ margin: 0 }}>
-            For a long time, I knew I wasn't great with money.<br />
+            For a long time, I knew I wasn't great with money.
             I'm still not great, but I understand it a lot better now.
           </p>
           <p style={{ margin: 0 }}>
@@ -94,24 +83,19 @@ export default function LandingPage() {
             So I built a small tool for myself. Nothing fancy. Just enough to see what was really happening.
           </p>
           <p style={{ margin: 0 }}>
-            A few months later, things started to change.<br />
-            Not overnight.<br />
+            A few months later, things started to change.
+            Not overnight.
             But I could finally see the gaps. And once I could see them, I could do something about them.
           </p>
           <p style={{ margin: 0 }}>
-            Cenza is a rebuild of that tool.<br />
-            Same idea. Just done properly this time.
+            Cenza is a rebuild of that tool. Same idea. Just done properly this time.
           </p>
           <p style={{ margin: 0 }}>
             I'm a product designer, so I cared about how it feels as much as how it works.
             It's simple, fast, and built to give you clarity without getting in your way.
           </p>
-          <p style={{ margin: 0 }}>
-            If you're in that same place I was, try it.
-          </p>
-          <p style={{ margin: 0 }}>
-            And if you have thoughts, you can reach me from inside the app.
-          </p>
+          <p style={{ margin: 0 }}>If you're in that same place I was, try it.</p>
+          <p style={{ margin: 0 }}>And if you have thoughts, you can reach me from inside the app.</p>
         </div>
 
         {/* ── App preview ── */}
