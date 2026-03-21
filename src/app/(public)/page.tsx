@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
 
 const PREVIEW_CATEGORIES = [
   { emoji: '🛒', label: 'Groceries',   spent: 420,  budget: 500  },
@@ -46,30 +45,11 @@ export default function LandingPage() {
           flex-direction: column;
           gap: 0;
         }
-        .hook-cta {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 24px;
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--brand-dark);
-          text-decoration: none;
-          letter-spacing: -0.1px;
-        }
         .story-divider {
           width: 32px;
           height: 1px;
           background: var(--border-strong);
           margin: 40px 0;
-        }
-        .preview-label {
-          font-size: 11px;
-          font-weight: 500;
-          color: var(--text-muted);
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin: 0 0 20px;
         }
         @media (min-width: 1024px) {
           .landing-topbar {
@@ -95,7 +75,6 @@ export default function LandingPage() {
           }
           .hook-headline { font-size: 36px; margin-bottom: 24px; }
           .hook-lines { font-size: 20px; }
-          .preview-label { display: none; }
         }
       `}</style>
 
@@ -146,10 +125,6 @@ export default function LandingPage() {
               <p style={{ margin: 0 }}>And at the end of the month, you're not sure why.</p>
               <p style={{ margin: 0 }}>Month after month, the same feeling.</p>
             </div>
-            {/* Early CTA — for people who get it immediately */}
-            <Link href="/login" className="hook-cta">
-              Sound familiar? Try it free <ArrowRight size={14} />
-            </Link>
           </div>
 
           {/* Divider — signals shift from feeling to story */}
