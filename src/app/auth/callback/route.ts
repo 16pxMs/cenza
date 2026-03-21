@@ -8,9 +8,6 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get('next') ?? '/'
 
   if (code) {
-    // Collect cookies written during the exchange so we can attach
-    // them to the redirect response — cookies() from next/headers does
-    // not reliably propagate to an explicit NextResponse.redirect().
     type CookieEntry = { name: string; value: string; options: object }
     const pendingCookies: CookieEntry[] = []
 
@@ -20,42 +17,65 @@ export async function GET(request: NextRequest) {
       {
         cookies: {
           getAll: () => request.cookies.getAll(),
-          setAll: (cookiesToSet: CookieEntry[]) => pendingCookies.push(...cookiesToSet),
+          setAll: (cookiesToSet: CookieEntry[]) => {
+            pendingCookies.push(...cookiesToSet)
+          },
         },
       }
     )
 
-    const { data: { user }, error } = await supabase.auth.exchangeCodeForSession(code)
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error && user) {
-      // Check if user_profile exists — create stub if first sign-in
+      // Check if profile exists
       const { data: profile } = await (supabase as any)
         .from('user_profiles')
         .select('id, onboarding_complete')
         .eq('id', user.id)
         .single()
 
+      // First-time user → create profile
       if (!profile) {
-        // First sign-in — create minimal profile, onboarding will fill the rest
-        await (supabase as any).from('user_profiles').insert({
-          id:                  user.id,
-          name:                user.user_metadata?.full_name?.split(' ')[0] ?? 'there',
-          currency:            'KES',
-          month_start:         'first',
-          custom_day:          null,
-          goals:               [],
-          onboarding_complete: false,
-        })
-        return withCookies(NextResponse.redirect(`${origin}/onboarding`), pendingCookies)
+        const safeName =
+          typeof user.user_metadata?.full_name === 'string'
+            ? user.user_metadata.full_name.split(' ')[0]
+            : 'there'
+
+        const { error: insertError } = await (supabase as any)
+          .from('user_profiles')
+          .insert({
+            id: user.id,
+            name: safeName,
+            currency: 'KES',
+            month_start: 'first',
+            custom_day: null,
+            goals: [],
+            onboarding_complete: false,
+          })
+
+        if (insertError) {
+          console.error('Profile insert error:', insertError)
+        }
+
+        return withCookies(
+          NextResponse.redirect(`${origin}/onboarding`),
+          pendingCookies
+        )
       }
 
-      // Existing user — route based on onboarding status
+      // Existing user
       const destination = profile.onboarding_complete ? next : '/onboarding'
-      return withCookies(NextResponse.redirect(`${origin}${destination}`), pendingCookies)
+
+      return withCookies(
+        NextResponse.redirect(`${origin}${destination}`),
+        pendingCookies
+      )
     }
   }
 
-  // Auth failed
   return NextResponse.redirect(`${origin}/login?error=auth_failed`)
 }
 
@@ -63,8 +83,12 @@ function withCookies(
   response: NextResponse,
   cookies: Array<{ name: string; value: string; options: object }>
 ): NextResponse {
-  cookies.forEach(({ name, value, options }) =>
-    response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
-  )
+  cookies.forEach(({ name, value, options }) => {
+    response.cookies.set(
+      name,
+      value,
+      options as Parameters<typeof response.cookies.set>[2]
+    )
+  })
   return response
 }
