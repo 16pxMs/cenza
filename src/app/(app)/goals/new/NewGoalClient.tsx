@@ -72,17 +72,17 @@ function NewGoalInner() {
     if (!selectedGoal || target <= 0 || !user) return
     setSaving(true)
 
-    await Promise.all([
-      supabase.from('user_profiles').update({
-        goals: [...existingGoals, selectedGoal],
-      }).eq('id', user.id),
+  await Promise.all([
+    (supabase as any).from('user_profiles').update({
+      goals: [...existingGoals, selectedGoal],
+    }).eq('id', user.id),
 
-      supabase.from('goal_targets').upsert({
-        user_id: user.id,
-        goal_id: selectedGoal,
-        amount: target,
-      }),
-    ])
+    (supabase as any).from('goal_targets').upsert({
+      user_id: user.id,
+      goal_id: selectedGoal,
+      amount: target,
+    }),
+  ])
 
     toast('Goal added')
     router.push('/goals')
