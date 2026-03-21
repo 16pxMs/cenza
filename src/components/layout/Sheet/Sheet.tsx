@@ -16,7 +16,7 @@ interface Props {
   isDesktop?: boolean
 }
 
-export function Sheet({ open, onClose, title, children, isDesktop }: Props) {
+export function Sheet({ open, onClose, title, children }: Props) {
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -25,21 +25,19 @@ export function Sheet({ open, onClose, title, children, isDesktop }: Props) {
   if (!open) return null
 
   return (
-    <div className={isDesktop ? `${styles.backdrop} ${styles.backdropDesktop}` : styles.backdrop}>
+    <div className={styles.backdrop}>
       <div className={styles.overlay} onClick={onClose} />
-      <div className={isDesktop ? `${styles.panel} ${styles.panelDesktop}` : styles.panel}>
-        {!isDesktop && (
-          <div className={styles.handle}>
-            <div className={styles.handleBar} />
-          </div>
-        )}
-        <div className={isDesktop ? `${styles.header} ${styles.headerDesktop}` : styles.header}>
+      <div className={styles.panel}>
+        <div className={styles.handle}>
+          <div className={styles.handleBar} />
+        </div>
+        <div className={styles.header}>
           <h2 className={styles.title}>{title}</h2>
           <button type="button" className={styles.close} onClick={onClose}>
             <IconChevronX size={16} color="var(--text-2)" />
           </button>
         </div>
-        <div className={isDesktop ? `${styles.body} ${styles.bodyDesktop}` : styles.body}>
+        <div className={styles.body}>
           {children}
         </div>
       </div>

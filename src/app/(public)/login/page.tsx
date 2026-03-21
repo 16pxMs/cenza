@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { signInWithGoogle } from '@/app/auth/actions'
@@ -71,7 +72,9 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
-  const [showLogin, setShowLogin] = useState(false)
+  const searchParams = useSearchParams()
+  const isReturning = searchParams.get('tab') === 'login'
+  const [showLogin, setShowLogin] = useState(isReturning)
 
   if (!showLogin) {
     return <WelcomeScreen onNext={() => setShowLogin(true)} />
@@ -79,11 +82,9 @@ export default function LoginPage() {
 
   return (
     <div className={styles.authWrapper}>
-      {/* Same orbs — visual continuity from welcome screen */}
       <div className={styles.decorTop} />
       <div className={styles.decorMid} />
 
-      {/* Back — anchored top left, out of content flow */}
       <button
         type="button"
         onClick={() => setShowLogin(false)}
@@ -95,9 +96,13 @@ export default function LoginPage() {
 
       <div className={styles.authCard}>
         <div className={styles.logo}>Cenza</div>
-        <h1 className={styles.authTitle}>Create your account</h1>
+        <h1 className={styles.authTitle}>
+          {isReturning ? 'Welcome back.' : 'Create your account'}
+        </h1>
         <p className={styles.authSubtitle}>
-          Sign in securely with Google. It only takes a second.
+          {isReturning
+            ? 'Good to see you again. Continue with Google to pick up where you left off.'
+            : 'Sign in securely with Google. It only takes a second.'}
         </p>
 
         <form action={signInWithGoogle}>

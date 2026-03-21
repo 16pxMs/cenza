@@ -385,9 +385,9 @@ export default function AppPage() {
     )
     if (isDesktop) {
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
           <SideNav />
-          <main style={{ flex: 1, maxWidth: 720 }}>{screen}</main>
+          <main style={{ flex: 1, maxWidth: 720, margin: '0 auto' }}>{screen}</main>
         </div>
       )
     }
@@ -412,9 +412,9 @@ export default function AppPage() {
     )
     if (isDesktop) {
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
           <SideNav />
-          <main style={{ flex: 1, maxWidth: 720 }}>{screen}</main>
+          <main style={{ flex: 1, maxWidth: 720, margin: '0 auto' }}>{screen}</main>
         </div>
       )
     }
@@ -513,11 +513,11 @@ export default function AppPage() {
 
   if (isDesktop) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
         {avatar}
         {profileSheet}
         <SideNav />
-        <main style={{ flex: 1, maxWidth: 720, padding: '0 0 40px' }}>
+        <main style={{ flex: 1, maxWidth: 720, margin: '0 auto', padding: '0 0 40px' }}>
           {tabContent[tab]}
         </main>
         <AddIncomeSheet

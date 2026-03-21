@@ -106,9 +106,9 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
       {step === 'amount' && (
         <div>
           <p style={{ margin: '0 0 6px', fontSize: 14, color: T.text2, lineHeight: 1.65 }}>
-            You declared{' '}
+            You set{' '}
             <strong style={{ color: T.text1 }}>{fmt(declaredTotal, currency)}</strong>{' '}
-            this month. How much actually landed in your account?
+            as your monthly income. How much actually landed in your account?
           </p>
 
           {/* All of it shortcut */}

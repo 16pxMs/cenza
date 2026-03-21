@@ -87,14 +87,14 @@ export default function LandingPage() {
           Cenza
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Link href="/login" style={{
+          <Link href="/login?tab=login" style={{
             fontSize: 13, color: 'var(--text-1)', fontWeight: 500,
             textDecoration: 'none', padding: '8px 16px',
             borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--border-strong)',
             letterSpacing: '-0.1px',
           }}>
-            Sign in
+            Log in
           </Link>
           <Link href="/login" style={{
             fontSize: 13, color: 'var(--text-inverse)', fontWeight: 600,

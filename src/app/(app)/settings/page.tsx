@@ -457,7 +457,7 @@ export default function SettingsPage() {
   return (
     <>
       {isDesktop ? (
-        <div style={{ display: 'flex', minHeight: '100vh', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
           <SideNav />
           <main style={{ flex: 1 }}>{content}</main>
         </div>
