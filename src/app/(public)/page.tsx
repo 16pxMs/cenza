@@ -27,18 +27,31 @@ export default function LandingPage() {
         }}>
           Cenza
         </span>
-        <Link href="/login" style={{
-          fontSize: 13, color: '#999', fontWeight: 400,
-          textDecoration: 'none',
-          letterSpacing: '-0.1px',
-        }}>
-          Sign in
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Link href="/login" style={{
+            fontSize: 13, color: '#1a1a1a', fontWeight: 500,
+            textDecoration: 'none',
+            padding: '8px 16px', borderRadius: 10,
+            border: '1px solid #e0e0e0',
+            letterSpacing: '-0.1px',
+          }}>
+            Sign in
+          </Link>
+          <Link href="/login" style={{
+            fontSize: 13, color: '#fff', fontWeight: 600,
+            textDecoration: 'none',
+            padding: '8px 16px', borderRadius: 10,
+            background: '#1a1a1a',
+            letterSpacing: '-0.1px',
+          }}>
+            Try Cenza
+          </Link>
+        </div>
       </div>
 
       {/* ── Main content ── */}
       <div style={{
-        maxWidth: 480,
+        maxWidth: 520,
         margin: '0 auto',
         padding: '48px 24px 100px',
       }}>
