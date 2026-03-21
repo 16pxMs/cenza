@@ -9,7 +9,7 @@ export async function signInWithGoogle() {
 
   const headersList = await headers()
   const origin = headersList.get('origin')!
-  
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
@@ -20,6 +20,8 @@ export async function signInWithGoogle() {
       },
     },
   })
+
+  console.log('ORIGIN:', origin)
 
   if (error) {
     console.error('OAuth error:', error)
