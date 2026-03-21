@@ -48,6 +48,9 @@ export function Input({ label, prefix, hint, error, onChange, className, id, typ
           className={`${styles.input} ${className ?? ''}`}
           type={isNumeric ? 'text' : type}
           inputMode={isNumeric ? 'decimal' : undefined}
+          pattern={isNumeric ? '[0-9]*' : undefined}
+          enterKeyHint={isNumeric ? 'done' : undefined}
+          autoComplete="off"
           value={displayValue}
           onChange={handleChange}
           {...props}
