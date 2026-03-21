@@ -70,18 +70,47 @@ export default function LandingPage() {
           display: 'flex', flexDirection: 'column', gap: 24,
         }}>
           <p style={{ margin: 0 }}>
-            For a long time I knew I wasn't great with money but I couldn't tell you exactly where it was going.
-            Month after month, the same feeling. Something is off but I can't see it clearly enough to fix it.
+            If you're here, you probably feel it too.
           </p>
           <p style={{ margin: 0 }}>
-            So I built a small tool for myself. Nothing fancy, just enough to see clearly.
-            A few months later things had shifted. Not because I changed overnight,
-            but because I could finally see where the gaps were.
+            Something about your money doesn't add up.<br />
+            You just can't see why.<br />
+            Month after month, the same feeling.
           </p>
           <p style={{ margin: 0 }}>
-            Cenza is the rebuild of that tool. Same foundation, the thing that actually worked for me.
-            Designed properly this time. I'm a product designer and I wanted it to feel as good as it functions.
-            If you're in that same place I was, try it. And if you have thoughts, there's a way to reach me from inside the app.
+            That's where I was.
+          </p>
+          <p style={{ margin: 0 }}>
+            I'm Michael. I built Cenza.
+          </p>
+          <p style={{ margin: 0 }}>
+            For a long time, I knew I wasn't great with money.<br />
+            I'm still not great, but I understand it a lot better now.
+          </p>
+          <p style={{ margin: 0 }}>
+            Before, I couldn't tell you where my money was going. Not in a way I could act on.
+          </p>
+          <p style={{ margin: 0 }}>
+            So I built a small tool for myself. Nothing fancy. Just enough to see what was really happening.
+          </p>
+          <p style={{ margin: 0 }}>
+            A few months later, things started to change.<br />
+            Not overnight.<br />
+            But I could finally see the gaps. And once I could see them, I could do something about them.
+          </p>
+          <p style={{ margin: 0 }}>
+            Cenza is a rebuild of that tool.<br />
+            Same idea. Just done properly this time.
+          </p>
+          <p style={{ margin: 0 }}>
+            I'm a product designer, so I cared about how it feels as much as how it works.
+            It's simple, fast, and built to give you clarity without getting in your way.
+          </p>
+          <p style={{ margin: 0 }}>
+            If you're in that same place I was, try it.
+          </p>
+          <p style={{ margin: 0 }}>
+            And if you have thoughts, you can reach me from inside the app.
           </p>
         </div>
 
