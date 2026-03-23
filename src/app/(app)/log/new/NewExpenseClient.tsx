@@ -68,6 +68,11 @@ export function NewExpenseClient() {
 
   const currency = profile?.currency ?? 'USD'
 
+  // Update vs add-another mode
+  const [mode,       setMode]       = useState<'add' | 'update'>('add')
+  const [priorEntry, setPriorEntry] = useState<{ id: string; amount: number } | null | undefined>(undefined)
+  // undefined = still loading, null = none found, object = found
+
   // Load dictionary for free-text flow
   useEffect(() => {
     if (!isOther || !user) return
@@ -97,6 +102,20 @@ export function NewExpenseClient() {
     if (match && !typeOverride) setSelectedType(match.groupType)
   }, [name, dictionary, isOther, typeOverride])
 
+  // Fetch prior entry for known items (to offer update vs add-another)
+  useEffect(() => {
+    if (isOther || !paramKey || !user) { setPriorEntry(null); return }
+    ;(supabase.from('transactions') as any)
+      .select('id, amount')
+      .eq('user_id', user.id)
+      .eq('category_key', paramKey)
+      .eq('month', new Date().toISOString().slice(0, 7))
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }: any) => setPriorEntry(data ?? null))
+  }, [isOther, paramKey, user, supabase])
+
   const handleBack = () => {
     if (step === 'amount' && isOther) { setStep('name'); return }
     router.push('/log')
@@ -121,6 +140,13 @@ export function NewExpenseClient() {
     setSaving(true)
 
     try {
+      // 0. If updating an existing entry, delete it first
+      if (mode === 'update' && priorEntry) {
+        await (supabase.from('transactions') as any)
+          .delete()
+          .eq('id', priorEntry.id)
+      }
+
       // 1. Write the transaction
       await (supabase.from('transactions') as any).insert({
         user_id:        user.id,
@@ -169,7 +195,7 @@ export function NewExpenseClient() {
     } finally {
       setSaving(false)
     }
-  }, [user, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router])
+  }, [user, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router, mode, priorEntry])
 
   return (
     <div style={{
@@ -205,7 +231,7 @@ export function NewExpenseClient() {
 
       <div style={{ flex: 1, padding: '20px 20px 40px', maxWidth: 480, width: '100%', margin: '0 auto' }}>
         {step === 'name'   && <NameStep   {...{ name, setName, selectedType, setSelectedType, dictMatch, typeOverride, setTypeOverride, onContinue: handleNameContinue }} />}
-        {step === 'amount' && <AmountStep {...{ name: name || paramLabel || '', selectedType, paramType, amount, setAmount, note, setNote, currency, saving, parsedAmount, onSave: handleSave, onTypeChange: () => isOther ? setStep('name') : null }} />}
+        {step === 'amount' && <AmountStep {...{ name: name || paramLabel || '', selectedType, paramType, amount, setAmount, note, setNote, currency, saving, parsedAmount, onSave: handleSave, onTypeChange: () => isOther ? setStep('name') : null, mode, setMode, priorEntry: priorEntry ?? null }} />}
       </div>
     </div>
   )
@@ -295,7 +321,7 @@ function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typ
 }
 
 // ─── AmountStep ───────────────────────────────────────────────
-function AmountStep({ name, selectedType, paramType, amount, setAmount, note, setNote, currency, saving, parsedAmount, onSave, onTypeChange }: {
+function AmountStep({ name, selectedType, paramType, amount, setAmount, note, setNote, currency, saving, parsedAmount, onSave, onTypeChange, mode, setMode, priorEntry }: {
   name: string
   selectedType: ExpenseType | null
   paramType: ExpenseType | null
@@ -308,6 +334,9 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
   parsedAmount: number
   onSave: () => void
   onTypeChange: () => void
+  mode:       'add' | 'update'
+  setMode:    (m: 'add' | 'update') => void
+  priorEntry: { id: string; amount: number } | null
 }) {
   const resolvedType = selectedType ?? paramType
 
@@ -327,6 +356,31 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
 
   return (
     <div>
+      {/* Update vs add another chips — only shown when a prior entry exists */}
+      {priorEntry && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          {(['update', 'add'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m)
+                if (m === 'update') setAmount(String(priorEntry.amount))
+              }}
+              style={{
+                flex: 1, height: 40, borderRadius: 99,
+                border: mode === m ? `2px solid var(--brand-dark)` : '1px solid var(--border)',
+                background: mode === m ? 'var(--brand-dark)' : 'var(--white)',
+                color: mode === m ? '#fff' : 'var(--text-2)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              {m === 'update' ? 'Update entry' : 'Add another'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Expense name + type pill */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
         {name && (
