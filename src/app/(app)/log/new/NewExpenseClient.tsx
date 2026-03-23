@@ -142,9 +142,11 @@ export function NewExpenseClient() {
     try {
       // 0. If updating an existing entry, delete it first
       if (mode === 'update' && priorEntry) {
-        await (supabase.from('transactions') as any)
+        const { error: deleteError } = await (supabase.from('transactions') as any)
           .delete()
           .eq('id', priorEntry.id)
+
+        if (deleteError) throw new Error('Failed to delete prior entry')
       }
 
       // 1. Write the transaction
