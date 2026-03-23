@@ -95,7 +95,7 @@ export function OverviewEmpty({ name, currency, onSave }: Props) {
 
         {canSave && (
           <span className="overview-empty__amount-formatted">
-            {fmt(raw, currency)}
+            {currency} {raw.toLocaleString()}
           </span>
         )}
       </div>

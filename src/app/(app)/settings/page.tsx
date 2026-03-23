@@ -22,6 +22,7 @@ import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 import { IconBack } from '@/components/ui/Icons'
 import { CheckCircle2 } from 'lucide-react'
 import { fmt } from '@/lib/finance'
+import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
 
 const T = {
   pageBg:    '#F8F9FA',
@@ -33,53 +34,6 @@ const T = {
   textMuted: '#98A2B3',
   brandDark: '#5C3489',
 }
-
-const CURATED_CURRENCIES = [
-  { code: 'KES', name: 'Kenyan Shilling',    flag: '🇰🇪' },
-  { code: 'NGN', name: 'Nigerian Naira',     flag: '🇳🇬' },
-  { code: 'ZAR', name: 'South African Rand', flag: '🇿🇦' },
-  { code: 'USD', name: 'US Dollar',          flag: '🇺🇸' },
-  { code: 'GBP', name: 'British Pound',      flag: '🇬🇧' },
-  { code: 'EUR', name: 'Euro',               flag: '🇪🇺' },
-  { code: 'AED', name: 'UAE Dirham',         flag: '🇦🇪' },
-]
-
-const ALL_CURRENCIES = [
-  ...CURATED_CURRENCIES,
-  { code: 'AUD', name: 'Australian Dollar',      flag: '🇦🇺' },
-  { code: 'CAD', name: 'Canadian Dollar',        flag: '🇨🇦' },
-  { code: 'CHF', name: 'Swiss Franc',            flag: '🇨🇭' },
-  { code: 'CNY', name: 'Chinese Yuan',           flag: '🇨🇳' },
-  { code: 'INR', name: 'Indian Rupee',           flag: '🇮🇳' },
-  { code: 'JPY', name: 'Japanese Yen',           flag: '🇯🇵' },
-  { code: 'BRL', name: 'Brazilian Real',         flag: '🇧🇷' },
-  { code: 'MXN', name: 'Mexican Peso',           flag: '🇲🇽' },
-  { code: 'SGD', name: 'Singapore Dollar',       flag: '🇸🇬' },
-  { code: 'HKD', name: 'Hong Kong Dollar',       flag: '🇭🇰' },
-  { code: 'SEK', name: 'Swedish Krona',          flag: '🇸🇪' },
-  { code: 'NOK', name: 'Norwegian Krone',        flag: '🇳🇴' },
-  { code: 'ZMW', name: 'Zambian Kwacha',         flag: '🇿🇲' },
-  { code: 'BWP', name: 'Botswana Pula',          flag: '🇧🇼' },
-  { code: 'XOF', name: 'West African CFA Franc', flag: '🌍' },
-  { code: 'XAF', name: 'Central African CFA',    flag: '🌍' },
-  { code: 'MAD', name: 'Moroccan Dirham',        flag: '🇲🇦' },
-  { code: 'EGP', name: 'Egyptian Pound',         flag: '🇪🇬' },
-  { code: 'PKR', name: 'Pakistani Rupee',        flag: '🇵🇰' },
-  { code: 'PHP', name: 'Philippine Peso',        flag: '🇵🇭' },
-  { code: 'IDR', name: 'Indonesian Rupiah',      flag: '🇮🇩' },
-  { code: 'MYR', name: 'Malaysian Ringgit',      flag: '🇲🇾' },
-  { code: 'THB', name: 'Thai Baht',              flag: '🇹🇭' },
-  { code: 'KRW', name: 'South Korean Won',       flag: '🇰🇷' },
-  { code: 'TRY', name: 'Turkish Lira',           flag: '🇹🇷' },
-  { code: 'SAR', name: 'Saudi Riyal',            flag: '🇸🇦' },
-  { code: 'QAR', name: 'Qatari Riyal',           flag: '🇶🇦' },
-  { code: 'KWD', name: 'Kuwaiti Dinar',          flag: '🇰🇼' },
-  { code: 'NZD', name: 'New Zealand Dollar',     flag: '🇳🇿' },
-  { code: 'PLN', name: 'Polish Zloty',           flag: '🇵🇱' },
-  { code: 'HUF', name: 'Hungarian Forint',       flag: '🇭🇺' },
-  { code: 'DKK', name: 'Danish Krone',           flag: '🇩🇰' },
-  { code: 'ILS', name: 'Israeli Shekel',         flag: '🇮🇱' },
-]
 
 const PAY_DAYS = Array.from({ length: 28 }, (_, i) => i + 1)
 
@@ -116,7 +70,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user || !ctxProfile) return
-    setName(user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || '')
+    setName(ctxProfile.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
     setEmail(user.email ?? '')
     setCurrency(ctxProfile.currency ?? '')
     setPayDay(ctxProfile.pay_day ?? null)

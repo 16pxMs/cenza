@@ -516,23 +516,64 @@ export default function GoalsPage() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMuted, fontSize: 14 }}>Loading…</div>
       ) : goalDataList.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '48px 24px',
-          background: T.white, border: `1px solid var(--border)`,
-          borderRadius: 16, marginBottom: 16,
-        }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🎯</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: T.text1, marginBottom: 6 }}>No goals yet</div>
-          <div style={{ fontSize: 14, color: T.text3, marginBottom: 24 }}>Add a goal to start tracking what you're saving towards.</div>
+        <div>
+          <p style={{
+            margin: '0 0 var(--space-xs)',
+            fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)',
+            color: 'var(--brand-dark)', letterSpacing: '0.01em',
+          }}>
+            Give your money a purpose.
+          </p>
+          <h2 style={{
+            margin: '0 0 var(--space-md)',
+            fontSize: 'var(--text-2xl)', fontWeight: 700,
+            color: 'var(--text-1)', letterSpacing: '-0.3px',
+          }}>
+            What are you saving towards?
+          </h2>
+          <p style={{
+            margin: '0 0 var(--space-xl)',
+            fontSize: 'var(--text-base)', color: 'var(--text-2)', lineHeight: 1.65,
+          }}>
+            Goals let you set aside money for something specific — a holiday, emergency fund, school fees, or anything else.
+            We track your progress every month.
+          </p>
+
+          {/* Example goals — give the user a visual taste of what's possible */}
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 8,
+            marginBottom: 'var(--space-xxl)',
+          }}>
+            {[
+              { icon: '🚨', label: 'Emergency fund' },
+              { icon: '✈️', label: 'Holiday' },
+              { icon: '🏠', label: 'House deposit' },
+              { icon: '🎓', label: 'School fees' },
+              { icon: '🚗', label: 'New car' },
+            ].map(({ icon, label }) => (
+              <div key={label} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px',
+                background: 'rgba(92,52,137,0.06)',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--text-sm)', color: 'var(--text-2)',
+              }}>
+                <span>{icon}</span>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+
           <button
             onClick={() => router.push(`/goals/new`)}
             style={{
-              width: '100%', height: 52, borderRadius: 14,
+              width: '100%', height: 56, borderRadius: 'var(--radius-lg)',
               background: T.brandDark, border: 'none', cursor: 'pointer',
-              fontSize: 15, fontWeight: 600, color: '#fff',
+              fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)',
+              color: '#fff', letterSpacing: '-0.1px',
             }}
           >
-            Add a goal
+            Set up my first goal
           </button>
         </div>
       ) : (

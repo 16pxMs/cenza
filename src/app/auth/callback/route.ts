@@ -49,7 +49,6 @@ export async function GET(request: NextRequest) {
           .insert({
             id: user.id,
             name: safeName,
-            currency: 'KES',
             month_start: 'first',
             custom_day: null,
             goals: [],

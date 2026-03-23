@@ -11,6 +11,7 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
 import { PrimaryBtn } from '@/components/ui/Button/Button'
 import { IconPlus, IconTrash } from '@/components/ui/Icons'
+import { sumAmounts, safeNum } from '@/lib/math/finance'
 
 type IncomeType = 'salaried' | 'variable'
 
@@ -53,8 +54,6 @@ const TYPE_OPTIONS: { type: IncomeType; emoji: string; title: string; subtitle: 
 
 function fmt(n: number, cur = 'KES') {
   if (!n) return `${cur} 0`
-  if (n >= 1000000) return `${cur} ${(n / 1000000).toFixed(1)}M`
-  if (n >= 1000) return `${cur} ${(n / 1000).toFixed(0)}K`
   return `${cur} ${n.toLocaleString()}`
 }
 
@@ -86,11 +85,11 @@ export function AddIncomeSheet({ open, onClose, onSave, currency, isDesktop, inc
     setExtras(e => e.map(x => x.id === id ? { ...x, [field]: val } : x))
   const removeExtra = (id: number) => setExtras(e => e.filter(x => x.id !== id))
 
-  const salaryNum   = Number(salary)
-  const canSave     = salary !== '' && !isNaN(salaryNum) && salaryNum > 0
-  const validExtras = extras.filter(x => x.label && Number(x.amount) > 0)
-  const extrasTotal = validExtras.reduce((s, x) => s + Number(x.amount), 0)
-  const total       = canSave ? salaryNum + extrasTotal : 0
+  const salaryNum   = safeNum(salary)
+  const canSave     = salary !== '' && salaryNum > 0
+  const validExtras = extras.filter(x => x.label && safeNum(x.amount) > 0)
+  const extrasTotal = sumAmounts(validExtras)
+  const total       = canSave ? safeNum(salaryNum) + extrasTotal : 0
 
   const handleSave = () => {
     if (!salary || isNaN(salaryNum) || salaryNum <= 0) {

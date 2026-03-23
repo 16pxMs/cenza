@@ -16,10 +16,12 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewEmpty } from '@/components/flows/overview/OverviewEmpty'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
+import { FirstTimeWelcome } from '@/components/flows/overview/FirstTimeWelcome'
 import { CarryForwardScreen, type CarryForwardData } from '@/components/flows/overview/CarryForwardScreen'
 import { MonthRecapScreen, type RecapData } from '@/components/flows/overview/MonthRecapScreen'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
+import { CommittedExpenseConfirmSheet, type CommittedExpense } from '@/components/flows/log/CommittedExpenseConfirmSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { getPrevMonth } from '@/lib/finance'
 
@@ -48,6 +50,7 @@ export default function AppPage() {
   const [loading, setLoading] = useState(true)
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [incomeData, setIncomeData] = useState<any>(null)
+  const [freshGoals,  setFreshGoals]  = useState<string[]>([])
   const [goalTargets, setGoalTargets] = useState<Record<string, any> | null>(null)
   const [goalSaved, setGoalSaved] = useState<Record<string, number>>({})
   const [goalLabels, setGoalLabels] = useState<Record<string, string>>({})
@@ -61,6 +64,8 @@ export default function AppPage() {
   const [incomeCheckOpen, setIncomeCheckOpen] = useState(false)
   const [declaredTotal, setDeclaredTotal] = useState(0)
   const [pendingLogNavigation, setPendingLogNavigation] = useState(false)
+  const [committedCheckOpen,  setCommittedCheckOpen]  = useState(false)
+  const [pendingCommitted,    setPendingCommitted]    = useState<CommittedExpense[]>([])
 
   const currentMonth = new Date().toISOString().slice(0, 7)
   const CARRY_DISMISSED_KEY = `cenza:carry-dismissed:${currentMonth}`
@@ -102,6 +107,36 @@ export default function AppPage() {
       note:           note.trim() || null,
     })
     setGoalSaved(prev => ({ ...prev, [goalId]: (prev[goalId] ?? 0) + amount }))
+  }, [supabase, currentMonth, user])
+
+  const handleCommittedConfirm = useCallback(async (expense: CommittedExpense, amount: number) => {
+    if (!user) return
+    if (expense.source === 'subscription') {
+      await Promise.all([
+        (supabase.from('transactions') as any).insert({
+          user_id:        user.id,
+          date:           new Date().toISOString().slice(0, 10),
+          month:          currentMonth,
+          category_type:  'subscription',
+          category_key:   expense.id,
+          category_label: expense.label,
+          amount,
+          note:           null,
+        }),
+        (supabase.from('subscriptions') as any)
+          .update({ last_confirmed_month: currentMonth })
+          .eq('id', expense.id),
+      ])
+    }
+  }, [supabase, currentMonth, user])
+
+  const handleCommittedSkip = useCallback(async (expense: CommittedExpense) => {
+    if (!user) return
+    if (expense.source === 'subscription') {
+      await (supabase.from('subscriptions') as any)
+        .update({ last_confirmed_month: currentMonth })
+        .eq('id', expense.id)
+    }
   }, [supabase, currentMonth, user])
 
   const handleIncomeConfirm = useCallback(async (received: number, day: number | null) => {
@@ -162,6 +197,7 @@ export default function AppPage() {
       { data: txns },
       { data: fixedExp },
       { data: budgetData },
+      { data: profileRow },
     ] = await Promise.all([
       (supabase.from('income_entries') as any)
         .select('*').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
@@ -175,12 +211,18 @@ export default function AppPage() {
         .select('total_monthly').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
       (supabase.from('spending_budgets') as any)
         .select('total_budget, categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+      // Always fetch goals fresh — ctxProfile.goals is cached in UserContext and goes stale
+      // after the user adds a goal and navigates back to this page.
+      (supabase.from('user_profiles') as any)
+        .select('goals').eq('id', user.id).single(),
     ])
+
+    if (profileRow?.goals) setFreshGoals(profileRow.goals)
 
     if (income) {
       setIncomeData(income)
+      setDeclaredTotal(Number(income.total ?? 0))
       if (income.received_confirmed_at === null && ctxProfile?.income_type !== 'variable') {
-        setDeclaredTotal(Number(income.total ?? 0))
         setIncomeCheckOpen(true)
       }
     }
@@ -215,6 +257,27 @@ export default function AppPage() {
     }
     if (fixedExp)   setFixedTotal(fixedExp.total_monthly ?? 0)
     if (budgetData) setSpendingBudget(budgetData)
+
+    // Load subscriptions that haven't been confirmed this month
+    const { data: subs } = await (supabase.from('subscriptions') as any)
+      .select('id, key, label, amount, last_confirmed_month')
+      .eq('user_id', user.id)
+      .eq('needs_check', true)
+
+    if (subs && subs.length > 0) {
+      const unconfirmed: CommittedExpense[] = subs
+        .filter((s: any) => s.last_confirmed_month !== currentMonth)
+        .map((s: any) => ({
+          id:     s.id,
+          label:  s.label,
+          amount: s.amount ?? null,
+          source: 'subscription' as const,
+        }))
+      if (unconfirmed.length > 0) {
+        setPendingCommitted(unconfirmed)
+        setCommittedCheckOpen(true)
+      }
+    }
 
     setLoading(false)
   }, [supabase, currentMonth])
@@ -426,43 +489,56 @@ export default function AppPage() {
     )
   }
 
+  const firstName = profile?.name?.split(' ')[0] ?? ''
+
+  // 3-way overview state:
+  //  1. No income + no transactions → first-time user, log expense first
+  //  2. No income + has transactions → needs to add income (OverviewEmpty)
+  //  3. Has income → full overview
+  const overviewContent = incomeData ? (
+    <OverviewWithData
+      name={firstName}
+      currency={profile?.currency || 'KES'}
+      goals={freshGoals.length > 0 ? freshGoals : (profile?.goals || [])}
+      incomeData={incomeData}
+      goalTargets={goalTargets}
+      goalSaved={goalSaved}
+      goalLabels={goalLabels}
+      onLogExpense={() => {
+        const incomeConfirmed = incomeData?.received != null && (incomeData as any).received > 0
+        if (totalSpent > 0 && !incomeConfirmed) {
+          setPendingLogNavigation(true)
+          setIncomeCheckOpen(true)
+        } else {
+          router.push(totalSpent === 0 ? '/log/first' : '/log?open=true')
+        }
+      }}
+      onConfirmIncome={() => setIncomeCheckOpen(true)}
+      onContribGoal={handleContribGoal}
+      totalSpent={totalSpent}
+      fixedTotal={fixedTotal}
+      spendingBudget={spendingBudget}
+      categorySpend={categorySpend}
+      isDesktop={isDesktop}
+    />
+  ) : totalSpent === 0 ? (
+    <FirstTimeWelcome
+      name={firstName}
+      onStart={() => router.push('/log/first')}
+    />
+  ) : (
+    <OverviewEmpty
+      name={firstName}
+      currency={profile?.currency || 'KES'}
+      onSave={async (data) => { await saveIncome(data); setIncomeSheetOpen(false) }}
+    />
+  )
+
   const tabContent: Record<string, React.ReactNode> = {
-    overview: incomeData ? (
-      <OverviewWithData
-        name={profile?.name}
-        currency={profile?.currency || 'KES'}
-        goals={profile?.goals || []}
-        incomeData={incomeData}
-        goalTargets={goalTargets}
-        goalSaved={goalSaved}
-        goalLabels={goalLabels}
-        onLogExpense={() => {
-          const incomeConfirmed = incomeData?.received != null && (incomeData as any).received > 0
-          if (totalSpent > 0 && !incomeConfirmed) {
-            setPendingLogNavigation(true)
-            setIncomeCheckOpen(true)
-          } else {
-            router.push(totalSpent === 0 ? '/log/first' : '/log?open=true')
-          }
-        }}
-        onConfirmIncome={() => setIncomeCheckOpen(true)}
-        onContribGoal={handleContribGoal}
-        totalSpent={totalSpent}
-        fixedTotal={fixedTotal}
-        spendingBudget={spendingBudget}
-        categorySpend={categorySpend}
-        isDesktop={isDesktop}
-      />
-    ) : (
-      <OverviewEmpty
-        name={profile?.name}
-        currency={profile?.currency || 'KES'}
-        onSave={async (data) => { await saveIncome(data); setIncomeSheetOpen(false) }}
-      />
-    ),
+    overview: overviewContent,
   }
 
-  const initial = (profile?.name ?? '?')[0].toUpperCase()
+  const initial = (firstName || '?')[0].toUpperCase()
 
   const avatar = (
     <button
@@ -536,16 +612,27 @@ export default function AppPage() {
           payDay={profile?.pay_day ?? null}
           onConfirm={handleIncomeConfirm}
         />
+        <CommittedExpenseConfirmSheet
+          open={committedCheckOpen}
+          onClose={() => setCommittedCheckOpen(false)}
+          expenses={pendingCommitted}
+          currency={profile?.currency || 'KES'}
+          currentMonth={currentMonth}
+          onConfirm={handleCommittedConfirm}
+          onSkip={handleCommittedSkip}
+        />
       </div>
     )
   }
 
+  const isFirstTimeUser = !incomeData && totalSpent === 0
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: isFirstTimeUser ? 0 : 88 }}>
       {avatar}
       {profileSheet}
       <main>{tabContent[tab]}</main>
-      <BottomNav />
+      {!isFirstTimeUser && <BottomNav />}
       <AddIncomeSheet
         open={incomeSheetOpen}
         onClose={() => setIncomeSheetOpen(false)}
@@ -561,6 +648,15 @@ export default function AppPage() {
         currency={profile?.currency || 'KES'}
         payDay={profile?.pay_day ?? null}
         onConfirm={handleIncomeConfirm}
+      />
+      <CommittedExpenseConfirmSheet
+        open={committedCheckOpen}
+        onClose={() => setCommittedCheckOpen(false)}
+        expenses={pendingCommitted}
+        currency={profile?.currency || 'KES'}
+        currentMonth={currentMonth}
+        onConfirm={handleCommittedConfirm}
+        onSkip={handleCommittedSkip}
       />
     </div>
   )

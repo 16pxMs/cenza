@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { fmt } from '@/lib/finance'
+import { ArrowLeft } from 'lucide-react'
 
 const T = {
   brandDark: '#5C3489',
@@ -40,6 +41,8 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
   const [customDay, setCustomDay] = useState('')
   const [showCustom, setShowCustom] = useState(false)
   const [saving, setSaving]       = useState(false)
+  const [hoveredDay, setHoveredDay] = useState<number | string | null>(null)
+  const [backHovered, setBackHovered] = useState(false)
 
   const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0
 
@@ -105,11 +108,18 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
     >
       {step === 'amount' && (
         <div>
-          <p style={{ margin: '0 0 6px', fontSize: 14, color: T.text2, lineHeight: 1.65 }}>
-            You set{' '}
-            <strong style={{ color: T.text1 }}>{fmt(declaredTotal, currency)}</strong>{' '}
-            as your monthly income. How much actually landed in your account?
+          <p style={{ margin: '0 0 12px', fontSize: 14, color: T.text2, lineHeight: 1.65 }}>
+            Before we track your spending, confirm how much income actually came in this month.
           </p>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: 'color-mix(in srgb, var(--brand) 10%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--brand) 25%, transparent)',
+            borderRadius: 99, padding: '4px 12px', marginBottom: 16,
+          }}>
+            <span style={{ fontSize: 11, color: T.text3, fontWeight: 500 }}>Declared</span>
+            <span style={{ fontSize: 13, color: T.text1, fontWeight: 600 }}>{currency} {Number(declaredTotal).toLocaleString()}</span>
+          </div>
 
           {/* All of it shortcut */}
           <button
@@ -174,6 +184,19 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
 
       {step === 'payday' && (
         <div>
+          <button
+            onClick={() => setStep('amount')}
+            onMouseEnter={() => setBackHovered(true)}
+            onMouseLeave={() => setBackHovered(false)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              color: backHovered ? T.text1 : T.text3,
+              marginBottom: 16, display: 'flex', alignItems: 'center',
+              transition: 'color 0.15s',
+            }}
+          >
+            <ArrowLeft size={18} />
+          </button>
           <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text2, lineHeight: 1.65 }}>
             Pick the day you usually get paid. We'll check in then so your numbers stay honest.
           </p>
@@ -183,15 +206,18 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
               {COMMON_DAYS.map(d => {
                 const active = selectedDay === d
+                const hovered = hoveredDay === d
                 return (
                   <button
                     key={d}
                     onClick={() => setSelectedDay(d)}
+                    onMouseEnter={() => setHoveredDay(d)}
+                    onMouseLeave={() => setHoveredDay(null)}
                     style={{
                       width: 56, height: 48, borderRadius: 12,
-                      border: active ? `2px solid ${T.brandDark}` : `1px solid ${T.border}`,
-                      background: active ? T.brandDark : T.white,
-                      color: active ? '#fff' : T.text2,
+                      border: active ? `2px solid ${T.brandDark}` : `1px solid ${hovered ? T.brandDark : T.border}`,
+                      background: active ? T.brandDark : hovered ? 'color-mix(in srgb, var(--brand) 6%, transparent)' : T.white,
+                      color: active ? '#fff' : hovered ? T.brandDark : T.text2,
                       fontSize: 15, fontWeight: active ? 600 : 400,
                       cursor: 'pointer', transition: 'all 0.15s',
                     }}
@@ -202,11 +228,14 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
               })}
               <button
                 onClick={() => { setShowCustom(true); setSelectedDay(null) }}
+                onMouseEnter={() => setHoveredDay('other')}
+                onMouseLeave={() => setHoveredDay(null)}
                 style={{
                   height: 48, padding: '0 16px', borderRadius: 12,
-                  border: `1px solid ${T.border}`,
-                  background: T.white, color: T.text3,
-                  fontSize: 14, cursor: 'pointer',
+                  border: `1px solid ${hoveredDay === 'other' ? T.brandDark : T.border}`,
+                  background: hoveredDay === 'other' ? 'color-mix(in srgb, var(--brand) 6%, transparent)' : T.white,
+                  color: hoveredDay === 'other' ? T.brandDark : T.text3,
+                  fontSize: 14, cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
                 Other
@@ -236,9 +265,16 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, pa
               />
               <button
                 onClick={() => { setShowCustom(false); setCustomDay('') }}
-                style={{ marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.textMuted }}
+                onMouseEnter={() => setBackHovered(true)}
+                onMouseLeave={() => setBackHovered(false)}
+                style={{
+                  marginTop: 8, background: 'none', border: 'none', cursor: 'pointer',
+                  padding: 0, display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 13, color: backHovered ? T.text1 : T.text3,
+                  transition: 'color 0.15s',
+                }}
               >
-                Back to common days
+                <ArrowLeft size={14} /> Back to common days
               </button>
             </div>
           )}

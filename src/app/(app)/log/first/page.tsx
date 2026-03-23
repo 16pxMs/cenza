@@ -14,7 +14,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
-import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { IconBack } from '@/components/ui/Icons'
 
@@ -36,13 +35,14 @@ const CATEGORIES = [
   { icon: '🍽️', label: 'Eating out',    categoryKey: null,         groupType: 'variable', askFrequency: false },
   { icon: '📱', label: 'Airtime / Data', categoryKey: null,         groupType: 'variable', askFrequency: false },
   { icon: '💡', label: 'Utilities',      categoryKey: null,         groupType: 'fixed',    askFrequency: false },
-  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '🏫', label: 'School fees',    categoryKey: 'schoolFees', groupType: 'fixed',    askFrequency: true  },
-  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'variable',      askFrequency: false },
+  { icon: '🏫', label: 'School fees',    categoryKey: 'schoolFees', groupType: 'fixed',         askFrequency: true  },
+  { icon: '🔁', label: 'Subscription',   categoryKey: null,         groupType: 'subscription',  askFrequency: false },
+  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'variable',      askFrequency: false },
 ]
 
 type Category = typeof CATEGORIES[0]
-type Step = 'pick' | 'frequency' | 'amount'
+type Step = 'pick' | 'frequency' | 'amount' | 'skip' | 'done'
 
 export default function FirstLogPage() {
   const router        = useRouter()
@@ -62,6 +62,7 @@ export default function FirstLogPage() {
   const [currency, setCurrency]       = useState('KES')
   const [customLabel, setCustomLabel] = useState('')
   const [isSomethingElse, setIsSomethingElse] = useState(false)
+  const [isSubscription,  setIsSubscription]  = useState(false)
 
   const currentMonth = new Date().toISOString().slice(0, 7)
 
@@ -83,10 +84,18 @@ export default function FirstLogPage() {
 
   const selectCategory = (cat: Category) => {
     setSelected(cat)
-    setIsSomethingElse(false)
-    if (cat.askFrequency) {
+    setIsSubscription(false)
+    if (cat.groupType === 'subscription') {
+      // Subscription path: ask for name + amount, then write to subscriptions table
+      setIsSomethingElse(true)
+      setIsSubscription(true)
+      setResolvedGroupType('subscription')
+      setStep('amount')
+    } else if (cat.askFrequency) {
+      setIsSomethingElse(false)
       setStep('frequency')
     } else {
+      setIsSomethingElse(false)
       setResolvedGroupType(cat.groupType)
       setStep('amount')
     }
@@ -151,6 +160,17 @@ export default function FirstLogPage() {
       note:           note.trim() || null,
     })
 
+    // If subscription, write to subscriptions table so it enters the monthly check-in cycle
+    if (isSubscription) {
+      await (supabase.from('subscriptions') as any).insert({
+        user_id:    user.id,
+        key:        finalKey,
+        label:      finalLabel,
+        amount:     amountNum,
+        needs_check: true,
+      })
+    }
+
     // If confirmed monthly fixed, write to fixed_expenses
     if (isMonthlyFixed) {
       const { data: existing } = await (supabase.from('fixed_expenses') as any)
@@ -168,7 +188,8 @@ export default function FirstLogPage() {
       }
     }
 
-    router.replace('/log')
+    setStep('done')
+    setTimeout(() => router.replace('/app'), 2200)
   }
 
   // ── Step: pick ────────────────────────────────────────────
@@ -210,6 +231,23 @@ export default function FirstLogPage() {
           <span style={{ fontSize: 14, fontWeight: 500, color: T.text3 }}>Something else</span>
         </button>
       </div>
+
+      {/* Skip — opens value interstitial, not an immediate exit */}
+      <button
+        onClick={() => setStep('skip')}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding: '24px 0 0',
+          fontSize: 14,
+          color: T.textMuted,
+          fontFamily: 'inherit',
+          display: 'block',
+          width: '100%',
+          textAlign: 'center',
+        }}
+      >
+        Nothing to log right now
+      </button>
     </div>
   )
 
@@ -264,7 +302,7 @@ export default function FirstLogPage() {
             type="text"
             value={customLabel}
             onChange={e => setCustomLabel(e.target.value)}
-            placeholder="e.g. Netflix, Dog food, Haircut"
+            placeholder={isSubscription ? 'e.g. Netflix, Spotify, Gym' : 'e.g. Dog food, Haircut, Fuel'}
             style={{
               width: '100%', height: 48, borderRadius: 12,
               border: `1px solid var(--border)`, padding: '0 14px',
@@ -370,6 +408,111 @@ export default function FirstLogPage() {
     </div>
   )
 
+  // ── Step: skip interstitial ───────────────────────────────
+  if (step === 'skip') {
+    const dismiss = () => {
+      const current = parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10)
+      localStorage.setItem('cenza_skip_count', String(current + 1))
+      router.replace('/app')
+    }
+
+    return (
+      <div style={{
+        minHeight: '100vh', background: 'var(--page-bg)',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        padding: '0 var(--page-padding-mobile, 16px)',
+      }}>
+        <div style={{ maxWidth: 480, width: '100%' }}>
+          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--brand-dark)', letterSpacing: '0.01em' }}>
+            Here's what you're missing
+          </p>
+          <h2 style={{ margin: '0 0 var(--space-xl)', fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.3px' }}>
+            One expense unlocks all of this.
+          </h2>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', marginBottom: 'var(--space-xxl)' }}>
+            {[
+              { icon: '📊', label: 'Spending overview', desc: 'See exactly where your money goes each month.' },
+              { icon: '🎯', label: 'Goal tracking',     desc: 'Watch your savings goals grow in real time.'  },
+              { icon: '📋', label: 'Budget awareness',  desc: 'Know when you\'re about to overspend — before you do.' },
+            ].map(({ icon, label, desc }) => (
+              <div key={label} style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                  background: 'rgba(92,52,137,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                }}>
+                  {icon}
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>{label}</p>
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.6 }}>{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setStep('pick')}
+            style={{
+              width: '100%', height: 56, borderRadius: 'var(--radius-lg)',
+              background: 'var(--brand-dark)', border: 'none',
+              color: 'var(--text-inverse)', fontSize: 'var(--text-base)',
+              fontWeight: 'var(--weight-semibold)', cursor: 'pointer', letterSpacing: '-0.1px',
+              marginBottom: 'var(--space-md)',
+            }}
+          >
+            Let me log something
+          </button>
+          <button
+            onClick={dismiss}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              width: '100%', fontSize: 'var(--text-sm)',
+              color: 'var(--text-muted)', fontFamily: 'inherit', padding: 0,
+            }}
+          >
+            Got it, I'll log later
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Step: done (Day 1 celebration) ────────────────────────
+  if (step === 'done') {
+    return (
+      <div style={{
+        minHeight: '100vh', background: 'var(--page-bg)',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+        padding: '0 var(--page-padding-mobile, 16px)',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: '50%',
+          background: 'rgba(92,52,137,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 36, marginBottom: 'var(--space-lg)',
+        }}>
+          🔥
+        </div>
+        <p style={{
+          margin: '0 0 var(--space-xs)',
+          fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)',
+          color: 'var(--brand-dark)', letterSpacing: '0.06em', textTransform: 'uppercase',
+        }}>
+          Day 1
+        </p>
+        <h2 style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.3px' }}>
+          You logged your first expense.
+        </h2>
+        <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-2)', lineHeight: 1.65, maxWidth: 300 }}>
+          Come back tomorrow to keep the streak going.
+        </p>
+      </div>
+    )
+  }
+
   const heading =
     step === 'pick'      ? 'What did you spend on?' :
     step === 'frequency' ? `Do you pay ${selected?.label.toLowerCase()} every month?` :
@@ -409,9 +552,8 @@ export default function FirstLogPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <main>{content}</main>
-      <BottomNav />
     </div>
   )
 }

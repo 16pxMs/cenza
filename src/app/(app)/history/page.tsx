@@ -70,7 +70,7 @@ interface Transaction {
 interface CategoryRow {
   key:          string
   label:        string
-  type:         'fixed' | 'goal' | 'variable' | 'debt' | 'other'
+  type:         'fixed' | 'goal' | 'variable' | 'debt' | 'subscription' | 'other'
   planned:      number       // budget / target / monthly — 0 if unknown
   spent:        number       // sum of transactions this month
   transactions: Transaction[]
@@ -82,7 +82,7 @@ function BarFill({ pct, type }: { pct: number; type: CategoryRow['type'] }) {
   // Variable/debt/other: traffic light — green <75%, amber 75-100%, red over
   const color = type === 'goal'
     ? T.brandDark
-    : type === 'fixed'
+    : type === 'fixed' || type === 'subscription'
     ? (pct > 100 ? '#EF4444' : '#22C55E')
     : pct > 100 ? '#EF4444' : pct > 75 ? '#F59E0B' : '#22C55E'
   return (
@@ -214,6 +214,22 @@ export default function HistoryPage() {
         .update({ category_type: 'debt' })
         .in('id', toFixAsDebt)
         .then(() => {})
+    }
+
+    // Subscriptions
+    const subMap: Record<string, { label: string; txns: Transaction[] }> = {}
+    for (const t of allTxns) {
+      if (coveredKeys.has(t.category_key)) continue
+      if (t.category_type !== 'subscription') continue
+      coveredKeys.add(t.category_key)
+      if (!subMap[t.category_key]) subMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), txns: [] }
+      subMap[t.category_key].txns.push(t)
+    }
+    for (const [key, { label, txns }] of Object.entries(subMap)) {
+      categoryRows.push({
+        key, label, type: 'subscription', planned: 0,
+        spent: txns.reduce((s, t) => s + t.amount, 0), transactions: txns,
+      })
     }
 
     // Other — everything remaining

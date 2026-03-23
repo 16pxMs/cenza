@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { X, AlertTriangle, TrendingUp, Target, Sparkles, CheckCircle, Lightbulb, ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
+import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemainingPct, calculateCategoryBudget } from '@/lib/math/finance'
 import { GoalContribSheet } from './GoalContribSheet'
 
 const GOAL_META: Record<string, {
@@ -90,9 +91,7 @@ export function OverviewWithData({
   }
 
   // ── Income ──────────────────────────────────────────────────
-  const baseIncome  = incomeData.income ?? (incomeData as any).salary ?? 0
-  const extras      = incomeData.extraIncome ?? (incomeData as any).extra_income ?? []
-  const totalIncome = baseIncome + (extras as any[]).reduce((s: number, e: any) => s + (Number(e.amount) || 0), 0)
+  const totalIncome = calculateTotalIncome(incomeData as any)
 
   // ── Goals ────────────────────────────────────────────────────
   const totalGoals   = goals.length
@@ -122,7 +121,7 @@ export function OverviewWithData({
   const reference = receivedConfirmed
     ? incomeData.received!
     : totalIncome > 0 ? totalIncome : 0
-  const spentPct  = reference > 0 ? Math.min(100, (totalSpent / reference) * 100) : 0
+  const spentPct  = calculatePct(totalSpent, reference)
   const hasLogged = totalSpent > 0
 
   // State B: received confirmed, nothing logged — hero is full available amount
@@ -159,7 +158,7 @@ export function OverviewWithData({
           </div>
           <div>
             <p style={{ margin: '0 0 3px', fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Free to spend</p>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{fmt(ref - fixedTotal, currency)}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{fmt(calculateRemaining(ref, fixedTotal), currency)}</p>
           </div>
         </div>
       )}
@@ -179,10 +178,10 @@ export function OverviewWithData({
 
   // State C: live spend — hero is what remains, bar depletes as spend grows
   const stateCCard = (spent: number, ref: number) => {
-    const remaining   = ref - spent
+    const remaining   = calculateRemaining(ref, spent)
     const isOver      = remaining < 0
     // Bar represents remaining (depletes as you spend), colour signals urgency
-    const remainPct   = ref > 0 ? Math.max(0, Math.min(100, (remaining / ref) * 100)) : 0
+    const remainPct   = calculateRemainingPct(remaining, ref)
     const barColor    = remainPct > 50 ? '#22C55E' : remainPct > 25 ? '#F59E0B' : '#EF4444'
     return (
       <div style={{
@@ -640,10 +639,10 @@ export function OverviewWithData({
               </p>
             </div>
             {cats.map((cat: any, i: number) => {
-              const spent    = categorySpend[cat.key] ?? 0
-              const budgeted = Number(cat.budget)
-              const pct      = budgeted > 0 ? Math.min(100, (spent / budgeted) * 100) : 0
-              const over     = spent > budgeted
+              const { spent, budgeted, pct, over } = calculateCategoryBudget(
+                categorySpend[cat.key] ?? 0,
+                Number(cat.budget),
+              )
               const barColor = over ? 'var(--red)' : pct > 75 ? '#F59E0B' : 'var(--green)'
               const emoji    = CATEGORY_EMOJI[cat.key]
               const isLast   = i === cats.length - 1
@@ -686,24 +685,26 @@ export function OverviewWithData({
       })()}
 
       {/* Card order:
-            State A, no goals  → goals empty state first (motivate the why), then spending
-            State A, has goals → spending first, goals below
-            State B            → spending first, quiet goal row below (one primary CTA only)
-            State C            → spending first, full goals card/empty below */}
-      {!receivedConfirmed && !hasLogged && totalGoals === 0 ? (
+            No goals (any state) → goals empty state first (the why before the what)
+            Has goals, State B   → spending first, quiet goal row (one primary CTA)
+            Has goals, State C   → spending first, full goals progress card */}
+      {totalGoals === 0 ? (
+        // No goals set — always lead with the goal prompt so balance has meaning
         <>
           {goalsEmptyState}
           {spendingCard}
         </>
       ) : receivedConfirmed && !hasLogged ? (
+        // State B: income confirmed, nothing logged — quiet goal row
         <>
           {spendingCard}
-          {totalGoals === 0 ? goalsContextCard : goalsCard}
+          {goalsContextCard}
         </>
       ) : (
+        // State C: has spending data — spending leads, goals progress below
         <>
           {spendingCard}
-          {totalGoals === 0 ? goalsEmptyState : goalsCard}
+          {goalsCard}
         </>
       )}
 

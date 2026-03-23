@@ -185,7 +185,7 @@ function NewGoalInner() {
 
     await Promise.all(ops)
     toast('Goal added')
-    router.push('/goals')
+    router.push(fromParam === 'overview' ? '/app' : '/goals')
   }
 
   const meta = selectedGoal ? GOAL_META[selectedGoal] : null

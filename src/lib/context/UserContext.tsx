@@ -1,7 +1,8 @@
 'use client'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
+import { calculateTotalIncome } from '@/lib/math/finance'
 
 interface Profile {
   id:       string
@@ -14,9 +15,11 @@ interface UserContextValue {
   user:    User | null
   profile: Profile | null
   loading: boolean
+  /** Total income derived from profile income data. 0 until income is set. */
+  profileIncome: number
 }
 
-const UserContext = createContext<UserContextValue>({ user: null, profile: null, loading: true })
+const UserContext = createContext<UserContextValue>({ user: null, profile: null, loading: true, profileIncome: 0 })
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
@@ -40,8 +43,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     })()
   }, [])
 
+  // Compute once — derived from profile income data, consistent everywhere
+  const profileIncome = useMemo(
+    () => calculateTotalIncome(profile as any ?? {}),
+    [profile]
+  )
+
   return (
-    <UserContext.Provider value={{ user, profile, loading }}>
+    <UserContext.Provider value={{ user, profile, loading, profileIncome }}>
       {children}
     </UserContext.Provider>
   )
