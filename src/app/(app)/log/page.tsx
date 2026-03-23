@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 // Tap any item → amount sheet (native keyboard)
 // Pinned "Other" button at bottom → sheet with group picker
 // ─────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
@@ -100,6 +100,8 @@ export default function LogPage() {
   const { user, profile: ctxProfile } = useUser()
 
   const { toast } = useToast()
+
+  const autoOpened = useRef(false)
 
   const [loading, setLoading]             = useState(true)
   const [currency, setCurrency]           = useState('KES')
@@ -256,8 +258,15 @@ export default function LogPage() {
   // — first-time users → go to the guided first-log page
   // — returning users → navigate to the new expense page directly
   useEffect(() => {
-    if (searchParams.get('open') === 'true') logOther()
-  }, [logOther, searchParams])
+    if (loading || autoOpened.current) return
+    if (searchParams.get('open') !== 'true') return
+    autoOpened.current = true
+    if (isFirstTime) {
+      router.push('/log/first')
+    } else {
+      logOther()
+    }
+  }, [loading, searchParams, isFirstTime, logOther, router])
 
   const handleSaveRefund = async () => {
     if (!pendingDelete) return
