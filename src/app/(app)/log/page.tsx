@@ -10,15 +10,16 @@ export const dynamic = 'force-dynamic'
 // Tap any item → amount sheet (native keyboard)
 // Pinned "Other" button at bottom → sheet with group picker
 // ─────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { AddExpenseSheet, type SheetItem, type ExpenseSaveData, type PriorEntry, type DictionaryEntry, type QuickItem } from '@/components/flows/log/AddExpenseSheet'
+// TODO: remove after confirming new flow
+import { AddExpenseSheet } from '@/components/flows/log/AddExpenseSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack, IconTrash } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
@@ -42,13 +43,6 @@ const T = {
   text3:        '#667085',
   textMuted:    '#98A2B3',
 }
-
-// ─── Debt keywords — typed free-text matching these always resolves to 'debt' ──
-const DEBT_KEYWORDS = [
-  'debt', 'loan', 'repayment', 'credit card', 'overdraft', 'mortgage',
-  'student loan', 'car loan', 'helb', 'bnpl', 'afterpay', 'klarna',
-  'credit', 'borrowing', 'instalment', 'installment',
-]
 
 // ─── Static meta ─────────────────────────────────────────────────────────────
 const GOAL_META: Record<string, string> = {
@@ -100,6 +94,7 @@ interface Section {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LogPage() {
   const router        = useRouter()
+  const searchParams  = useSearchParams()
   const supabase      = createClient()
   const { isDesktop } = useBreakpoint()
   const { user, profile: ctxProfile } = useUser()
@@ -109,13 +104,8 @@ export default function LogPage() {
   const [loading, setLoading]             = useState(true)
   const [currency, setCurrency]           = useState('KES')
   const [sections, setSections]           = useState<Section[]>([])
-  const [sheetOpen, setSheetOpen]         = useState(false)
-  const [sheetItem, setSheetItem]         = useState<SheetItem | null>(null)
   const [isFirstTime, setIsFirstTime]     = useState(false)
-  const [priorEntry, setPriorEntry]     = useState<PriorEntry | null | undefined>(undefined)
-  const [dictionary, setDictionary]     = useState<Record<string, DictionaryEntry>>({})
   const [expanded, setExpanded]         = useState<Set<string>>(new Set())
-  const [autoOpened, setAutoOpened]     = useState(false)
   const [deletingKey, setDeletingKey]                             = useState<string | null>(null)
   const [pendingDelete, setPendingDelete]                         = useState<SubItem | null>(null)
   const [deleteStep, setDeleteStep]                               = useState<'reason' | 'confirm' | 'refund'>('reason')
@@ -125,52 +115,19 @@ export default function LogPage() {
 
   const currentMonth = new Date().toISOString().slice(0, 7)
 
-  // Quick-tap chips for the "What did you spend on?" sheet
-  // Priority: logged this month → planned not yet logged → dictionary history
-  const quickItems = useMemo<QuickItem[]>(() => {
-    const result: QuickItem[] = []
-    const usedKeys = new Set<string>()
+  const logItem = useCallback((item: SubItem) => {
+    const params = new URLSearchParams({
+      key:    item.key,
+      label:  item.label,
+      type:   item.groupType,
+      ...(item.plannedAmount ? { amount: String(item.plannedAmount) } : {}),
+    })
+    router.push(`/log/new?${params.toString()}`)
+  }, [router])
 
-    // 1. Logged this month (across all sections)
-    for (const section of sections) {
-      for (const item of section.items) {
-        if (item.loggedAmount > 0 && !usedKeys.has(item.key)) {
-          result.push({ key: item.key, label: item.label, groupType: item.groupType, source: 'logged', loggedAmount: item.loggedAmount, plannedAmount: item.plannedAmount })
-          usedKeys.add(item.key)
-        }
-        if (result.length >= 6) break
-      }
-      if (result.length >= 6) break
-    }
-
-    // 2. Planned but not yet logged
-    if (result.length < 6) {
-      for (const section of sections) {
-        for (const item of section.items) {
-          if (!usedKeys.has(item.key) && item.loggedAmount === 0) {
-            result.push({ key: item.key, label: item.label, groupType: item.groupType, source: 'planned', plannedAmount: item.plannedAmount })
-            usedKeys.add(item.key)
-          }
-          if (result.length >= 6) break
-        }
-        if (result.length >= 6) break
-      }
-    }
-
-    // 3. Dictionary history (most-used first, already ordered by usage_count desc)
-    if (result.length < 6) {
-      for (const entry of Object.values(dictionary)) {
-        const key = entry.key
-        if (key && !usedKeys.has(key)) {
-          result.push({ key, label: entry.label, groupType: entry.groupType, source: 'history' })
-          usedKeys.add(key)
-        }
-        if (result.length >= 6) break
-      }
-    }
-
-    return result
-  }, [sections, dictionary])
+  const logOther = useCallback(() => {
+    router.push('/log/new?isOther=true')
+  }, [router])
 
   const loadData = useCallback(async () => {
     if (!user) return
@@ -297,149 +254,10 @@ export default function LogPage() {
 
   // When navigated from overview with ?open=true, after income check-in:
   // — first-time users → go to the guided first-log page
-  // — returning users → open the sheet directly
+  // — returning users → navigate to the new expense page directly
   useEffect(() => {
-    if (loading || autoOpened) return
-    if (typeof window !== 'undefined' && window.location.search.includes('open=true')) {
-      setAutoOpened(true)
-      if (isFirstTime) {
-        router.push('/log/first')
-      } else {
-        openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })
-      }
-    }
-  }, [loading, isFirstTime]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const openSheet = (item: SheetItem) => {
-    setSheetItem(item)
-    setSheetOpen(true)
-
-    // For Other items, fetch the user's item dictionary for auto-recognition
-    if (item.isOther) {
-      if (!user) return
-      ;(supabase.from('item_dictionary') as any)
-        .select('name_normalized, label, group_type, category_key, usage_count')
-        .eq('user_id', user.id)
-        .order('usage_count', { ascending: false })
-        .then(({ data }: any) => {
-          const dict: Record<string, DictionaryEntry> = {}
-
-          // Seed common debt keywords so they're always auto-recognised
-          for (const kw of DEBT_KEYWORDS) {
-            dict[kw] = { groupType: 'debt', label: kw, count: 0 }
-          }
-
-          // Seed with all known planned items (fixed, goals, daily)
-          // so typing "rent" matches even if never logged via free-text
-          for (const section of sections) {
-            for (const si of section.items) {
-              const normalized = si.label.trim().toLowerCase()
-              if (!dict[normalized]) {
-                dict[normalized] = { groupType: si.groupType, label: si.label, key: si.key, count: 0 }
-              }
-            }
-          }
-
-          // Overlay user-typed history (higher count wins recognition signal)
-          for (const row of data ?? []) {
-            dict[row.name_normalized] = { groupType: row.group_type, label: row.label, key: row.category_key, count: row.usage_count ?? 1 }
-          }
-
-          setDictionary(dict)
-        })
-    }
-
-    if (!item.isOther) {
-      // Always check for a prior entry this month — if none found, chips won't show
-      setPriorEntry(undefined)
-      if (!user) { setPriorEntry(null); return }
-      ;(supabase.from('transactions') as any)
-        .select('amount, date')
-        .eq('user_id', user.id)
-        .eq('month', currentMonth)
-        .eq('category_key', item.key)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-        .then(({ data: prior }: any) => {
-          setPriorEntry(prior ? { amount: Number(prior.amount), date: prior.date } : null)
-        })
-    } else {
-      setPriorEntry(null)
-    }
-  }
-
-  const handleSave = async (data: ExpenseSaveData) => {
-    if (!user) return
-
-    // Replace mode: delete all existing entries for this category this month first
-    if (data.replaceExisting) {
-      await (supabase.from('transactions') as any)
-        .delete()
-        .eq('user_id', user.id)
-        .eq('month', currentMonth)
-        .eq('category_key', data.key)
-    }
-
-    await (supabase.from('transactions') as any).insert({
-      user_id:        user.id,
-      date:           new Date().toISOString().slice(0, 10),
-      month:          currentMonth,
-      category_type:  data.groupType,
-      category_key:   data.key,
-      category_label: data.label,
-      amount:         data.amount,
-      note:           data.note || null,
-    })
-    toast('Expense logged')
-
-    // If user confirmed this is a monthly fixed payment, add it to fixed_expenses
-    if (data.isMonthlyFixed) {
-      const { data: existing } = await (supabase.from('fixed_expenses') as any)
-        .select('total_monthly, entries')
-        .eq('user_id', user.id)
-        .eq('month', currentMonth)
-        .maybeSingle()
-
-      const existingEntries: any[] = existing?.entries ?? []
-      const alreadyThere = existingEntries.some((e: any) => e.key === data.key)
-      if (!alreadyThere) {
-        const newEntry = { key: data.key, label: data.label, monthly: data.amount, confidence: 'known' }
-        const newEntries = [...existingEntries, newEntry]
-        const newTotal = newEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0)
-        await (supabase.from('fixed_expenses') as any).upsert({
-          user_id:       user.id,
-          month:         currentMonth,
-          total_monthly: newTotal,
-          entries:       newEntries,
-        }, { onConflict: 'user_id,month' })
-      }
-    }
-
-    // Write Other items to the dictionary for future auto-recognition
-    if (sheetItem?.isOther && user) {
-      const normalized = data.label.trim().toLowerCase()
-      // Fetch existing count so we can increment it
-      const { data: existing } = await (supabase.from('item_dictionary') as any)
-        .select('usage_count')
-        .eq('user_id', user.id)
-        .eq('name_normalized', normalized)
-        .maybeSingle()
-      ;(supabase.from('item_dictionary') as any).upsert({
-        user_id:         user.id,
-        name_normalized: normalized,
-        label:           data.label,
-        group_type:      data.groupType,
-        category_key:    data.key,
-        usage_count:     (existing?.usage_count ?? 0) + 1,
-      }, { onConflict: 'user_id,name_normalized' })
-    }
-
-    // Refresh list so logged amounts update instantly
-    loadData()
-    // Clear Next.js router cache so overview re-fetches on next navigation
-    router.refresh()
-  }
+    if (searchParams.get('open') === 'true') logOther()
+  }, [logOther, searchParams])
 
   const handleSaveRefund = async () => {
     if (!pendingDelete) return
@@ -553,7 +371,7 @@ export default function LogPage() {
             >
               {/* Main tap area */}
               <button
-                onClick={() => openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })}
+                onClick={() => logItem(item)}
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center',
                   gap: 12,
@@ -701,7 +519,7 @@ export default function LogPage() {
       {isDesktop && (
         <div style={{ padding: '0 32px' }}>
           <button
-            onClick={() => isFirstTime ? router.push('/log/first') : openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })}
+            onClick={() => isFirstTime ? router.push('/log/first') : logOther()}
             style={{
               width: '100%', height: 50,
               background: T.brandDark,
@@ -735,11 +553,7 @@ export default function LogPage() {
                 {
                   label: '✏️ I logged the wrong amount',
                   sub:   'Correct it right here',
-                  action: () => {
-                    const item = pendingDelete
-                    setPendingDelete(null)
-                    openSheet({ key: item.key, label: item.label, groupType: item.groupType, isOther: false, plannedAmount: item.plannedAmount })
-                  },
+                  action: () => { setPendingDelete(null); if (pendingDelete) logItem(pendingDelete) },
                 },
                 {
                   label: '💸 I got a refund',
@@ -885,21 +699,6 @@ export default function LogPage() {
         </Sheet>
       )}
 
-      {/* Sheet */}
-      <AddExpenseSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        item={sheetItem}
-        priorEntry={priorEntry}
-        dictionary={dictionary}
-        quickItems={quickItems}
-        onSelectQuickItem={(qi) => openSheet(qi)}
-        currency={currency}
-        isDesktop={isDesktop}
-        isFirstTime={isFirstTime}
-        onSave={handleSave}
-      />
-
     </div>
   )
 
@@ -915,7 +714,7 @@ export default function LogPage() {
       zIndex: 40,
     }}>
       <button
-        onClick={() => isFirstTime ? router.push('/log/first') : openSheet({ key: 'other', label: 'Other', groupType: '', isOther: true })}
+        onClick={() => isFirstTime ? router.push('/log/first') : logOther()}
         style={{
           width: '100%', height: 50,
           background: T.brandDark,
