@@ -109,10 +109,67 @@ export function NewExpenseClient() {
 
   const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0
 
-  // TODO: handleSave — added in Task 3
-  const handleSave = async () => {}
-
   const currentMonth = new Date().toISOString().slice(0, 7)
+
+  const handleSave = useCallback(async () => {
+    if (!user || parsedAmount <= 0) return
+
+    const resolvedType  = selectedType ?? paramType ?? 'variable'
+    const resolvedKey   = paramKey ?? name.trim().toLowerCase().replace(/\s+/g, '_')
+    const resolvedLabel = name.trim() || paramLabel || resolvedKey
+
+    setSaving(true)
+
+    try {
+      // 1. Write the transaction
+      await (supabase.from('transactions') as any).insert({
+        user_id:        user.id,
+        date:           new Date().toISOString().slice(0, 10),
+        month:          currentMonth,
+        category_type:  resolvedType,
+        category_key:   resolvedKey,
+        category_label: resolvedLabel,
+        amount:         parsedAmount,
+        note:           note.trim() || null,
+      })
+
+      // 2. If free-text: upsert dictionary
+      if (isOther) {
+        const normalized = resolvedLabel.trim().toLowerCase()
+        const { data: existing } = await (supabase.from('item_dictionary') as any)
+          .select('usage_count')
+          .eq('user_id', user.id)
+          .eq('name_normalized', normalized)
+          .maybeSingle()
+
+        await (supabase.from('item_dictionary') as any).upsert({
+          user_id:         user.id,
+          name_normalized: normalized,
+          label:           resolvedLabel,
+          group_type:      resolvedType,
+          category_key:    resolvedKey,
+          usage_count:     (existing?.usage_count ?? 0) + 1,
+        }, { onConflict: 'user_id,name_normalized' })
+      }
+
+      // 3. If subscription: upsert subscriptions table
+      // status: 'yes_known' matches the SubscriptionStatus enum in src/types/database.ts
+      if (resolvedType === 'subscription') {
+        await (supabase.from('subscriptions') as any).upsert({
+          user_id:     user.id,
+          key:         resolvedKey,
+          label:       resolvedLabel,
+          amount:      parsedAmount,
+          needs_check: true,
+          status:      'yes_known',
+        }, { onConflict: 'user_id,key' })
+      }
+
+      router.replace('/log')
+    } finally {
+      setSaving(false)
+    }
+  }, [user, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router])
 
   return (
     <div style={{
