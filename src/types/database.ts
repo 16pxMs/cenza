@@ -7,12 +7,14 @@ export type Frequency = 'monthly' | 'quarterly' | 'biannual' | 'yearly' | 'weekl
 export type CategoryType = 'variable' | 'fixed' | 'subscription' | 'goal' | 'debt' | 'other'
 export type SubscriptionStatus = 'yes_known' | 'yes_unknown'
 
-// ─── Pay-cycle types ──────────────────────────────────────────────────────────
+// ─── Value-object types ───────────────────────────────────────────────────────
 
 export interface PaySchedule {
   type: 'monthly' | 'twice_monthly'
   days: number[]  // sorted ascending; 1 element for monthly, 2 for twice_monthly
 }
+
+// ─── Table row types ──────────────────────────────────────────────────────────
 
 export interface Cycle {
   user_id:    string
@@ -22,7 +24,6 @@ export interface Cycle {
   created_at: string
 }
 
-// ─── Table row types ──────────────────────────────────────────────────────────
 
 export interface UserProfile {
   id:                  string
@@ -139,7 +140,7 @@ export interface Database {
   public: {
     Tables: {
       user_profiles:       { Row: UserProfile;       Insert: Omit<UserProfile, 'created_at' | 'updated_at'>; Update: Partial<UserProfile> }
-      cycles:              { Row: Cycle;             Insert: Omit<Cycle, 'created_at'>; Update: Partial<Cycle> }
+      cycles:              { Row: Cycle;             Insert: Omit<Cycle, 'created_at' | 'is_current'>; Update: Partial<Cycle> }
       income_entries:      { Row: IncomeEntry;        Insert: Omit<IncomeEntry, 'id' | 'total' | 'created_at' | 'updated_at'>; Update: Partial<IncomeEntry> }
       fixed_expenses:      { Row: FixedExpense;       Insert: Omit<FixedExpense, 'id' | 'created_at' | 'updated_at'>; Update: Partial<FixedExpense> }
       spending_categories: { Row: SpendingCategory;   Insert: Omit<SpendingCategory, 'id' | 'created_at' | 'updated_at'>; Update: Partial<SpendingCategory> }
