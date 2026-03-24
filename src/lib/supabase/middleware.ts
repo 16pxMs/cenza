@@ -47,5 +47,23 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // ── PIN gate ──────────────────────────────────────────────
+  // /pin and /pin/reset are auth-gated (unauthenticated users
+  // are caught above) but excluded from the PIN cookie check
+  // to prevent an infinite redirect loop.
+  const isPinPage = pathname === '/pin' || pathname.startsWith('/pin/')
+
+  if (user && !isPublic && !isPinPage) {
+    const hasPin      = request.cookies.get('cenza-has-pin')?.value === '1'
+    const pinVerified = request.cookies.get('cenza-pin-verified')?.value === '1'
+
+    if (hasPin && !pinVerified) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/pin'
+      return NextResponse.redirect(url)
+    }
+  }
+  // ─────────────────────────────────────────────────────────
+
   return supabaseResponse
 }
