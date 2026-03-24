@@ -46,9 +46,9 @@ export default function OnboardingCurrencyPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setSaving(false); return }
       await (supabase.from('user_profiles') as any)
-        .update({ currency: code, onboarding_complete: true })
+        .update({ currency: code })
         .eq('id', user.id)
-      router.push('/')
+      router.push('/onboarding/pin')
     } catch {
       setSaving(false)
     }
@@ -73,7 +73,7 @@ export default function OnboardingCurrencyPage() {
             margin: '0 0 var(--space-lg)',
             letterSpacing: '0.01em',
           }}>
-            Step 2 of 2
+            Step 2 of 3
           </p>
 
           {/* Heading */}
