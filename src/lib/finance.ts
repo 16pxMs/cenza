@@ -1,16 +1,18 @@
 // ─────────────────────────────────────────────────────────────
 // Shared pure functions used across components.
-// No side-effects, no imports — safe to unit test.
+// No side-effects — safe to unit test.
 // ─────────────────────────────────────────────────────────────
 
-/** Format a number as currency, abbreviating large values. Handles negatives. */
+import { formatAmount } from './formatting/amount'
+
+/**
+ * Compact currency formatter — delegates to formatAmount().
+ *
+ * Kept as a thin wrapper so existing call sites continue to work
+ * without changes. Prefer formatAmount() for new code.
+ */
 export function fmt(n: number, cur = 'KES'): string {
-  if (!n) return `${cur} 0`
-  const abs = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (abs >= 1_000_000) return `${sign}${cur} ${(abs / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
-  if (abs >= 1_000)     return `${sign}${cur} ${(abs / 1_000).toFixed(1).replace(/\.0$/, '')}K`
-  return `${sign}${cur} ${abs.toLocaleString()}`
+  return formatAmount(n, { currency: cur, variant: 'compact' })
 }
 
 /** "YYYY-MM" → previous month as "YYYY-MM" */
