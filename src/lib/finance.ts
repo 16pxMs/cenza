@@ -15,14 +15,6 @@ export function fmt(n: number, cur = 'KES'): string {
   return formatAmount(n, { currency: cur, variant: 'compact' })
 }
 
-/** "YYYY-MM" → previous month as "YYYY-MM" */
-export function getPrevMonth(month: string): string {
-  const [y, m] = month.split('-').map(Number)
-  return m === 1
-    ? `${y - 1}-12`
-    : `${y}-${String(m - 1).padStart(2, '0')}`
-}
-
 /** Format a YYYY-MM-DD date string as "Mon D" (e.g. "Mar 5") */
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')

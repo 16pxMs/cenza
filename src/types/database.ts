@@ -37,10 +37,6 @@ export interface UserProfile {
   pin_hash:            string | null
   created_at:          string
   updated_at:          string
-  // Deprecated — remove in cleanup task (Task 11)
-  pay_day:             number | null
-  month_start:         'first' | 'custom' | null
-  custom_day:          number | null
 }
 
 export interface ExtraIncomeItem {
@@ -52,8 +48,7 @@ export interface ExtraIncomeItem {
 export interface IncomeEntry {
   id:                    string
   user_id:               string
-  cycle_id:              string | null  // null during migration period
-  month:                 string         // 'YYYY-MM' — kept during migration
+  cycle_id:              string | null
   salary:                number
   extra_income:          ExtraIncomeItem[]
   total:                 number
@@ -90,8 +85,7 @@ export interface SpendingCategory {
 export interface SpendingBudget {
   id:         string
   user_id:    string
-  cycle_id:   string | null  // null during migration
-  month:      string          // 'YYYY-MM' — kept during migration
+  cycle_id:   string | null
   budgets:    Record<string, number>  // category_key → amount
   created_at: string
   updated_at: string
@@ -125,7 +119,6 @@ export interface Transaction {
   user_id:        string
   date:           string   // 'YYYY-MM-DD'
   cycle_id:       string | null
-  month:          string   // 'YYYY-MM' — kept during migration
   category_type:  CategoryType
   category_key:   string
   category_label: string

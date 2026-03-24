@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   fmt,
-  getPrevMonth,
   formatDate,
   getConfidenceLevel,
   CONFIDENCE_LABEL,
@@ -125,23 +124,6 @@ describe('formatAmount', () => {
     it('ignores currency option', () => {
       expect(formatAmount(100, { currency: 'USD', variant: 'raw' })).toBe('100')
     })
-  })
-})
-
-// ─── getPrevMonth ─────────────────────────────────────────────
-describe('getPrevMonth', () => {
-  it('decrements month', () => {
-    expect(getPrevMonth('2026-03')).toBe('2026-02')
-    expect(getPrevMonth('2026-12')).toBe('2026-11')
-  })
-
-  it('wraps January back to previous year December', () => {
-    expect(getPrevMonth('2026-01')).toBe('2025-12')
-    expect(getPrevMonth('2000-01')).toBe('1999-12')
-  })
-
-  it('zero-pads single-digit months', () => {
-    expect(getPrevMonth('2026-10')).toBe('2026-09')
   })
 })
 

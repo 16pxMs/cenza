@@ -47,11 +47,11 @@ export async function GET(request: NextRequest) {
         const { error: insertError } = await (supabase as any)
           .from('user_profiles')
           .insert({
-            id: user.id,
-            name: safeName,
-            month_start: 'first',
-            custom_day: null,
-            goals: [],
+            id:                  user.id,
+            name:                safeName,
+            pay_schedule_type:   'monthly',
+            pay_schedule_days:   [1],
+            goals:               [],
             onboarding_complete: false,
           })
 

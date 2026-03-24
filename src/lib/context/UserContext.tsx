@@ -3,23 +3,31 @@ import { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import { calculateTotalIncome } from '@/lib/math/finance'
+import { profileToPaySchedule } from '@/lib/cycles'
+import type { PaySchedule } from '@/types/database'
 
 interface Profile {
-  id:       string
-  currency: string
-  pay_day:  number | null
-  [key: string]: any
+  id:                  string
+  currency:            string
+  pay_schedule_type:   'monthly' | 'twice_monthly' | null
+  pay_schedule_days:   number[] | null
+  [key: string]:       any
 }
 
 interface UserContextValue {
-  user:    User | null
-  profile: Profile | null
-  loading: boolean
+  user:          User | null
+  profile:       Profile | null
+  paySchedule:   PaySchedule   // derived, never null — defaults to monthly/[1]
+  loading:       boolean
   /** Total income derived from profile income data. 0 until income is set. */
   profileIncome: number
 }
 
-const UserContext = createContext<UserContextValue>({ user: null, profile: null, loading: true, profileIncome: 0 })
+const UserContext = createContext<UserContextValue>({
+  user: null, profile: null,
+  paySchedule: { type: 'monthly', days: [1] },
+  loading: true, profileIncome: 0,
+})
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
@@ -49,8 +57,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     [profile]
   )
 
+  const paySchedule = useMemo(
+    () => profileToPaySchedule(profile as any ?? {}),
+    [profile]
+  )
+
   return (
-    <UserContext.Provider value={{ user, profile, loading, profileIncome }}>
+    <UserContext.Provider value={{ user, profile, loading, profileIncome, paySchedule }}>
       {children}
     </UserContext.Provider>
   )
