@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
+import { getCurrentCycleId, getPrevCycleId } from '@/lib/supabase/cycles-db'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -74,15 +75,13 @@ export default function PlanPage() {
   const [savingFixed,        setSavingFixed]        = useState(false)
   const [savingBudget,       setSavingBudget]       = useState(false)
 
-  const prevMonth = (() => {
-    const d = new Date()
-    d.setDate(1)
-    d.setMonth(d.getMonth() - 1)
-    return d.toISOString().slice(0, 7)
-  })()
-
   const load = useCallback(async () => {
     if (!user) return
+
+    const [cycleId, prevCycleId] = await Promise.all([
+      getCurrentCycleId(supabase as any, user.id, ctxProfile as any),
+      getPrevCycleId(supabase as any, user.id, ctxProfile as any),
+    ])
 
     const [
       { data: income },
@@ -90,15 +89,16 @@ export default function PlanPage() {
       { data: budget },
       { data: txns },
     ] = await Promise.all([
-      (supabase.from('income_entries') as any).select('*').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
-      (supabase.from('fixed_expenses') as any).select('total_monthly, entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
-      (supabase.from('spending_budgets') as any).select('total_budget, categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
-      (supabase.from('transactions') as any)
-        .select('category_key, amount')
-        .eq('user_id', user.id)
-        .eq('category_type', 'variable')
-        .gte('date', `${prevMonth}-01`)
-        .lte('date', `${prevMonth}-31`),
+      (supabase.from('income_entries') as any).select('*').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
+      (supabase.from('fixed_expenses') as any).select('total_monthly, entries').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
+      (supabase.from('spending_budgets') as any).select('total_budget, categories').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
+      prevCycleId
+        ? (supabase.from('transactions') as any)
+            .select('category_key, amount')
+            .eq('user_id', user.id)
+            .eq('cycle_id', prevCycleId)
+            .eq('category_type', 'variable')
+        : Promise.resolve({ data: [] }),
     ])
 
     if (income)  setIncomeData(income)
@@ -114,19 +114,21 @@ export default function PlanPage() {
     }
 
     setLoading(false)
-  }, [supabase, currentMonth, prevMonth, user])
+  }, [supabase, currentMonth, user, ctxProfile])
 
   useEffect(() => { if (user) load() }, [load, user])
 
   const saveIncome = async (data: { income: number; extraIncome: any[]; total: number }) => {
     if (!user) return
+    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
       month:        currentMonth,
+      cycle_id:     cycleId,
       salary:       data.income,
       extra_income: data.extraIncome,
       total:        data.total,
-    }, { onConflict: 'user_id,month' })
+    }, { onConflict: 'user_id,cycle_id' })
     toast('Income updated')
     setIncomeSheetOpen(false)
     await load()
@@ -135,13 +137,15 @@ export default function PlanPage() {
   const saveFixedExpenses = async (entries: FixedEntry[]) => {
     if (!user) return
     setSavingFixed(true)
+    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
     const totalMonthly = entries.reduce((s, e) => s + e.monthly, 0)
     await (supabase.from('fixed_expenses') as any).upsert({
       user_id:       user.id,
       month:         currentMonth,
+      cycle_id:      cycleId,
       total_monthly: totalMonthly,
       entries,
-    }, { onConflict: 'user_id,month' })
+    }, { onConflict: 'user_id,cycle_id' })
     toast('Fixed expenses updated')
     setSavingFixed(false)
     setFixedEditOpen(false)
@@ -151,13 +155,15 @@ export default function PlanPage() {
   const saveSpendingBudget = async (categories: BudgetCategory[]) => {
     if (!user) return
     setSavingBudget(true)
+    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
     const totalBudget = categories.reduce((s, c) => s + c.budget, 0)
     await (supabase.from('spending_budgets') as any).upsert({
       user_id:      user.id,
       month:        currentMonth,
+      cycle_id:     cycleId,
       total_budget: totalBudget,
       categories,
-    }, { onConflict: 'user_id,month' })
+    }, { onConflict: 'user_id,cycle_id' })
     toast('Spending budget updated')
     setSavingBudget(false)
     setBudgetEditOpen(false)

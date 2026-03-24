@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 // ─── Type system ──────────────────────────────────────────────
 // 'goal' included so URL param cast is safe — goal items navigate here from the log hub.
@@ -149,11 +150,14 @@ export function NewExpenseClient() {
         if (deleteError) throw new Error('Failed to delete prior entry')
       }
 
+      const cycleId = await getCurrentCycleId(supabase as any, user.id, profile as any)
+
       // 1. Write the transaction
       await (supabase.from('transactions') as any).insert({
         user_id:        user.id,
         date:           new Date().toISOString().slice(0, 10),
         month:          currentMonth,
+        cycle_id:       cycleId,
         category_type:  resolvedType,
         category_key:   resolvedKey,
         category_label: resolvedLabel,
@@ -197,7 +201,7 @@ export function NewExpenseClient() {
     } finally {
       setSaving(false)
     }
-  }, [user, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router, mode, priorEntry])
+  }, [user, profile, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router, mode, priorEntry])
 
   return (
     <div style={{
