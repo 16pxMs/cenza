@@ -125,14 +125,19 @@ function generateTwiceMonthlyCycles(
     const endA   = new Date(year, month, cd2 - 1)
 
     if (startA > toDate) break
-    cycles.push({ startDate: startA, endDate: endA })
+    // Skip inverted cycle (can happen if d1 and d2 clamp to same day)
+    if (endA >= startA && endA >= fromDate) {
+      cycles.push({ startDate: startA, endDate: endA })
+    }
 
     // Cycle B: d2 → end of month
     const startB = new Date(year, month, cd2)
     const endB   = new Date(year, month, lastDay)
 
     if (startB > toDate) break
-    cycles.push({ startDate: startB, endDate: endB })
+    if (endB >= fromDate) {
+      cycles.push({ startDate: startB, endDate: endB })
+    }
 
     // Advance to next month
     if (month === 11) { year++; month = 0 }

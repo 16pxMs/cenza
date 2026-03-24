@@ -6,6 +6,8 @@ import {
   getCurrentCycle,
   formatCycleLabel,
   formatCycleMonthLabel,
+  profileToPaySchedule,
+  toLocalDateStr,
 } from './cycles'
 import type { PaySchedule } from './cycles'
 
@@ -214,5 +216,56 @@ describe('formatCycleMonthLabel', () => {
       endDate:   new Date(2026, 0, 13),  // Jan 2026
     })
     expect(label).toBe('Dec–Jan 2026')
+  })
+})
+
+// ─── profileToPaySchedule ─────────────────────────────────────
+describe('profileToPaySchedule', () => {
+  it('converts monthly profile fields to PaySchedule', () => {
+    const schedule = profileToPaySchedule({
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [14],
+    })
+    expect(schedule).toEqual({ type: 'monthly', days: [14] })
+  })
+
+  it('falls back to monthly/1st when fields are null', () => {
+    const schedule = profileToPaySchedule({
+      pay_schedule_type: null,
+      pay_schedule_days: null,
+    })
+    expect(schedule).toEqual({ type: 'monthly', days: [1] })
+  })
+
+  it('sorts days ascending', () => {
+    const schedule = profileToPaySchedule({
+      pay_schedule_type: 'twice_monthly',
+      pay_schedule_days: [16, 1],
+    })
+    expect(schedule.days).toEqual([1, 16])
+  })
+})
+
+// ─── toLocalDateStr ───────────────────────────────────────────
+describe('toLocalDateStr', () => {
+  it('formats a date as YYYY-MM-DD', () => {
+    expect(toLocalDateStr(new Date(2026, 2, 14))).toBe('2026-03-14')  // Mar 14
+  })
+
+  it('zero-pads single-digit months and days', () => {
+    expect(toLocalDateStr(new Date(2026, 0, 5))).toBe('2026-01-05')   // Jan 5
+    expect(toLocalDateStr(new Date(2026, 8, 9))).toBe('2026-09-09')   // Sep 9
+  })
+})
+
+// ─── getCurrentCycle ─────────────────────────────────────────
+describe('getCurrentCycle', () => {
+  it('returns a cycle whose range contains today', () => {
+    const schedule: PaySchedule = { type: 'monthly', days: [14] }
+    const cycle = getCurrentCycle(schedule)
+    const today = new Date()
+    const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    expect(cycle.startDate <= localToday).toBe(true)
+    expect(cycle.endDate   >= localToday).toBe(true)
   })
 })
