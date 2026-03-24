@@ -65,6 +65,18 @@ export default function FirstLogPage() {
   const [isSomethingElse, setIsSomethingElse] = useState(false)
   const [isSubscription,  setIsSubscription]  = useState(false)
 
+  const [skipCount, setSkipCount] = useState(0)
+
+  useEffect(() => {
+    setSkipCount(parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10))
+  }, [])
+
+  const dismiss = () => {
+    const current = parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10)
+    localStorage.setItem('cenza_skip_count', String(current + 1))
+    router.replace('/app')
+  }
+
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   useEffect(() => {
@@ -239,7 +251,7 @@ export default function FirstLogPage() {
 
       {/* Skip — opens value interstitial, not an immediate exit */}
       <button
-        onClick={() => setStep('skip')}
+        onClick={() => skipCount >= 1 ? dismiss() : setStep('skip')}
         style={{
           background: 'none', border: 'none', cursor: 'pointer',
           padding: '24px 0 0',
@@ -415,12 +427,6 @@ export default function FirstLogPage() {
 
   // ── Step: skip interstitial ───────────────────────────────
   if (step === 'skip') {
-    const dismiss = () => {
-      const current = parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10)
-      localStorage.setItem('cenza_skip_count', String(current + 1))
-      router.replace('/app')
-    }
-
     return (
       <div style={{
         minHeight: '100vh', background: 'var(--page-bg)',
