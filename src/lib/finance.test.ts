@@ -8,6 +8,7 @@ import {
   CONFIDENCE_COLOR,
   getBudgetPace,
 } from './finance'
+import { formatAmount } from './formatting/amount'
 
 // ─── fmt ──────────────────────────────────────────────────────
 describe('fmt', () => {
@@ -28,7 +29,7 @@ describe('fmt', () => {
   })
 
   it('abbreviates millions', () => {
-    expect(fmt(1_000_000, 'KES')).toBe('KES 1.0M')
+    expect(fmt(1_000_000, 'KES')).toBe('KES 1M')
     expect(fmt(2_500_000, 'KES')).toBe('KES 2.5M')
   })
 
@@ -38,8 +39,92 @@ describe('fmt', () => {
 
   it('handles negative values (refunds)', () => {
     expect(fmt(-500, 'KES')).toBe('-KES 500')
-    expect(fmt(-1500, 'KES')).toBe('-KES 2K')
-    expect(fmt(-2_000_000, 'KES')).toBe('-KES 2.0M')
+    expect(fmt(-1500, 'KES')).toBe('-KES 1.5K')
+    expect(fmt(-2_000_000, 'KES')).toBe('-KES 2M')
+  })
+})
+
+// ─── formatAmount ─────────────────────────────────────────────
+describe('formatAmount', () => {
+  describe('full variant (default)', () => {
+    it('formats zero', () => {
+      expect(formatAmount(0)).toBe('KES 0')
+      expect(formatAmount(0, { currency: 'USD' })).toBe('USD 0')
+    })
+
+    it('formats values under 1000 without abbreviation', () => {
+      expect(formatAmount(500)).toBe('KES 500')
+      expect(formatAmount(999)).toBe('KES 999')
+    })
+
+    it('uses locale thousands separators, no abbreviation', () => {
+      expect(formatAmount(1_000)).toBe('KES 1,000')
+      expect(formatAmount(24_530)).toBe('KES 24,530')
+      expect(formatAmount(1_000_000)).toBe('KES 1,000,000')
+    })
+
+    it('handles negative values with sign before currency', () => {
+      expect(formatAmount(-500)).toBe('-KES 500')
+      expect(formatAmount(-1_500)).toBe('-KES 1,500')
+      expect(formatAmount(-1_000_000)).toBe('-KES 1,000,000')
+    })
+
+    it('respects custom currency', () => {
+      expect(formatAmount(5_000, { currency: 'USD' })).toBe('USD 5,000')
+    })
+  })
+
+  describe('compact variant', () => {
+    it('formats zero', () => {
+      expect(formatAmount(0, { variant: 'compact' })).toBe('KES 0')
+    })
+
+    it('formats values under 1000 as-is', () => {
+      expect(formatAmount(500, { variant: 'compact' })).toBe('KES 500')
+      expect(formatAmount(999, { variant: 'compact' })).toBe('KES 999')
+    })
+
+    it('abbreviates thousands with 1 decimal, strips .0', () => {
+      expect(formatAmount(1_000, { variant: 'compact' })).toBe('KES 1K')
+      expect(formatAmount(1_500, { variant: 'compact' })).toBe('KES 1.5K')
+      expect(formatAmount(45_000, { variant: 'compact' })).toBe('KES 45K')
+    })
+
+    it('never aggressively rounds (2530 → 2.5K, not 3K)', () => {
+      expect(formatAmount(2_530, { variant: 'compact' })).toBe('KES 2.5K')
+    })
+
+    it('abbreviates millions with 1 decimal, strips .0', () => {
+      expect(formatAmount(1_000_000, { variant: 'compact' })).toBe('KES 1M')
+      expect(formatAmount(2_500_000, { variant: 'compact' })).toBe('KES 2.5M')
+    })
+
+    it('abbreviates billions', () => {
+      expect(formatAmount(1_000_000_000, { variant: 'compact' })).toBe('KES 1B')
+      expect(formatAmount(1_500_000_000, { variant: 'compact' })).toBe('KES 1.5B')
+    })
+
+    it('handles negative values with sign before currency', () => {
+      expect(formatAmount(-500, { variant: 'compact' })).toBe('-KES 500')
+      expect(formatAmount(-1_500, { variant: 'compact' })).toBe('-KES 1.5K')
+      expect(formatAmount(-2_000_000, { variant: 'compact' })).toBe('-KES 2M')
+    })
+
+    it('respects custom currency', () => {
+      expect(formatAmount(24_530, { currency: 'USD', variant: 'compact' })).toBe('USD 24.5K')
+    })
+  })
+
+  describe('raw variant', () => {
+    it('returns plain number string with no currency or formatting', () => {
+      expect(formatAmount(0, { variant: 'raw' })).toBe('0')
+      expect(formatAmount(24_530, { variant: 'raw' })).toBe('24530')
+      expect(formatAmount(-1_500, { variant: 'raw' })).toBe('-1500')
+    })
+
+    it('ignores currency option', () => {
+      expect(formatAmount(100, { currency: 'USD', variant: 'raw' })).toBe('100')
+    })
   })
 })
 
