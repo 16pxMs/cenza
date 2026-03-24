@@ -119,17 +119,21 @@ export function OverviewLocked({ name, currency = 'KES', onStart }: Props) {
         <button
           onClick={() => onStart()}
           style={{
-            background: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            height: 36,
+            padding: '0 16px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--brand)',
             border: 'none',
-            padding: 0,
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: 600,
             color: 'var(--brand-dark)',
             cursor: 'pointer',
             letterSpacing: '-0.1px',
           }}
         >
-          Log an expense →
+          Log an expense
         </button>
       </div>
 
