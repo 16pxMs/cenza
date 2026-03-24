@@ -18,8 +18,10 @@ export default function OnboardingNamePage() {
   const [saving,  setSaving]  = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
       const n =
         (typeof user.user_metadata?.full_name === 'string'
           ? user.user_metadata.full_name.split(' ')[0]
@@ -27,7 +29,17 @@ export default function OnboardingNamePage() {
         user.email?.split('@')[0] ||
         ''
       setName(n)
-    })
+
+      // Resume: if currency is already set, skip to PIN setup step
+      const { data: profile } = await (supabase.from('user_profiles') as any)
+        .select('currency')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.currency) {
+        router.replace('/onboarding/pin')
+      }
+    })()
   }, [])
 
   const handleContinue = async () => {
