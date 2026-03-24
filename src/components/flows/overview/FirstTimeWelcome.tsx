@@ -1,14 +1,10 @@
 'use client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FirstTimeWelcome — shown until the user logs their first expense.
-//
-// Progressive nudge: headline + body copy escalates based on how many times
-// the user has skipped. Skip count is tracked in localStorage under
-// 'cenza_skip_count' and is written by the /log/first skip interstitial.
+// FirstTimeWelcome — shown on first visit before the user logs anything.
+// Shown only when cenza_skip_count === 0. After the first skip, OverviewLocked
+// takes over — so there is only one nudge variant.
 // ─────────────────────────────────────────────────────────────────────────────
-
-import { useState, useEffect } from 'react'
 
 interface Props {
   name:    string
@@ -22,34 +18,7 @@ function greeting(name: string) {
   return `Evening, ${name}.`
 }
 
-const NUDGES = [
-  {
-    headline: <>Let's see where your<br />money goes.</>,
-    body: "Start by logging something you spent today. We'll build your overview from there.",
-    cta: 'Log my first expense',
-  },
-  {
-    headline: <>Your money has a story.<br />Start telling it.</>,
-    body: "Every expense you log builds a clearer picture of where you stand financially.",
-    cta: 'Log an expense',
-  },
-  {
-    headline: <>Still flying blind?<br />One tap changes that.</>,
-    body: "Log a single expense — coffee, transport, anything — and your overview comes to life.",
-    cta: 'Log something now',
-  },
-]
-
 export function FirstTimeWelcome({ name, onStart }: Props) {
-  const [skipCount, setSkipCount] = useState(0)
-
-  useEffect(() => {
-    const stored = parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10)
-    setSkipCount(stored)
-  }, [])
-
-  const nudge = NUDGES[Math.min(skipCount, NUDGES.length - 1)]
-
   return (
     <div style={{
       display: 'flex',
@@ -77,7 +46,7 @@ export function FirstTimeWelcome({ name, onStart }: Props) {
           fontSize: 'var(--text-3xl)',
           color: 'var(--text-1)',
         }}>
-          {nudge.headline}
+          Let's see where your<br />money goes.
         </h1>
 
         <p style={{
@@ -86,7 +55,7 @@ export function FirstTimeWelcome({ name, onStart }: Props) {
           color: 'var(--text-2)',
           lineHeight: 1.65,
         }}>
-          {nudge.body}
+          Start by logging something you spent today. We'll build your overview from there.
         </p>
 
         <button
@@ -107,7 +76,7 @@ export function FirstTimeWelcome({ name, onStart }: Props) {
           onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
           onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
         >
-          {nudge.cta}
+          Log my first expense
         </button>
 
       </div>
