@@ -13,6 +13,7 @@ import { IconBack } from '@/components/ui/Icons'
 import { GOAL_META, GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 const T = {
   pageBg:       '#F8F9FA',
@@ -54,6 +55,7 @@ function NewGoalInner() {
   const fromParam    = searchParams.get('from')
 
   const [loading, setLoading]               = useState(true)
+  const [cycleId, setCycleId]               = useState<string>('')
   const [currency, setCurrency]             = useState('')
   const [totalIncome, setTotalIncome]       = useState(0)
   const [fixedMonthly, setFixedMonthly]     = useState(0)
@@ -73,11 +75,12 @@ function NewGoalInner() {
   const [selectedMonths, setSelectedMonths] = useState(12)
   const [saving, setSaving]                 = useState(false)
 
-  const currentMonth = new Date().toISOString().slice(0, 7)
-
   useEffect(() => {
     if (!user) return
     ;(async () => {
+      const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
+      setCycleId(resolvedCycleId)
+
       const fetchSaved = typeParam
         ? (supabase.from('transactions') as any)
             .select('amount')
@@ -87,8 +90,8 @@ function NewGoalInner() {
         : Promise.resolve({ data: [] })
 
       const [incomeRes, expensesRes, savedRes] = await Promise.all([
-        (supabase.from('income_entries') as any).select('total').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
-        (supabase.from('fixed_expenses') as any).select('total_monthly').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        (supabase.from('income_entries') as any).select('total').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
+        (supabase.from('fixed_expenses') as any).select('total_monthly').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
         fetchSaved,
       ])
 
@@ -178,7 +181,7 @@ function NewGoalInner() {
       ops.push(
         (supabase.from('transactions') as any).delete()
           .eq('user_id', userId)
-          .eq('month', currentMonth)
+          .eq('cycle_id', cycleId)
           .eq('category_key', selectedGoal)
       )
     }

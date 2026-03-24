@@ -24,6 +24,7 @@ import { PrimaryBtn } from '@/components/ui/Button/Button'
 import { GOAL_META, GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 const T = {
   pageBg:       '#F8F9FA',
@@ -305,6 +306,7 @@ export default function GoalsPage() {
   const { toast } = useToast()
 
   const [loading, setLoading]                 = useState(true)
+  const [cycleId, setCycleId]                 = useState<string>('')
   const [currency, setCurrency]               = useState('')
   const [goals, setGoals]                     = useState<GoalId[]>([])
   const [targets, setTargets]                 = useState<Record<string, number | null>>({})
@@ -330,6 +332,9 @@ export default function GoalsPage() {
   useEffect(() => {
     if (!user || !ctxProfile) return
     ;(async () => {
+      const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
+      setCycleId(resolvedCycleId)
+
       const [targetsRes, txnsRes] = await Promise.all([
         (supabase.from('goal_targets') as any).select('goal_id, amount, added_at, destination').eq('user_id', user.id),
         (supabase.from('transactions') as any)
@@ -422,36 +427,34 @@ export default function GoalsPage() {
   // but clear this month's transactions so re-adding starts fresh
   const archiveGoal = useCallback(async () => {
     if (!deleteGoal || !user) return
-    const currentMonth = new Date().toISOString().slice(0, 7)
     const newGoals = goals.filter(g => g !== deleteGoal)
     await Promise.all([
       (supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', user.id),
       (supabase.from('transactions') as any).delete()
-        .eq('user_id', user.id).eq('month', currentMonth).eq('category_key', deleteGoal),
+        .eq('user_id', user.id).eq('cycle_id', cycleId).eq('category_key', deleteGoal),
     ])
     toast('Goal archived')
     setGoals(newGoals)
     setSavedByGoal(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setDeleteGoal(null)
-  }, [deleteGoal, goals, supabase, user])
+  }, [deleteGoal, goals, supabase, user, cycleId])
 
-  // Hard delete: remove from goals + wipe goal_targets + clear this month's transactions
+  // Hard delete: remove from goals + wipe goal_targets + clear this cycle's transactions
   const hardDeleteGoal = useCallback(async () => {
     if (!deleteGoal || !user) return
-    const currentMonth = new Date().toISOString().slice(0, 7)
     const newGoals = goals.filter(g => g !== deleteGoal)
     await Promise.all([
       (supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', user.id),
       (supabase.from('goal_targets') as any).delete().eq('user_id', user.id).eq('goal_id', deleteGoal),
       (supabase.from('transactions') as any).delete()
-        .eq('user_id', user.id).eq('month', currentMonth).eq('category_key', deleteGoal),
+        .eq('user_id', user.id).eq('cycle_id', cycleId).eq('category_key', deleteGoal),
     ])
     toast('Goal removed')
     setGoals(newGoals)
     setTargets(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setSavedByGoal(prev => { const n = { ...prev }; delete n[deleteGoal]; return n })
     setDeleteGoal(null)
-  }, [deleteGoal, goals, supabase, user])
+  }, [deleteGoal, goals, supabase, user, cycleId])
 
   // ── Derived data ──────────────────────────────────────────────
   const goalDataList: GoalData[] = goals.map(id => ({

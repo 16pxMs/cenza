@@ -29,22 +29,18 @@ interface Props {
   onClose:      () => void
   expenses:     CommittedExpense[]
   currency:     string
-  currentMonth: string
+  cycleLabel:   string
   onConfirm:    (expense: CommittedExpense, amount: number) => Promise<void>
   onSkip:       (expense: CommittedExpense) => Promise<void>
 }
 
 export function CommittedExpenseConfirmSheet({
-  open, onClose, expenses, currency, currentMonth, onConfirm, onSkip,
+  open, onClose, expenses, currency, cycleLabel, onConfirm, onSkip,
 }: Props) {
   const [editing,    setEditing]    = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
   const [confirming, setConfirming] = useState<string | null>(null)
   const [confirmed,  setConfirmed]  = useState<Set<string>>(new Set())
-
-  const monthLabel = new Date(`${currentMonth}-01`).toLocaleString('default', {
-    month: 'long', year: 'numeric',
-  })
 
   const pending = expenses.filter(e => !confirmed.has(e.id))
   const allDone = pending.length === 0
@@ -81,7 +77,7 @@ export function CommittedExpenseConfirmSheet({
         color: 'var(--text-2)',
         lineHeight: 1.6,
       }}>
-        Confirm what you paid for {monthLabel}. We'll log each one as an expense.
+        Confirm what you paid for {cycleLabel}. We'll log each one as an expense.
       </p>
 
       {allDone ? (

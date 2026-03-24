@@ -19,6 +19,7 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { IconBack, IconChevronRight } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 function titleCase(s: string) {
   return s.replace(/\b\w/g, c => c.toUpperCase())
@@ -112,10 +113,10 @@ export default function HistoryPage() {
   const [totalSpent, setTotalSpent]   = useState(0)
   const [totalIncome, setTotalIncome] = useState(0)
 
-  const currentMonth = new Date().toISOString().slice(0, 7)
-
   const loadData = useCallback(async () => {
     if (!user) return
+
+    const cycleId = await getCurrentCycleId(supabase as any, user.id, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
 
     const [
       { data: txnRows },
@@ -126,16 +127,16 @@ export default function HistoryPage() {
     ] = await Promise.all([
       (supabase.from('transactions') as any)
         .select('id, date, category_type, category_key, category_label, amount, note')
-        .eq('user_id', user.id).eq('month', currentMonth)
+        .eq('user_id', user.id).eq('cycle_id', cycleId)
         .order('date', { ascending: false }).order('created_at', { ascending: false }),
       (supabase.from('fixed_expenses') as any)
-        .select('total_monthly, entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('total_monthly, entries').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
       (supabase.from('spending_budgets') as any)
-        .select('total_budget, categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('total_budget, categories').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
       (supabase.from('goal_targets') as any)
         .select('goal_id, amount').eq('user_id', user.id),
       (supabase.from('income_entries') as any)
-        .select('total').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('total').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
     ])
 
     const cur = ctxProfile?.currency ?? 'KES'
@@ -252,7 +253,7 @@ export default function HistoryPage() {
     setTotalIncome(Number(income?.total ?? 0))
     setTotalBudget((expenses?.total_monthly ?? 0) + (budgets?.total_budget ?? 0))
     setLoading(false)
-  }, [supabase, currentMonth, user, ctxProfile])
+  }, [supabase, user, ctxProfile])
 
   useEffect(() => { if (user) loadData() }, [loadData, user])
 

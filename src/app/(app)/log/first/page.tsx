@@ -13,6 +13,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { IconBack } from '@/components/ui/Icons'
@@ -147,12 +148,15 @@ export default function FirstLogPage() {
   const handleSave = async () => {
     if (!canSave) return
     setSaving(true)
-    if (!user) { setSaving(false); return }
+    if (!user || !ctxProfile) { setSaving(false); return }
+
+    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
 
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
       month:          currentMonth,
+      cycle_id:       cycleId,
       category_type:  resolvedGroupType,
       category_key:   finalKey,
       category_label: finalLabel,
@@ -174,7 +178,7 @@ export default function FirstLogPage() {
     // If confirmed monthly fixed, write to fixed_expenses
     if (isMonthlyFixed) {
       const { data: existing } = await (supabase.from('fixed_expenses') as any)
-        .select('total_monthly, entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle()
+        .select('total_monthly, entries').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle()
 
       const existingEntries: any[] = existing?.entries ?? []
       if (!existingEntries.some((e: any) => e.key === finalKey)) {
@@ -182,9 +186,10 @@ export default function FirstLogPage() {
         await (supabase.from('fixed_expenses') as any).upsert({
           user_id:       user.id,
           month:         currentMonth,
+          cycle_id:      cycleId,
           total_monthly: newEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0),
           entries:       newEntries,
-        }, { onConflict: 'user_id,month' })
+        }, { onConflict: 'user_id,cycle_id' })
       }
     }
 

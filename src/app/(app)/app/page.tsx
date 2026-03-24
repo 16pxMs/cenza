@@ -23,10 +23,11 @@ import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
 import { CommittedExpenseConfirmSheet, type CommittedExpense } from '@/components/flows/log/CommittedExpenseConfirmSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { getPrevMonth } from '@/lib/finance'
+import { getCurrentCycleId, getPrevCycleId } from '@/lib/supabase/cycles-db'
+import { profileToPaySchedule, getCycleByDate, formatCycleLabel } from '@/lib/cycles'
 
 const MOCK_RECAP: RecapData = {
-  prevMonth:   new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().slice(0, 7),
+  prevCycleLabel: 'Last cycle',
   incomeTotal: 200000,
   totalSpent:  87400,
   fixedTotal:  25000,
@@ -67,24 +68,26 @@ export default function AppPage() {
   const [committedCheckOpen,  setCommittedCheckOpen]  = useState(false)
   const [pendingCommitted,    setPendingCommitted]    = useState<CommittedExpense[]>([])
 
-  const currentMonth = new Date().toISOString().slice(0, 7)
-  const CARRY_DISMISSED_KEY = `cenza:carry-dismissed:${currentMonth}`
+  const [cycleId,       setCycleId]       = useState<string | null>(null)
+  const [prevCycleId,   setPrevCycleId]   = useState<string | null>(null)
+  const [cycleLabel,    setCycleLabel]    = useState<string>('')
+  const [prevCycleLabel, setPrevCycleLabel] = useState<string>('')
 
   useEffect(() => {
     if (ctxProfile) setProfile(ctxProfile)
   }, [ctxProfile])
 
   const refreshSpent = useCallback(async () => {
-    if (!user) return
+    if (!user || !cycleId) return
     const { data: txns } = await (supabase.from('transactions') as any)
       .select('amount')
       .eq('user_id', user.id)
-      .eq('month', new Date().toISOString().slice(0, 7))
+      .eq('cycle_id', cycleId)
       .neq('category_type', 'goal')
     if (txns) {
       setTotalSpent(txns.reduce((s: number, t: any) => s + Number(t.amount), 0))
     }
-  }, [supabase, user])
+  }, [supabase, user, cycleId])
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -95,11 +98,12 @@ export default function AppPage() {
   }, [refreshSpent])
 
   const handleContribGoal = useCallback(async (goalId: string, goalLabel: string, amount: number, note: string) => {
-    if (!user) return
+    if (!user || !cycleId) return
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          currentMonth,
+      month:          new Date().toISOString().slice(0, 7),
+      cycle_id:       cycleId,
       category_type:  'goal',
       category_key:   goalId,
       category_label: goalLabel,
@@ -107,16 +111,17 @@ export default function AppPage() {
       note:           note.trim() || null,
     })
     setGoalSaved(prev => ({ ...prev, [goalId]: (prev[goalId] ?? 0) + amount }))
-  }, [supabase, currentMonth, user])
+  }, [supabase, cycleId, user])
 
   const handleCommittedConfirm = useCallback(async (expense: CommittedExpense, amount: number) => {
-    if (!user) return
+    if (!user || !cycleId) return
     if (expense.source === 'subscription') {
       await Promise.all([
         (supabase.from('transactions') as any).insert({
           user_id:        user.id,
           date:           new Date().toISOString().slice(0, 10),
-          month:          currentMonth,
+          month:          new Date().toISOString().slice(0, 7),
+          cycle_id:       cycleId,
           category_type:  'subscription',
           category_key:   expense.id,
           category_label: expense.label,
@@ -124,56 +129,49 @@ export default function AppPage() {
           note:           null,
         }),
         (supabase.from('subscriptions') as any)
-          .update({ last_confirmed_month: currentMonth })
+          .update({ last_confirmed_cycle_id: cycleId })
           .eq('id', expense.id),
       ])
     }
-  }, [supabase, currentMonth, user])
+  }, [supabase, cycleId, user])
 
   const handleCommittedSkip = useCallback(async (expense: CommittedExpense) => {
-    if (!user) return
+    if (!user || !cycleId) return
     if (expense.source === 'subscription') {
       await (supabase.from('subscriptions') as any)
-        .update({ last_confirmed_month: currentMonth })
+        .update({ last_confirmed_cycle_id: cycleId })
         .eq('id', expense.id)
     }
-  }, [supabase, currentMonth, user])
+  }, [supabase, cycleId, user])
 
-  const handleIncomeConfirm = useCallback(async (received: number, day: number | null) => {
-    if (!user) return
-    const ops: Promise<unknown>[] = [
-      (supabase.from('income_entries') as any).update({
-        received,
-        received_confirmed_at: new Date().toISOString(),
-      }).eq('user_id', user.id).eq('month', currentMonth),
-    ]
-    if (day !== null && !profile?.pay_day) {
-      ops.push(
-        (supabase.from('user_profiles') as any).update({ pay_day: day }).eq('id', user.id)
-      )
-    }
-    await Promise.all(ops)
+  const handleIncomeConfirm = useCallback(async (received: number) => {
+    if (!user || !cycleId) return
+    await (supabase.from('income_entries') as any).update({
+      received,
+      received_confirmed_at: new Date().toISOString(),
+    }).eq('user_id', user.id).eq('cycle_id', cycleId)
     setIncomeCheckOpen(false)
     setIncomeData((prev: any) => prev ? { ...prev, received, received_confirmed_at: new Date().toISOString() } : prev)
     if (pendingLogNavigation) {
       setPendingLogNavigation(false)
       router.push('/log?open=true')
     }
-  }, [supabase, currentMonth, profile, pendingLogNavigation, router])
+  }, [supabase, cycleId, pendingLogNavigation, router])
 
   const saveIncome = useCallback(async (data: { income: number; extraIncome: any[]; total: number; incomeType?: string }) => {
     if (!data.income || data.income <= 0) {
       throw new Error('Income must be greater than zero')
     }
-    if (!user) return
+    if (!user || !cycleId) return
     const ops: Promise<any>[] = [
       (supabase.from('income_entries') as any).upsert({
         user_id:      user.id,
-        month:        currentMonth,
+        month:        new Date().toISOString().slice(0, 7),
+        cycle_id:     cycleId,
         salary:       data.income,
         extra_income: data.extraIncome,
         total:        data.total,
-      }, { onConflict: 'user_id,month' }),
+      }, { onConflict: 'user_id,cycle_id' }),
     ]
     if (data.incomeType) {
       ops.push(
@@ -187,9 +185,9 @@ export default function AppPage() {
       setIncomeData(data)
       if (data.incomeType) setProfile((p: any) => p ? { ...p, income_type: data.incomeType } : p)
     }
-  }, [supabase, currentMonth, user])
+  }, [supabase, cycleId, user])
 
-  const loadOverviewData = useCallback(async (user: any) => {
+  const loadOverviewData = useCallback(async (user: any, resolvedCycleId: string) => {
     const [
       { data: income },
       { data: targets },
@@ -200,17 +198,17 @@ export default function AppPage() {
       { data: profileRow },
     ] = await Promise.all([
       (supabase.from('income_entries') as any)
-        .select('*').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('*').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
       (supabase.from('goal_targets') as any)
         .select('goal_id, amount, destination').eq('user_id', user.id),
       (supabase.from('transactions') as any)
         .select('category_key, amount').eq('user_id', user.id).eq('category_type', 'goal'),
       (supabase.from('transactions') as any)
-        .select('amount, category_key, category_type').eq('user_id', user.id).eq('month', currentMonth).neq('category_type', 'goal'),
+        .select('amount, category_key, category_type').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).neq('category_type', 'goal'),
       (supabase.from('fixed_expenses') as any)
-        .select('total_monthly').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('total_monthly').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
       (supabase.from('spending_budgets') as any)
-        .select('total_budget, categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('total_budget, categories').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
       // Always fetch goals fresh — ctxProfile.goals is cached in UserContext and goes stale
       // after the user adds a goal and navigates back to this page.
       (supabase.from('user_profiles') as any)
@@ -258,15 +256,15 @@ export default function AppPage() {
     if (fixedExp)   setFixedTotal(fixedExp.total_monthly ?? 0)
     if (budgetData) setSpendingBudget(budgetData)
 
-    // Load subscriptions that haven't been confirmed this month
+    // Load subscriptions that haven't been confirmed this cycle
     const { data: subs } = await (supabase.from('subscriptions') as any)
-      .select('id, key, label, amount, last_confirmed_month')
+      .select('id, key, label, amount, last_confirmed_cycle_id')
       .eq('user_id', user.id)
       .eq('needs_check', true)
 
     if (subs && subs.length > 0) {
       const unconfirmed: CommittedExpense[] = subs
-        .filter((s: any) => s.last_confirmed_month !== currentMonth)
+        .filter((s: any) => s.last_confirmed_cycle_id !== resolvedCycleId)
         .map((s: any) => ({
           id:     s.id,
           label:  s.label,
@@ -280,7 +278,7 @@ export default function AppPage() {
     }
 
     setLoading(false)
-  }, [supabase, currentMonth])
+  }, [supabase])
 
   useEffect(() => {
     async function load() {
@@ -288,39 +286,60 @@ export default function AppPage() {
       if (!ctxProfile) return
       if (!ctxProfile.onboarding_complete) { router.push('/onboarding'); return }
 
+      const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
+      setCycleId(resolvedCycleId)
+      const schedule = profileToPaySchedule(ctxProfile as any)
+      const computedCycleLabel = formatCycleLabel(getCycleByDate(new Date(), schedule))
+      setCycleLabel(computedCycleLabel)
+
+      const CARRY_DISMISSED_KEY = `cenza:carry-dismissed:${resolvedCycleId}`
+
       const { data: currentIncome } = await (supabase.from('income_entries') as any)
         .select('salary')
         .eq('user_id', user.id)
-        .eq('month', currentMonth)
+        .eq('cycle_id', resolvedCycleId)
         .maybeSingle()
 
       if (currentIncome) {
-        await loadOverviewData(user)
+        await loadOverviewData(user, resolvedCycleId)
         return
       }
 
       if (typeof window !== 'undefined' && localStorage.getItem(CARRY_DISMISSED_KEY)) {
-        await loadOverviewData(user)
+        await loadOverviewData(user, resolvedCycleId)
         return
       }
 
-      const prevMonth = getPrevMonth(currentMonth)
+      const resolvedPrevCycleId = await getPrevCycleId(supabase as any, user.id, ctxProfile as any)
+      setPrevCycleId(resolvedPrevCycleId)
+      if (resolvedPrevCycleId) {
+        const prevDate = new Date(resolvedPrevCycleId + 'T12:00:00')
+        setPrevCycleLabel(formatCycleLabel(getCycleByDate(prevDate, schedule)))
+      }
 
       const [{ data: prevIncome }, { data: prevExpenses }, { data: prevBudgets }] = await Promise.all([
-        (supabase.from('income_entries') as any)
-          .select('salary, extra_income, total')
-          .eq('user_id', user.id).eq('month', prevMonth).maybeSingle(),
-        (supabase.from('fixed_expenses') as any)
-          .select('total_monthly, entries')
-          .eq('user_id', user.id).eq('month', prevMonth).maybeSingle(),
-        (supabase.from('spending_budgets') as any)
-          .select('total_budget, categories')
-          .eq('user_id', user.id).eq('month', prevMonth).maybeSingle(),
+        resolvedPrevCycleId
+          ? (supabase.from('income_entries') as any)
+              .select('salary, extra_income, total')
+              .eq('user_id', user.id).eq('cycle_id', resolvedPrevCycleId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        resolvedPrevCycleId
+          ? (supabase.from('fixed_expenses') as any)
+              .select('total_monthly, entries')
+              .eq('user_id', user.id).eq('cycle_id', resolvedPrevCycleId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        resolvedPrevCycleId
+          ? (supabase.from('spending_budgets') as any)
+              .select('total_budget, categories')
+              .eq('user_id', user.id).eq('cycle_id', resolvedPrevCycleId).maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
 
       if (prevIncome) {
         const carryData: CarryForwardData = {
-          prevMonth,
+          prevCycleLabel: resolvedPrevCycleId
+            ? formatCycleLabel(getCycleByDate(new Date(resolvedPrevCycleId + 'T12:00:00'), schedule))
+            : '',
           income: {
             salary:       prevIncome.salary,
             extra_income: prevIncome.extra_income ?? [],
@@ -335,9 +354,11 @@ export default function AppPage() {
         }
         setCarryForwardData(carryData)
 
-        const { data: prevTxns } = await (supabase.from('transactions') as any)
-          .select('category_key, category_label, category_type, amount')
-          .eq('user_id', user.id).eq('month', prevMonth).neq('category_type', 'goal')
+        const { data: prevTxns } = resolvedPrevCycleId
+          ? await (supabase.from('transactions') as any)
+              .select('category_key, category_label, category_type, amount')
+              .eq('user_id', user.id).eq('cycle_id', resolvedPrevCycleId).neq('category_type', 'goal')
+          : { data: null }
 
         if (prevTxns && prevTxns.length > 0) {
           const variableSpend: Record<string, number> = {}
@@ -364,7 +385,9 @@ export default function AppPage() {
             }))
 
           setRecapData({
-            prevMonth,
+            prevCycleLabel: resolvedPrevCycleId
+              ? formatCycleLabel(getCycleByDate(new Date(resolvedPrevCycleId + 'T12:00:00'), schedule))
+              : '',
             incomeTotal: Number(prevIncome.total ?? 0),
             totalSpent:  totalSpentPrev,
             fixedTotal:  fixedTotalPrev,
@@ -376,53 +399,58 @@ export default function AppPage() {
         return
       }
 
-      await loadOverviewData(user)
+      await loadOverviewData(user, resolvedCycleId)
     }
     if (user && ctxProfile) load()
   }, [user, ctxProfile, loadOverviewData])
 
   const handleCarryForward = async (selectedEntries: any[], selectedCategories: any[]) => {
-    if (!user || !carryForwardData) return
+    if (!user || !carryForwardData || !cycleId) return
 
     const income = carryForwardData.income
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
-      month:        currentMonth,
+      month:        new Date().toISOString().slice(0, 7),
+      cycle_id:     cycleId,
       salary:       income.salary,
       extra_income: income.extra_income,
       total:        income.total,
-    }, { onConflict: 'user_id,month' })
+    }, { onConflict: 'user_id,cycle_id' })
 
     if (carryForwardData.expenses && selectedEntries.length > 0) {
       const totalMonthly = selectedEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0)
       await (supabase.from('fixed_expenses') as any).upsert({
         user_id:       user.id,
-        month:         currentMonth,
+        month:         new Date().toISOString().slice(0, 7),
+        cycle_id:      cycleId,
         total_monthly: totalMonthly,
         entries:       selectedEntries,
-      }, { onConflict: 'user_id,month' })
+      }, { onConflict: 'user_id,cycle_id' })
     }
 
     if (carryForwardData.budgets && selectedCategories.length > 0) {
       const totalBudget = selectedCategories.reduce((s: number, c: any) => s + (c.budget ?? 0), 0)
       await (supabase.from('spending_budgets') as any).upsert({
         user_id:      user.id,
-        month:        currentMonth,
+        month:        new Date().toISOString().slice(0, 7),
+        cycle_id:     cycleId,
         total_budget: totalBudget,
         categories:   selectedCategories,
-      }, { onConflict: 'user_id,month' })
+      }, { onConflict: 'user_id,cycle_id' })
     }
 
     setCarryForwardData(null)
-    await loadOverviewData(user)
+    await loadOverviewData(user, cycleId)
   }
 
   const handleRecapContinue = () => setRecapData(null)
 
   const handleCarryForwardFresh = async () => {
-    if (typeof window !== 'undefined') localStorage.setItem(CARRY_DISMISSED_KEY, '1')
+    if (typeof window !== 'undefined' && cycleId) {
+      localStorage.setItem(`cenza:carry-dismissed:${cycleId}`, '1')
+    }
     setCarryForwardData(null)
-    if (user) await loadOverviewData(user)
+    if (user && cycleId) await loadOverviewData(user, cycleId)
   }
 
   if (loading) {
@@ -441,7 +469,7 @@ export default function AppPage() {
       <MonthRecapScreen
         data={recapData ?? MOCK_RECAP}
         currency={profile?.currency || 'KES'}
-        currentMonth={currentMonth}
+        currentCycleLabel={cycleLabel}
         isDesktop={isDesktop}
         onContinue={handleRecapContinue}
       />
@@ -467,7 +495,7 @@ export default function AppPage() {
       <CarryForwardScreen
         data={carryForwardData}
         currency={profile?.currency || 'KES'}
-        currentMonth={currentMonth}
+        currentCycleLabel={cycleLabel}
         isDesktop={isDesktop}
         onConfirm={handleCarryForward}
         onFresh={handleCarryForwardFresh}
@@ -537,6 +565,34 @@ export default function AppPage() {
   const tabContent: Record<string, React.ReactNode> = {
     overview: overviewContent,
   }
+
+  // ── Cycle debug panel — visible only when ?debug=cycle is in the URL ─────────
+  const cycleDebugPanel = searchParams.get('debug') === 'cycle' && (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 99999,
+      background: 'rgba(0,0,0,0.88)', color: '#0f0', fontFamily: 'monospace',
+      fontSize: 11, padding: '8px 12px', lineHeight: 1.7,
+      borderTop: '1px solid #333',
+    }}>
+      <strong style={{ color: '#ff0', fontSize: 12 }}>CYCLE DEBUG</strong>
+      <br />
+      cycle_id: <span style={{ color: '#fff' }}>{cycleId ?? 'null'}</span>
+      &nbsp;|&nbsp;
+      label: <span style={{ color: '#fff' }}>{cycleLabel || '—'}</span>
+      <br />
+      prev_cycle_id: <span style={{ color: '#aaa' }}>{prevCycleId ?? 'null'}</span>
+      &nbsp;|&nbsp;
+      prev_label: <span style={{ color: '#aaa' }}>{prevCycleLabel || '—'}</span>
+      <br />
+      income_confirmed: <span style={{ color: incomeData?.received_confirmed_at ? '#0f0' : '#f80' }}>
+        {incomeData?.received_confirmed_at ? 'yes' : 'no'}
+      </span>
+      &nbsp;|&nbsp;
+      declared_total: <span style={{ color: '#fff' }}>{declaredTotal}</span>
+      &nbsp;|&nbsp;
+      total_spent: <span style={{ color: '#fff' }}>{totalSpent}</span>
+    </div>
+  )
 
   const initial = (firstName || '?')[0].toUpperCase()
 
@@ -609,7 +665,6 @@ export default function AppPage() {
           onClose={() => { setIncomeCheckOpen(false); setPendingLogNavigation(false) }}
           declaredTotal={declaredTotal}
           currency={profile?.currency || 'KES'}
-          payDay={profile?.pay_day ?? null}
           onConfirm={handleIncomeConfirm}
         />
         <CommittedExpenseConfirmSheet
@@ -617,10 +672,11 @@ export default function AppPage() {
           onClose={() => setCommittedCheckOpen(false)}
           expenses={pendingCommitted}
           currency={profile?.currency || 'KES'}
-          currentMonth={currentMonth}
+          cycleLabel={cycleLabel}
           onConfirm={handleCommittedConfirm}
           onSkip={handleCommittedSkip}
         />
+        {cycleDebugPanel}
       </div>
     )
   }
@@ -633,6 +689,7 @@ export default function AppPage() {
       {profileSheet}
       <main>{tabContent[tab]}</main>
       {!isFirstTimeUser && <BottomNav />}
+      {cycleDebugPanel}
       <AddIncomeSheet
         open={incomeSheetOpen}
         onClose={() => setIncomeSheetOpen(false)}
@@ -646,7 +703,6 @@ export default function AppPage() {
         onClose={() => { setIncomeCheckOpen(false); setPendingLogNavigation(false) }}
         declaredTotal={declaredTotal}
         currency={profile?.currency || 'KES'}
-        payDay={profile?.pay_day ?? null}
         onConfirm={handleIncomeConfirm}
       />
       <CommittedExpenseConfirmSheet
@@ -654,7 +710,7 @@ export default function AppPage() {
         onClose={() => setCommittedCheckOpen(false)}
         expenses={pendingCommitted}
         currency={profile?.currency || 'KES'}
-        currentMonth={currentMonth}
+        cycleLabel={cycleLabel}
         onConfirm={handleCommittedConfirm}
         onSkip={handleCommittedSkip}
       />

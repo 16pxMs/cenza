@@ -18,6 +18,7 @@ import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 const T = {
   brandDark:    '#5C3489',
@@ -49,11 +50,11 @@ function LedgerInner() {
   const categoryKey   = params.key as string
   const categoryLabel = searchParams.get('label') ?? categoryKey
   const planned       = Number(searchParams.get('planned') ?? 0)
-  const currentMonth  = new Date().toISOString().slice(0, 7)
 
   const { toast } = useToast()
 
   const [loading, setLoading]       = useState(true)
+  const [cycleId, setCycleId]       = useState<string>('')
   const [currency, setCurrency]     = useState('')
   const [txns, setTxns]             = useState<Transaction[]>([])
   const [totalSpent, setTotalSpent] = useState(0)
@@ -81,10 +82,13 @@ function LedgerInner() {
   const loadData = useCallback(async () => {
     if (!user) return
 
+    const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
+    setCycleId(resolvedCycleId)
+
     const txnRes = await (supabase.from('transactions') as any)
       .select('id, date, amount, note')
       .eq('user_id', user.id)
-      .eq('month', currentMonth)
+      .eq('cycle_id', resolvedCycleId)
       .eq('category_key', categoryKey)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -94,7 +98,7 @@ function LedgerInner() {
     setTxns(rows)
     setTotalSpent(rows.reduce((s, t) => s + t.amount, 0))
     setLoading(false)
-  }, [supabase, currentMonth, categoryKey, user, ctxProfile])
+  }, [supabase, categoryKey, user, ctxProfile])
 
   useEffect(() => { if (user) loadData() }, [loadData, user])
 
@@ -142,7 +146,7 @@ function LedgerInner() {
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          currentMonth,
+      month:          new Date().toISOString().slice(0, 7),
       category_type:  categoryType,
       category_key:   categoryKey,
       category_label: categoryLabel,

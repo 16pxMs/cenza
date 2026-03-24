@@ -16,11 +16,6 @@ function fmt(n: number, cur: string) {
   return `${cur} ${n.toLocaleString()}`
 }
 
-function monthLabel(yyyyMM: string) {
-  const [y, m] = yyyyMM.split('-').map(Number)
-  return new Date(y, m - 1).toLocaleDateString('en-US', { month: 'long' })
-}
-
 export interface RecapCategory {
   key:      string
   label:    string
@@ -29,24 +24,24 @@ export interface RecapCategory {
 }
 
 export interface RecapData {
-  prevMonth:   string
-  incomeTotal: number
+  prevCycleLabel: string
+  incomeTotal:    number
   totalSpent:  number
   fixedTotal:  number
   categories:  RecapCategory[]
 }
 
 interface Props {
-  data:         RecapData
-  currency:     string
-  currentMonth: string
-  isDesktop?:   boolean
-  onContinue:   () => void
+  data:              RecapData
+  currency:          string
+  currentCycleLabel: string
+  isDesktop?:        boolean
+  onContinue:        () => void
 }
 
-export function MonthRecapScreen({ data, currency, currentMonth, isDesktop, onContinue }: Props) {
-  const prevLabel    = monthLabel(data.prevMonth)
-  const currentLabel = monthLabel(currentMonth)
+export function MonthRecapScreen({ data, currency, currentCycleLabel, isDesktop, onContinue }: Props) {
+  const prevLabel    = data.prevCycleLabel
+  const currentLabel = currentCycleLabel
 
   const totalOut     = data.totalSpent + data.fixedTotal
   const saved        = data.incomeTotal - totalOut

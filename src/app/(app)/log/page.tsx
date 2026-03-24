@@ -23,6 +23,8 @@ import { AddExpenseSheet } from '@/components/flows/log/AddExpenseSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack, IconTrash } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { profileToPaySchedule, getCycleByDate, formatCycleLabel } from '@/lib/cycles'
 
 function titleCase(s: string) {
   return s.replace(/\b\w/g, c => c.toUpperCase())
@@ -104,6 +106,8 @@ export default function LogPage() {
   const autoOpened = useRef(false)
 
   const [loading, setLoading]             = useState(true)
+  const [cycleId, setCycleId]             = useState<string>('')
+  const [cycleLabel, setCycleLabel]       = useState<string>('')
   const [currency, setCurrency]           = useState('KES')
   const [sections, setSections]           = useState<Section[]>([])
   const [isFirstTime, setIsFirstTime]     = useState(false)
@@ -114,8 +118,6 @@ export default function LogPage() {
   const [refundAmount, setRefundAmount]                           = useState('')
   const [refundNote, setRefundNote]                               = useState('')
   const [savingRefund, setSavingRefund]                           = useState(false)
-
-  const currentMonth = new Date().toISOString().slice(0, 7)
 
   const logItem = useCallback((item: SubItem) => {
     const params = new URLSearchParams({
@@ -134,6 +136,13 @@ export default function LogPage() {
   const loadData = useCallback(async () => {
     if (!user) return
 
+    const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
+    setCycleId(resolvedCycleId)
+    if (ctxProfile) {
+      const schedule = profileToPaySchedule(ctxProfile as any)
+      setCycleLabel(formatCycleLabel(getCycleByDate(new Date(), schedule)))
+    }
+
     const [
       { data: txns },
       { data: expenses },
@@ -142,13 +151,13 @@ export default function LogPage() {
     ] = await Promise.all([
       (supabase.from('transactions') as any)
         .select('category_key, category_label, category_type, amount, date')
-        .eq('user_id', user.id).eq('month', currentMonth),
+        .eq('user_id', user.id).eq('cycle_id', resolvedCycleId),
       (supabase.from('fixed_expenses') as any)
-        .select('entries').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('entries').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
       (supabase.from('goal_targets') as any)
         .select('goal_id, amount, added_at').eq('user_id', user.id),
       (supabase.from('spending_budgets') as any)
-        .select('categories').eq('user_id', user.id).eq('month', currentMonth).maybeSingle(),
+        .select('categories').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
     ])
 
     const cur = ctxProfile?.currency ?? 'KES'
@@ -250,7 +259,7 @@ export default function LogPage() {
     setIsFirstTime((txns ?? []).filter((t: any) => t.category_type !== 'goal').length === 0)
 
     setLoading(false)
-  }, [supabase, router, currentMonth, user, ctxProfile])
+  }, [supabase, router, user, ctxProfile])
 
   useEffect(() => { if (user) loadData() }, [loadData, user])
 
@@ -277,7 +286,7 @@ export default function LogPage() {
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          currentMonth,
+      month:          new Date().toISOString().slice(0, 7),
       category_type:  pendingDelete.groupType,
       category_key:   pendingDelete.key,
       category_label: pendingDelete.label,
@@ -299,7 +308,7 @@ export default function LogPage() {
     await (supabase.from('transactions') as any)
       .delete()
       .eq('user_id', user.id)
-      .eq('month', currentMonth)
+      .eq('cycle_id', cycleId)
       .eq('category_key', key)
     toast('Entry removed')
     setDeletingKey(null)
@@ -334,7 +343,7 @@ export default function LogPage() {
           <IconBack size={18} color={T.text3} />
         </button>
         <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: T.textMuted, letterSpacing: 0 }}>
-          {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          {cycleLabel || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
         <h1 style={{ fontSize: isDesktop ? 28 : 26, fontWeight: 700, color: T.text1, margin: 0, letterSpacing: -0.5 }}>
           Add an expense

@@ -25,6 +25,7 @@ import { IconBack } from '@/components/ui/Icons'
 import { CheckCircle2 } from 'lucide-react'
 import { fmt } from '@/lib/finance'
 import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 const T = {
   pageBg:    '#F8F9FA',
@@ -38,6 +39,7 @@ const T = {
 }
 
 const PAY_DAYS = Array.from({ length: 28 }, (_, i) => i + 1)
+const MONTHLY_DAYS = PAY_DAYS  // 1-28 for monthly pay day
 
 export default function SettingsPage() {
   const router        = useRouter()
@@ -48,10 +50,10 @@ export default function SettingsPage() {
   const { toast } = useToast()
 
   const [loading, setLoading]             = useState(true)
+  const [cycleId, setCycleId]             = useState<string>('')
   const [name, setName]                   = useState('')
   const [email, setEmail]                 = useState('')
   const [currency, setCurrency]           = useState('')
-  const [payDay, setPayDay]               = useState<number | null>(null)
   const [monthlyTotal, setMonthlyTotal]   = useState<number | null>(null)
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [changePinOpen, setChangePinOpen]     = useState(false)
@@ -63,25 +65,30 @@ export default function SettingsPage() {
   const [currencyQuery, setCurrencyQuery] = useState('')
   const [savingCurrency, setSavingCurrency] = useState(false)
 
-  // Pay day picker panel
-  const [showPayDay, setShowPayDay]       = useState(false)
-  const [savingPayDay, setSavingPayDay]   = useState(false)
+  // Pay schedule picker panel
+  const [showPaySchedule, setShowPaySchedule]     = useState(false)
+  const [scheduleType, setScheduleType]           = useState<'monthly' | 'twice_monthly'>('monthly')
+  const [scheduleDays, setScheduleDays]           = useState<number[]>([1])
+  const [savingPaySchedule, setSavingPaySchedule] = useState(false)
 
   // Delete account
   const [deleteStep, setDeleteStep]       = useState<'idle' | 'confirm'>('idle')
   const [deleting, setDeleting]           = useState(false)
-
-  const currentMonth = new Date().toISOString().slice(0, 7)
 
   useEffect(() => {
     if (!user || !ctxProfile) return
     setName(ctxProfile.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
     setEmail(user.email ?? '')
     setCurrency(ctxProfile.currency ?? '')
-    setPayDay(ctxProfile.pay_day ?? null)
+    if (ctxProfile.pay_schedule_type) {
+      setScheduleType(ctxProfile.pay_schedule_type as 'monthly' | 'twice_monthly')
+      setScheduleDays(ctxProfile.pay_schedule_days ?? [1])
+    }
     ;(async () => {
+      const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
+      setCycleId(resolvedCycleId)
       const { data: income } = await (supabase.from('income_entries') as any)
-        .select('total').eq('user_id', user.id).eq('month', currentMonth).maybeSingle()
+        .select('total').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle()
       setMonthlyTotal(income?.total ?? null)
       setLoading(false)
     })()
@@ -98,25 +105,27 @@ export default function SettingsPage() {
     setCurrencyQuery('')
   }
 
-  const savePayDay = async (day: number | null) => {
-    setSavingPayDay(true)
+  const savePaySchedule = async () => {
+    setSavingPaySchedule(true)
     if (!user) return
-    await (supabase.from('user_profiles') as any).update({ pay_day: day }).eq('id', user.id)
-    toast('Pay day saved')
-    setPayDay(day)
-    setSavingPayDay(false)
-    setShowPayDay(false)
+    await (supabase.from('user_profiles') as any)
+      .update({ pay_schedule_type: scheduleType, pay_schedule_days: scheduleDays })
+      .eq('id', user.id)
+    toast('Pay schedule saved')
+    setSavingPaySchedule(false)
+    setShowPaySchedule(false)
   }
 
   const handleIncomeSave = async (data: { income: number; extraIncome: any[]; total: number }) => {
     if (!user) return
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
-      month:        currentMonth,
+      month:        new Date().toISOString().slice(0, 7),
+      cycle_id:     cycleId,
       salary:       data.income,
       extra_income: data.extraIncome,
       total:        data.total,
-    }, { onConflict: 'user_id,month' })
+    }, { onConflict: 'user_id,cycle_id' })
     toast('Income updated')
     setMonthlyTotal(data.total)
     setIncomeSheetOpen(false)
@@ -299,43 +308,134 @@ export default function SettingsPage() {
           </div>
         )}
         {row(
-          'Pay day',
-          payDay ? `${payDay}${payDay === 1 ? 'st' : payDay === 2 ? 'nd' : payDay === 3 ? 'rd' : 'th'} of the month` : 'Not set',
-          () => setShowPayDay(v => !v),
-          !showPayDay,
+          'Pay schedule',
+          scheduleType === 'monthly'
+            ? `${scheduleDays[0]}${scheduleDays[0] === 1 ? 'st' : scheduleDays[0] === 2 ? 'nd' : scheduleDays[0] === 3 ? 'rd' : 'th'} of the month`
+            : `${scheduleDays[0]}th & ${scheduleDays[1] ?? scheduleDays[0]}th`,
+          () => setShowPaySchedule(v => !v),
+          !showPaySchedule,
         )}
-        {/* Pay day picker — inline expand */}
-        {showPayDay && (
+        {/* Pay schedule picker — inline expand */}
+        {showPaySchedule && (
           <div style={{ padding: '12px 16px 16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 12 }}>
-              {PAY_DAYS.map(d => {
-                const sel = payDay === d
-                return (
-                  <button
-                    key={d}
-                    onClick={() => !savingPayDay && savePayDay(d)}
-                    style={{
-                      height: 40, borderRadius: 10,
-                      background: sel ? T.brandDark : T.pageBg,
-                      border: `1px solid ${sel ? T.brandDark : T.border}`,
-                      color: sel ? '#fff' : T.text2,
-                      fontSize: 13, fontWeight: sel ? 600 : 400,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {d}
-                  </button>
-                )
-              })}
+            {/* Toggle: Monthly / Twice a month */}
+            <div style={{
+              display: 'flex', gap: 8, marginBottom: 16,
+              background: T.pageBg, border: `1px solid ${T.border}`,
+              borderRadius: 12, padding: 4,
+            }}>
+              {(['monthly', 'twice_monthly'] as const).map(type => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    setScheduleType(type)
+                    setScheduleDays(type === 'monthly' ? [scheduleDays[0] ?? 1] : [1, 15])
+                  }}
+                  style={{
+                    flex: 1, height: 36, borderRadius: 9,
+                    background: scheduleType === type ? T.white : 'transparent',
+                    border: scheduleType === type ? `1px solid ${T.border}` : 'none',
+                    color: scheduleType === type ? T.text1 : T.textMuted,
+                    fontSize: 13, fontWeight: scheduleType === type ? 600 : 400,
+                    cursor: 'pointer',
+                    boxShadow: scheduleType === type ? '0 1px 3px rgba(0,0,0,0.07)' : 'none',
+                  }}
+                >
+                  {type === 'monthly' ? 'Monthly' : 'Twice a month'}
+                </button>
+              ))}
             </div>
-            {payDay && (
-              <button
-                onClick={() => savePayDay(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.textMuted, padding: 0 }}
-              >
-                Clear pay day
-              </button>
+
+            {/* Day picker(s) */}
+            {scheduleType === 'monthly' && (
+              <>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: T.textMuted }}>Pay day</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 16 }}>
+                  {MONTHLY_DAYS.map(d => {
+                    const sel = scheduleDays[0] === d
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setScheduleDays([d])}
+                        style={{
+                          height: 40, borderRadius: 10,
+                          background: sel ? T.brandDark : T.pageBg,
+                          border: `1px solid ${sel ? T.brandDark : T.border}`,
+                          color: sel ? '#fff' : T.text2,
+                          fontSize: 13, fontWeight: sel ? 600 : 400,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
             )}
+
+            {scheduleType === 'twice_monthly' && (
+              <>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: T.textMuted }}>First pay day (must be 1–3)</p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  {[1, 2, 3].map(d => {
+                    const sel = scheduleDays[0] === d
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setScheduleDays([d, scheduleDays[1] ?? 15])}
+                        style={{
+                          flex: 1, height: 44, borderRadius: 10,
+                          background: sel ? T.brandDark : T.pageBg,
+                          border: `1px solid ${sel ? T.brandDark : T.border}`,
+                          color: sel ? '#fff' : T.text2,
+                          fontSize: 15, fontWeight: sel ? 600 : 400,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: T.textMuted }}>Second pay day</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 16 }}>
+                  {MONTHLY_DAYS.filter(d => d > (scheduleDays[0] ?? 1)).map(d => {
+                    const sel = scheduleDays[1] === d
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setScheduleDays([scheduleDays[0] ?? 1, d])}
+                        style={{
+                          height: 40, borderRadius: 10,
+                          background: sel ? T.brandDark : T.pageBg,
+                          border: `1px solid ${sel ? T.brandDark : T.border}`,
+                          color: sel ? '#fff' : T.text2,
+                          fontSize: 13, fontWeight: sel ? 600 : 400,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            <button
+              onClick={savePaySchedule}
+              disabled={savingPaySchedule}
+              style={{
+                width: '100%', height: 44, borderRadius: 12,
+                background: T.brandDark, border: 'none',
+                color: '#fff', fontSize: 14, fontWeight: 600,
+                cursor: savingPaySchedule ? 'not-allowed' : 'pointer',
+                opacity: savingPaySchedule ? 0.7 : 1,
+              }}
+            >
+              {savingPaySchedule ? 'Saving…' : 'Save'}
+            </button>
           </div>
         )}
       </>)}
