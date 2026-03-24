@@ -7,21 +7,39 @@ export type Frequency = 'monthly' | 'quarterly' | 'biannual' | 'yearly' | 'weekl
 export type CategoryType = 'variable' | 'fixed' | 'subscription' | 'goal' | 'debt' | 'other'
 export type SubscriptionStatus = 'yes_known' | 'yes_unknown'
 
+// ─── Pay-cycle types ──────────────────────────────────────────────────────────
+
+export interface PaySchedule {
+  type: 'monthly' | 'twice_monthly'
+  days: number[]  // sorted ascending; 1 element for monthly, 2 for twice_monthly
+}
+
+export interface Cycle {
+  user_id:    string
+  start_date: string  // 'YYYY-MM-DD' — composite PK with user_id; also used as cycle_id in other tables
+  end_date:   string  // 'YYYY-MM-DD'
+  is_current: boolean
+  created_at: string
+}
+
 // ─── Table row types ──────────────────────────────────────────────────────────
 
 export interface UserProfile {
-  id: string
-  name: string
-  currency: string
-  month_start: 'first' | 'custom'
-  custom_day: number | null
-  pay_day: number | null      // day of month income usually arrives (1–31)
-  income_type: 'salaried' | 'variable' | null  // how the user earns — drives pay day and cycle logic
-  goals: GoalId[]
+  id:                  string
+  name:                string
+  currency:            string
+  pay_schedule_type:   'monthly' | 'twice_monthly' | null
+  pay_schedule_days:   number[] | null
+  income_type:         'salaried' | 'variable' | null
+  goals:               GoalId[]
   onboarding_complete: boolean
-  pin_hash: string | null  // bcrypt hash — null until PIN is set
-  created_at: string
-  updated_at: string
+  pin_hash:            string | null
+  created_at:          string
+  updated_at:          string
+  // Deprecated — remove in cleanup task (Task 11)
+  pay_day:             number | null
+  month_start:         'first' | 'custom' | null
+  custom_day:          number | null
 }
 
 export interface ExtraIncomeItem {
@@ -31,16 +49,17 @@ export interface ExtraIncomeItem {
 }
 
 export interface IncomeEntry {
-  id: string
-  user_id: string
-  month: string                        // 'YYYY-MM'
-  salary: number
-  extra_income: ExtraIncomeItem[]
-  total: number                        // generated column
-  received: number | null              // actual income received this month
-  received_confirmed_at: string | null // when the user confirmed it
-  created_at: string
-  updated_at: string
+  id:                    string
+  user_id:               string
+  cycle_id:              string | null  // null during migration period
+  month:                 string         // 'YYYY-MM' — kept during migration
+  salary:                number
+  extra_income:          ExtraIncomeItem[]
+  total:                 number
+  received:              number | null
+  received_confirmed_at: string | null
+  created_at:            string
+  updated_at:            string
 }
 
 export interface FixedExpense {
@@ -63,6 +82,16 @@ export interface SpendingCategory {
   key: string
   known: boolean
   estimated_amount: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SpendingBudget {
+  id:         string
+  user_id:    string
+  cycle_id:   string | null  // null during migration
+  month:      string          // 'YYYY-MM' — kept during migration
+  budgets:    Record<string, number>  // category_key → amount
   created_at: string
   updated_at: string
 }
@@ -91,16 +120,17 @@ export interface GoalTarget {
 }
 
 export interface Transaction {
-  id: string
-  user_id: string
-  date: string              // 'YYYY-MM-DD'
-  month: string             // 'YYYY-MM'
-  category_type: CategoryType
-  category_key: string
+  id:             string
+  user_id:        string
+  date:           string   // 'YYYY-MM-DD'
+  cycle_id:       string | null
+  month:          string   // 'YYYY-MM' — kept during migration
+  category_type:  CategoryType
+  category_key:   string
   category_label: string
-  amount: number
-  note: string | null
-  created_at: string
+  amount:         number
+  note:           string | null
+  created_at:     string
 }
 
 // ─── Supabase database shape (for typed client) ───────────────────────────────
@@ -109,9 +139,11 @@ export interface Database {
   public: {
     Tables: {
       user_profiles:       { Row: UserProfile;       Insert: Omit<UserProfile, 'created_at' | 'updated_at'>; Update: Partial<UserProfile> }
+      cycles:              { Row: Cycle;             Insert: Omit<Cycle, 'created_at'>; Update: Partial<Cycle> }
       income_entries:      { Row: IncomeEntry;        Insert: Omit<IncomeEntry, 'id' | 'total' | 'created_at' | 'updated_at'>; Update: Partial<IncomeEntry> }
       fixed_expenses:      { Row: FixedExpense;       Insert: Omit<FixedExpense, 'id' | 'created_at' | 'updated_at'>; Update: Partial<FixedExpense> }
       spending_categories: { Row: SpendingCategory;   Insert: Omit<SpendingCategory, 'id' | 'created_at' | 'updated_at'>; Update: Partial<SpendingCategory> }
+      spending_budgets:    { Row: SpendingBudget;     Insert: Omit<SpendingBudget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<SpendingBudget> }
       subscriptions:       { Row: Subscription;       Insert: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Subscription> }
       goal_targets:        { Row: GoalTarget;         Insert: Omit<GoalTarget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<GoalTarget> }
       transactions:        { Row: Transaction;        Insert: Omit<Transaction, 'id' | 'created_at'>; Update: Partial<Transaction> }
