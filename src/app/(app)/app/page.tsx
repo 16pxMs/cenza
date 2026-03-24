@@ -558,7 +558,7 @@ export default function AppPage() {
     <OverviewLocked
       name={firstName}
       currency={profile?.currency || 'KES'}
-      onStart={() => router.push('/log/first')}
+      onStart={(category) => router.push(category ? `/log/first?category=${encodeURIComponent(category)}` : '/log/first')}
     />
   ) : totalSpent === 0 ? (
     <FirstTimeWelcome

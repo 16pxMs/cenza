@@ -15,7 +15,7 @@ import { Sparkles } from 'lucide-react'
 interface Props {
   name:      string
   currency?: string
-  onStart:   () => void
+  onStart:   (category?: string) => void
 }
 
 function greeting(name: string) {
@@ -27,13 +27,13 @@ function greeting(name: string) {
 
 const BAR_HEIGHTS = [28, 52, 35, 68, 42, 58, 38]
 
+// Labels must match log/first CATEGORIES exactly so ?category= pre-fill works
 const DEFAULT_CATEGORIES = [
-  { key: 'groceries',     emoji: '🛒', label: 'Groceries'    },
-  { key: 'transport',     emoji: '🚌', label: 'Transport'    },
-  { key: 'eating_out',    emoji: '🍽️', label: 'Eating out'  },
-  { key: 'airtime',       emoji: '📱', label: 'Airtime'      },
-  { key: 'household',     emoji: '🏠', label: 'Household'    },
-  { key: 'entertainment', emoji: '🎬', label: 'Entertainment' },
+  { emoji: '🛒', label: 'Groceries'    },
+  { emoji: '🚌', label: 'Transport'    },
+  { emoji: '🍽️', label: 'Eating out'  },
+  { emoji: '📱', label: 'Airtime / Data' },
+  { emoji: '💡', label: 'Utilities'    },
 ]
 
 export function OverviewLocked({ name, currency = 'KES', onStart }: Props) {
@@ -117,7 +117,7 @@ export function OverviewLocked({ name, currency = 'KES', onStart }: Props) {
 
         {/* Inline CTA — the only nudge on this page */}
         <button
-          onClick={onStart}
+          onClick={() => onStart()}
           style={{
             background: 'none',
             border: 'none',
@@ -154,8 +154,8 @@ export function OverviewLocked({ name, currency = 'KES', onStart }: Props) {
       }}>
         {DEFAULT_CATEGORIES.map((cat, i) => (
           <button
-            key={cat.key}
-            onClick={onStart}
+            key={cat.label}
+            onClick={() => onStart(cat.label)}
             style={{
               width: '100%',
               display: 'flex',

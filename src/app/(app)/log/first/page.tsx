@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 // Step 3: Amount + note + save
 // ─────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
@@ -66,9 +66,19 @@ export default function FirstLogPage() {
   const [isSubscription,  setIsSubscription]  = useState(false)
 
   const [skipCount, setSkipCount] = useState(0)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     setSkipCount(parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10))
+  }, [])
+
+  // Pre-select a category from ?category= param (e.g. tapped from OverviewLocked)
+  useEffect(() => {
+    const cat = searchParams.get('category')
+    if (!cat) return
+    const match = CATEGORIES.find(c => c.label === cat)
+    if (match) selectCategory(match)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const dismiss = () => {
