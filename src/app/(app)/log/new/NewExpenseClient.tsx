@@ -69,6 +69,9 @@ export function NewExpenseClient() {
 
   const currency = profile?.currency ?? 'USD'
 
+  // Current pay cycle
+  const [cycleId, setCycleId] = useState<string | null>(null)
+
   // Update vs add-another mode
   const [mode,       setMode]       = useState<'add' | 'update'>('add')
   const [priorEntry, setPriorEntry] = useState<{ id: string; amount: number } | null | undefined>(undefined)
@@ -103,19 +106,25 @@ export function NewExpenseClient() {
     if (match && !typeOverride) setSelectedType(match.groupType)
   }, [name, dictionary, isOther, typeOverride])
 
+  // Load current cycle ID once user and profile are available
+  useEffect(() => {
+    if (!user || !profile) return
+    getCurrentCycleId(supabase as any, user.id, profile as any).then(id => setCycleId(id))
+  }, [user, profile, supabase])
+
   // Fetch prior entry for known items (to offer update vs add-another)
   useEffect(() => {
-    if (isOther || !paramKey || !user) { setPriorEntry(null); return }
+    if (isOther || !paramKey || !user || !cycleId) { setPriorEntry(null); return }
     ;(supabase.from('transactions') as any)
       .select('id, amount')
       .eq('user_id', user.id)
       .eq('category_key', paramKey)
-      .eq('month', new Date().toISOString().slice(0, 7))
+      .eq('cycle_id', cycleId)
       .order('date', { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }: any) => setPriorEntry(data ?? null))
-  }, [isOther, paramKey, user, supabase])
+  }, [isOther, paramKey, user, cycleId, supabase])
 
   const handleBack = () => {
     if (step === 'amount' && isOther) { setStep('name'); return }
