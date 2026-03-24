@@ -79,12 +79,12 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
           gap: 12, width: '100%', maxWidth: 288,
         }}>
           {ROWS.flat().map((key, i) => {
-            if (key === null) return <div key={i} />
+            if (key === null) return <div key={`cell-${i}`} />
 
             if (key === 'del') {
               return (
                 <button
-                  key="del"
+                  key={`cell-${i}`}
                   onClick={handleDelete}
                   disabled={disabled || value.length === 0}
                   style={{
@@ -104,7 +104,7 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
 
             return (
               <button
-                key={key}
+                key={`cell-${i}`}
                 onClick={() => handleDigit(key)}
                 disabled={disabled}
                 style={{

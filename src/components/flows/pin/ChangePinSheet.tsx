@@ -1,11 +1,12 @@
 'use client'
 
 // ─────────────────────────────────────────────────────────────
-// ChangePinSheet — 3-step Change PIN flow in a bottom sheet
+// ChangePinSheet — PIN setup/change flow in a bottom sheet
 //
-// Step 1: verify current PIN
-// Step 2: enter new PIN (4 digits auto-advance)
-// Step 3: confirm new PIN (4 digits auto-submit)
+// If user has no PIN yet (no cenza-has-pin cookie):
+//   Step 1: enter PIN, Step 2: confirm PIN
+// If user already has a PIN:
+//   Step 1: verify current PIN, Step 2: enter new, Step 3: confirm
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react'
@@ -21,7 +22,13 @@ interface Props {
 
 type Step = 'verify' | 'enter' | 'confirm'
 
+function hasExistingPin() {
+  if (typeof document === 'undefined') return false
+  return document.cookie.split(';').some(c => c.trim().startsWith('cenza-has-pin=1'))
+}
+
 export function ChangePinSheet({ open, onClose, onSaved }: Props) {
+  const [hasPin,     setHasPin]     = useState(false)
   const [step,       setStep]       = useState<Step>('verify')
   const [currentPin, setCurrentPin] = useState('')
   const [firstPin,   setFirstPin]   = useState('')
@@ -30,10 +37,14 @@ export function ChangePinSheet({ open, onClose, onSaved }: Props) {
   const [error,      setError]      = useState('')
   const [saving,     setSaving]     = useState(false)
 
-  // Reset state when sheet closes
+  // Reset state when sheet opens or closes
   useEffect(() => {
-    if (!open) {
-      setStep('verify')
+    if (open) {
+      // Snapshot cookie state at open time
+      const existing = hasExistingPin()
+      setHasPin(existing)
+      setStep(existing ? 'verify' : 'enter')
+    } else {
       setCurrentPin('')
       setFirstPin('')
       setConfirmPin('')
@@ -112,15 +123,15 @@ export function ChangePinSheet({ open, onClose, onSaved }: Props) {
 
   const headings: Record<Step, string> = {
     verify:  'Enter your current PIN',
-    enter:   'Set a new PIN',
-    confirm: 'Confirm new PIN',
+    enter:   hasPin ? 'Set a new PIN' : 'Set a 4-digit PIN',
+    confirm: 'Confirm your PIN',
   }
 
   const activePin    = step === 'verify' ? currentPin    : step === 'enter' ? firstPin    : confirmPin
   const setActivePin = step === 'verify' ? setCurrentPin : step === 'enter' ? setFirstPin : setConfirmPin
 
   return (
-    <Sheet open={open} onClose={onClose} title="Change PIN">
+    <Sheet open={open} onClose={onClose} title={hasPin ? 'Change PIN' : 'Set up PIN'}>
       <p style={{
         margin: '0 0 8px',
         fontSize: 'var(--text-base)',

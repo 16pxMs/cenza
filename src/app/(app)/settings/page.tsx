@@ -55,6 +55,8 @@ export default function SettingsPage() {
   const [monthlyTotal, setMonthlyTotal]   = useState<number | null>(null)
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [changePinOpen, setChangePinOpen]     = useState(false)
+  const hasPinCookie = typeof document !== 'undefined' &&
+    document.cookie.split(';').some(c => c.trim().startsWith('cenza-has-pin=1'))
 
   // Currency picker panel
   const [showCurrency, setShowCurrency]   = useState(false)
@@ -341,7 +343,7 @@ export default function SettingsPage() {
       {/* Section 3 — Security */}
       {sectionLabel('Security')}
       {sectionCard(<>
-        {row('PIN', 'Change', () => setChangePinOpen(true), true)}
+        {row('PIN', hasPinCookie ? 'Change' : 'Set up', () => setChangePinOpen(true), true)}
       </>)}
 
       {/* Section 4 — This month */}
@@ -446,7 +448,7 @@ export default function SettingsPage() {
       <ChangePinSheet
         open={changePinOpen}
         onClose={() => setChangePinOpen(false)}
-        onSaved={() => toast('PIN updated')}
+        onSaved={() => toast(hasPinCookie ? 'PIN updated' : 'PIN set up')}
       />
     </>
   )
