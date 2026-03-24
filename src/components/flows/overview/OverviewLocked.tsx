@@ -1,6 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
+import { Lock } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OverviewLocked — shown when the user has declined to log at least once.
@@ -166,10 +167,9 @@ export function OverviewLocked({ name, onStart }: Props) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 18,
             marginBottom: 4,
           }}>
-            🔒
+            <Lock size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
           </div>
           <p style={{
             margin: 0,
