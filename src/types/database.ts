@@ -19,6 +19,7 @@ export interface UserProfile {
   income_type: 'salaried' | 'variable' | null  // how the user earns — drives pay day and cycle logic
   goals: GoalId[]
   onboarding_complete: boolean
+  pin_hash: string | null  // bcrypt hash — null until PIN is set
   created_at: string
   updated_at: string
 }
