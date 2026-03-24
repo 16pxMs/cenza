@@ -71,9 +71,8 @@ setSkipCount(parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10))
 **Props:**
 ```ts
 interface Props {
-  name:     string
-  currency: string
-  onStart:  () => void   // routes to /log/first
+  name:    string
+  onStart: () => void   // routes to /log/first
 }
 ```
 
