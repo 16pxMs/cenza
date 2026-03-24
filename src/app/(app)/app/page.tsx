@@ -557,6 +557,7 @@ export default function AppPage() {
   ) : totalSpent === 0 && skipCount >= 1 ? (
     <OverviewLocked
       name={firstName}
+      currency={profile?.currency || 'KES'}
       onStart={() => router.push('/log/first')}
     />
   ) : totalSpent === 0 ? (

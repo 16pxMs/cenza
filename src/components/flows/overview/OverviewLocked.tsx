@@ -1,20 +1,21 @@
 'use client'
 
-import type { CSSProperties } from 'react'
-import { Lock } from 'lucide-react'
-
 // ─────────────────────────────────────────────────────────────────────────────
 // OverviewLocked — shown when the user has declined to log at least once.
 //
-// Redesigned as a calm, inviting empty state:
-//   • One hero preview card (dark gradient + ghost chart) instead of 3 locked boxes
-//   • Feature rows show what unlocks — no repeated lock icons
-//   • CTA is warm and low-pressure
+// No locks, no gating. Real UI, even when empty:
+//   • Spending card: visible empty bar chart + one quiet inline CTA
+//   • Categories: real default categories, KES 0, tappable
+//   • Goals: exact same empty state card as OverviewWithData
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useRouter } from 'next/navigation'
+import { Sparkles } from 'lucide-react'
+
 interface Props {
-  name:    string
-  onStart: () => void
+  name:      string
+  currency?: string
+  onStart:   () => void
 }
 
 function greeting(name: string) {
@@ -24,279 +25,244 @@ function greeting(name: string) {
   return `Evening, ${name}.`
 }
 
-// Ghost bar heights for the preview chart (purely decorative)
-const BAR_HEIGHTS = [38, 55, 30, 72, 48, 62, 44]
+const BAR_HEIGHTS = [28, 52, 35, 68, 42, 58, 38]
 
-const FEATURES: { icon: string; label: string; description: string }[] = [
-  { icon: '◎', label: 'Spending overview',   description: 'See where every shilling goes each cycle' },
-  { icon: '◈', label: 'Budget categories',   description: 'Track spending by category automatically'  },
-  { icon: '◇', label: 'Savings goals',       description: 'Set targets and watch your progress build' },
+const DEFAULT_CATEGORIES = [
+  { key: 'groceries',     emoji: '🛒', label: 'Groceries'    },
+  { key: 'transport',     emoji: '🚌', label: 'Transport'    },
+  { key: 'eating_out',    emoji: '🍽️', label: 'Eating out'  },
+  { key: 'airtime',       emoji: '📱', label: 'Airtime'      },
+  { key: 'household',     emoji: '🏠', label: 'Household'    },
+  { key: 'entertainment', emoji: '🎬', label: 'Entertainment' },
 ]
 
-export function OverviewLocked({ name, onStart }: Props) {
+export function OverviewLocked({ name, currency = 'KES', onStart }: Props) {
+  const router = useRouter()
+
   return (
     <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      minHeight: '100dvh',
-      background: 'var(--page-bg)',
-      padding: '0 var(--page-padding-mobile)',
-      paddingTop: 28,
-      paddingBottom: 100,
+      padding: '28px 16px 96px',
       maxWidth: 480,
       margin: '0 auto',
       boxSizing: 'border-box',
-    } as CSSProperties}>
+    } as React.CSSProperties}>
 
-      {/* ── Greeting ─────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────── */}
       <p style={{
         margin: '0 0 4px',
-        fontSize: 'var(--text-xs)',
-        fontWeight: 'var(--weight-semibold)',
+        fontSize: 11,
+        fontWeight: 600,
         color: 'var(--brand-deep)',
         letterSpacing: '0.08em',
         textTransform: 'uppercase',
       }}>
         {greeting(name)}
       </p>
-
       <h1 style={{
         margin: '0 0 28px',
-        fontSize: 'var(--text-2xl)',
-        fontWeight: 'var(--weight-bold)',
+        fontSize: 24,
+        fontWeight: 700,
         color: 'var(--text-1)',
         lineHeight: 1.2,
-        letterSpacing: '-0.5px',
+        letterSpacing: '-0.4px',
       }}>
-        Your overview<br />is ready to fill.
+        Your overview is empty.
       </h1>
 
-      {/* ── Hero preview card ─────────────────────────────────────────── */}
+      {/* ── Spending card ─────────────────────────────────────────── */}
       <div style={{
-        position: 'relative',
-        borderRadius: 'var(--radius-xl)',
-        overflow: 'hidden',
-        background: 'linear-gradient(145deg, var(--brand-darker) 0%, var(--brand-dark) 60%, var(--brand-deep) 100%)',
-        padding: '24px 20px 20px',
-        marginBottom: 32,
-        boxShadow: 'var(--shadow-lg)',
+        background: '#fff',
+        borderRadius: 20,
+        padding: '22px 24px 24px',
+        border: '1px solid var(--border)',
+        marginBottom: 16,
       }}>
-
-        {/* Card header */}
         <p style={{
           margin: '0 0 16px',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-semibold)',
-          color: 'rgba(255,255,255,0.5)',
-          letterSpacing: '0.08em',
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'var(--text-muted)',
+          letterSpacing: '0.07em',
           textTransform: 'uppercase',
         }}>
-          This cycle
+          Your spending
         </p>
 
-        {/* Ghost bar chart */}
+        {/* Empty bar chart — visible, no blur */}
         <div style={{
           display: 'flex',
           alignItems: 'flex-end',
           gap: 6,
-          height: 80,
-          marginBottom: 20,
+          height: 72,
+          marginBottom: 16,
         }}>
           {BAR_HEIGHTS.map((h, i) => (
             <div key={i} style={{
               flex: 1,
               height: `${h}%`,
-              background: 'rgba(255,255,255,0.12)',
+              background: 'var(--grey-100)',
               borderRadius: 4,
             }} />
           ))}
         </div>
 
-        {/* Ghost stat row */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: 8,
-          marginBottom: 20,
+        <p style={{
+          margin: '0 0 14px',
+          fontSize: 15,
+          color: 'var(--text-2)',
+          lineHeight: 1.6,
         }}>
-          {['Spent', 'Budget', 'Left'].map((label) => (
-            <div key={label} style={{
-              background: 'rgba(255,255,255,0.08)',
-              borderRadius: 10,
-              padding: '10px 0',
-              textAlign: 'center',
-            }}>
-              <div style={{
-                height: 6,
-                background: 'rgba(255,255,255,0.18)',
-                borderRadius: 3,
-                width: '55%',
-                margin: '0 auto 6px',
-              }} />
-              <p style={{
-                margin: 0,
-                fontSize: 'var(--text-xs)',
-                color: 'rgba(255,255,255,0.4)',
-                fontWeight: 'var(--weight-medium)',
-              }}>
-                {label}
-              </p>
-            </div>
-          ))}
-        </div>
+          Your spending will appear here.
+        </p>
 
-        {/* Frosted lock overlay */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          backdropFilter: 'blur(3px)',
-          WebkitBackdropFilter: 'blur(3px)',
-          background: 'rgba(36, 16, 64, 0.52)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          borderRadius: 'var(--radius-xl)',
-        } as CSSProperties}>
-          <div style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 4,
-          }}>
-            <Lock size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-          </div>
-          <p style={{
-            margin: 0,
-            fontSize: 'var(--text-base)',
-            fontWeight: 'var(--weight-semibold)',
-            color: '#fff',
-            textAlign: 'center',
-          }}>
-            Log one expense to unlock
-          </p>
-          <p style={{
-            margin: 0,
-            fontSize: 'var(--text-sm)',
-            color: 'rgba(255,255,255,0.55)',
-            textAlign: 'center',
-            lineHeight: 1.5,
-          }}>
-            Your full spending picture will appear here
-          </p>
-        </div>
-
-      </div>
-
-      {/* ── Feature list ─────────────────────────────────────────────── */}
-      <p style={{
-        margin: '0 0 12px',
-        fontSize: 'var(--text-xs)',
-        fontWeight: 'var(--weight-semibold)',
-        color: 'var(--text-muted)',
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-      }}>
-        What you'll see
-      </p>
-
-      <div style={{
-        background: 'var(--white)',
-        borderRadius: 'var(--radius-lg)',
-        border: '1px solid var(--border)',
-        overflow: 'hidden',
-      }}>
-        {FEATURES.map((f, i) => (
-          <div key={f.label} style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-            padding: '14px 16px',
-            borderBottom: i < FEATURES.length - 1
-              ? '1px solid var(--border-subtle)'
-              : 'none',
-          }}>
-            <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: 'var(--brand)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 16,
-              color: 'var(--brand-dark)',
-              flexShrink: 0,
-            }}>
-              {f.icon}
-            </div>
-            <div>
-              <p style={{
-                margin: '0 0 2px',
-                fontSize: 'var(--text-base)',
-                fontWeight: 'var(--weight-semibold)',
-                color: 'var(--text-1)',
-              }}>
-                {f.label}
-              </p>
-              <p style={{
-                margin: 0,
-                fontSize: 'var(--text-sm)',
-                color: 'var(--text-3)',
-                lineHeight: 1.45,
-              }}>
-                {f.description}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Sticky CTA ───────────────────────────────────────────────── */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        padding: '12px var(--page-padding-mobile) 28px',
-        background: 'linear-gradient(to top, var(--page-bg) 70%, transparent)',
-      }}>
+        {/* Inline CTA — the only nudge on this page */}
         <button
           onClick={onStart}
           style={{
-            width: '100%',
-            maxWidth: 480,
-            display: 'block',
-            margin: '0 auto',
-            height: 56,
-            borderRadius: 'var(--radius-lg)',
-            background: 'var(--brand-dark)',
+            background: 'none',
             border: 'none',
-            color: 'var(--text-inverse)',
-            fontSize: 'var(--text-base)',
-            fontWeight: 'var(--weight-semibold)',
+            padding: 0,
+            fontSize: 14,
+            fontWeight: 600,
+            color: 'var(--brand-dark)',
             cursor: 'pointer',
             letterSpacing: '-0.1px',
-            transition: 'opacity 0.15s',
           }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
         >
-          Log my first expense
+          Log an expense →
         </button>
-        <p style={{
-          margin: '8px 0 0',
-          textAlign: 'center',
-          fontSize: 'var(--text-sm)',
-          color: 'var(--text-muted)',
+      </div>
+
+      {/* ── Categories ────────────────────────────────────────────── */}
+      <p style={{
+        margin: '0 0 8px',
+        fontSize: 11,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        letterSpacing: '0.07em',
+        textTransform: 'uppercase',
+      }}>
+        Spending by category
+      </p>
+
+      <div style={{
+        background: '#fff',
+        borderRadius: 16,
+        border: '1px solid var(--border)',
+        overflow: 'hidden',
+        marginBottom: 16,
+      }}>
+        {DEFAULT_CATEGORIES.map((cat, i) => (
+          <button
+            key={cat.key}
+            onClick={onStart}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '13px 16px',
+              background: 'none',
+              border: 'none',
+              borderBottom: i < DEFAULT_CATEGORIES.length - 1
+                ? '1px solid var(--border-subtle)'
+                : 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <span style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'var(--grey-100)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 17,
+              flexShrink: 0,
+            }}>
+              {cat.emoji}
+            </span>
+            <span style={{
+              flex: 1,
+              fontSize: 15,
+              fontWeight: 500,
+              color: 'var(--text-1)',
+            }}>
+              {cat.label}
+            </span>
+            <span style={{
+              fontSize: 14,
+              fontWeight: 500,
+              color: 'var(--text-muted)',
+            }}>
+              {currency} 0
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Goals empty state — identical to OverviewWithData ─────── */}
+      <div style={{
+        background: 'var(--white)',
+        border: '1px solid var(--border)',
+        borderRadius: 20,
+        padding: '24px',
+      }}>
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          background: '#F0FDF4',
+          border: '1px solid #BBF7D0',
+          borderRadius: 99,
+          padding: '4px 12px',
+          marginBottom: 20,
         }}>
-          Takes under a minute
+          <Sparkles size={12} color="#15803D" />
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#15803D', letterSpacing: '0.04em' }}>
+            Set up your first goal
+          </span>
+        </div>
+
+        <h2 style={{
+          margin: '0 0 8px',
+          fontSize: 20,
+          fontWeight: 700,
+          color: 'var(--text-1)',
+          lineHeight: 1.2,
+          letterSpacing: '-0.2px',
+        }}>
+          Give your money a purpose.
+        </h2>
+
+        <p style={{
+          margin: '0 0 28px',
+          fontSize: 14,
+          color: 'var(--text-2)',
+          lineHeight: 1.65,
+        }}>
+          Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
         </p>
+
+        <button
+          onClick={() => router.push('/goals/new?from=overview')}
+          style={{
+            width: '100%',
+            height: 52,
+            borderRadius: 14,
+            background: 'var(--brand-dark)',
+            color: '#fff',
+            border: 'none',
+            fontWeight: 600,
+            fontSize: 15,
+            cursor: 'pointer',
+            letterSpacing: '-0.1px',
+          }}
+        >
+          Add your first goal
+        </button>
       </div>
 
     </div>
