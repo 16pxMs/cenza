@@ -148,7 +148,7 @@ export default function FirstLogPage() {
   const handleSave = async () => {
     if (!canSave) return
     setSaving(true)
-    if (!user) { setSaving(false); return }
+    if (!user || !ctxProfile) { setSaving(false); return }
 
     const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
 

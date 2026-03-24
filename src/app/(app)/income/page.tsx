@@ -74,14 +74,16 @@ export default function PlanPage() {
   const [budgetEditOpen,     setBudgetEditOpen]     = useState(false)
   const [savingFixed,        setSavingFixed]        = useState(false)
   const [savingBudget,       setSavingBudget]       = useState(false)
+  const [cycleId,            setCycleId]            = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!user) return
 
-    const [cycleId, prevCycleId] = await Promise.all([
+    const [resolvedCycleId, prevCycleId] = await Promise.all([
       getCurrentCycleId(supabase as any, user.id, ctxProfile as any),
       getPrevCycleId(supabase as any, user.id, ctxProfile as any),
     ])
+    setCycleId(resolvedCycleId)
 
     const [
       { data: income },
@@ -89,9 +91,9 @@ export default function PlanPage() {
       { data: budget },
       { data: txns },
     ] = await Promise.all([
-      (supabase.from('income_entries') as any).select('*').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
-      (supabase.from('fixed_expenses') as any).select('total_monthly, entries').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
-      (supabase.from('spending_budgets') as any).select('total_budget, categories').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle(),
+      (supabase.from('income_entries') as any).select('*').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
+      (supabase.from('fixed_expenses') as any).select('total_monthly, entries').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
+      (supabase.from('spending_budgets') as any).select('total_budget, categories').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
       prevCycleId
         ? (supabase.from('transactions') as any)
             .select('category_key, amount')
@@ -118,9 +120,8 @@ export default function PlanPage() {
 
   useEffect(() => { if (user) load() }, [load, user])
 
-  const saveIncome = async (data: { income: number; extraIncome: any[]; total: number }) => {
-    if (!user) return
-    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
+  const saveIncome = useCallback(async (data: { income: number; extraIncome: any[]; total: number }) => {
+    if (!user || !cycleId) return
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
       month:        currentMonth,
@@ -132,12 +133,11 @@ export default function PlanPage() {
     toast('Income updated')
     setIncomeSheetOpen(false)
     await load()
-  }
+  }, [user, cycleId, supabase, currentMonth, toast, load])
 
-  const saveFixedExpenses = async (entries: FixedEntry[]) => {
-    if (!user) return
+  const saveFixedExpenses = useCallback(async (entries: FixedEntry[]) => {
+    if (!user || !cycleId) return
     setSavingFixed(true)
-    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
     const totalMonthly = entries.reduce((s, e) => s + e.monthly, 0)
     await (supabase.from('fixed_expenses') as any).upsert({
       user_id:       user.id,
@@ -150,12 +150,11 @@ export default function PlanPage() {
     setSavingFixed(false)
     setFixedEditOpen(false)
     await load()
-  }
+  }, [user, cycleId, supabase, currentMonth, toast, load])
 
-  const saveSpendingBudget = async (categories: BudgetCategory[]) => {
-    if (!user) return
+  const saveSpendingBudget = useCallback(async (categories: BudgetCategory[]) => {
+    if (!user || !cycleId) return
     setSavingBudget(true)
-    const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
     const totalBudget = categories.reduce((s, c) => s + c.budget, 0)
     await (supabase.from('spending_budgets') as any).upsert({
       user_id:      user.id,
@@ -168,7 +167,7 @@ export default function PlanPage() {
     setSavingBudget(false)
     setBudgetEditOpen(false)
     await load()
-  }
+  }, [user, cycleId, supabase, currentMonth, toast, load])
 
   const currency    = ctxProfile?.currency || 'KES'
   const incomeTotal = incomeData ? Number(incomeData.total ?? 0) : 0

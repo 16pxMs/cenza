@@ -141,7 +141,7 @@ export function NewExpenseClient() {
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   const handleSave = useCallback(async () => {
-    if (!user || parsedAmount <= 0) return
+    if (!user || parsedAmount <= 0 || !cycleId) return
 
     const resolvedType  = selectedType ?? paramType ?? 'variable'
     const resolvedKey   = paramKey ?? name.trim().toLowerCase().replace(/\s+/g, '_')
@@ -158,8 +158,6 @@ export function NewExpenseClient() {
 
         if (deleteError) throw new Error('Failed to delete prior entry')
       }
-
-      const cycleId = await getCurrentCycleId(supabase as any, user.id, profile as any)
 
       // 1. Write the transaction
       await (supabase.from('transactions') as any).insert({
@@ -210,7 +208,7 @@ export function NewExpenseClient() {
     } finally {
       setSaving(false)
     }
-  }, [user, profile, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router, mode, priorEntry])
+  }, [user, profile, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router, mode, priorEntry, cycleId])
 
   return (
     <div style={{
