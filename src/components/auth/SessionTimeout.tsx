@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { clearPinVerified } from '@/lib/actions/pin'
 
 const IDLE_MS  = 15 * 60 * 1000  // 15 min inactivity → show warning
 const WARN_MS  = 60 * 1000        // 60 sec on warning → sign out
@@ -29,6 +30,7 @@ export function SessionTimeout() {
     clearTimeout(idleTimer.current ?? undefined)
     clearTimeout(warnTimer.current ?? undefined)
     clearInterval(countdownRef.current ?? undefined)
+    await clearPinVerified()          // clear PIN before session ends
     await supabase.auth.signOut()
     window.location.href = '/login'
   }, [supabase])

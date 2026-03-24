@@ -19,6 +19,8 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
+import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
+import { clearPinVerified } from '@/lib/actions/pin'
 import { IconBack } from '@/components/ui/Icons'
 import { CheckCircle2 } from 'lucide-react'
 import { fmt } from '@/lib/finance'
@@ -52,6 +54,7 @@ export default function SettingsPage() {
   const [payDay, setPayDay]               = useState<number | null>(null)
   const [monthlyTotal, setMonthlyTotal]   = useState<number | null>(null)
   const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
+  const [changePinOpen, setChangePinOpen]     = useState(false)
 
   // Currency picker panel
   const [showCurrency, setShowCurrency]   = useState(false)
@@ -335,7 +338,13 @@ export default function SettingsPage() {
         )}
       </>)}
 
-      {/* Section 3 — This month */}
+      {/* Section 3 — Security */}
+      {sectionLabel('Security')}
+      {sectionCard(<>
+        {row('PIN', 'Change', () => setChangePinOpen(true), true)}
+      </>)}
+
+      {/* Section 4 — This month */}
       {sectionLabel('This month')}
       {sectionCard(<>
         {row(
@@ -346,11 +355,15 @@ export default function SettingsPage() {
         )}
       </>)}
 
-      {/* Section 4 — Account */}
+      {/* Section 5 — Account */}
       {sectionLabel('Account')}
       {sectionCard(<>
         <button
-          onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }}
+          onClick={async () => {
+            await clearPinVerified()
+            await supabase.auth.signOut()
+            window.location.href = '/login'
+          }}
           style={{
             width: '100%', textAlign: 'left', background: 'none', border: 'none',
             borderBottom: `1px solid ${T.border}`, padding: '14px 16px',
@@ -428,6 +441,12 @@ export default function SettingsPage() {
         onSave={handleIncomeSave}
         currency={currency}
         isDesktop={isDesktop}
+      />
+
+      <ChangePinSheet
+        open={changePinOpen}
+        onClose={() => setChangePinOpen(false)}
+        onSaved={() => toast('PIN updated')}
       />
     </>
   )
