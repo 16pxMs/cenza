@@ -566,6 +566,34 @@ export default function AppPage() {
     overview: overviewContent,
   }
 
+  // ── Cycle debug panel — visible only when ?debug=cycle is in the URL ─────────
+  const cycleDebugPanel = searchParams.get('debug') === 'cycle' && (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 99999,
+      background: 'rgba(0,0,0,0.88)', color: '#0f0', fontFamily: 'monospace',
+      fontSize: 11, padding: '8px 12px', lineHeight: 1.7,
+      borderTop: '1px solid #333',
+    }}>
+      <strong style={{ color: '#ff0', fontSize: 12 }}>CYCLE DEBUG</strong>
+      <br />
+      cycle_id: <span style={{ color: '#fff' }}>{cycleId ?? 'null'}</span>
+      &nbsp;|&nbsp;
+      label: <span style={{ color: '#fff' }}>{cycleLabel || '—'}</span>
+      <br />
+      prev_cycle_id: <span style={{ color: '#aaa' }}>{prevCycleId ?? 'null'}</span>
+      &nbsp;|&nbsp;
+      prev_label: <span style={{ color: '#aaa' }}>{prevCycleLabel || '—'}</span>
+      <br />
+      income_confirmed: <span style={{ color: incomeData?.received_confirmed_at ? '#0f0' : '#f80' }}>
+        {incomeData?.received_confirmed_at ? 'yes' : 'no'}
+      </span>
+      &nbsp;|&nbsp;
+      declared_total: <span style={{ color: '#fff' }}>{declaredTotal}</span>
+      &nbsp;|&nbsp;
+      total_spent: <span style={{ color: '#fff' }}>{totalSpent}</span>
+    </div>
+  )
+
   const initial = (firstName || '?')[0].toUpperCase()
 
   const avatar = (
@@ -648,6 +676,7 @@ export default function AppPage() {
           onConfirm={handleCommittedConfirm}
           onSkip={handleCommittedSkip}
         />
+        {cycleDebugPanel}
       </div>
     )
   }
@@ -660,6 +689,7 @@ export default function AppPage() {
       {profileSheet}
       <main>{tabContent[tab]}</main>
       {!isFirstTimeUser && <BottomNav />}
+      {cycleDebugPanel}
       <AddIncomeSheet
         open={incomeSheetOpen}
         onClose={() => setIncomeSheetOpen(false)}
