@@ -25,6 +25,7 @@ import { IconBack } from '@/components/ui/Icons'
 import { CheckCircle2 } from 'lucide-react'
 import { fmt } from '@/lib/finance'
 import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 const T = {
   pageBg:    '#F8F9FA',
@@ -48,6 +49,7 @@ export default function SettingsPage() {
   const { toast } = useToast()
 
   const [loading, setLoading]             = useState(true)
+  const [cycleId, setCycleId]             = useState<string>('')
   const [name, setName]                   = useState('')
   const [email, setEmail]                 = useState('')
   const [currency, setCurrency]           = useState('')
@@ -69,8 +71,6 @@ export default function SettingsPage() {
   const [deleteStep, setDeleteStep]       = useState<'idle' | 'confirm'>('idle')
   const [deleting, setDeleting]           = useState(false)
 
-  const currentMonth = new Date().toISOString().slice(0, 7)
-
   useEffect(() => {
     if (!user || !ctxProfile) return
     setName(ctxProfile.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
@@ -78,8 +78,10 @@ export default function SettingsPage() {
     setCurrency(ctxProfile.currency ?? '')
     setPayDay(ctxProfile.pay_day ?? null)
     ;(async () => {
+      const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
+      setCycleId(resolvedCycleId)
       const { data: income } = await (supabase.from('income_entries') as any)
-        .select('total').eq('user_id', user.id).eq('month', currentMonth).maybeSingle()
+        .select('total').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle()
       setMonthlyTotal(income?.total ?? null)
       setLoading(false)
     })()
@@ -110,11 +112,12 @@ export default function SettingsPage() {
     if (!user) return
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
-      month:        currentMonth,
+      month:        new Date().toISOString().slice(0, 7),
+      cycle_id:     cycleId,
       salary:       data.income,
       extra_income: data.extraIncome,
       total:        data.total,
-    }, { onConflict: 'user_id,month' })
+    }, { onConflict: 'user_id,cycle_id' })
     toast('Income updated')
     setMonthlyTotal(data.total)
     setIncomeSheetOpen(false)

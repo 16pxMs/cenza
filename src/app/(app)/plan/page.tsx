@@ -19,6 +19,7 @@ import { ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 const T = {
   pageBg:      '#FAFAF8',
@@ -118,7 +119,7 @@ export default function PlanPage() {
     if (!user) return
     const userId = user.id
     async function load() {
-      const month = new Date().toISOString().slice(0, 7)
+      const cycleId = await getCurrentCycleId(supabase as any, userId, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
 
       setCurrency(ctxProfile?.currency ?? 'KES')
 
@@ -126,7 +127,7 @@ export default function PlanPage() {
         .from('income_entries')
         .select('salary, extra_income')
         .eq('user_id', userId)
-        .eq('month', month)
+        .eq('cycle_id', cycleId)
         .maybeSingle() as any)
 
       if (incomeRow) {
@@ -148,22 +149,22 @@ export default function PlanPage() {
         .from('fixed_expenses')
         .select('total_monthly')
         .eq('user_id', userId)
-        .eq('month', month)
+        .eq('cycle_id', cycleId)
         .maybeSingle() as any)
 
       if (expErr) console.error('[plan] fixed_expenses query error:', expErr)
-      else console.log('[plan] fixed_expenses row:', expenses, 'month queried:', month)
+      else console.log('[plan] fixed_expenses row:', expenses, 'cycle_id queried:', cycleId)
       if (expenses) setFixedMonthly(expenses.total_monthly ?? 0)
 
       const { data: budgets, error: budgetErr } = await (supabase
         .from('spending_budgets')
         .select('total_budget')
         .eq('user_id', userId)
-        .eq('month', month)
+        .eq('cycle_id', cycleId)
         .maybeSingle() as any)
 
       if (budgetErr) console.error('[plan] spending_budgets query error:', budgetErr)
-      else console.log('[plan] spending_budgets row:', budgets, 'month queried:', month)
+      else console.log('[plan] spending_budgets row:', budgets, 'cycle_id queried:', cycleId)
       if (budgets) setSpendingTotal(budgets.total_budget ?? 0)
 
       setLoading(false)
