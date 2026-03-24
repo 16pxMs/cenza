@@ -177,7 +177,6 @@ export default function FirstLogPage() {
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          currentMonth,
       cycle_id:       cycleId,
       category_type:  resolvedGroupType,
       category_key:   finalKey,
@@ -207,7 +206,6 @@ export default function FirstLogPage() {
         const newEntries = [...existingEntries, { key: finalKey, label: finalLabel, monthly: amountNum, confidence: 'known' }]
         await (supabase.from('fixed_expenses') as any).upsert({
           user_id:       user.id,
-          month:         currentMonth,
           cycle_id:      cycleId,
           total_monthly: newEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0),
           entries:       newEntries,

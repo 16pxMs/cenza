@@ -146,7 +146,6 @@ function LedgerInner() {
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          new Date().toISOString().slice(0, 7),
       category_type:  categoryType,
       category_key:   categoryKey,
       category_label: categoryLabel,

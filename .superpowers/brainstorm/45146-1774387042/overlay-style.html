@@ -1,0 +1,89 @@
+<h2>How should the locked overlay look?</h2>
+<p class="subtitle">Applied to a spending chart card — same treatment across all sections</p>
+
+<div class="cards">
+
+  <!-- Option A: Frosted blur -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 12px; background: #F8F9FA; border-radius: 8px;">
+      <div style="position: relative; border-radius: 10px; overflow: hidden; background: white; border: 1px solid #E4E7EC; padding: 14px;">
+        <!-- Fake chart content underneath -->
+        <div style="margin-bottom: 8px;">
+          <div style="font-size: 11px; color: #667085; margin-bottom: 4px;">Spending this cycle</div>
+          <div style="display: flex; gap: 4px; align-items: flex-end; height: 48px;">
+            <div style="background: #E9D8FD; border-radius: 3px; flex: 1; height: 30%;"></div>
+            <div style="background: #E9D8FD; border-radius: 3px; flex: 1; height: 55%;"></div>
+            <div style="background: #E9D8FD; border-radius: 3px; flex: 1; height: 40%;"></div>
+            <div style="background: #E9D8FD; border-radius: 3px; flex: 1; height: 70%;"></div>
+            <div style="background: #E9D8FD; border-radius: 3px; flex: 1; height: 45%;"></div>
+            <div style="background: #E9D8FD; border-radius: 3px; flex: 1; height: 60%;"></div>
+          </div>
+        </div>
+        <!-- Frosted overlay -->
+        <div style="position: absolute; inset: 0; backdrop-filter: blur(6px); background: rgba(255,255,255,0.55); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+          <span style="font-size: 16px;">🔒</span>
+          <span style="font-size: 10px; font-weight: 600; color: #475467;">Log an expense to unlock</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Frosted glass</h3>
+      <p>Content is blurred behind a semi-transparent overlay. Lock icon + hint text centered. Premium feel.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Faded + inline hint -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 12px; background: #F8F9FA; border-radius: 8px;">
+      <div style="border-radius: 10px; overflow: hidden; background: white; border: 1px solid #E4E7EC; padding: 14px; opacity: 0.4;">
+        <!-- Fake chart content underneath, just faded -->
+        <div style="margin-bottom: 8px;">
+          <div style="font-size: 11px; color: #667085; margin-bottom: 4px;">Spending this cycle</div>
+          <div style="display: flex; gap: 4px; align-items: flex-end; height: 48px;">
+            <div style="background: #C9AEE8; border-radius: 3px; flex: 1; height: 30%;"></div>
+            <div style="background: #C9AEE8; border-radius: 3px; flex: 1; height: 55%;"></div>
+            <div style="background: #C9AEE8; border-radius: 3px; flex: 1; height: 40%;"></div>
+            <div style="background: #C9AEE8; border-radius: 3px; flex: 1; height: 70%;"></div>
+            <div style="background: #C9AEE8; border-radius: 3px; flex: 1; height: 45%;"></div>
+            <div style="background: #C9AEE8; border-radius: 3px; flex: 1; height: 60%;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 6px; text-align: center; font-size: 10px; color: #98A2B3; font-weight: 500;">
+        Your spending breakdown will appear here
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Faded + caption</h3>
+      <p>Whole card fades to ~40% opacity. Hint text appears below. No overlay element — simpler, less obtrusive.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Placeholder lines + badge -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 12px; background: #F8F9FA; border-radius: 8px;">
+      <div style="border-radius: 10px; background: white; border: 1px solid #E4E7EC; padding: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div style="font-size: 11px; color: #667085;">Spending this cycle</div>
+          <div style="background: #F3EBF9; border: 1px solid #C9AEE8; border-radius: 99px; padding: '2px 8px'; font-size: 9px; font-weight: 600; color: #5C3489; padding: 2px 8px;">Locked</div>
+        </div>
+        <!-- Skeleton bars -->
+        <div style="display: flex; gap: 4px; align-items: flex-end; height: 48px; margin-bottom: 10px;">
+          <div style="background: #F2F4F7; border-radius: 3px; flex: 1; height: 30%;"></div>
+          <div style="background: #F2F4F7; border-radius: 3px; flex: 1; height: 55%;"></div>
+          <div style="background: #F2F4F7; border-radius: 3px; flex: 1; height: 40%;"></div>
+          <div style="background: #F2F4F7; border-radius: 3px; flex: 1; height: 70%;"></div>
+          <div style="background: #F2F4F7; border-radius: 3px; flex: 1; height: 45%;"></div>
+          <div style="background: #F2F4F7; border-radius: 3px; flex: 1; height: 60%;"></div>
+        </div>
+        <div style="height: 8px; background: #F2F4F7; border-radius: 4px; width: 70%; margin-bottom: 4px;"></div>
+        <div style="height: 8px; background: #F2F4F7; border-radius: 4px; width: 45%;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Skeleton + locked badge</h3>
+      <p>Shows the card structure as a skeleton (like loading state) with a small "Locked" badge. Familiar pattern — feels like content is loading in.</p>
+    </div>
+  </div>
+
+</div>

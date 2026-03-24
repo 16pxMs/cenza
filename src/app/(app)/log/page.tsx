@@ -286,7 +286,6 @@ export default function LogPage() {
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          new Date().toISOString().slice(0, 7),
       category_type:  pendingDelete.groupType,
       category_key:   pendingDelete.key,
       category_label: pendingDelete.label,

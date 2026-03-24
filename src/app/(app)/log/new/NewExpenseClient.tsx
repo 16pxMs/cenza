@@ -163,7 +163,6 @@ export function NewExpenseClient() {
       await (supabase.from('transactions') as any).insert({
         user_id:        user.id,
         date:           new Date().toISOString().slice(0, 10),
-        month:          currentMonth,
         cycle_id:       cycleId,
         category_type:  resolvedType,
         category_key:   resolvedKey,

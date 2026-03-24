@@ -1,0 +1,85 @@
+<h2>After "I'll log later" — which empty state feels right?</h2>
+<p class="subtitle">The user has declined logging twice. What do they land on?</p>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #F8F9FA; border-radius: 8px;">
+      <!-- Faded dashboard mockup -->
+      <div style="margin-bottom: 10px; opacity: 0.35; filter: blur(2px);">
+        <div style="height: 8px; width: 60%; background: #5C3489; border-radius: 4px; margin-bottom: 6px;"></div>
+        <div style="height: 80px; background: linear-gradient(to top, #C9AEE8 0%, #5C3489 60%); border-radius: 8px; opacity: 0.6;"></div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; opacity: 0.3; filter: blur(1px);">
+        <div style="background: #E9D8FD; border-radius: 6px; height: 36px;"></div>
+        <div style="background: #E9D8FD; border-radius: 6px; height: 36px;"></div>
+        <div style="background: #E9D8FD; border-radius: 6px; height: 36px;"></div>
+      </div>
+      <div style="margin-top: 8px; text-align: center; font-size: 11px; color: #667085; font-weight: 500;">
+        Log your first expense to see your breakdown
+      </div>
+      <div style="margin-top: 10px;">
+        <div style="height: 36px; background: #5C3489; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+          <span style="color: white; font-size: 12px; font-weight: 600;">+ Log expense</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Blurred dashboard</h3>
+      <p>Real dashboard layout with data blurred/faded. Shows the shape of insights without revealing anything. One CTA at the bottom.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #F8F9FA; border-radius: 8px;">
+      <div style="text-align: center; padding: 12px 0 8px;">
+        <div style="font-size: 28px; margin-bottom: 6px;">👋</div>
+        <div style="font-size: 13px; font-weight: 600; color: #101828; margin-bottom: 4px;">Hey, Michael.</div>
+        <div style="font-size: 11px; color: #475467; margin-bottom: 12px; line-height: 1.5;">No expenses yet.<br/>Start by logging one to see your spending.</div>
+        <div style="height: 36px; background: #5C3489; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+          <span style="color: white; font-size: 12px; font-weight: 600;">+ Log expense</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 10px; color: #98A2B3;">Your insights will appear here</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Clean & minimal</h3>
+      <p>No fake data. Just a greeting, one-liner, a single CTA, and a soft hint. Calm and non-pressuring.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #F8F9FA; border-radius: 8px;">
+      <div style="font-size: 11px; font-weight: 600; color: #5C3489; margin-bottom: 8px;">Hey, Michael.</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;">
+        <div style="background: white; border: 1px solid #E4E7EC; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px; opacity: 0.4;">📊</span>
+          <div style="flex: 1;">
+            <div style="font-size: 11px; font-weight: 600; color: #101828;">Spending overview</div>
+            <div style="font-size: 10px; color: #98A2B3;">Log an expense to unlock</div>
+          </div>
+          <div style="font-size: 10px; color: #C9AEE8;">›</div>
+        </div>
+        <div style="background: white; border: 1px solid #E4E7EC; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px; opacity: 0.4;">🎯</span>
+          <div style="flex: 1;">
+            <div style="font-size: 11px; font-weight: 600; color: #101828;">Budget pace</div>
+            <div style="font-size: 10px; color: #98A2B3;">Log an expense to unlock</div>
+          </div>
+          <div style="font-size: 10px; color: #C9AEE8;">›</div>
+        </div>
+      </div>
+      <div style="height: 34px; background: #5C3489; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+        <span style="color: white; font-size: 11px; font-weight: 600;">+ Log expense</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Feature preview cards</h3>
+      <p>Shows the features the user is missing as locked cards. Curiosity-driven. Each card hints at what unlocks when they log.</p>
+    </div>
+  </div>
+
+</div>

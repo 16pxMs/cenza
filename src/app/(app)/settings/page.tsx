@@ -120,7 +120,6 @@ export default function SettingsPage() {
     if (!user) return
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
-      month:        new Date().toISOString().slice(0, 7),
       cycle_id:     cycleId,
       salary:       data.income,
       extra_income: data.extraIncome,

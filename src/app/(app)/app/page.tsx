@@ -105,7 +105,6 @@ export default function AppPage() {
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
-      month:          new Date().toISOString().slice(0, 7),
       cycle_id:       cycleId,
       category_type:  'goal',
       category_key:   goalId,
@@ -123,8 +122,7 @@ export default function AppPage() {
         (supabase.from('transactions') as any).insert({
           user_id:        user.id,
           date:           new Date().toISOString().slice(0, 10),
-          month:          new Date().toISOString().slice(0, 7),
-          cycle_id:       cycleId,
+              cycle_id:       cycleId,
           category_type:  'subscription',
           category_key:   expense.id,
           category_label: expense.label,

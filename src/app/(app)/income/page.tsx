@@ -124,7 +124,6 @@ export default function PlanPage() {
     if (!user || !cycleId) return
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
-      month:        currentMonth,
       cycle_id:     cycleId,
       salary:       data.income,
       extra_income: data.extraIncome,
@@ -141,7 +140,6 @@ export default function PlanPage() {
     const totalMonthly = entries.reduce((s, e) => s + e.monthly, 0)
     await (supabase.from('fixed_expenses') as any).upsert({
       user_id:       user.id,
-      month:         currentMonth,
       cycle_id:      cycleId,
       total_monthly: totalMonthly,
       entries,
@@ -158,7 +156,6 @@ export default function PlanPage() {
     const totalBudget = categories.reduce((s, c) => s + c.budget, 0)
     await (supabase.from('spending_budgets') as any).upsert({
       user_id:      user.id,
-      month:        currentMonth,
       cycle_id:     cycleId,
       total_budget: totalBudget,
       categories,

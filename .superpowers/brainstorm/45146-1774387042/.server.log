@@ -1,0 +1,7 @@
+{"type":"server-started","port":63494,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:63494","screen_dir":"/Users/mshumaker/Documents/codeFile/publicFinance/.superpowers/brainstorm/45146-1774387042"}
+{"type":"screen-added","file":"/Users/mshumaker/Documents/codeFile/publicFinance/.superpowers/brainstorm/45146-1774387042/empty-state-approaches.html"}
+{"source":"user-event","type":"click","text":"Hey, Michael.\n      \n        \n          📊\n          \n            Spending overview\n            Log an expense to unlock\n          \n          ›\n        \n        \n          🎯\n          \n            Budget pace\n            Log an expense to unlock\n          \n          ›\n        \n      \n      \n        + Log expense\n      \n    \n    \n      C — Feature preview cards\n      Shows the features the user is missing as locked cards. Curiosity-driven. Each card hints at what unlocks when they log.","choice":"c","id":null,"timestamp":1774387133041}
+{"type":"screen-added","file":"/Users/mshumaker/Documents/codeFile/publicFinance/.superpowers/brainstorm/45146-1774387042/waiting-1.html"}
+{"type":"screen-added","file":"/Users/mshumaker/Documents/codeFile/publicFinance/.superpowers/brainstorm/45146-1774387042/overlay-style.html"}
+{"type":"screen-added","file":"/Users/mshumaker/Documents/codeFile/publicFinance/.superpowers/brainstorm/45146-1774387042/waiting-2.html"}
+{"type":"server-stopped","reason":"idle timeout"}
