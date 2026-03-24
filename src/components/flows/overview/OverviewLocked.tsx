@@ -1,5 +1,7 @@
 'use client'
 
+import type { CSSProperties } from 'react'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // OverviewLocked — shown when the user has declined to log at least once.
 //
@@ -44,7 +46,7 @@ function LockedCard({ children, hint }: { children: React.ReactNode; hint: strin
         justifyContent: 'center',
         gap: 6,
         padding: '0 24px',
-      } as React.CSSProperties}>
+      } as CSSProperties}>
         <span style={{ fontSize: 20 }}>🔒</span>
         <span style={{
           fontSize: 'var(--text-sm, 13px)',
