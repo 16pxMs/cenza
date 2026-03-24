@@ -28,22 +28,18 @@ interface Props {
   onClose:       () => void
   subscriptions: Subscription[]
   currency:      string
-  currentMonth:  string
+  cycleLabel:    string
   onConfirm:     (sub: Subscription, amount: number) => Promise<void>
   onSkip:        (subId: string) => Promise<void>
 }
 
 export function SubscriptionConfirmSheet({
-  open, onClose, subscriptions, currency, currentMonth, onConfirm, onSkip,
+  open, onClose, subscriptions, currency, cycleLabel, onConfirm, onSkip,
 }: Props) {
   const [editing,     setEditing]     = useState<string | null>(null)
   const [editAmount,  setEditAmount]  = useState('')
   const [confirming,  setConfirming]  = useState<string | null>(null)
   const [confirmed,   setConfirmed]   = useState<Set<string>>(new Set())
-
-  const monthLabel = new Date(`${currentMonth}-01`).toLocaleString('default', {
-    month: 'long', year: 'numeric',
-  })
 
   const pending = subscriptions.filter(s => !confirmed.has(s.id))
   const allDone = pending.length === 0
@@ -77,7 +73,7 @@ export function SubscriptionConfirmSheet({
         color: 'var(--text-2)',
         lineHeight: 1.6,
       }}>
-        Confirm what you paid for {monthLabel}. We'll log each one as an expense.
+        Confirm what you paid for {cycleLabel}. We'll log each one as an expense.
       </p>
 
       {allDone ? (

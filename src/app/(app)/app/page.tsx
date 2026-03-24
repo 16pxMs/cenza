@@ -24,10 +24,10 @@ import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
 import { CommittedExpenseConfirmSheet, type CommittedExpense } from '@/components/flows/log/CommittedExpenseConfirmSheet'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { getCurrentCycleId, getPrevCycleId } from '@/lib/supabase/cycles-db'
-import { profileToPaySchedule } from '@/lib/cycles'
+import { profileToPaySchedule, getCycleByDate, formatCycleLabel } from '@/lib/cycles'
 
 const MOCK_RECAP: RecapData = {
-  prevMonth:   new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().slice(0, 7),
+  prevCycleLabel: 'Last cycle',
   incomeTotal: 200000,
   totalSpent:  87400,
   fixedTotal:  25000,
@@ -68,8 +68,10 @@ export default function AppPage() {
   const [committedCheckOpen,  setCommittedCheckOpen]  = useState(false)
   const [pendingCommitted,    setPendingCommitted]    = useState<CommittedExpense[]>([])
 
-  const [cycleId,     setCycleId]     = useState<string | null>(null)
-  const [prevCycleId, setPrevCycleId] = useState<string | null>(null)
+  const [cycleId,       setCycleId]       = useState<string | null>(null)
+  const [prevCycleId,   setPrevCycleId]   = useState<string | null>(null)
+  const [cycleLabel,    setCycleLabel]    = useState<string>('')
+  const [prevCycleLabel, setPrevCycleLabel] = useState<string>('')
 
   useEffect(() => {
     if (ctxProfile) setProfile(ctxProfile)
@@ -142,27 +144,19 @@ export default function AppPage() {
     }
   }, [supabase, cycleId, user])
 
-  const handleIncomeConfirm = useCallback(async (received: number, day: number | null) => {
+  const handleIncomeConfirm = useCallback(async (received: number) => {
     if (!user || !cycleId) return
-    const ops: Promise<unknown>[] = [
-      (supabase.from('income_entries') as any).update({
-        received,
-        received_confirmed_at: new Date().toISOString(),
-      }).eq('user_id', user.id).eq('cycle_id', cycleId),
-    ]
-    if (day !== null && !profile?.pay_day) {
-      ops.push(
-        (supabase.from('user_profiles') as any).update({ pay_day: day }).eq('id', user.id)
-      )
-    }
-    await Promise.all(ops)
+    await (supabase.from('income_entries') as any).update({
+      received,
+      received_confirmed_at: new Date().toISOString(),
+    }).eq('user_id', user.id).eq('cycle_id', cycleId)
     setIncomeCheckOpen(false)
     setIncomeData((prev: any) => prev ? { ...prev, received, received_confirmed_at: new Date().toISOString() } : prev)
     if (pendingLogNavigation) {
       setPendingLogNavigation(false)
       router.push('/log?open=true')
     }
-  }, [supabase, cycleId, profile, pendingLogNavigation, router])
+  }, [supabase, cycleId, pendingLogNavigation, router])
 
   const saveIncome = useCallback(async (data: { income: number; extraIncome: any[]; total: number; incomeType?: string }) => {
     if (!data.income || data.income <= 0) {
@@ -294,6 +288,9 @@ export default function AppPage() {
 
       const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
       setCycleId(resolvedCycleId)
+      const schedule = profileToPaySchedule(ctxProfile as any)
+      const computedCycleLabel = formatCycleLabel(getCycleByDate(new Date(), schedule))
+      setCycleLabel(computedCycleLabel)
 
       const CARRY_DISMISSED_KEY = `cenza:carry-dismissed:${resolvedCycleId}`
 
@@ -315,6 +312,10 @@ export default function AppPage() {
 
       const resolvedPrevCycleId = await getPrevCycleId(supabase as any, user.id, ctxProfile as any)
       setPrevCycleId(resolvedPrevCycleId)
+      if (resolvedPrevCycleId) {
+        const prevDate = new Date(resolvedPrevCycleId + 'T12:00:00')
+        setPrevCycleLabel(formatCycleLabel(getCycleByDate(prevDate, schedule)))
+      }
 
       const [{ data: prevIncome }, { data: prevExpenses }, { data: prevBudgets }] = await Promise.all([
         resolvedPrevCycleId
@@ -336,7 +337,9 @@ export default function AppPage() {
 
       if (prevIncome) {
         const carryData: CarryForwardData = {
-          prevMonth: resolvedPrevCycleId ?? '',
+          prevCycleLabel: resolvedPrevCycleId
+            ? formatCycleLabel(getCycleByDate(new Date(resolvedPrevCycleId + 'T12:00:00'), schedule))
+            : '',
           income: {
             salary:       prevIncome.salary,
             extra_income: prevIncome.extra_income ?? [],
@@ -382,7 +385,9 @@ export default function AppPage() {
             }))
 
           setRecapData({
-            prevMonth: resolvedPrevCycleId ?? '',
+            prevCycleLabel: resolvedPrevCycleId
+              ? formatCycleLabel(getCycleByDate(new Date(resolvedPrevCycleId + 'T12:00:00'), schedule))
+              : '',
             incomeTotal: Number(prevIncome.total ?? 0),
             totalSpent:  totalSpentPrev,
             fixedTotal:  fixedTotalPrev,
@@ -464,7 +469,7 @@ export default function AppPage() {
       <MonthRecapScreen
         data={recapData ?? MOCK_RECAP}
         currency={profile?.currency || 'KES'}
-        currentMonth={cycleId ?? ''}
+        currentCycleLabel={cycleLabel}
         isDesktop={isDesktop}
         onContinue={handleRecapContinue}
       />
@@ -490,7 +495,7 @@ export default function AppPage() {
       <CarryForwardScreen
         data={carryForwardData}
         currency={profile?.currency || 'KES'}
-        currentMonth={cycleId ?? ''}
+        currentCycleLabel={cycleLabel}
         isDesktop={isDesktop}
         onConfirm={handleCarryForward}
         onFresh={handleCarryForwardFresh}
@@ -632,7 +637,6 @@ export default function AppPage() {
           onClose={() => { setIncomeCheckOpen(false); setPendingLogNavigation(false) }}
           declaredTotal={declaredTotal}
           currency={profile?.currency || 'KES'}
-          payDay={profile?.pay_day ?? null}
           onConfirm={handleIncomeConfirm}
         />
         <CommittedExpenseConfirmSheet
@@ -640,7 +644,7 @@ export default function AppPage() {
           onClose={() => setCommittedCheckOpen(false)}
           expenses={pendingCommitted}
           currency={profile?.currency || 'KES'}
-          currentMonth={cycleId ?? ''}
+          cycleLabel={cycleLabel}
           onConfirm={handleCommittedConfirm}
           onSkip={handleCommittedSkip}
         />
@@ -669,7 +673,6 @@ export default function AppPage() {
         onClose={() => { setIncomeCheckOpen(false); setPendingLogNavigation(false) }}
         declaredTotal={declaredTotal}
         currency={profile?.currency || 'KES'}
-        payDay={profile?.pay_day ?? null}
         onConfirm={handleIncomeConfirm}
       />
       <CommittedExpenseConfirmSheet
@@ -677,7 +680,7 @@ export default function AppPage() {
         onClose={() => setCommittedCheckOpen(false)}
         expenses={pendingCommitted}
         currency={profile?.currency || 'KES'}
-        currentMonth={cycleId ?? ''}
+        cycleLabel={cycleLabel}
         onConfirm={handleCommittedConfirm}
         onSkip={handleCommittedSkip}
       />

@@ -24,6 +24,7 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack, IconTrash } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { profileToPaySchedule, getCycleByDate, formatCycleLabel } from '@/lib/cycles'
 
 function titleCase(s: string) {
   return s.replace(/\b\w/g, c => c.toUpperCase())
@@ -106,6 +107,7 @@ export default function LogPage() {
 
   const [loading, setLoading]             = useState(true)
   const [cycleId, setCycleId]             = useState<string>('')
+  const [cycleLabel, setCycleLabel]       = useState<string>('')
   const [currency, setCurrency]           = useState('KES')
   const [sections, setSections]           = useState<Section[]>([])
   const [isFirstTime, setIsFirstTime]     = useState(false)
@@ -136,6 +138,10 @@ export default function LogPage() {
 
     const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
     setCycleId(resolvedCycleId)
+    if (ctxProfile) {
+      const schedule = profileToPaySchedule(ctxProfile as any)
+      setCycleLabel(formatCycleLabel(getCycleByDate(new Date(), schedule)))
+    }
 
     const [
       { data: txns },
@@ -337,7 +343,7 @@ export default function LogPage() {
           <IconBack size={18} color={T.text3} />
         </button>
         <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: T.textMuted, letterSpacing: 0 }}>
-          {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          {cycleLabel || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
         <h1 style={{ fontSize: isDesktop ? 28 : 26, fontWeight: 700, color: T.text1, margin: 0, letterSpacing: -0.5 }}>
           Add an expense

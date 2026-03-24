@@ -28,13 +28,8 @@ function fmt(n: number, cur: string) {
   return `${cur} ${n.toLocaleString()}`
 }
 
-function monthLabel(yyyyMM: string) {
-  const [y, m] = yyyyMM.split('-').map(Number)
-  return new Date(y, m - 1).toLocaleDateString('en-US', { month: 'long' })
-}
-
 export interface CarryForwardData {
-  prevMonth: string
+  prevCycleLabel: string
   income: {
     salary:       number
     extra_income: any[]
@@ -52,14 +47,14 @@ export interface CarryForwardData {
 
 interface Props {
   data:         CarryForwardData
-  currency:     string
-  currentMonth: string
-  isDesktop?:   boolean
-  onConfirm:    (selectedEntries: any[], selectedCategories: any[]) => Promise<void>
-  onFresh:      () => void
+  currency:          string
+  currentCycleLabel: string
+  isDesktop?:        boolean
+  onConfirm:         (selectedEntries: any[], selectedCategories: any[]) => Promise<void>
+  onFresh:           () => void
 }
 
-export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, onConfirm, onFresh }: Props) {
+export function CarryForwardScreen({ data, currency, currentCycleLabel, isDesktop, onConfirm, onFresh }: Props) {
   // Track which expense entries and budget categories the user keeps
   const initialEntries    = (data.expenses?.entries ?? []).filter((e: any) => e.monthly > 0)
   const initialCategories = (data.budgets?.categories ?? [])
@@ -79,8 +74,8 @@ export function CarryForwardScreen({ data, currency, currentMonth, isDesktop, on
     setSaving(false)
   }
 
-  const prevLabel    = monthLabel(data.prevMonth)
-  const currentLabel = monthLabel(currentMonth)
+  const prevLabel    = data.prevCycleLabel
+  const currentLabel = currentCycleLabel
   const totalIncome  = data.income.salary + (data.income.extra_income ?? []).reduce((s: number, e: any) => s + (Number(e.amount) || 0), 0)
 
   return (
