@@ -167,7 +167,6 @@ export default function AppPage() {
     const ops: Promise<any>[] = [
       (supabase.from('income_entries') as any).upsert({
         user_id:      user.id,
-        month:        new Date().toISOString().slice(0, 7),
         cycle_id:     cycleId,
         salary:       data.income,
         extra_income: data.extraIncome,
@@ -412,7 +411,6 @@ export default function AppPage() {
     const income = carryForwardData.income
     await (supabase.from('income_entries') as any).upsert({
       user_id:      user.id,
-      month:        new Date().toISOString().slice(0, 7),
       cycle_id:     cycleId,
       salary:       income.salary,
       extra_income: income.extra_income,
@@ -423,7 +421,6 @@ export default function AppPage() {
       const totalMonthly = selectedEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0)
       await (supabase.from('fixed_expenses') as any).upsert({
         user_id:       user.id,
-        month:         new Date().toISOString().slice(0, 7),
         cycle_id:      cycleId,
         total_monthly: totalMonthly,
         entries:       selectedEntries,
@@ -434,7 +431,6 @@ export default function AppPage() {
       const totalBudget = selectedCategories.reduce((s: number, c: any) => s + (c.budget ?? 0), 0)
       await (supabase.from('spending_budgets') as any).upsert({
         user_id:      user.id,
-        month:        new Date().toISOString().slice(0, 7),
         cycle_id:     cycleId,
         total_budget: totalBudget,
         categories:   selectedCategories,
