@@ -17,6 +17,7 @@ import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewEmpty } from '@/components/flows/overview/OverviewEmpty'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
 import { FirstTimeWelcome } from '@/components/flows/overview/FirstTimeWelcome'
+import { OverviewLocked } from '@/components/flows/overview/OverviewLocked'
 import { CarryForwardScreen, type CarryForwardData } from '@/components/flows/overview/CarryForwardScreen'
 import { MonthRecapScreen, type RecapData } from '@/components/flows/overview/MonthRecapScreen'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
@@ -67,6 +68,8 @@ export default function AppPage() {
   const [pendingLogNavigation, setPendingLogNavigation] = useState(false)
   const [committedCheckOpen,  setCommittedCheckOpen]  = useState(false)
   const [pendingCommitted,    setPendingCommitted]    = useState<CommittedExpense[]>([])
+
+  const [skipCount, setSkipCount] = useState(0)
 
   const [cycleId,       setCycleId]       = useState<string | null>(null)
   const [prevCycleId,   setPrevCycleId]   = useState<string | null>(null)
@@ -277,6 +280,7 @@ export default function AppPage() {
       }
     }
 
+    setSkipCount(parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10))
     setLoading(false)
   }, [supabase])
 
@@ -519,10 +523,11 @@ export default function AppPage() {
 
   const firstName = profile?.name?.split(' ')[0] ?? ''
 
-  // 3-way overview state:
-  //  1. No income + no transactions → first-time user, log expense first
-  //  2. No income + has transactions → needs to add income (OverviewEmpty)
-  //  3. Has income → full overview
+  // 4-way overview state:
+  //  1. Has income                             → OverviewWithData
+  //  2. No income + has transactions           → OverviewEmpty (enter income)
+  //  3. No income + no transactions + skip ≥ 1 → OverviewLocked (passive empty state)
+  //  4. No income + no transactions + skip = 0 → FirstTimeWelcome (first-ever visit)
   const overviewContent = incomeData ? (
     <OverviewWithData
       name={firstName}
@@ -548,6 +553,11 @@ export default function AppPage() {
       spendingBudget={spendingBudget}
       categorySpend={categorySpend}
       isDesktop={isDesktop}
+    />
+  ) : totalSpent === 0 && skipCount >= 1 ? (
+    <OverviewLocked
+      name={firstName}
+      onStart={() => router.push('/log/first')}
     />
   ) : totalSpent === 0 ? (
     <FirstTimeWelcome
