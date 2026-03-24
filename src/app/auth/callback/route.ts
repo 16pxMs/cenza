@@ -68,10 +68,24 @@ export async function GET(request: NextRequest) {
       // Existing user
       const destination = profile.onboarding_complete ? next : '/onboarding'
 
-      return withCookies(
+      const redirectResponse = withCookies(
         NextResponse.redirect(`${origin}${destination}`),
         pendingCookies
       )
+
+      // Set a 2-minute fresh-auth cookie so /pin can offer PIN reset
+      // after the forgot-PIN sign-out → sign-in flow.
+      if (profile.onboarding_complete) {
+        redirectResponse.cookies.set('cenza-fresh-auth', '1', {
+          httpOnly: false,
+          path: '/',
+          maxAge: 120,
+          sameSite: 'lax',
+          secure: process.env.NODE_ENV === 'production',
+        })
+      }
+
+      return redirectResponse
     }
   }
 
