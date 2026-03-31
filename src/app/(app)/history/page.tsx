@@ -71,7 +71,7 @@ interface Transaction {
 interface CategoryRow {
   key:          string
   label:        string
-  type:         'fixed' | 'goal' | 'variable' | 'debt' | 'subscription' | 'other'
+  type:         'fixed' | 'goal' | 'everyday' | 'debt' | 'subscription' | 'other'
   planned:      number       // budget / target / monthly — 0 if unknown
   spent:        number       // sum of transactions this month
   transactions: Transaction[]
@@ -143,109 +143,49 @@ export default function HistoryPage() {
     setCurrency(cur)
 
     const allTxns: Transaction[] = (txnRows ?? []).map((r: any) => ({ ...r, amount: Number(r.amount) }))
+    console.log(
+      '[DEBUG types]',
+      allTxns.map(t => ({
+        label: t.category_label,
+        type: t.category_type,
+      }))
+    )
 
-    // Index transactions by category_key
-    const txnByKey: Record<string, Transaction[]> = {}
-    for (const t of allTxns) {
-      if (!txnByKey[t.category_key]) txnByKey[t.category_key] = []
-      txnByKey[t.category_key].push(t)
-    }
-    const spentByKey = (key: string) => (txnByKey[key] ?? []).reduce((s, t) => s + t.amount, 0)
+    console.log('[history] category_types:', allTxns.map(t => t.category_type))
 
-    // ── Build category rows ──────────────────────────────────
-    const categoryRows: CategoryRow[] = []
-    const coveredKeys = new Set<string>()
+    
 
-    // Fixed expenses
-    for (const e of (expenses?.entries ?? []).filter((e: any) => e.confidence === 'known' && e.monthly > 0)) {
-      coveredKeys.add(e.key)
-      categoryRows.push({
-        key: e.key, label: EXPENSE_LABELS[e.key] ?? titleCase(e.label ?? e.key),
-        type: 'fixed', planned: e.monthly,
-        spent: spentByKey(e.key), transactions: txnByKey[e.key] ?? [],
-      })
-    }
+    // Convert to CategoryRow[] for existing render
+      const toRows = (txns: Transaction[]): CategoryRow[] => {
+      const byType: Record<string, Transaction[]> = {}
 
-    // Goals
-    const targetMap: Record<string, number> = {}
-    for (const t of targets ?? []) targetMap[t.goal_id] = Number(t.amount)
+      for (const t of txns) {
+        const type = t.category_type || 'everyday'
 
-    for (const gid of (ctxProfile?.goals ?? [])) {
-      if (!GOAL_LABELS[gid]) continue
-      coveredKeys.add(gid)
-      categoryRows.push({
-        key: gid, label: GOAL_LABELS[gid],
-        type: 'goal', planned: targetMap[gid] ?? 0,
-        spent: spentByKey(gid), transactions: txnByKey[gid] ?? [],
-      })
-    }
+        if (!byType[type]) byType[type] = []
+        byType[type].push(t)
+      }
 
-    // Daily spending categories
-    for (const c of (budgets?.categories ?? [])) {
-      coveredKeys.add(c.key)
-      categoryRows.push({
-        key: c.key, label: titleCase(c.label ?? c.key),
-        type: 'variable', planned: c.budget ?? 0,
-        spent: spentByKey(c.key), transactions: txnByKey[c.key] ?? [],
-      })
+      return Object.entries(byType).map(([type, ts]) => ({
+      key: type,
+
+      type: type as CategoryRow['type'], // ✅ required
+
+       label:
+        type === 'fixed' ? 'Fixed spending' :
+        type === 'debt'  ? 'Debt' :
+        type === 'goal'  ? 'Goals' :
+                          'Daily',
+
+      planned: 0, // ✅ required (you can improve later)
+
+      spent: ts.reduce((s, t) => s + t.amount, 0),
+
+      transactions: ts,
+    }))
     }
 
-    // Debt transactions — includes stored debts AND uncovered transactions whose label
-    // matches a known debt keyword (e.g. a "debt" entry mistakenly saved as 'other')
-    const debtMap: Record<string, { label: string; txns: Transaction[] }> = {}
-    const toFixAsDebt: string[] = []
-    for (const t of allTxns) {
-      const isStoredDebt  = t.category_type === 'debt'
-      const isKeywordDebt = !coveredKeys.has(t.category_key) && isDebtByLabel(t.category_label)
-      if (!isStoredDebt && !isKeywordDebt) continue
-      coveredKeys.add(t.category_key)
-      if (!debtMap[t.category_key]) debtMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), txns: [] }
-      debtMap[t.category_key].txns.push(t)
-      if (isKeywordDebt) toFixAsDebt.push(t.id)
-    }
-    for (const [key, { label, txns }] of Object.entries(debtMap)) {
-      categoryRows.push({
-        key, label, type: 'debt', planned: 0,
-        spent: txns.reduce((s, t) => s + t.amount, 0), transactions: txns,
-      })
-    }
-    // Silently correct the category_type in the DB for promoted entries
-    if (toFixAsDebt.length > 0) {
-      ;(supabase.from('transactions') as any)
-        .update({ category_type: 'debt' })
-        .in('id', toFixAsDebt)
-        .then(() => {})
-    }
-
-    // Subscriptions
-    const subMap: Record<string, { label: string; txns: Transaction[] }> = {}
-    for (const t of allTxns) {
-      if (coveredKeys.has(t.category_key)) continue
-      if (t.category_type !== 'subscription') continue
-      coveredKeys.add(t.category_key)
-      if (!subMap[t.category_key]) subMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), txns: [] }
-      subMap[t.category_key].txns.push(t)
-    }
-    for (const [key, { label, txns }] of Object.entries(subMap)) {
-      categoryRows.push({
-        key, label, type: 'subscription', planned: 0,
-        spent: txns.reduce((s, t) => s + t.amount, 0), transactions: txns,
-      })
-    }
-
-    // Other — everything remaining
-    const otherMap: Record<string, { label: string; txns: Transaction[] }> = {}
-    for (const t of allTxns) {
-      if (coveredKeys.has(t.category_key)) continue
-      if (!otherMap[t.category_key]) otherMap[t.category_key] = { label: titleCase(t.category_label ?? t.category_key), txns: [] }
-      otherMap[t.category_key].txns.push(t)
-    }
-    for (const [key, { label, txns }] of Object.entries(otherMap)) {
-      categoryRows.push({
-        key, label, type: 'other', planned: 0,
-        spent: txns.reduce((s, t) => s + t.amount, 0), transactions: txns,
-      })
-    }
+    const categoryRows: CategoryRow[] = toRows(allTxns)
 
     const spent = allTxns.filter(t => t.category_type !== 'goal').reduce((s, t) => s + t.amount, 0)
     setRows(categoryRows)
@@ -255,7 +195,9 @@ export default function HistoryPage() {
     setLoading(false)
   }, [supabase, user, ctxProfile])
 
-  useEffect(() => { if (user) loadData() }, [loadData, user])
+  useEffect(() => {
+    if (user) loadData()  
+    }, [user, loadData])
 
   if (loading) {
     return (
@@ -271,7 +213,7 @@ export default function HistoryPage() {
   const unallocated  = totalIncome - totalSpent
   const fixedSpent   = rows.filter(r => r.type === 'fixed').reduce((s, r) => s + r.spent, 0)
   const goalsSpent   = rows.filter(r => r.type === 'goal').reduce((s, r) => s + r.spent, 0)
-  const dailySpent   = rows.filter(r => r.type === 'variable').reduce((s, r) => s + r.spent, 0)
+  const dailySpent   = rows.filter(r => r.type === 'everyday').reduce((s, r) => s + r.spent, 0)
   const debtSpent    = rows.filter(r => r.type === 'debt').reduce((s, r) => s + r.spent, 0)
   const otherSpent   = rows.filter(r => r.type === 'other').reduce((s, r) => s + r.spent, 0)
 
@@ -285,9 +227,9 @@ export default function HistoryPage() {
 
   // Group rows for rendering
   const sections: { label: string; types: CategoryRow['type'][] }[] = [
-    { label: 'Fixed',    types: ['fixed'] },
+    { label: 'Fixed',    types: ['fixed', 'subscription'] },
     { label: 'Goals',    types: ['goal'] },
-    { label: 'Daily',    types: ['variable'] },
+    { label: 'Daily',    types: ['everyday'] },
     { label: 'Debts',    types: ['debt'] },
     { label: 'Other',    types: ['other'] },
   ]

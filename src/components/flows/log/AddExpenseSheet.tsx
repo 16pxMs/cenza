@@ -78,14 +78,14 @@ export interface QuickItem {
 // askFrequency: true → show "Do you pay this every month?" before amount
 const FIRST_TIME_CATEGORIES = [
   { icon: '🏠', label: 'Rent',           categoryKey: 'rent',       groupType: 'fixed',    askFrequency: true  },
-  { icon: '🛒', label: 'Groceries',      categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '🚌', label: 'Transport',      categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '🍽️', label: 'Eating out',    categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '📱', label: 'Airtime / Data', categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🛒', label: 'Groceries',      categoryKey: null,         groupType: 'everyday', askFrequency: false },
+  { icon: '🚌', label: 'Transport',      categoryKey: null,         groupType: 'everyday', askFrequency: false },
+  { icon: '🍽️', label: 'Eating out',    categoryKey: null,         groupType: 'everyday', askFrequency: false },
+  { icon: '📱', label: 'Airtime / Data', categoryKey: null,         groupType: 'everyday', askFrequency: false },
   { icon: '💡', label: 'Utilities',      categoryKey: null,         groupType: 'fixed',    askFrequency: false },
-  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'everyday', askFrequency: false },
   { icon: '🏫', label: 'School fees',    categoryKey: 'schoolFees', groupType: 'fixed',    askFrequency: true  },
-  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'everyday', askFrequency: false },
 ]
 
 type FirstTimeCat = {
@@ -259,7 +259,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
           ? 'fixed'
           : otherFrequency === 'recurring' && otherType === 'debt'
             ? 'debt'
-            : 'variable'
+            : 'everyday'
 
   // Questions answered?
   const otherQuestionsReady = isDebtFlow
@@ -401,7 +401,7 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                   </button>
                   <button
                     onClick={() => {
-                      setFirstTimeCat({ ...pendingCat, groupType: 'variable' })
+                      setFirstTimeCat({ ...pendingCat, groupType: 'everyday' })
                       setIsMonthlyFixed(false)
                       setPendingCat(null)
                       setTimeout(() => amountRef.current?.focus(), 100)

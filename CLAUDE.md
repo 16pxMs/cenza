@@ -17,3 +17,5 @@ Rules
 - Use server actions for writes
 - Avoid unnecessary client state
 - Keep code simple and readable
+
+See also: [.claude/rules.md](.claude/rules.md)

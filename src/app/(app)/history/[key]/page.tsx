@@ -142,7 +142,7 @@ function LedgerInner() {
     if (amt <= 0) return
     setSavingRefund(true)
     if (!user) { setSavingRefund(false); return }
-    const categoryType = searchParams.get('type') ?? 'variable'
+    const categoryType = searchParams.get('type') ?? 'everyday'
     await (supabase.from('transactions') as any).insert({
       user_id:        user.id,
       date:           new Date().toISOString().slice(0, 10),
@@ -161,7 +161,7 @@ function LedgerInner() {
     router.refresh()
   }
 
-  const categoryType = searchParams.get('type') ?? 'variable'
+  const categoryType = searchParams.get('type') ?? 'everyday'
   const overBudget   = planned > 0 && totalSpent > planned
   const pct          = planned > 0 ? Math.min(100, (totalSpent / planned) * 100) : 0
   const barColor     = overBudget

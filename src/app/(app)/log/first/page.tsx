@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { dbWrite } from '@/lib/db'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { IconBack } from '@/components/ui/Icons'
@@ -31,15 +32,15 @@ const T = {
 
 const CATEGORIES = [
   { icon: '🏠', label: 'Rent',           categoryKey: 'rent',       groupType: 'fixed',    askFrequency: true  },
-  { icon: '🛒', label: 'Groceries',      categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '🚌', label: 'Transport',      categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '🍽️', label: 'Eating out',    categoryKey: null,         groupType: 'variable', askFrequency: false },
-  { icon: '📱', label: 'Airtime / Data', categoryKey: null,         groupType: 'variable', askFrequency: false },
+  { icon: '🛒', label: 'Groceries',      categoryKey: null,         groupType: 'everyday', askFrequency: false },
+  { icon: '🚌', label: 'Transport',      categoryKey: null,         groupType: 'everyday', askFrequency: false },
+  { icon: '🍽️', label: 'Eating out',    categoryKey: null,         groupType: 'everyday', askFrequency: false },
+  { icon: '📱', label: 'Airtime / Data', categoryKey: null,         groupType: 'everyday', askFrequency: false },
   { icon: '💡', label: 'Utilities',      categoryKey: null,         groupType: 'fixed',    askFrequency: false },
-  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'variable',      askFrequency: false },
+  { icon: '🎬', label: 'Entertainment',  categoryKey: null,         groupType: 'everyday',      askFrequency: false },
   { icon: '🏫', label: 'School fees',    categoryKey: 'schoolFees', groupType: 'fixed',         askFrequency: true  },
   { icon: '🔁', label: 'Subscription',   categoryKey: null,         groupType: 'subscription',  askFrequency: false },
-  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'variable',      askFrequency: false },
+  { icon: '🏥', label: 'Medical',        categoryKey: null,         groupType: 'everyday',      askFrequency: false },
 ]
 
 type Category = typeof CATEGORIES[0]
@@ -56,10 +57,11 @@ export default function FirstLogPage() {
   const [step, setStep]               = useState<Step>('pick')
   const [selected, setSelected]       = useState<Category | null>(null)
   const [isMonthlyFixed, setIsMonthlyFixed] = useState(false)
-  const [resolvedGroupType, setResolvedGroupType] = useState('variable')
+  const [resolvedGroupType, setResolvedGroupType] = useState('everyday')
   const [amount, setAmount]           = useState('')
   const [note, setNote]               = useState('')
   const [saving, setSaving]           = useState(false)
+  const [saveError, setSaveError]     = useState<string | null>(null)
   const [currency, setCurrency]       = useState('KES')
   const [customLabel, setCustomLabel] = useState('')
   const [isSomethingElse, setIsSomethingElse] = useState(false)
@@ -86,8 +88,6 @@ export default function FirstLogPage() {
     localStorage.setItem('cenza_skip_count', String(current + 1))
     router.replace('/app')
   }
-
-  const currentMonth = new Date().toISOString().slice(0, 7)
 
   useEffect(() => {
     if (ctxProfile) {
@@ -126,7 +126,7 @@ export default function FirstLogPage() {
 
   const confirmFrequency = (monthly: boolean) => {
     setIsMonthlyFixed(monthly)
-    setResolvedGroupType(monthly ? 'fixed' : 'variable')
+    setResolvedGroupType(monthly ? 'fixed' : 'everyday')
     setStep('amount')
   }
 
@@ -169,53 +169,120 @@ export default function FirstLogPage() {
 
   const handleSave = async () => {
     if (!canSave) return
+
     setSaving(true)
-    if (!user || !ctxProfile) { setSaving(false); return }
+    setSaveError(null)
+
+    if (!user || !ctxProfile) {
+      setSaving(false)
+      return
+    }
 
     const cycleId = await getCurrentCycleId(supabase as any, user.id, ctxProfile as any)
 
-    await (supabase.from('transactions') as any).insert({
-      user_id:        user.id,
-      date:           new Date().toISOString().slice(0, 10),
-      cycle_id:       cycleId,
-      category_type:  resolvedGroupType,
-      category_key:   finalKey,
-      category_label: finalLabel,
-      amount:         amountNum,
-      note:           note.trim() || null,
-    })
-
-    // If subscription, write to subscriptions table so it enters the monthly check-in cycle
-    if (isSubscription) {
-      await (supabase.from('subscriptions') as any).insert({
-        user_id:    user.id,
-        key:        finalKey,
-        label:      finalLabel,
-        amount:     amountNum,
-        needs_check: true,
-      })
+    if (!cycleId) {
+      setSaveError('Could not determine cycle.')
+      setSaving(false)
+      return
     }
 
-    // If confirmed monthly fixed, write to fixed_expenses
-    if (isMonthlyFixed) {
-      const { data: existing } = await (supabase.from('fixed_expenses') as any)
-        .select('total_monthly, entries').eq('user_id', user.id).eq('cycle_id', cycleId).maybeSingle()
+    const date = new Date().toLocaleDateString('en-CA')
 
-      const existingEntries: any[] = existing?.entries ?? []
-      if (!existingEntries.some((e: any) => e.key === finalKey)) {
-        const newEntries = [...existingEntries, { key: finalKey, label: finalLabel, monthly: amountNum, confidence: 'known' }]
-        await (supabase.from('fixed_expenses') as any).upsert({
-          user_id:       user.id,
-          cycle_id:      cycleId,
-          total_monthly: newEntries.reduce((s: number, e: any) => s + (e.monthly ?? 0), 0),
-          entries:       newEntries,
-        }, { onConflict: 'user_id,cycle_id' })
+    // 1. Insert transaction
+    const { error: txError } = await dbWrite(
+      (supabase.from('transactions') as any).insert({
+        user_id:        user.id,
+        date,
+        cycle_id:       cycleId,
+        category_type:  resolvedGroupType,
+        category_key:   finalKey,
+        category_label: finalLabel,
+        amount:         amountNum,
+        note:           note.trim() || null,
+      })
+    )
+
+    if (txError) {
+      setSaveError('Failed to save expense. Please try again.')
+      setSaving(false)
+      return
+    }
+
+    // 2. Subscription
+    if (isSubscription) {
+      const { error: subError } = await dbWrite(
+        (supabase.from('subscriptions') as any).insert({
+          user_id: user.id,
+          key: finalKey,
+          label: finalLabel,
+          amount: amountNum,
+          needs_check: true,
+        })
+      )
+
+      if (subError) {
+        setSaveError('Expense saved, but subscription record failed.')
+        setSaving(false)
+        return
       }
     }
 
-    setStep('done')
-    setTimeout(() => router.replace('/app'), 2200)
+  // 3. Fixed expenses
+  if (isMonthlyFixed) {
+    const { data: existing, error: readError } = await supabase
+      .from('fixed_expenses')
+      .select('total_monthly, entries')
+      .eq('user_id', user.id)
+      .eq('cycle_id', cycleId)
+      .maybeSingle()
+
+    if (readError) {
+      setSaveError('Failed to load existing expenses.')
+      setSaving(false)
+      return
+    }
+
+   const existingEntries = ((existing as any)?.entries ?? []) as any[]
+
+    if (!existingEntries.some((e: any) => e.key === finalKey)) {
+      const newEntries = [
+        ...existingEntries,
+        {
+          key: finalKey,
+          label: finalLabel,
+          monthly: amountNum,
+          confidence: 'known',
+        },
+      ]
+
+      const { error: fixedError } = await dbWrite(
+        (supabase.from('fixed_expenses') as any).upsert(
+          {
+            user_id: user.id,
+            cycle_id: cycleId,
+            total_monthly: newEntries.reduce(
+              (s: number, e: any) => s + (e.monthly ?? 0),
+              0
+            ),
+            entries: newEntries,
+          },
+          { onConflict: 'user_id,cycle_id' }
+        )
+      )
+
+      if (fixedError) {
+        setSaveError('Expense saved, but fixed expense record failed.')
+        setSaving(false)
+        return
+      }
+    }
   }
+
+  // SUCCESS
+  setSaving(false)
+  setStep('done')
+  setTimeout(() => router.replace('/app'), 2200)
+}
 
   // ── Step: pick ────────────────────────────────────────────
   const stepPick = (
@@ -243,7 +310,7 @@ export default function FirstLogPage() {
 
         {/* Something else — full width */}
         <button
-          onClick={() => { setIsSomethingElse(true); setSelected(null); setResolvedGroupType('variable'); setStep('amount') }}
+          onClick={() => { setIsSomethingElse(true); setSelected(null); setResolvedGroupType('everyday'); setStep('amount') }}
           style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '14px', borderRadius: 14,
@@ -413,6 +480,17 @@ export default function FirstLogPage() {
           boxSizing: 'border-box', marginBottom: 20,
         }}
       />
+
+      {/* Error */}
+      {saveError && (
+        <p style={{
+          margin: '0 0 16px', padding: '10px 14px', borderRadius: 10,
+          background: '#FEF2F2', border: '1px solid #FECACA',
+          fontSize: 13, color: '#D93025', lineHeight: 1.5,
+        }}>
+          {saveError}
+        </p>
+      )}
 
       <button
         onClick={handleSave}

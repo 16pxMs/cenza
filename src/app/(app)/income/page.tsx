@@ -99,7 +99,7 @@ export default function PlanPage() {
             .select('category_key, amount')
             .eq('user_id', user.id)
             .eq('cycle_id', prevCycleId)
-            .eq('category_type', 'variable')
+            .eq('category_type', 'everyday')
         : Promise.resolve({ data: [] }),
     ])
 

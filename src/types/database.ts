@@ -4,7 +4,7 @@
 
 export type GoalId = 'emergency' | 'car' | 'travel' | 'home' | 'education' | 'business' | 'family' | 'other'
 export type Frequency = 'monthly' | 'quarterly' | 'biannual' | 'yearly' | 'weekly'
-export type CategoryType = 'variable' | 'fixed' | 'subscription' | 'goal' | 'debt' | 'other'
+export type CategoryType = 'everyday' | 'fixed' | 'subscription' | 'goal' | 'debt' | 'other'
 export type SubscriptionStatus = 'yes_known' | 'yes_unknown'
 
 // ─── Value-object types ───────────────────────────────────────────────────────

@@ -7,33 +7,21 @@ import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { dbWrite } from '@/lib/db'
 
-// ─── Type system ──────────────────────────────────────────────
-// 'goal' included so URL param cast is safe — goal items navigate here from the log hub.
-// 'goal' does NOT appear in TypeChips (goal contributions don't need type selection).
-export type ExpenseType = 'variable' | 'fixed' | 'subscription' | 'debt' | 'goal'
+type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
-export const TYPE_LABELS: Record<ExpenseType, string> = {
-  variable:     'Everyday',
-  fixed:        'Fixed',
-  subscription: 'Subscription',
-  debt:         'Debt',
-  goal:         'Goal',
-}
-
-export const TYPE_SUBLABELS: Record<ExpenseType, string> = {
-  variable:     'Anything once',
-  fixed:        'Same every month',
-  subscription: 'Recurring service',
-  debt:         'Loan / repayment',
-  goal:         'Savings contribution',
-}
+const TYPE_OPTIONS: { label: string; value: CategoryType }[] = [
+  { label: 'Daily',     value: 'everyday' },
+  { label: 'Fixed',     value: 'fixed' },
+  { label: 'Debt',      value: 'debt' },
+]
 
 // ─── Dictionary ───────────────────────────────────────────────
 interface DictEntry {
-  groupType: ExpenseType
-  label:     string
-  key:       string | null
+  categoryType: CategoryType
+  label: string
+  key: string | null
 }
 
 // ─── Step type ────────────────────────────────────────────────
@@ -48,8 +36,7 @@ export function NewExpenseClient() {
   // URL params — present for known items, absent for free-text
   const paramKey      = params.get('key')
   const paramLabel    = params.get('label')
-  const paramType     = params.get('type') as ExpenseType | null
-  const paramAmount   = params.get('amount')   // pre-fill for known items
+  const paramAmount   = params.get('amount')
   const isOther       = params.get('isOther') === 'true'
 
   // For known items, skip 'name' step — start at 'amount'
@@ -57,10 +44,11 @@ export function NewExpenseClient() {
 
   // Form state
   const [name,         setName]         = useState(paramLabel ?? '')
-  const [selectedType, setSelectedType] = useState<ExpenseType | null>(paramType)
+  const [selectedType, setSelectedType] = useState<CategoryType | null>(null)
   const [amount,       setAmount]       = useState(paramAmount ?? '')
   const [note,         setNote]         = useState('')
   const [saving,       setSaving]       = useState(false)
+  const [saveError,    setSaveError]    = useState<string | null>(null)
 
   // Dictionary state (free-text only)
   const [dictionary,   setDictionary]   = useState<Record<string, DictEntry>>({})
@@ -81,16 +69,16 @@ export function NewExpenseClient() {
   useEffect(() => {
     if (!isOther || !user) return
     ;(supabase.from('item_dictionary') as any)
-      .select('name_normalized, label, group_type, category_key')
+      .select('name_normalized, label, category_type, category_key')
       .eq('user_id', user.id)
       .then(({ data }: any) => {
         if (!data) return
         const dict: Record<string, DictEntry> = {}
         for (const row of data) {
           dict[row.name_normalized] = {
-            groupType: row.group_type as ExpenseType,
-            label:     row.label,
-            key:       row.category_key,
+            categoryType: row.category_type as CategoryType,
+            label: row.label,
+            key: row.category_key,
           }
         }
         setDictionary(dict)
@@ -103,7 +91,6 @@ export function NewExpenseClient() {
     const normalized = name.trim().toLowerCase()
     const match = normalized ? (dictionary[normalized] ?? null) : null
     setDictMatch(match)
-    if (match && !typeOverride) setSelectedType(match.groupType)
   }, [name, dictionary, isOther, typeOverride])
 
   // Load current cycle ID once user and profile are available
@@ -138,76 +125,112 @@ export function NewExpenseClient() {
 
   const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0
 
-  const currentMonth = new Date().toISOString().slice(0, 7)
-
   const handleSave = useCallback(async () => {
-    if (!user || parsedAmount <= 0 || !cycleId) return
+    if (!user || parsedAmount <= 0) return
 
-    const resolvedType  = selectedType ?? paramType ?? 'variable'
+    if (!cycleId) {
+      setSaveError('Could not determine cycle.')
+      setSaving(false)
+      return
+    }
+
+    if (!selectedType) {
+      setSaveError('Type must be selected')
+      setSaving(false)
+      return
+    }
+
+    if (!(['everyday', 'fixed', 'debt', 'goal'] as const).includes(selectedType)) {
+      setSaveError('Invalid category_type')
+      setSaving(false)
+      return
+    }
+
     const resolvedKey   = paramKey ?? name.trim().toLowerCase().replace(/\s+/g, '_')
     const resolvedLabel = name.trim() || paramLabel || resolvedKey
 
     setSaving(true)
+    setSaveError(null)
 
-    try {
-      // 0. If updating an existing entry, delete it first
-      if (mode === 'update' && priorEntry) {
-        const { error: deleteError } = await (supabase.from('transactions') as any)
+    const date = new Date().toLocaleDateString('en-CA')
+
+    // 0. Update flow: delete previous
+    if (mode === 'update' && priorEntry) {
+      const { error: deleteError } = await dbWrite(
+        (supabase.from('transactions') as any)
           .delete()
           .eq('id', priorEntry.id)
+      )
 
-        if (deleteError) throw new Error('Failed to delete prior entry')
+      if (deleteError) {
+        setSaveError('Failed to delete prior entry. Please try again.')
+        setSaving(false)
+        return
       }
+    }
 
-      // 1. Write the transaction
-      await (supabase.from('transactions') as any).insert({
+    // 1. Insert transaction
+    const { error: txError } = await dbWrite(
+      (supabase.from('transactions') as any).insert({
         user_id:        user.id,
-        date:           new Date().toISOString().slice(0, 10),
+        date,
         cycle_id:       cycleId,
-        category_type:  resolvedType,
-        category_key:   resolvedKey,
+        category_type:  selectedType,
         category_label: resolvedLabel,
+        category_key:   (resolvedLabel || '').toLowerCase().trim().replace(/\s+/g, '_'),
         amount:         parsedAmount,
         note:           note.trim() || null,
       })
+    )
 
-      // 2. If free-text: upsert dictionary
-      if (isOther) {
-        const normalized = resolvedLabel.trim().toLowerCase()
-        const { data: existing } = await (supabase.from('item_dictionary') as any)
-          .select('usage_count')
-          .eq('user_id', user.id)
-          .eq('name_normalized', normalized)
-          .maybeSingle()
-
-        await (supabase.from('item_dictionary') as any).upsert({
-          user_id:         user.id,
-          name_normalized: normalized,
-          label:           resolvedLabel,
-          group_type:      resolvedType,
-          category_key:    resolvedKey,
-          usage_count:     (existing?.usage_count ?? 0) + 1,
-        }, { onConflict: 'user_id,name_normalized' })
-      }
-
-      // 3. If subscription: upsert subscriptions table
-      // status: 'yes_known' matches the SubscriptionStatus enum in src/types/database.ts
-      if (resolvedType === 'subscription') {
-        await (supabase.from('subscriptions') as any).upsert({
-          user_id:     user.id,
-          key:         resolvedKey,
-          label:       resolvedLabel,
-          amount:      parsedAmount,
-          needs_check: true,
-          status:      'yes_known',
-        }, { onConflict: 'user_id,key' })
-      }
-
-      router.replace('/log')
-    } finally {
+    if (txError) {
+      setSaveError('Failed to save expense. Please try again.')
       setSaving(false)
+      return
     }
-  }, [user, profile, parsedAmount, selectedType, paramType, paramKey, paramLabel, name, note, isOther, supabase, currentMonth, router, mode, priorEntry, cycleId])
+
+    // 2. Dictionary (only if "Other")
+    if (isOther) {
+      const normalized = resolvedLabel.trim().toLowerCase()
+
+    const category_key = normalized.replace(/\s+/g, '_')
+
+    const { error: dictError } = await dbWrite(
+    (supabase.from('item_dictionary') as any).upsert({
+      user_id: user.id,
+      name_normalized: normalized,
+      label: resolvedLabel || 'Unknown',
+      category_key: category_key,
+      category_type: selectedType,
+      usage_count: 1,
+      }, {
+        onConflict: 'user_id,name_normalized'
+      })
+    )
+
+        if (dictError) {
+          console.error(dictError)
+        }
+    }
+
+    // SUCCESS
+    setSaving(false)
+    router.replace('/log')
+  }, [
+    user,
+    parsedAmount,
+    selectedType,
+    paramKey,
+    paramLabel,
+    name,
+    note,
+    isOther,
+    supabase,
+    router,
+    mode,
+    priorEntry,
+    cycleId,
+  ])
 
   return (
     <div style={{
@@ -241,21 +264,40 @@ export function NewExpenseClient() {
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: '20px 20px 40px', maxWidth: 480, width: '100%', margin: '0 auto' }}>
-        {step === 'name'   && <NameStep   {...{ name, setName, selectedType, setSelectedType, dictMatch, typeOverride, setTypeOverride, onContinue: handleNameContinue }} />}
-        {step === 'amount' && <AmountStep {...{ name: name || paramLabel || '', selectedType, paramType, amount, setAmount, note, setNote, currency, saving, parsedAmount, onSave: handleSave, onTypeChange: () => isOther ? setStep('name') : null, mode, setMode, priorEntry: priorEntry ?? null }} />}
+      <div style={{ flex: 1, padding: '20px 20px 40px', maxWidth:     480,    width: '100%', margin: '0 auto' }}>
+
+        {step === 'name' && (
+          <NameStep
+            name={name}
+            setName={setName}
+            selectedType={selectedType}
+            setSelectedType={setSelectedType}
+            dictMatch={dictMatch}
+            typeOverride={typeOverride}
+            setTypeOverride={setTypeOverride}
+            onContinue={handleNameContinue}
+          />
+        )}
+
       </div>
     </div>
   )
 }
 
 // ─── NameStep ─────────────────────────────────────────────────
+function suggestType(label: string): CategoryType | null {
+  const l = label.toLowerCase()
+  if (['rent', 'netflix', 'subscription', 'internet'].some(k => l.includes(k))) return 'fixed'
+  if (['loan', 'debt', 'credit'].some(k => l.includes(k))) return 'debt'
+  return 'everyday'
+}
+
 function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typeOverride, setTypeOverride, onContinue }: {
   name: string
   setName: (v: string) => void
-  selectedType: ExpenseType | null
-  setSelectedType: (t: ExpenseType) => void
-  dictMatch: { groupType: ExpenseType; label: string } | null
+  selectedType: CategoryType | null
+  setSelectedType: (t: CategoryType) => void
+  dictMatch: { categoryType: CategoryType; label: string } | null
   typeOverride: boolean
   setTypeOverride: (v: boolean) => void
   onContinue: () => void
@@ -274,7 +316,14 @@ function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typ
         type="text"
         placeholder="e.g. Netflix, Rent, Groceries"
         value={name}
-        onChange={e => { setName(e.target.value); setTypeOverride(false) }}
+        onChange={e => {
+          setName(e.target.value)
+          setTypeOverride(false)
+          if (!selectedType) {
+            const suggestion = suggestType(e.target.value)
+            if (suggestion) setSelectedType(suggestion)
+          }
+        }}
         style={{
           width: '100%', height: 52, borderRadius: 'var(--radius-md)',
           border: `1.5px solid ${name ? 'var(--brand-dark)' : 'var(--border)'}`,
@@ -304,12 +353,12 @@ function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typ
         </div>
       )}
       {(!dictMatch || typeOverride) && name.trim() && (
-        <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--text-muted)' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-muted)' }}>
           We'll remember this for next time.
         </p>
       )}
 
-      {/* Type chips — 2×2 grid */}
+      {/* Type chips */}
       <TypeChips selected={selectedType} onSelect={setSelectedType} />
 
       {/* Continue */}
@@ -333,16 +382,16 @@ function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typ
 }
 
 // ─── AmountStep ───────────────────────────────────────────────
-function AmountStep({ name, selectedType, paramType, amount, setAmount, note, setNote, currency, saving, parsedAmount, onSave, onTypeChange, mode, setMode, priorEntry }: {
+function AmountStep({ name, selectedType, amount, setAmount, note, setNote, currency, saving, saveError, parsedAmount, onSave, onTypeChange, mode, setMode, priorEntry }: {
   name: string
-  selectedType: ExpenseType | null
-  paramType: ExpenseType | null
+  selectedType: CategoryType | null
   amount: string
   setAmount: (v: string) => void
   note: string
   setNote: (v: string) => void
   currency: string
   saving: boolean
+  saveError: string | null
   parsedAmount: number
   onSave: () => void
   onTypeChange: () => void
@@ -350,7 +399,9 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
   setMode:    (m: 'add' | 'update') => void
   priorEntry: { id: string; amount: number } | null
 }) {
-  const resolvedType = selectedType ?? paramType
+  const typeLabel = selectedType
+    ? (TYPE_OPTIONS.find(o => o.value === selectedType)?.label ?? selectedType)
+    : null
 
   const displayAmount = (() => {
     if (!amount) return ''
@@ -400,7 +451,7 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
             {name}
           </span>
         )}
-        {resolvedType && (
+        {typeLabel && (
           <button
             onClick={onTypeChange}
             style={{
@@ -411,7 +462,7 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
               cursor: 'pointer',
             }}
           >
-            {TYPE_LABELS[resolvedType]}
+            {typeLabel}
           </button>
         )}
       </div>
@@ -457,9 +508,20 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
           border: '1px solid var(--border)',
           padding: '0 14px', fontSize: 14, color: 'var(--text-1)',
           background: 'var(--white)', outline: 'none',
-          boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 24,
+          boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 16,
         }}
       />
+
+      {/* Error */}
+      {saveError && (
+        <p style={{
+          margin: '0 0 16px', padding: '10px 14px', borderRadius: 10,
+          background: '#FEF2F2', border: '1px solid #FECACA',
+          fontSize: 13, color: '#D93025', lineHeight: 1.5,
+        }}>
+          {saveError}
+        </p>
+      )}
 
       {/* Save */}
       <button
@@ -483,45 +545,28 @@ function AmountStep({ name, selectedType, paramType, amount, setAmount, note, se
 }
 
 // ─── TypeChips ────────────────────────────────────────────────
-// 'goal' intentionally excluded — goal contributions don't need type selection
-const TYPES: ExpenseType[] = ['variable', 'fixed', 'subscription', 'debt']
-
 function TypeChips({ selected, onSelect }: {
-  selected: ExpenseType | null
-  onSelect: (t: ExpenseType) => void
+  selected: CategoryType | null
+  onSelect: (t: CategoryType) => void
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      {TYPES.map(t => {
-        const active = selected === t
-        return (
-          <button
-            key={t}
-            onClick={() => onSelect(t)}
-            style={{
-              height: 64, borderRadius: 12, textAlign: 'left',
-              padding: '0 14px',
-              border: active ? `2px solid var(--brand-dark)` : '1px solid var(--border)',
-              background: active ? 'var(--brand-dark)' : 'var(--white)',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            <p style={{
-              margin: 0, fontSize: 13, fontWeight: 600,
-              color: active ? '#fff' : 'var(--text-1)',
-            }}>
-              {TYPE_LABELS[t]}
-            </p>
-            <p style={{
-              margin: '2px 0 0', fontSize: 11,
-              color: active ? 'rgba(255,255,255,0.75)' : 'var(--text-3)',
-            }}>
-              {TYPE_SUBLABELS[t]}
-            </p>
-          </button>
-        )
-      })}
+    <div style={{ display: 'flex', gap: 8 }}>
+      {TYPE_OPTIONS.map(option => (
+        <button
+          key={option.value}
+          onClick={() => onSelect(option.value)}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 10,
+            border: selected === option.value ? '2px solid #5C3489' : '1px solid #E4E7EC',
+            background: selected === option.value ? '#F5F0FA' : '#FFFFFF',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   )
 }

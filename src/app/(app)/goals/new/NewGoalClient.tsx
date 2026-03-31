@@ -14,6 +14,7 @@ import { GOAL_META, GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { dbWrite } from '@/lib/db'
 
 const T = {
   pageBg:       '#F8F9FA',
@@ -172,21 +173,27 @@ function NewGoalInner() {
     }
     if (withTarget && target > 0) upsertPayload.amount = target
 
-    const ops: Promise<unknown>[] = [
-      (supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', userId),
-      (supabase.from('goal_targets') as any).upsert(upsertPayload, { onConflict: 'user_id,goal_id' }),
-    ]
-
-    if (isReAdding) {
-      ops.push(
-        (supabase.from('transactions') as any).delete()
+    const ops = [
+      dbWrite((supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', userId)),
+      dbWrite((supabase.from('goal_targets') as any).upsert(upsertPayload, { onConflict: 'user_id,goal_id' })),
+      ...(isReAdding ? [
+        dbWrite((supabase.from('transactions') as any).delete()
           .eq('user_id', userId)
           .eq('cycle_id', cycleId)
-          .eq('category_key', selectedGoal)
-      )
+          .eq('category_key', selectedGoal))
+      ] : []),
+    ]
+
+    const results = await Promise.allSettled(ops)
+    const anyFailed = results.some(
+      r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error !== null)
+    )
+    if (anyFailed) {
+      setSaving(false)
+      toast('Failed to save goal. Please try again.')
+      return
     }
 
-    await Promise.all(ops)
     toast('Goal added')
     router.push(fromParam === 'overview' ? '/app' : '/goals')
   }

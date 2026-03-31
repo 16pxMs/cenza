@@ -1,0 +1,100 @@
+.container {
+  min-height: 100vh;
+  background: var(--page-bg);
+}
+
+.centered {
+  min-height: 100vh;
+  background: var(--page-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.desktopLayout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.desktopMain {
+  flex: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
+
+.mobileContainer {
+  min-height: 100vh;
+  background: var(--page-bg);
+  padding-bottom: 88px;
+}
+
+.avatar {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 9999;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-dark);
+  border: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.profileRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.profileAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--brand-dark);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.signOutButton {
+  width: 100%;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #DC2626;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.debugPanel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999;
+  background: rgba(0,0,0,0.88);
+  color: #0f0;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 8px 12px;
+  line-height: 1.7;
+  border-top: 1px solid #333;
+}

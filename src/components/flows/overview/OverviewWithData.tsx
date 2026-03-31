@@ -53,7 +53,7 @@ interface Props {
   name: string
   currency: string
   goals: string[]
-  incomeData: IncomeData
+  incomeData: IncomeData | null
   goalTargets: Record<string, any> | null
   goalSaved?: Record<string, number>
   goalLabels?: Record<string, string>
@@ -91,7 +91,10 @@ export function OverviewWithData({
   }
 
   // ── Income ──────────────────────────────────────────────────
-  const totalIncome = calculateTotalIncome(incomeData as any)
+  const totalIncome = incomeData
+    ? calculateTotalIncome(incomeData)
+    : 0
+    console.log('totalIncome →', totalIncome)
 
   // ── Goals ────────────────────────────────────────────────────
   const totalGoals   = goals.length
@@ -116,11 +119,13 @@ export function OverviewWithData({
   })
 
   // ── Spending card ─────────────────────────────────────────────
-  const receivedConfirmed = incomeData.received != null && incomeData.received > 0
-  // Reference: confirmed received if available, else declared total
-  const reference = receivedConfirmed
-    ? incomeData.received!
-    : totalIncome > 0 ? totalIncome : 0
+  const receivedConfirmed =
+  incomeData?.received != null && incomeData.received > 0
+
+const reference = receivedConfirmed
+  ? Number(incomeData?.received ?? 0)
+  : totalIncome
+
   const spentPct  = calculatePct(totalSpent, reference)
   const hasLogged = totalSpent > 0
 
@@ -158,7 +163,7 @@ export function OverviewWithData({
           </div>
           <div>
             <p style={{ margin: '0 0 3px', fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Free to spend</p>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{fmt(calculateRemaining(ref, fixedTotal), currency)}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{fmt(calculateRemaining(ref, totalSpent), currency)}</p>
           </div>
         </div>
       )}
@@ -784,4 +789,8 @@ export function OverviewWithData({
 
     </div>
   )
+
+  console.log('PROP totalSpent →', totalSpent)
+  console.log('USED spent →', spent)
+
 }

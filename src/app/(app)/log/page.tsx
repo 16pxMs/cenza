@@ -213,7 +213,7 @@ export default function LogPage() {
       key:          c.key,
       label:        titleCase(c.label ?? c.key),
       sublabel:     c.budget ? fmt(c.budget, cur) : null,
-      groupType:    'variable',
+      groupType:    'everyday',
       loggedAmount: logged[c.key] ?? 0,
     }))
 
@@ -244,15 +244,15 @@ export default function LogPage() {
       otherMap[t.category_key].amount += Number(t.amount)
     }
     const otherItems: SubItem[] = Object.entries(otherMap).map(([key, { label, amount }]) => ({
-      key, label, sublabel: null, groupType: 'variable', loggedAmount: amount,
+      key, label, sublabel: null, groupType: 'everyday', loggedAmount: amount,
     }))
 
     setSections([
       { key: 'fixed', label: 'Fixed spending',  groupType: 'fixed',    items: fixedItems  },
       { key: 'goals', label: 'Goals',            groupType: 'goal',     items: goalItems   },
-      { key: 'daily', label: 'Daily expenses',   groupType: 'variable', items: dailyItems  },
+      { key: 'daily', label: 'Daily expenses',   groupType: 'everyday', items: dailyItems  },
       { key: 'debts', label: 'Debts',            groupType: 'debt',     items: debtItems   },
-      ...(otherItems.length > 0 ? [{ key: 'other' as GroupKey, label: 'Other', groupType: 'variable', items: otherItems }] : []),
+      ...(otherItems.length > 0 ? [{ key: 'other' as GroupKey, label: 'Other', groupType: 'everyday', items: otherItems }] : []),
     ])
 
     // First-time if no actual expense transactions logged this month (goal contributions don't count)

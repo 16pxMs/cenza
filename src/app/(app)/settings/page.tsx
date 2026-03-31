@@ -26,6 +26,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { fmt } from '@/lib/finance'
 import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { dbWrite } from '@/lib/db'
 
 const T = {
   pageBg:    '#F8F9FA',
@@ -74,6 +75,7 @@ export default function SettingsPage() {
   // Delete account
   const [deleteStep, setDeleteStep]       = useState<'idle' | 'confirm'>('idle')
   const [deleting, setDeleting]           = useState(false)
+  const [deleteError, setDeleteError]     = useState<string | null>(null)
 
   useEffect(() => {
     if (!user || !ctxProfile) return
@@ -96,8 +98,15 @@ export default function SettingsPage() {
 
   const saveCurrency = async (code: string) => {
     setSavingCurrency(true)
-    if (!user) return
-    await (supabase.from('user_profiles') as any).update({ currency: code }).eq('id', user.id)
+    if (!user) { setSavingCurrency(false); return }
+    const { error } = await dbWrite(
+      (supabase.from('user_profiles') as any).update({ currency: code }).eq('id', user.id)
+    )
+    if (error) {
+      toast('Failed to update currency. Please try again.')
+      setSavingCurrency(false)
+      return
+    }
     toast('Currency updated')
     setCurrency(code)
     setSavingCurrency(false)
@@ -107,10 +116,17 @@ export default function SettingsPage() {
 
   const savePaySchedule = async () => {
     setSavingPaySchedule(true)
-    if (!user) return
-    await (supabase.from('user_profiles') as any)
-      .update({ pay_schedule_type: scheduleType, pay_schedule_days: scheduleDays })
-      .eq('id', user.id)
+    if (!user) { setSavingPaySchedule(false); return }
+    const { error } = await dbWrite(
+      (supabase.from('user_profiles') as any)
+        .update({ pay_schedule_type: scheduleType, pay_schedule_days: scheduleDays })
+        .eq('id', user.id)
+    )
+    if (error) {
+      toast('Failed to save pay schedule. Please try again.')
+      setSavingPaySchedule(false)
+      return
+    }
     toast('Pay schedule saved')
     setSavingPaySchedule(false)
     setShowPaySchedule(false)
@@ -118,13 +134,19 @@ export default function SettingsPage() {
 
   const handleIncomeSave = async (data: { income: number; extraIncome: any[]; total: number }) => {
     if (!user) return
-    await (supabase.from('income_entries') as any).upsert({
-      user_id:      user.id,
-      cycle_id:     cycleId,
-      salary:       data.income,
-      extra_income: data.extraIncome,
-      total:        data.total,
-    }, { onConflict: 'user_id,cycle_id' })
+    const { error } = await dbWrite(
+      (supabase.from('income_entries') as any).upsert({
+        user_id:      user.id,
+        cycle_id:     cycleId,
+        salary:       data.income,
+        extra_income: data.extraIncome,
+        total:        data.total,
+      }, { onConflict: 'user_id,cycle_id' })
+    )
+    if (error) {
+      toast('Failed to update income. Please try again.')
+      return
+    }
     toast('Income updated')
     setMonthlyTotal(data.total)
     setIncomeSheetOpen(false)
@@ -132,17 +154,38 @@ export default function SettingsPage() {
 
   const handleDeleteAccount = async () => {
     setDeleting(true)
-    if (!user) return
-    // Delete all user data then sign out — actual account deletion via Supabase admin requires a server action
-    await Promise.all([
-      (supabase.from('user_profiles') as any).delete().eq('id', user.id),
-      (supabase.from('income_entries') as any).delete().eq('user_id', user.id),
-      (supabase.from('transactions') as any).delete().eq('user_id', user.id),
-      (supabase.from('goal_targets') as any).delete().eq('user_id', user.id),
-      (supabase.from('fixed_expenses') as any).delete().eq('user_id', user.id),
-    ])
-    await supabase.auth.signOut()
-    window.location.href = '/login'
+    setDeleteError(null)
+
+    if (!user) {
+      setDeleting(false)
+      return
+    }
+
+    // Run deletes in order
+    const steps = [
+      () => dbWrite((supabase.from('transactions') as any).delete().eq('user_id', user.id)),
+      () => dbWrite((supabase.from('income_entries') as any).delete().eq('user_id', user.id)),
+      () => dbWrite((supabase.from('goal_targets') as any).delete().eq('user_id', user.id)),
+      () => dbWrite((supabase.from('fixed_expenses') as any).delete().eq('user_id', user.id)),
+      () => dbWrite((supabase.from('user_profiles') as any).delete().eq('id', user.id)),
+    ]
+
+    for (const step of steps) {
+      const res = await step()
+      if (res.error) {
+        setDeleteError('Failed to delete account data. Please try again.')
+        setDeleting(false)
+        return
+      }
+    }
+
+    try {
+      await supabase.auth.signOut()
+      window.location.href = '/login'
+    } catch (e) {
+      setDeleteError('Account deleted, but sign out failed. Please refresh.')
+      setDeleting(false)
+    }
   }
 
   const currencyMeta = ALL_CURRENCIES.find(c => c.code === currency)
@@ -490,9 +533,18 @@ export default function SettingsPage() {
             <p style={{ margin: '0 0 12px', fontSize: 14, color: T.text2, lineHeight: 1.6 }}>
               This permanently deletes your account and all your data. There is no undo.
             </p>
+            {deleteError && (
+              <p style={{
+                margin: '0 0 12px', padding: '10px 14px', borderRadius: 10,
+                background: '#FEF2F2', border: '1px solid #FECACA',
+                fontSize: 13, color: '#D93025', lineHeight: 1.5,
+              }}>
+                {deleteError}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={() => setDeleteStep('idle')}
+                onClick={() => { setDeleteStep('idle'); setDeleteError(null) }}
                 style={{
                   flex: 1, height: 44, borderRadius: 12,
                   background: T.pageBg, border: `1px solid ${T.border}`,
