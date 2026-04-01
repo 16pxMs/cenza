@@ -1,9 +1,7 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { useUser } from '@/lib/context/UserContext'
+import { useState, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -13,189 +11,158 @@ import { IconBack } from '@/components/ui/Icons'
 import { GOAL_META, GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { dbWrite } from '@/lib/db'
+import type { NewGoalPageData } from '@/lib/loaders/new-goal'
+import { saveNewGoal } from './actions'
 
 const T = {
-  pageBg:       '#F8F9FA',
-  white:        '#FFFFFF',
-  border:       '#E4E7EC',
+  pageBg: '#F8F9FA',
+  white: '#FFFFFF',
+  border: '#E4E7EC',
   borderStrong: '#D0D5DD',
-  text1:        '#101828',
-  text2:        '#475467',
-  text3:        '#667085',
-  textMuted:    '#98A2B3',
-  brandDark:    '#5C3489',
+  text1: '#101828',
+  text2: '#475467',
+  text3: '#667085',
+  textMuted: '#98A2B3',
+  brandDark: '#5C3489',
 }
 
 const TIMELINE_OPTIONS = [
-  { months: 6,  label: '6 months' },
-  { months: 12, label: '1 year'   },
-  { months: 24, label: '2 years'  },
-  { months: 36, label: '3 years'  },
+  { months: 6, label: '6 months' },
+  { months: 12, label: '1 year' },
+  { months: 24, label: '2 years' },
+  { months: 36, label: '3 years' },
 ]
 
-function feasibility(pct: number): { label: string; color: string; bg: string } {
-  if (pct === 0)  return { label: '',                color: T.textMuted, bg: '#F1F3F5' }
-  if (pct <= 15)  return { label: 'Very achievable', color: '#1A7A45',   bg: '#F0FDF4' }
-  if (pct <= 30)  return { label: 'Achievable',      color: '#1A7A45',   bg: '#F0FDF4' }
-  if (pct <= 45)  return { label: 'Ambitious',       color: '#D97706',   bg: '#FFFBEB' }
-  return                  { label: 'Stretch goal',   color: '#D93025',   bg: '#FEF2F2' }
+interface NewGoalClientProps {
+  data: NewGoalPageData
+  initialGoalType: GoalId | null
+  excludeGoalIds: GoalId[]
+  from: string | null
 }
 
-function NewGoalInner() {
-  const router        = useRouter()
-  const supabase      = createClient()
-  const { user, profile: ctxProfile } = useUser()
+function feasibility(pct: number): { label: string; color: string; bg: string } {
+  if (pct === 0) return { label: '', color: T.textMuted, bg: '#F1F3F5' }
+  if (pct <= 15) return { label: 'Very achievable', color: '#1A7A45', bg: '#F0FDF4' }
+  if (pct <= 30) return { label: 'Achievable', color: '#1A7A45', bg: '#F0FDF4' }
+  if (pct <= 45) return { label: 'Ambitious', color: '#D97706', bg: '#FFFBEB' }
+  return { label: 'Stretch goal', color: '#D93025', bg: '#FEF2F2' }
+}
+
+function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalClientProps) {
+  const router = useRouter()
   const { isDesktop } = useBreakpoint()
-  const searchParams  = useSearchParams()
-  const { toast }     = useToast()
-
-  const typeParam    = searchParams.get('type') as GoalId | null
-  const excludeParam = (searchParams.get('exclude') ?? '').split(',').filter(Boolean)
-  const fromParam    = searchParams.get('from')
-
-  const [loading, setLoading]               = useState(true)
-  const [cycleId, setCycleId]               = useState<string>('')
-  const [currency, setCurrency]             = useState('')
-  const [totalIncome, setTotalIncome]       = useState(0)
-  const [fixedMonthly, setFixedMonthly]     = useState(0)
-  const [existingGoals, setExistingGoals]   = useState<GoalId[]>([])
-  const [alreadySaved, setAlreadySaved]     = useState(0)
+  const { toast } = useToast()
 
   type Step = 'pick' | 'name' | 'destination' | 'target'
-  const initialStep: Step = typeParam
-    ? typeParam === 'other' ? 'name' : typeParam === 'travel' ? 'destination' : 'target'
+  const initialStep: Step = initialGoalType
+    ? initialGoalType === 'other'
+      ? 'name'
+      : initialGoalType === 'travel'
+        ? 'destination'
+        : 'target'
     : 'pick'
 
-  const [step, setStep]                     = useState<Step>(initialStep)
-  const [selectedGoal, setSelectedGoal]     = useState<GoalId | null>(typeParam)
-  const [customName, setCustomName]         = useState('')
-  const [destination, setDestination]       = useState('')
-  const [targetAmount, setTargetAmount]     = useState('')
+  const [step, setStep] = useState<Step>(initialStep)
+  const [selectedGoal, setSelectedGoal] = useState<GoalId | null>(initialGoalType)
+  const [customName, setCustomName] = useState('')
+  const [destination, setDestination] = useState('')
+  const [targetAmount, setTargetAmount] = useState('')
   const [selectedMonths, setSelectedMonths] = useState(12)
-  const [saving, setSaving]                 = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (!user) return
-    ;(async () => {
-      const resolvedCycleId = await getCurrentCycleId(supabase as any, user.id, (ctxProfile ?? { pay_schedule_type: null, pay_schedule_days: null }) as any)
-      setCycleId(resolvedCycleId)
-
-      const fetchSaved = typeParam
-        ? (supabase.from('transactions') as any)
-            .select('amount')
-            .eq('user_id', user.id)
-            .eq('category_type', 'goal')
-            .eq('category_key', typeParam)
-        : Promise.resolve({ data: [] })
-
-      const [incomeRes, expensesRes, savedRes] = await Promise.all([
-        (supabase.from('income_entries') as any).select('total').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
-        (supabase.from('fixed_expenses') as any).select('total_monthly').eq('user_id', user.id).eq('cycle_id', resolvedCycleId).maybeSingle(),
-        fetchSaved,
-      ])
-
-      setCurrency(ctxProfile?.currency ?? '')
-      setExistingGoals(ctxProfile?.goals ?? [])
-      setTotalIncome(Number(incomeRes.data?.total ?? 0))
-      setFixedMonthly(Number(expensesRes.data?.total_monthly ?? 0))
-      setAlreadySaved((savedRes.data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0))
-      setLoading(false)
-    })()
-  }, [user, ctxProfile])
-
-  const target          = parseFloat(targetAmount) || 0
-  const remaining       = Math.max(0, target - alreadySaved)
+  const target = parseFloat(targetAmount) || 0
+  const remaining = Math.max(0, target - data.alreadySaved)
   const monthlyRequired = selectedMonths > 0 && remaining > 0 ? Math.ceil(remaining / selectedMonths) : 0
-  const incomePercent   = totalIncome > 0 && monthlyRequired > 0 ? (monthlyRequired / totalIncome) * 100 : 0
-  const signal          = feasibility(incomePercent)
+  const incomePercent = data.totalIncome > 0 && monthlyRequired > 0 ? (monthlyRequired / data.totalIncome) * 100 : 0
+  const signal = feasibility(incomePercent)
 
-  const availableGoals = GOAL_OPTIONS.filter(g =>
-    !existingGoals.includes(g.id) && !excludeParam.includes(g.id)
+  const availableGoals = GOAL_OPTIONS.filter(goal =>
+    !data.existingGoals.includes(goal.id) && !excludeGoalIds.includes(goal.id)
   )
 
   const benchmarkTip = (() => {
     if (!selectedGoal) return null
-    if (selectedGoal === 'emergency' && fixedMonthly > 0) {
-      const min = fixedMonthly * 3
-      const max = fixedMonthly * 6
-      return `A healthy emergency fund covers 3 to 6 months of expenses. Based on your fixed costs, that's ${fmt(min, currency)} to ${fmt(max, currency)}.`
+    if (selectedGoal === 'emergency' && data.fixedMonthly > 0) {
+      const min = data.fixedMonthly * 3
+      const max = data.fixedMonthly * 6
+      return `A healthy emergency fund covers 3 to 6 months of expenses. Based on your fixed costs, that's ${fmt(min, data.currency)} to ${fmt(max, data.currency)}.`
     }
-    if (selectedGoal === 'home')      return 'A home deposit is usually 10 to 20% of the property value. Start with a number that feels real, not perfect.'
-    if (selectedGoal === 'travel')    return destination.trim()
-      ? `Even a rough number works for ${destination.trim()}. You can always adjust as the trip gets closer.`
-      : 'Even a rough number helps. You can always adjust as the trip gets closer.'
+    if (selectedGoal === 'home') return 'A home deposit is usually 10 to 20% of the property value. Start with a number that feels real, not perfect.'
+    if (selectedGoal === 'travel') {
+      return destination.trim()
+        ? `Even a rough number works for ${destination.trim()}. You can always adjust as the trip gets closer.`
+        : 'Even a rough number helps. You can always adjust as the trip gets closer.'
+    }
     if (selectedGoal === 'education') return 'Start with the first year or semester fee — that makes the goal feel closer and more actionable.'
-    if (selectedGoal === 'car')       return 'Consider the full cost: purchase price, insurance, and initial running costs.'
+    if (selectedGoal === 'car') return 'Consider the full cost: purchase price, insurance, and initial running costs.'
     return null
   })()
 
   const goBack = () => {
-    if (step === 'target' && selectedGoal === 'other')  { setStep('name'); return }
-    if (step === 'target' && selectedGoal === 'travel') { setStep('destination'); return }
-    if (step === 'target' || step === 'name' || step === 'destination') {
-      setStep('pick'); setSelectedGoal(null); setTargetAmount(''); setDestination(''); return
+    if (step === 'target' && selectedGoal === 'other') {
+      setStep('name')
+      return
     }
-    router.push(fromParam === 'overview' ? '/app' : '/goals')
+
+    if (step === 'target' && selectedGoal === 'travel') {
+      setStep('destination')
+      return
+    }
+
+    if (step === 'target' || step === 'name' || step === 'destination') {
+      setStep('pick')
+      setSelectedGoal(null)
+      setTargetAmount('')
+      setDestination('')
+      return
+    }
+
+    router.push(from === 'overview' ? '/app' : '/goals')
   }
 
-  const selectGoal = (id: GoalId) => {
-    setSelectedGoal(id)
+  const selectGoal = (goalId: GoalId) => {
+    setSelectedGoal(goalId)
     setTargetAmount('')
     setDestination('')
-    if (id === 'other')  { setStep('name');        return }
-    if (id === 'travel') { setStep('destination'); return }
+
+    if (goalId === 'other') {
+      setStep('name')
+      return
+    }
+
+    if (goalId === 'travel') {
+      setStep('destination')
+      return
+    }
+
     setStep('target')
   }
 
   const handleSave = async (withTarget = true) => {
     if (!selectedGoal) return
     if (withTarget && target <= 0) return
-    setSaving(true)
-    if (!user) return
 
-    const userId = user.id
-    const isReAdding = !existingGoals.includes(selectedGoal)
-    const newGoals   = isReAdding ? [...existingGoals, selectedGoal] : existingGoals
+    setSaving(true)
 
     const customLabel = selectedGoal === 'other' && customName.trim()
       ? customName.trim()
       : selectedGoal === 'travel' && destination.trim()
-      ? destination.trim()
-      : null
+        ? destination.trim()
+        : null
 
-    const upsertPayload: Record<string, unknown> = {
-      user_id: userId,
-      goal_id: selectedGoal,
-      destination: customLabel,
-      added_at: new Date().toISOString(),
-    }
-    if (withTarget && target > 0) upsertPayload.amount = target
+    try {
+      await saveNewGoal({
+        goalId: selectedGoal,
+        targetAmount: withTarget && target > 0 ? target : null,
+        destination: customLabel,
+      })
 
-    const ops = [
-      dbWrite((supabase.from('user_profiles') as any).update({ goals: newGoals }).eq('id', userId)),
-      dbWrite((supabase.from('goal_targets') as any).upsert(upsertPayload, { onConflict: 'user_id,goal_id' })),
-      ...(isReAdding ? [
-        dbWrite((supabase.from('transactions') as any).delete()
-          .eq('user_id', userId)
-          .eq('cycle_id', cycleId)
-          .eq('category_key', selectedGoal))
-      ] : []),
-    ]
-
-    const results = await Promise.allSettled(ops)
-    const anyFailed = results.some(
-      r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error !== null)
-    )
-    if (anyFailed) {
+      toast('Goal added')
+      router.push(from === 'overview' ? '/app' : '/goals')
+    } catch {
       setSaving(false)
       toast('Failed to save goal. Please try again.')
-      return
     }
-
-    toast('Goal added')
-    router.push(fromParam === 'overview' ? '/app' : '/goals')
   }
 
   const meta = selectedGoal ? GOAL_META[selectedGoal] : null
@@ -215,12 +182,12 @@ function NewGoalInner() {
         {step === 'pick'
           ? 'What are you saving for?'
           : step === 'name'
-          ? 'What would you call this goal?'
-          : step === 'destination'
-          ? (destination.trim() ? `Travel to ${destination.trim()}` : 'Where to?')
-          : meta
-            ? `${meta.icon}  ${customName.trim() || (selectedGoal === 'travel' && destination.trim() ? `Travel to ${destination.trim()}` : meta.label)}`
-            : 'Set a target'}
+            ? 'What would you call this goal?'
+            : step === 'destination'
+              ? (destination.trim() ? `Travel to ${destination.trim()}` : 'Where to?')
+              : meta
+                ? `${meta.icon}  ${customName.trim() || (selectedGoal === 'travel' && destination.trim() ? `Travel to ${destination.trim()}` : meta.label)}`
+                : 'Set a target'}
       </h1>
     </div>
   )
@@ -233,10 +200,10 @@ function NewGoalInner() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {availableGoals.map(g => (
+          {availableGoals.map(goal => (
             <button
-              key={g.id}
-              onClick={() => selectGoal(g.id)}
+              key={goal.id}
+              onClick={() => selectGoal(goal.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 14,
                 padding: '16px', borderRadius: 14,
@@ -247,15 +214,15 @@ function NewGoalInner() {
             >
               <div style={{
                 width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-                background: g.light,
+                background: goal.light,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 22,
               }}>
-                {g.icon}
+                {goal.icon}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginBottom: 2 }}>{g.label}</div>
-                <div style={{ fontSize: 13, color: T.text3, lineHeight: 1.4 }}>{g.description}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginBottom: 2 }}>{goal.label}</div>
+                <div style={{ fontSize: 13, color: T.text3, lineHeight: 1.4 }}>{goal.description}</div>
               </div>
               <div style={{ color: T.textMuted, fontSize: 18, flexShrink: 0 }}>›</div>
             </button>
@@ -274,8 +241,8 @@ function NewGoalInner() {
         autoFocus
         type="text"
         value={destination}
-        onChange={e => setDestination(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && destination.trim()) setStep('target') }}
+        onChange={event => setDestination(event.target.value)}
+        onKeyDown={event => { if (event.key === 'Enter' && destination.trim()) setStep('target') }}
         placeholder="e.g. Zanzibar, Amsterdam, Japan"
         style={{
           width: '100%', height: 52, borderRadius: 12,
@@ -320,7 +287,7 @@ function NewGoalInner() {
       <Input
         label="Goal name"
         value={customName}
-        onChange={val => setCustomName(val)}
+        onChange={value => setCustomName(value)}
         placeholder="e.g. New laptop, Wedding fund, Gap year"
       />
       <div style={{ height: 16 }} />
@@ -341,10 +308,10 @@ function NewGoalInner() {
     </div>
   )
 
-  const emergencySuggestions = selectedGoal === 'emergency' && fixedMonthly > 0
+  const emergencySuggestions = selectedGoal === 'emergency' && data.fixedMonthly > 0
     ? [
-        { label: '3 months', amount: Math.round(fixedMonthly * 3) },
-        { label: '6 months', amount: Math.round(fixedMonthly * 6) },
+        { label: '3 months', amount: Math.round(data.fixedMonthly * 3) },
+        { label: '6 months', amount: Math.round(data.fixedMonthly * 6) },
       ]
     : []
 
@@ -371,12 +338,12 @@ function NewGoalInner() {
             Suggested targets
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
-            {emergencySuggestions.map(s => {
-              const active = parseFloat(targetAmount) === s.amount
+            {emergencySuggestions.map(suggestion => {
+              const active = parseFloat(targetAmount) === suggestion.amount
               return (
                 <button
-                  key={s.label}
-                  onClick={() => setTargetAmount(String(s.amount))}
+                  key={suggestion.label}
+                  onClick={() => setTargetAmount(String(suggestion.amount))}
                   style={{
                     flex: 1, padding: '12px 10px', borderRadius: 14,
                     border: active ? `1.5px solid ${T.brandDark}` : '1px solid var(--border)',
@@ -384,8 +351,8 @@ function NewGoalInner() {
                     cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
                   }}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T.brandDark, marginBottom: 2 }}>{s.label}</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text1 }}>{fmt(s.amount, currency)}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.brandDark, marginBottom: 2 }}>{suggestion.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text1 }}>{fmt(suggestion.amount, data.currency)}</div>
                   <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>of fixed expenses</div>
                 </button>
               )
@@ -397,19 +364,19 @@ function NewGoalInner() {
       <Input
         label="Target amount"
         value={targetAmount}
-        onChange={val => setTargetAmount(val)}
-        prefix={currency}
+        onChange={value => setTargetAmount(value)}
+        prefix={data.currency}
         placeholder="e.g. 500,000"
         type="number"
       />
 
-      {alreadySaved > 0 && (
+      {data.alreadySaved > 0 && (
         <div style={{
           marginTop: 10, padding: '10px 14px', borderRadius: 10,
           background: '#F0FDF4', border: '1px solid #BBF7D0',
           fontSize: 13, color: '#1A7A45',
         }}>
-          You've already saved {fmt(alreadySaved, currency)} toward this goal.
+          You've already saved {fmt(data.alreadySaved, data.currency)} toward this goal.
         </div>
       )}
 
@@ -425,12 +392,12 @@ function NewGoalInner() {
             How fast do you want to get there?
           </p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {TIMELINE_OPTIONS.map(opt => {
-              const active = selectedMonths === opt.months
+            {TIMELINE_OPTIONS.map(option => {
+              const active = selectedMonths === option.months
               return (
                 <button
-                  key={opt.months}
-                  onClick={() => setSelectedMonths(opt.months)}
+                  key={option.months}
+                  onClick={() => setSelectedMonths(option.months)}
                   style={{
                     flex: 1, padding: '9px 0', borderRadius: 99,
                     border: active ? `2px solid var(--border-focus)` : `1px solid var(--border-strong)`,
@@ -440,7 +407,7 @@ function NewGoalInner() {
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
-                  {opt.label}
+                  {option.label}
                 </button>
               )
             })}
@@ -452,10 +419,10 @@ function NewGoalInner() {
               background: signal.bg, border: `1px solid ${signal.color}22`,
             }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>{fmt(monthlyRequired, currency)}</span>
+                <span style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>{fmt(monthlyRequired, data.currency)}</span>
                 <span style={{ fontSize: 13, color: T.text3 }}>/ month</span>
               </div>
-              {totalIncome > 0 ? (
+              {data.totalIncome > 0 ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 13, color: T.text3 }}>
                     That's {incomePercent.toFixed(0)}% of your income
@@ -474,7 +441,7 @@ function NewGoalInner() {
                   To reach your target in {selectedMonths < 12 ? `${selectedMonths} months` : selectedMonths === 12 ? '1 year' : `${selectedMonths / 12} years`}
                 </span>
               )}
-              {incomePercent > 45 && totalIncome > 0 && (
+              {incomePercent > 45 && data.totalIncome > 0 && (
                 <p style={{ margin: '10px 0 0', fontSize: 12.5, color: T.text2, lineHeight: 1.5, paddingTop: 10, borderTop: `1px solid var(--border-subtle)` }}>
                   That's a significant portion of your income. Consider a longer timeline. Even small, consistent amounts add up.
                 </p>
@@ -516,9 +483,7 @@ function NewGoalInner() {
   const content = (
     <div style={{ paddingBottom: isDesktop ? 60 : 100 }}>
       {header}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMuted, fontSize: 14 }}>Loading…</div>
-      ) : step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
+      {step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
     </div>
   )
 
@@ -535,10 +500,10 @@ function NewGoalInner() {
   )
 }
 
-export default function NewGoalClient() {
+export default function NewGoalClient(props: NewGoalClientProps) {
   return (
     <Suspense>
-      <NewGoalInner />
+      <NewGoalInner {...props} />
     </Suspense>
   )
 }

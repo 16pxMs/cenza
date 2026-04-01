@@ -1,0 +1,184 @@
+import { GOAL_META } from '@/constants/goals'
+import { createClient } from '@/lib/supabase/server'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import type { GoalId, UserProfile } from '@/types/database'
+
+interface ExtraIncomeItem {
+  id: string
+  label: string
+  amount: number
+}
+
+interface IncomeData {
+  income: number
+  extraIncome: ExtraIncomeItem[]
+  total: number
+  received: number | null
+}
+
+interface SpendingBudgetCategory {
+  key: string
+  label: string
+  budget: number
+}
+
+interface SpendingBudgetData {
+  total_budget: number
+  categories: SpendingBudgetCategory[]
+}
+
+interface OverviewTransactionRow {
+  amount: number | string
+  category_key: string
+  category_type: string
+  date: string
+}
+
+interface OverviewIncomeRow {
+  salary: number | string | null
+  extra_income: Array<{ id?: string | number; label?: string; amount?: number | string }> | null
+  total: number | string | null
+  received: number | string | null
+}
+
+interface OverviewGoalTargetRow {
+  goal_id: string
+  amount: number | string | null
+  added_at: string
+  destination: string | null
+}
+
+export interface OverviewPageData {
+  name: string
+  currency: string
+  goals: GoalId[]
+  incomeData: IncomeData
+  totalSpent: number
+  fixedTotal: number
+  spendingBudget: SpendingBudgetData | null
+  categorySpend: Record<string, number>
+  goalTargets: Record<string, number>
+  goalSaved: Record<string, number>
+  goalLabels: Record<string, string>
+}
+
+function toGoalLabel(goalId: GoalId, destination: string | null): string {
+  if (goalId === 'travel' && destination) return `Travel to ${destination}`
+  if (goalId === 'other' && destination) return destination
+  return GOAL_META[goalId].label
+}
+
+export async function loadOverviewPageData(userId: string, profile: UserProfile): Promise<OverviewPageData> {
+  const supabase = await createClient()
+  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+
+  const [
+    { data: txns },
+    { data: income },
+    { data: fixedExpenses },
+    { data: spendingBudget },
+    { data: goalTargets },
+  ] = await Promise.all([
+    (supabase.from('transactions') as any)
+      .select('amount, category_key, category_type, date')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId),
+    (supabase.from('income_entries') as any)
+      .select('salary, extra_income, total, received')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    (supabase.from('fixed_expenses') as any)
+      .select('total_monthly')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    (supabase.from('spending_budgets') as any)
+      .select('total_budget, categories')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    (supabase.from('goal_targets') as any)
+      .select('goal_id, amount, added_at, destination')
+      .eq('user_id', userId),
+  ])
+
+  const transactionRows = (txns ?? []) as OverviewTransactionRow[]
+  const incomeRow = (income ?? null) as OverviewIncomeRow | null
+  const goalTargetRows = (goalTargets ?? []) as OverviewGoalTargetRow[]
+  const goalTargetsMap: Record<string, number> = {}
+  const goalLabels: Record<string, string> = {}
+  const goalAddedAtMap: Record<string, string> = {}
+
+  for (const row of goalTargetRows) {
+    const goalId = row.goal_id as GoalId
+    if (row.amount != null) {
+      goalTargetsMap[goalId] = Number(row.amount)
+    }
+    goalLabels[goalId] = toGoalLabel(goalId, row.destination ?? null)
+    if (row.added_at) {
+      goalAddedAtMap[goalId] = row.added_at
+    }
+  }
+
+  const [
+    totalSpent,
+    categorySpend,
+    goalSavedMap,
+  ] = (() => {
+    const nextCategorySpend: Record<string, number> = {}
+    const nextGoalSavedMap: Record<string, number> = {}
+    const nextTotalSpent = transactionRows.reduce((sum, txn) => sum + Number(txn.amount), 0)
+
+    for (const txn of transactionRows) {
+      if (txn.category_type === 'goal') {
+        const addedAt = goalAddedAtMap[txn.category_key]
+        if (!addedAt || txn.date >= addedAt.slice(0, 10)) {
+          nextGoalSavedMap[txn.category_key] = (nextGoalSavedMap[txn.category_key] ?? 0) + Number(txn.amount)
+        }
+      }
+
+      if (txn.category_type === 'everyday' || txn.category_type === 'subscription') {
+        nextCategorySpend[txn.category_key] = (nextCategorySpend[txn.category_key] ?? 0) + Number(txn.amount)
+      }
+    }
+
+    return [nextTotalSpent, nextCategorySpend, nextGoalSavedMap] as const
+  })()
+
+  const extraIncome = (incomeRow?.extra_income ?? []).map((item, index) => ({
+    id: String(item?.id ?? index),
+    label: String(item?.label ?? 'Extra income'),
+    amount: Number(item?.amount ?? 0),
+  }))
+
+  const spendingBudgetData = spendingBudget
+    ? {
+        total_budget: Number(spendingBudget.total_budget ?? 0),
+        categories: ((spendingBudget.categories ?? []) as any[]).map(category => ({
+          key: String(category.key),
+          label: String(category.label ?? category.key),
+          budget: Number(category.budget ?? 0),
+        })),
+      }
+    : null
+
+  return {
+    name: profile.name ?? 'there',
+    currency: profile.currency ?? 'KES',
+    goals: (profile.goals ?? []) as GoalId[],
+    incomeData: {
+      income: Number(incomeRow?.salary ?? 0),
+      extraIncome,
+      total: Number(incomeRow?.total ?? 0),
+      received: incomeRow?.received != null ? Number(incomeRow.received) : null,
+    },
+    totalSpent,
+    fixedTotal: Number(fixedExpenses?.total_monthly ?? 0),
+    spendingBudget: spendingBudgetData,
+    categorySpend,
+    goalTargets: goalTargetsMap,
+    goalSaved: goalSavedMap,
+    goalLabels,
+  }
+}

@@ -94,7 +94,6 @@ export function OverviewWithData({
   const totalIncome = incomeData
     ? calculateTotalIncome(incomeData)
     : 0
-    console.log('totalIncome →', totalIncome)
 
   // ── Goals ────────────────────────────────────────────────────
   const totalGoals   = goals.length
@@ -267,7 +266,7 @@ const reference = receivedConfirmed
     )
   }
 
-  const spendingCard = hasLogged
+  const spendingCard = hasLogged && totalIncome > 0
     // ── State C: live data ─────────────────────────────────────
     ? stateCCard(totalSpent, reference)
     : receivedConfirmed
@@ -593,13 +592,28 @@ const reference = receivedConfirmed
     <div className={`overview-data${isDesktop ? ' overview-data--desktop' : ''}`}>
 
       {/* Greeting */}
-      <div className="overview-data__greeting" style={fade(0.05)}>
-        <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-          {new Date().toLocaleString('default', { month: 'long', year: 'numeric' }).toUpperCase()}
-        </p>
-        <h1 className={`overview-data__heading${isDesktop ? ' overview-data__heading--desktop' : ''}`}>
-          {(() => { const h = new Date().getHours(); return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening' })()}, {name}
-        </h1>
+      <div className="overview-data__greeting" style={{ ...fade(0.05), display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+            {new Date().toLocaleString('default', { month: 'long', year: 'numeric' }).toUpperCase()}
+          </p>
+          <h1 className={`overview-data__heading${isDesktop ? ' overview-data__heading--desktop' : ''}`}>
+            {(() => { const h = new Date().getHours(); return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening' })()}, {name}
+          </h1>
+        </div>
+        <button
+          onClick={() => router.push('/settings')}
+          style={{
+            width: 38, height: 38, borderRadius: '50%',
+            background: 'var(--brand-dark)', border: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', flexShrink: 0, marginTop: 4,
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+            {name ? name[0].toUpperCase() : '?'}
+          </span>
+        </button>
       </div>
 
       {/* Pending targets nudge — only when goals exist but targets missing */}
@@ -789,8 +803,5 @@ const reference = receivedConfirmed
 
     </div>
   )
-
-  console.log('PROP totalSpent →', totalSpent)
-  console.log('USED spent →', spent)
 
 }

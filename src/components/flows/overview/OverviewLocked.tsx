@@ -48,26 +48,43 @@ export function OverviewLocked({ name, currency = 'KES', onStart }: Props) {
     } as React.CSSProperties}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <p style={{
-        margin: '0 0 4px',
-        fontSize: 11,
-        fontWeight: 600,
-        color: 'var(--brand-deep)',
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-      }}>
-        {greeting(name)}
-      </p>
-      <h1 style={{
-        margin: '0 0 28px',
-        fontSize: 24,
-        fontWeight: 700,
-        color: 'var(--text-1)',
-        lineHeight: 1.2,
-        letterSpacing: '-0.4px',
-      }}>
-        Your overview is empty.
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div>
+          <p style={{
+            margin: '0 0 4px',
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--brand-deep)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}>
+            {greeting(name)}
+          </p>
+          <h1 style={{
+            margin: 0,
+            fontSize: 24,
+            fontWeight: 700,
+            color: 'var(--text-1)',
+            lineHeight: 1.2,
+            letterSpacing: '-0.4px',
+          }}>
+            Your overview is empty.
+          </h1>
+        </div>
+        <button
+          onClick={() => router.push('/settings')}
+          style={{
+            width: 38, height: 38, borderRadius: '50%',
+            background: 'var(--brand-dark)', border: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', flexShrink: 0, marginTop: 4,
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+            {name ? name[0].toUpperCase() : '?'}
+          </span>
+        </button>
+      </div>
 
       {/* ── Spending card ─────────────────────────────────────────── */}
       <div style={{

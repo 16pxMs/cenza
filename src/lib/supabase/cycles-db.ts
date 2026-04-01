@@ -66,6 +66,22 @@ export async function getCurrentCycleId(
 }
 
 /**
+ * Get the cycle_id for an arbitrary local date.
+ * Use this for writes so a transaction is always attached to the
+ * correct cycle for that date instead of relying on callers to
+ * manually pass cycle_id around.
+ */
+export async function getCycleIdForDate(
+  supabase: SupabaseClient,
+  userId: string,
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+  date: Date,
+): Promise<string> {
+  const schedule = profileToPaySchedule(profile)
+  return getOrCreateCycle(supabase, userId, schedule, date)
+}
+
+/**
  * Get the cycle_id for the cycle before the current one.
  * Used for carry-forward logic (replaces getPrevMonth).
  * Returns null if no previous cycle can be determined.

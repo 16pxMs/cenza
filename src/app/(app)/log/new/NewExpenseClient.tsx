@@ -7,7 +7,7 @@ import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { dbWrite } from '@/lib/db'
+import { saveExpense } from './actions'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
@@ -40,7 +40,7 @@ export function NewExpenseClient() {
   const isOther       = params.get('isOther') === 'true'
 
   // For known items, skip 'name' step — start at 'amount'
-  const [step, setStep] = useState<Step>(isOther ? 'name' : 'amount')
+  const [step, setStep] = useState<'name' | 'amount'>('name')
 
   // Form state
   const [name,         setName]         = useState(paramLabel ?? '')
@@ -50,12 +50,13 @@ export function NewExpenseClient() {
   const [saving,       setSaving]       = useState(false)
   const [saveError,    setSaveError]    = useState<string | null>(null)
 
-  // Dictionary state (free-text only)
-  const [dictionary,   setDictionary]   = useState<Record<string, DictEntry>>({})
+
+
+  const [dictionary, setDictionary] = useState<Record<string, DictEntry>>({})
   const [dictMatch,    setDictMatch]    = useState<DictEntry | null>(null)
   const [typeOverride, setTypeOverride] = useState(false)
 
-  const currency = profile?.currency ?? 'USD'
+  const currency = profile?.currency || 'USD'
 
   // Current pay cycle
   const [cycleId, setCycleId] = useState<string | null>(null)
@@ -67,7 +68,7 @@ export function NewExpenseClient() {
 
   // Load dictionary for free-text flow
   useEffect(() => {
-    if (!isOther || !user) return
+    if (!isOther || !user?.id) return
     ;(supabase.from('item_dictionary') as any)
       .select('name_normalized, label, category_type, category_key')
       .eq('user_id', user.id)
@@ -87,10 +88,16 @@ export function NewExpenseClient() {
 
   // Dictionary lookup as user types
   useEffect(() => {
-    if (!isOther || typeOverride) { setDictMatch(null); return }
-    const normalized = name.trim().toLowerCase()
-    const match = normalized ? (dictionary[normalized] ?? null) : null
-    setDictMatch(match)
+  if (!isOther) return
+
+  const normalized = name.trim().toLowerCase()
+  const match = normalized ? (dictionary[normalized] ?? null) : null
+
+  setDictMatch(match)
+
+  if (!typeOverride && match) {
+    setSelectedType(match.categoryType)
+  }
   }, [name, dictionary, isOther, typeOverride])
 
   // Load current cycle ID once user and profile are available
@@ -152,70 +159,24 @@ export function NewExpenseClient() {
     setSaving(true)
     setSaveError(null)
 
-    const date = new Date().toLocaleDateString('en-CA')
-
-    // 0. Update flow: delete previous
-    if (mode === 'update' && priorEntry) {
-      const { error: deleteError } = await dbWrite(
-        (supabase.from('transactions') as any)
-          .delete()
-          .eq('id', priorEntry.id)
-      )
-
-      if (deleteError) {
-        setSaveError('Failed to delete prior entry. Please try again.')
-        setSaving(false)
-        return
-      }
-    }
-
-    // 1. Insert transaction
-    const { error: txError } = await dbWrite(
-      (supabase.from('transactions') as any).insert({
-        user_id:        user.id,
-        date,
-        cycle_id:       cycleId,
-        category_type:  selectedType,
-        category_label: resolvedLabel,
-        category_key:   (resolvedLabel || '').toLowerCase().trim().replace(/\s+/g, '_'),
-        amount:         parsedAmount,
-        note:           note.trim() || null,
+    try {
+      await saveExpense({
+        mode,
+        priorEntryId: priorEntry?.id ?? null,
+        categoryType: selectedType,
+        categoryKey: resolvedKey,
+        categoryLabel: resolvedLabel,
+        amount: parsedAmount,
+        note: note.trim() || null,
+        rememberItem: isOther,
       })
-    )
 
-    if (txError) {
-      setSaveError('Failed to save expense. Please try again.')
       setSaving(false)
-      return
+      router.replace('/log')
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message.replace(/^.*?: /, '') : 'Failed to save expense. Please try again.')
+      setSaving(false)
     }
-
-    // 2. Dictionary (only if "Other")
-    if (isOther) {
-      const normalized = resolvedLabel.trim().toLowerCase()
-
-    const category_key = normalized.replace(/\s+/g, '_')
-
-    const { error: dictError } = await dbWrite(
-    (supabase.from('item_dictionary') as any).upsert({
-      user_id: user.id,
-      name_normalized: normalized,
-      label: resolvedLabel || 'Unknown',
-      category_key: category_key,
-      category_type: selectedType,
-      usage_count: 1,
-      }, {
-        onConflict: 'user_id,name_normalized'
-      })
-    )
-
-        if (dictError) {
-          console.error(dictError)
-        }
-    }
-
-    // SUCCESS
-    setSaving(false)
-    router.replace('/log')
   }, [
     user,
     parsedAmount,
@@ -225,7 +186,6 @@ export function NewExpenseClient() {
     name,
     note,
     isOther,
-    supabase,
     router,
     mode,
     priorEntry,
@@ -279,6 +239,27 @@ export function NewExpenseClient() {
           />
         )}
 
+        {step === 'amount' && (
+          <AmountStep
+            name={name}
+            selectedType={selectedType}
+            amount={amount}
+            setAmount={setAmount}
+            note={note}
+            setNote={setNote}
+            currency={currency}
+            saving={saving}
+            saveError={saveError}
+            parsedAmount={parsedAmount}
+            onSave={handleSave}
+            onTypeChange={() => isOther ? setStep('name') : null}
+            mode={mode}
+            setMode={setMode}
+            priorEntry={priorEntry ?? null}
+          />
+        )}
+
+
       </div>
     </div>
   )
@@ -292,16 +273,27 @@ function suggestType(label: string): CategoryType | null {
   return 'everyday'
 }
 
-function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typeOverride, setTypeOverride, onContinue }: {
-  name: string
-  setName: (v: string) => void
-  selectedType: CategoryType | null
-  setSelectedType: (t: CategoryType) => void
-  dictMatch: { categoryType: CategoryType; label: string } | null
-  typeOverride: boolean
-  setTypeOverride: (v: boolean) => void
-  onContinue: () => void
-}) {
+function NameStep(
+  {
+    name,
+    setName,
+    selectedType,
+    setSelectedType,
+    dictMatch,
+    typeOverride,
+    setTypeOverride,
+    onContinue,
+  }: {
+    name: string
+    setName: (v: string) => void
+    selectedType: CategoryType | null
+    setSelectedType: (t: CategoryType) => void
+    dictMatch: DictEntry | null
+    typeOverride: boolean
+    setTypeOverride: (v: boolean) => void
+    onContinue: () => void
+  }
+) {
   const canContinue = name.trim().length > 0 && selectedType !== null
 
   return (
@@ -317,12 +309,15 @@ function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typ
         placeholder="e.g. Netflix, Rent, Groceries"
         value={name}
         onChange={e => {
-          setName(e.target.value)
-          setTypeOverride(false)
-          if (!selectedType) {
-            const suggestion = suggestType(e.target.value)
+          const value = e.target.value
+          setName(value)
+
+          if (!typeOverride) {
+            const suggestion = suggestType(value)
             if (suggestion) setSelectedType(suggestion)
           }
+
+          setTypeOverride(false)
         }}
         style={{
           width: '100%', height: 52, borderRadius: 'var(--radius-md)',
@@ -342,7 +337,10 @@ function NameStep({ name, setName, selectedType, setSelectedType, dictMatch, typ
             Remembered from last time
           </span>
           <button
-            onClick={() => { setTypeOverride(true); setSelectedType(selectedType!) }}
+            onClick={() => {
+              setTypeOverride(true)
+              if (selectedType) setSelectedType(selectedType)
+            }}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontSize: 12, color: 'var(--brand-dark)', fontWeight: 500, padding: 0,

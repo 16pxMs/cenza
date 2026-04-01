@@ -28,7 +28,8 @@ npm install
 
 1. Go to [supabase.com](https://supabase.com) and create a new project
 2. In the Supabase dashboard go to **SQL Editor**
-3. Run the migration file: `supabase/migrations/0001_initial_schema.sql`
+3. Run the migration files in order from `supabase/migrations/`
+4. If your database was created earlier from only `0001_initial_schema.sql`, also run the later reconciliation migrations before using the app
 
 ### 3. Configure Google OAuth in Supabase
 
@@ -84,7 +85,8 @@ src/
     └── database.ts     # Full TypeScript types for all tables
 supabase/
 └── migrations/
-    └── 0001_initial_schema.sql
+    ├── 0001_initial_schema.sql
+    └── 0008_schema_reconciliation.sql
 ```
 
 ---
