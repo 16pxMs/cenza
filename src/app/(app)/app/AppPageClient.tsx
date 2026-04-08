@@ -55,7 +55,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
           goalTargets={overview.goalTargets}
           goalSaved={overview.goalSaved}
           goalLabels={overview.goalLabels}
-          onLogExpense={() => router.push('/log/new?isOther=true')}
+          onLogExpense={() => router.push('/log/new?isOther=true&returnTo=/app')}
           onContribGoal={async (goalId, goalLabel, amount, note) => {
             await addGoalContribution({ goalId, goalLabel, amount, note })
             router.refresh()

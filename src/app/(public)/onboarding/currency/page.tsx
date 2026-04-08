@@ -32,6 +32,8 @@ export default function OnboardingCurrencyPage() {
   const [query,      setQuery]      = useState('')
   const [saving,     setSaving]     = useState(false)
   const [pickerFocused, setPickerFocused] = useState(false)
+  const [authReady, setAuthReady] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
     const code = detectCurrency()
@@ -39,17 +41,42 @@ export default function OnboardingCurrencyPage() {
     if (!code) setShowPicker(true)
   }, [])
 
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          setAuthReady(false)
+          setAuthError('We are still connecting your account. Please try again in a moment.')
+          return
+        }
+
+        setAuthReady(true)
+        setAuthError(null)
+      } catch {
+        setAuthReady(false)
+        setAuthError('We are still connecting your account. Please try again in a moment.')
+      }
+    })()
+  }, [supabase])
+
   const saveCurrency = async (code: string) => {
-    if (!code || saving) return
+    if (!code || saving || !authReady) return
     setSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setSaving(false); return }
+      if (!user) {
+        setAuthReady(false)
+        setAuthError('We are still connecting your account. Please try again in a moment.')
+        setSaving(false)
+        return
+      }
       await (supabase.from('user_profiles') as any)
         .update({ currency: code })
         .eq('id', user.id)
       router.push('/onboarding/pin')
     } catch {
+      setAuthError('We could not save your currency yet. Please try again in a moment.')
       setSaving(false)
     }
   }
@@ -94,6 +121,17 @@ export default function OnboardingCurrencyPage() {
           }}>
             We detected this from your device. We'll use it across your income, spending, and goals.
           </p>
+
+          {authError && (
+            <p style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-3)',
+              margin: '0 0 var(--space-md)',
+              lineHeight: 1.5,
+            }}>
+              {authError}
+            </p>
+          )}
 
           {/* Currency card — border, no shadow (static display card) */}
           <div style={{
@@ -171,21 +209,21 @@ export default function OnboardingCurrencyPage() {
         <div className={styles.ctaArea}>
           <button
             onClick={() => saveCurrency(detected!)}
-            disabled={saving}
+            disabled={saving || !authReady}
             style={{
               width: '100%',
               height: 56,
               borderRadius: 'var(--radius-lg)',
-              background: 'var(--brand-dark)',
+              background: authReady ? 'var(--brand-dark)' : 'var(--grey-200)',
               border: 'none',
-              color: 'var(--text-inverse)',
+              color: authReady ? 'var(--text-inverse)' : 'var(--text-muted)',
               fontSize: 'var(--text-base)',
               fontWeight: 'var(--weight-semibold)',
-              cursor: saving ? 'default' : 'pointer',
+              cursor: saving || !authReady ? 'default' : 'pointer',
               letterSpacing: '-0.1px',
             }}
           >
-            {saving ? 'Saving…' : 'Looks right'}
+            {saving ? 'Saving…' : !authReady ? 'Getting your account ready…' : 'Looks right'}
           </button>
         </div>
       </div>
@@ -237,6 +275,17 @@ export default function OnboardingCurrencyPage() {
         }}>
           Pick the currency your life actually runs on.
         </p>
+
+        {authError && (
+          <p style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-3)',
+            margin: '0 0 var(--space-md)',
+            lineHeight: 1.5,
+          }}>
+            {authError}
+          </p>
+        )}
 
         {/* Search input */}
         <div style={{
@@ -402,22 +451,22 @@ export default function OnboardingCurrencyPage() {
       <div className={styles.ctaArea}>
         <button
           onClick={() => saveCurrency(selected)}
-          disabled={!selected || saving}
+          disabled={!selected || saving || !authReady}
           style={{
             width: '100%',
             height: 56,
             borderRadius: 'var(--radius-lg)',
-            background: selected ? 'var(--brand-dark)' : 'var(--grey-200)',
+            background: selected && authReady ? 'var(--brand-dark)' : 'var(--grey-200)',
             border: 'none',
-            color: selected ? 'var(--text-inverse)' : 'var(--text-muted)',
+            color: selected && authReady ? 'var(--text-inverse)' : 'var(--text-muted)',
             fontSize: 'var(--text-base)',
             fontWeight: 'var(--weight-semibold)',
-            cursor: selected && !saving ? 'pointer' : 'default',
+            cursor: selected && !saving && authReady ? 'pointer' : 'default',
             transition: 'background 0.15s, color 0.15s',
             letterSpacing: '-0.1px',
           }}
         >
-          {saving ? 'Saving…' : 'Continue →'}
+          {saving ? 'Saving…' : !authReady ? 'Getting your account ready…' : 'Continue →'}
         </button>
       </div>
     </div>

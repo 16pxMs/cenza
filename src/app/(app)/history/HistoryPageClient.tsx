@@ -6,7 +6,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { IconChevronRight } from '@/components/ui/Icons'
 import { formatAmount } from '@/lib/formatting/amount'
 import type { HistoryCategoryRow, HistoryPageData } from '@/lib/loaders/history'
 
@@ -16,6 +15,13 @@ const T = {
   text2:     'var(--text-2)',
   text3:     'var(--text-3)',
   textMuted: 'var(--text-muted)',
+}
+
+function recapDisplayLabel(label: string) {
+  if (label === 'Fixed' || label === 'Fixed spending') return 'Essentials'
+  if (label === 'Daily' || label === 'Daily spending') return 'Life'
+  if (label === 'Debts') return 'Debt'
+  return label
 }
 
 // Segmented bar per row — only shown when budget is set
@@ -95,10 +101,10 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
 
   // Breakdown segments for the bar
   const segments = [
-    { label: 'Fixed',  amount: data.breakdown.find(i => i.label === 'Fixed')?.amount  ?? 0, color: 'var(--brand-dark)' },
+    { label: 'Essentials', amount: data.breakdown.find(i => i.label === 'Fixed')?.amount ?? 0, color: 'var(--brand-dark)' },
     { label: 'Goals',  amount: data.breakdown.find(i => i.label === 'Goals')?.amount  ?? 0, color: 'var(--brand-deep)' },
-    { label: 'Daily',  amount: data.breakdown.find(i => i.label === 'Daily')?.amount  ?? 0, color: 'var(--brand-mid)' },
-    { label: 'Debts',  amount: data.breakdown.find(i => i.label === 'Debts')?.amount  ?? 0, color: 'var(--red)' },
+    { label: 'Life', amount: data.breakdown.find(i => i.label === 'Daily')?.amount ?? 0, color: 'var(--brand-mid)' },
+    { label: 'Debt', amount: data.breakdown.find(i => i.label === 'Debts')?.amount ?? 0, color: 'var(--red)' },
   ].filter(s => s.amount > 0)
 
   const content = (
@@ -217,7 +223,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
                           <div style={{ width: 'var(--size-dot-sm)', height: 'var(--size-dot-sm)', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
                           <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>{s.label}</span>
                         </div>
-                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: s.label === 'Debts' ? 'var(--red)' : T.text2 }}>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: s.label === 'Debt' ? 'var(--red)' : T.text2 }}>
                           {formatAmount(s.amount, { currency: data.currency, variant: 'compact' })}
                         </span>
                       </div>
@@ -236,22 +242,18 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
                     const isLast    = index === data.rows.length - 1
                     const hasLogged = row.spent > 0
                     const showBar   = hasLogged && row.planned > 0
-                    const ledgerUrl = `/history/${row.key}?label=${encodeURIComponent(row.label)}&planned=${row.planned}&type=${row.type}`
 
                     const inner = (
                       <div style={{ padding: `${showBar ? 'var(--radius-md)' : 'var(--radius-md)'} var(--space-card-sm) ${showBar ? 'var(--space-sm)' : 'var(--radius-md)'}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: hasLogged ? T.text1 : T.textMuted }}>
-                            {row.label}
+                            {recapDisplayLabel(row.label)}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2xs)', flexShrink: 0, marginLeft: 'var(--space-md)' }}>
                             {hasLogged ? (
-                              <>
-                                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: rowOver ? 'var(--red)' : T.text1 }}>
-                                  {formatAmount(row.spent, { currency: data.currency, variant: 'compact' })}
-                                </span>
-                                <IconChevronRight size={14} color={T.textMuted} />
-                              </>
+                              <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: rowOver ? 'var(--red)' : T.text1 }}>
+                                {formatAmount(row.spent, { currency: data.currency, variant: 'compact' })}
+                              </span>
                             ) : (
                               <span style={{ fontSize: 'var(--text-sm)', color: T.textMuted }}>—</span>
                             )}
@@ -263,14 +265,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
 
                     return (
                       <div key={row.key} style={{ borderBottom: isLast ? 'none' : 'var(--border-width) solid var(--border-subtle)' }}>
-                        {hasLogged ? (
-                          <button
-                            onClick={() => router.push(ledgerUrl)}
-                            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'block', boxSizing: 'border-box' }}
-                          >
-                            {inner}
-                          </button>
-                        ) : inner}
+                        {inner}
                       </div>
                     )
                   })}

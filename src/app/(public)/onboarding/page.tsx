@@ -16,49 +16,69 @@ export default function OnboardingNamePage() {
   const [name,    setName]    = useState('')
   const [focused, setFocused] = useState(false)
   const [saving,  setSaving]  = useState(false)
+  const [authReady, setAuthReady] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
     ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          setAuthReady(false)
+          setAuthError('We are still connecting your account. Please try again in a moment.')
+          return
+        }
 
-      const n =
-        (typeof user.user_metadata?.full_name === 'string'
-          ? user.user_metadata.full_name.split(' ')[0]
-          : null) ||
-        user.email?.split('@')[0] ||
-        ''
-      setName(n)
+        const n =
+          (typeof user.user_metadata?.full_name === 'string'
+            ? user.user_metadata.full_name.split(' ')[0]
+            : null) ||
+          user.email?.split('@')[0] ||
+          ''
+        setName(n)
 
-      // Resume: if currency is already set, skip to PIN setup step
-      const { data: profile } = await (supabase.from('user_profiles') as any)
-        .select('currency')
-        .eq('id', user.id)
-        .maybeSingle()
+        const { data: profile } = await (supabase.from('user_profiles') as any)
+          .select('currency')
+          .eq('id', user.id)
+          .maybeSingle()
 
-      if (profile?.currency) {
-        router.replace('/onboarding/pin')
+        if (profile?.currency) {
+          router.replace('/onboarding/pin')
+          return
+        }
+
+        setAuthReady(true)
+        setAuthError(null)
+      } catch {
+        setAuthReady(false)
+        setAuthError('We are still connecting your account. Please try again in a moment.')
       }
     })()
-  }, [])
+  }, [router, supabase])
 
   const handleContinue = async () => {
     const trimmed = name.trim()
-    if (!trimmed || saving) return
+    if (!trimmed || saving || !authReady) return
     setSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setSaving(false); return }
+      if (!user) {
+        setAuthReady(false)
+        setAuthError('We are still connecting your account. Please try again in a moment.')
+        setSaving(false)
+        return
+      }
       await (supabase.from('user_profiles') as any)
         .update({ name: trimmed })
         .eq('id', user.id)
       router.push('/onboarding/currency')
     } catch {
+      setAuthError('We could not save your name yet. Please try again in a moment.')
       setSaving(false)
     }
   }
 
-  const canContinue = name.trim().length > 0
+  const canContinue = name.trim().length > 0 && authReady
 
   return (
     <div className={styles.pageWrapper} style={{ minHeight: '100vh' }}>
@@ -93,6 +113,17 @@ export default function OnboardingNamePage() {
         }}>
           We'll use this throughout the app.
         </p>
+
+        {authError && (
+          <p style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-3)',
+            margin: '0 0 var(--space-md)',
+            lineHeight: 1.5,
+          }}>
+            {authError}
+          </p>
+        )}
 
         {/* Name input */}
         <input
@@ -143,7 +174,7 @@ export default function OnboardingNamePage() {
             letterSpacing: '-0.1px',
           }}
         >
-          {saving ? 'Saving…' : 'Continue →'}
+          {saving ? 'Saving…' : !authReady ? 'Getting your account ready…' : 'Continue →'}
         </button>
       </div>
     </div>

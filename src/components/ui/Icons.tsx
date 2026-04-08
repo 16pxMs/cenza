@@ -15,6 +15,7 @@ export {
   Target           as IconGoals,
   TrendingUp       as IconFinance,
   Plus             as IconPlus,
+  Minus            as IconMinus,
   Trash2           as IconTrash,
   ChevronDown      as IconChevronDown,
   ChevronRight     as IconChevronRight,

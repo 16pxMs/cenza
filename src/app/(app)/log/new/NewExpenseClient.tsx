@@ -1,112 +1,317 @@
-// src/app/(app)/log/new/NewExpenseClient.tsx
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { saveExpense } from './actions'
+import { saveExpenseBatch } from './actions'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
+type Step = 'queue' | 'review' | 'done'
+type QueueSource = 'common' | 'typed' | 'known'
 
-const TYPE_OPTIONS: { label: string; value: CategoryType }[] = [
-  { label: 'Daily',     value: 'everyday' },
-  { label: 'Fixed',     value: 'fixed' },
-  { label: 'Debt',      value: 'debt' },
-]
-
-// ─── Dictionary ───────────────────────────────────────────────
 interface DictEntry {
   categoryType: CategoryType
   label: string
   key: string | null
+  usageCount: number
+  lastUsed: string | null
 }
 
-// ─── Step type ────────────────────────────────────────────────
-type Step = 'name' | 'amount'
+interface PendingExpenseItem {
+  id: string
+  label: string
+  categoryType: CategoryType | null
+  categorySource: 'remembered' | 'manual' | null
+  categoryKey: string | null
+  amount: string
+  note: string
+  source: QueueSource
+}
+
+const T = {
+  pageBg: 'var(--page-bg)',
+  white: 'var(--white)',
+  brandSoft: 'var(--brand)',
+  brandMid: 'var(--brand-mid)',
+  border: 'var(--border)',
+  borderSubtle: 'var(--border-subtle)',
+  borderWidth: 'var(--border-width)',
+  text1: 'var(--text-1)',
+  text2: 'var(--text-2)',
+  text3: 'var(--text-3)',
+  textMuted: 'var(--text-muted)',
+  textInverse: 'var(--text-inverse)',
+  brand: 'var(--brand)',
+  brandDark: 'var(--brand-dark)',
+  grey50: 'var(--grey-50)',
+  grey100: 'var(--grey-100)',
+  grey200: 'var(--grey-200)',
+  redLight: 'var(--red-light)',
+  redBorder: 'var(--red-border)',
+  redDark: 'var(--red-dark)',
+}
+
+const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: string }> = {
+  everyday: {
+    title: 'Life',
+    helper: 'Day-to-day, one-off, and personal expenses.',
+  },
+  fixed: {
+    title: 'Essentials',
+    helper: 'Must-pay home and living costs like rent or water.',
+  },
+  debt: {
+    title: 'Debt',
+    helper: 'Repayments like loans and credit cards.',
+  },
+}
+
+const DEFAULT_COMMON_ITEMS: Array<{ label: string; categoryType: Exclude<CategoryType, 'goal'> }> = [
+  { label: 'Groceries', categoryType: 'everyday' },
+  { label: 'Transport', categoryType: 'everyday' },
+  { label: 'Eating out', categoryType: 'everyday' },
+  { label: 'Fuel', categoryType: 'everyday' },
+  { label: 'Rent', categoryType: 'fixed' },
+  { label: 'WiFi', categoryType: 'fixed' },
+  { label: 'Electricity', categoryType: 'fixed' },
+  { label: 'Water', categoryType: 'fixed' },
+  { label: 'Netflix', categoryType: 'fixed' },
+  { label: 'Loan payment', categoryType: 'debt' },
+]
+
+function buildDefaultCommonItems(): DictEntry[] {
+  return DEFAULT_COMMON_ITEMS.map((item) => ({
+    categoryType: item.categoryType,
+    label: item.label,
+    key: normalizeLabel(item.label).replace(/\s+/g, '_'),
+    usageCount: 0,
+    lastUsed: null,
+  }))
+}
+
+function normalizeLabel(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function formatDisplayLabel(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/[A-Z]/.test(trimmed)) return trimmed
+
+  return trimmed.replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function suggestType(label: string): CategoryType | null {
+  const l = label.toLowerCase()
+  if (['rent', 'netflix', 'subscription', 'internet', 'wifi', 'water', 'power', 'electricity'].some(k => l.includes(k))) return 'fixed'
+  if (['loan', 'debt', 'credit'].some(k => l.includes(k))) return 'debt'
+  return 'everyday'
+}
+
+function buildPendingItem(label: string, source: QueueSource, dictEntry?: DictEntry | null): PendingExpenseItem {
+  const cleanLabel = label.trim()
+  const normalized = normalizeLabel(cleanLabel)
+  const rememberedCategoryType = dictEntry && (dictEntry.usageCount > 0 || Boolean(dictEntry.lastUsed))
+    ? dictEntry.categoryType
+    : null
+
+  return {
+    id: normalized || `${source}-${Date.now()}`,
+    label: cleanLabel,
+    categoryType: rememberedCategoryType,
+    categorySource: rememberedCategoryType ? 'remembered' : null,
+    categoryKey: dictEntry?.key ?? normalized.replace(/\s+/g, '_'),
+    amount: '',
+    note: '',
+    source,
+  }
+}
+
+function formatMonthLabel() {
+  return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
 
 export function NewExpenseClient() {
-  const router       = useRouter()
-  const params       = useSearchParams()
-  const supabase     = createClient()
+  const router = useRouter()
+  const params = useSearchParams()
+  const supabase = createClient()
   const { user, profile } = useUser()
 
-  // URL params — present for known items, absent for free-text
-  const paramKey      = params.get('key')
-  const paramLabel    = params.get('label')
-  const paramAmount   = params.get('amount')
-  const isOther       = params.get('isOther') === 'true'
+  const paramKey = params.get('key')
+  const paramLabel = params.get('label')
+  const paramAmount = params.get('amount')
+  const rawParamType = params.get('type')
+  const isOther = params.get('isOther') === 'true'
+  const returnTo = params.get('returnTo') || '/log'
+  const paramType = rawParamType === 'everyday' || rawParamType === 'fixed' || rawParamType === 'debt' || rawParamType === 'goal'
+    ? rawParamType
+    : null
 
-  // For known items, skip 'name' step — start at 'amount'
-  const [step, setStep] = useState<'name' | 'amount'>('name')
+  const [step, setStep] = useState<Step>(isOther ? 'queue' : 'review')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savedCount, setSavedCount] = useState(0)
+  const [queueNotice, setQueueNotice] = useState<string | null>(null)
+  const [newItemName, setNewItemName] = useState('')
+  const [queue, setQueue] = useState<PendingExpenseItem[]>(() => {
+    if (!isOther && paramLabel) {
+      return [{
+        id: normalizeLabel(paramLabel),
+        label: paramLabel,
+        categoryType: paramType,
+        categorySource: paramType ? 'remembered' : null,
+        categoryKey: paramKey ?? normalizeLabel(paramLabel).replace(/\s+/g, '_'),
+        amount: paramAmount ?? '',
+        note: '',
+        source: 'known',
+      }]
+    }
 
-  // Form state
-  const [name,         setName]         = useState(paramLabel ?? '')
-  const [selectedType, setSelectedType] = useState<CategoryType | null>(null)
-  const [amount,       setAmount]       = useState(paramAmount ?? '')
-  const [note,         setNote]         = useState('')
-  const [saving,       setSaving]       = useState(false)
-  const [saveError,    setSaveError]    = useState<string | null>(null)
-
-
-
+    return []
+  })
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [mode, setMode] = useState<'add' | 'update'>('add')
+  const [priorEntry, setPriorEntry] = useState<{ id: string; amount: number } | null | undefined>(undefined)
   const [dictionary, setDictionary] = useState<Record<string, DictEntry>>({})
-  const [dictMatch,    setDictMatch]    = useState<DictEntry | null>(null)
-  const [typeOverride, setTypeOverride] = useState(false)
+  const [commonItems, setCommonItems] = useState<DictEntry[]>(() => buildDefaultCommonItems())
 
   const currency = profile?.currency || 'USD'
+  const activeItem = queue[activeIndex] ?? null
+  const parsedAmount = parseFloat((activeItem?.amount ?? '').replace(/,/g, '')) || 0
 
-  // Current pay cycle
-  const [cycleId, setCycleId] = useState<string | null>(null)
+  const rankedCommonItems = useMemo(() => {
+    const visible = commonItems.slice(0, 10)
+    const visibleSet = new Set(visible.map((item) => normalizeLabel(item.label)))
+    const selectedExtras: DictEntry[] = []
 
-  // Update vs add-another mode
-  const [mode,       setMode]       = useState<'add' | 'update'>('add')
-  const [priorEntry, setPriorEntry] = useState<{ id: string; amount: number } | null | undefined>(undefined)
-  // undefined = still loading, null = none found, object = found
+    for (const queuedItem of queue) {
+      const normalized = normalizeLabel(queuedItem.label)
+      if (visibleSet.has(normalized)) continue
 
-  // Load dictionary for free-text flow
+      selectedExtras.push({
+        categoryType: queuedItem.categoryType ?? 'everyday',
+        label: queuedItem.label,
+        key: queuedItem.categoryKey,
+        usageCount: 0,
+        lastUsed: null,
+      })
+      visibleSet.add(normalized)
+    }
+
+    return [...visible, ...selectedExtras]
+  }, [commonItems, queue])
+
   useEffect(() => {
-    if (!isOther || !user?.id) return
+    if (!user?.id) return
+
     ;(supabase.from('item_dictionary') as any)
-      .select('name_normalized, label, category_type, category_key')
+      .select('name_normalized, label, category_type, category_key, usage_count')
       .eq('user_id', user.id)
-      .then(({ data }: any) => {
+      .then(async ({ data }: any) => {
         if (!data) return
+
         const dict: Record<string, DictEntry> = {}
+        const items: DictEntry[] = []
+
         for (const row of data) {
-          dict[row.name_normalized] = {
+          const entry: DictEntry = {
             categoryType: row.category_type as CategoryType,
             label: row.label,
             key: row.category_key,
+            usageCount: Number(row.usage_count ?? 0),
+            lastUsed: null,
           }
+          dict[row.name_normalized] = entry
+          items.push(entry)
         }
+
+        const { data: recentRows } = await (supabase.from('transactions') as any)
+          .select('category_label, category_type, category_key, date')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(40)
+
+        const recentSeen = new Set<string>()
+        for (const row of recentRows ?? []) {
+          const normalized = normalizeLabel(row.category_label ?? '')
+          if (!normalized || recentSeen.has(normalized)) continue
+          recentSeen.add(normalized)
+
+          const existing = dict[normalized]
+          if (existing) {
+            existing.lastUsed = row.date ?? null
+            continue
+          }
+
+          const entry: DictEntry = {
+            categoryType: (row.category_type as CategoryType) ?? suggestType(row.category_label ?? '') ?? 'everyday',
+            label: row.category_label,
+            key: row.category_key ?? normalized.replace(/\s+/g, '_'),
+            usageCount: 0,
+            lastUsed: row.date ?? null,
+          }
+
+          dict[normalized] = entry
+          items.push(entry)
+        }
+
+        const starterLabels = new Set(DEFAULT_COMMON_ITEMS.map((item) => normalizeLabel(item.label)))
+
+        for (const starter of DEFAULT_COMMON_ITEMS) {
+          const normalized = normalizeLabel(starter.label)
+          if (dict[normalized]) continue
+
+          const entry: DictEntry = {
+            categoryType: starter.categoryType,
+            label: starter.label,
+            key: normalized.replace(/\s+/g, '_'),
+            usageCount: 0,
+            lastUsed: null,
+          }
+
+          dict[normalized] = entry
+          items.push(entry)
+        }
+
+        const now = Date.now()
+        const ranked = items
+          .map((item) => {
+            const recentDays = item.lastUsed
+              ? Math.max(0, Math.floor((now - new Date(item.lastUsed).getTime()) / (1000 * 60 * 60 * 24)))
+              : 999
+
+            const recencyScore =
+              recentDays <= 3 ? 100 :
+              recentDays <= 7 ? 70 :
+              recentDays <= 14 ? 40 :
+              recentDays <= 30 ? 20 :
+              0
+
+            const frequencyScore = Math.min(item.usageCount * 8, 80)
+            const starterScore = starterLabels.has(normalizeLabel(item.label)) ? 12 : 0
+
+            return {
+              ...item,
+              score: recencyScore + frequencyScore + starterScore,
+            }
+          })
+          .sort((a, b) => b.score - a.score || b.usageCount - a.usageCount || a.label.localeCompare(b.label))
+          .map(({ score: _score, ...item }) => item)
+
         setDictionary(dict)
+        setCommonItems(ranked)
       })
-  }, [isOther, user, supabase])
+  }, [supabase, user])
 
-  // Dictionary lookup as user types
-  useEffect(() => {
-  if (!isOther) return
-
-  const normalized = name.trim().toLowerCase()
-  const match = normalized ? (dictionary[normalized] ?? null) : null
-
-  setDictMatch(match)
-
-  if (!typeOverride && match) {
-    setSelectedType(match.categoryType)
-  }
-  }, [name, dictionary, isOther, typeOverride])
-
-  // Load current cycle ID once user and profile are available
+  const [cycleId, setCycleId] = useState<string | null>(null)
   useEffect(() => {
     if (!user || !profile) return
     setCycleId(deriveCurrentCycleId(profile as any))
   }, [user, profile])
 
-  // Fetch prior entry for known items (to offer update vs add-another)
   useEffect(() => {
     if (isOther || !paramKey || !user || !cycleId) { setPriorEntry(null); return }
     ;(supabase.from('transactions') as any)
@@ -118,365 +323,593 @@ export function NewExpenseClient() {
       .limit(1)
       .maybeSingle()
       .then(({ data }: any) => setPriorEntry(data ?? null))
-  }, [isOther, paramKey, user, cycleId, supabase])
+  }, [cycleId, isOther, paramKey, supabase, user])
+
+  const updateActiveItem = (patch: Partial<PendingExpenseItem>) => {
+    setQueue((current) => current.map((item, index) => (
+      index === activeIndex ? { ...item, ...patch } : item
+    )))
+  }
+
+  const toggleCommonItem = (label: string) => {
+    const normalized = normalizeLabel(label)
+    const exists = queue.some((item) => normalizeLabel(item.label) === normalized)
+
+    if (exists) {
+      setQueue((current) => current.filter((item) => normalizeLabel(item.label) !== normalized))
+      setQueueNotice(null)
+      return
+    }
+
+    const dictEntry = dictionary[normalized] ?? null
+    setQueue((current) => [...current, buildPendingItem(label, 'common', dictEntry)])
+    setQueueNotice(null)
+  }
+
+  const addTypedItem = () => {
+    const normalized = normalizeLabel(newItemName)
+    if (!normalized) return
+
+    const exists = queue.some((item) => normalizeLabel(item.label) === normalized)
+    if (exists) {
+      setQueueNotice(`"${newItemName.trim()}" is already in your list.`)
+      setNewItemName('')
+      return
+    }
+
+    const dictEntry = dictionary[normalized] ?? null
+    setQueue((current) => [...current, buildPendingItem(newItemName, 'typed', dictEntry)])
+    setQueueNotice(null)
+    setNewItemName('')
+  }
 
   const handleBack = () => {
-    if (step === 'amount' && isOther) { setStep('name'); return }
-    router.push('/log')
+    if (step === 'review') {
+      if (!isOther) {
+        router.push(returnTo)
+        return
+      }
+
+      if (activeIndex > 0) {
+        setActiveIndex((current) => current - 1)
+        return
+      }
+
+      setStep('queue')
+      return
+    }
+
+    router.push(returnTo)
   }
 
-  const handleNameContinue = () => {
-    if (!name.trim() || !selectedType) return
-    setStep('amount')
+  const handleContinueToReview = () => {
+    if (queue.length === 0) return
+    setActiveIndex(0)
+    setStep('review')
   }
 
-  const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0
-
-  const handleSave = useCallback(async () => {
-    if (!user || parsedAmount <= 0) return
-
-    if (!cycleId) {
-      setSaveError('Could not determine cycle.')
-      setSaving(false)
-      return
+  const handleNext = () => {
+    if (!activeItem || !activeItem.categoryType || parsedAmount <= 0) return
+    if (activeIndex < queue.length - 1) {
+      setActiveIndex((current) => current + 1)
     }
+  }
 
-    if (!selectedType) {
-      setSaveError('Type must be selected')
-      setSaving(false)
-      return
-    }
-
-    if (!(['everyday', 'fixed', 'debt', 'goal'] as const).includes(selectedType)) {
-      setSaveError('Invalid category_type')
-      setSaving(false)
-      return
-    }
-
-    const resolvedKey   = paramKey ?? name.trim().toLowerCase().replace(/\s+/g, '_')
-    const resolvedLabel = name.trim() || paramLabel || resolvedKey
+  const handleSaveAll = async () => {
+    if (!user || queue.length === 0) return
 
     setSaving(true)
     setSaveError(null)
 
     try {
-      await saveExpense({
-        mode,
-        priorEntryId: priorEntry?.id ?? null,
-        categoryType: selectedType,
-        categoryKey: resolvedKey,
-        categoryLabel: resolvedLabel,
-        amount: parsedAmount,
-        note: note.trim() || null,
-        rememberItem: isOther,
-      })
+      if (queue.some((item) => !item.categoryType)) {
+        throw new Error('Choose a category for each expense before saving.')
+      }
 
+      await saveExpenseBatch(queue.map((item, index) => ({
+        mode: !isOther && index === 0 ? mode : 'add',
+        priorEntryId: !isOther && index === 0 ? priorEntry?.id ?? null : null,
+        categoryType: item.categoryType as CategoryType,
+        categoryKey: item.categoryKey ?? normalizeLabel(item.label).replace(/\s+/g, '_'),
+        categoryLabel: item.label,
+        amount: parseFloat(item.amount.replace(/,/g, '')) || 0,
+        note: item.note.trim() || null,
+        rememberItem: true,
+      })))
+
+      setSavedCount(queue.length)
       setSaving(false)
-      router.replace('/log')
+      setStep('done')
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message.replace(/^.*?: /, '') : 'Failed to save expense. Please try again.')
+      setSaveError(error instanceof Error ? error.message.replace(/^.*?: /, '') : 'Failed to save expenses. Please try again.')
       setSaving(false)
     }
-  }, [
-    user,
-    parsedAmount,
-    selectedType,
-    paramKey,
-    paramLabel,
-    name,
-    note,
-    isOther,
-    router,
-    mode,
-    priorEntry,
-    cycleId,
-  ])
+  }
+
+  const isLastItem = activeIndex === queue.length - 1
+  const canReviewContinue = queue.length > 0
+  const canAdvance = !!activeItem?.categoryType && parsedAmount > 0
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'var(--page-bg)',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
-      {/* Header */}
+    <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', flexDirection: 'column' }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '16px 20px 8px',
+        padding: 'var(--space-md) var(--space-page-mobile) 0',
+        maxWidth: 560,
+        width: '100%',
+        margin: '0 auto',
+        boxSizing: 'border-box',
       }}>
         <button
           onClick={handleBack}
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: 4, color: 'var(--text-2)',
-            display: 'flex', alignItems: 'center',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 'var(--space-xs)',
+            color: T.text2,
+            display: 'flex',
+            alignItems: 'center',
           }}
         >
           <ArrowLeft size={20} />
         </button>
-        <div>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
-            {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </p>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-1)' }}>
-            Add an expense
-          </h1>
-        </div>
       </div>
 
-      <div style={{ flex: 1, padding: '20px 20px 40px', maxWidth:     480,    width: '100%', margin: '0 auto' }}>
-
-        {step === 'name' && (
-          <NameStep
-            name={name}
-            setName={setName}
-            selectedType={selectedType}
-            setSelectedType={setSelectedType}
-            dictMatch={dictMatch}
-            typeOverride={typeOverride}
-            setTypeOverride={setTypeOverride}
-            onContinue={handleNameContinue}
-          />
+      <div style={{
+        padding: 'var(--space-sm) var(--space-page-mobile) var(--space-xl)',
+        maxWidth: 560,
+        width: '100%',
+        margin: '0 auto',
+        boxSizing: 'border-box',
+        flex: 1,
+      }}>
+        <p style={{ margin: step === 'review' ? '0 0 var(--space-sm)' : step === 'done' ? '0 0 var(--space-lg)' : '0 0 2px', fontSize: 'var(--text-xs)', color: T.text3 }}>
+          {formatMonthLabel()}
+        </p>
+        {step === 'queue' && (
+          <h1 style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
+            Add an expense
+          </h1>
         )}
 
-        {step === 'amount' && (
-          <AmountStep
-            name={name}
-            selectedType={selectedType}
-            amount={amount}
-            setAmount={setAmount}
-            note={note}
-            setNote={setNote}
-            currency={currency}
-            saving={saving}
-            saveError={saveError}
-            parsedAmount={parsedAmount}
-            onSave={handleSave}
-            onTypeChange={() => isOther ? setStep('name') : null}
-            mode={mode}
-            setMode={setMode}
-            priorEntry={priorEntry ?? null}
-          />
-        )}
-
-
+        <div style={{
+          background: T.white,
+          borderRadius: 'var(--radius-card)',
+          boxShadow: step === 'done' ? 'none' : 'var(--shadow-sm)',
+          padding: 'var(--space-lg) var(--space-card-sm)',
+        }}>
+          {step === 'queue' ? (
+            <QueueStep
+              newItemName={newItemName}
+              setNewItemName={setNewItemName}
+              queue={queue}
+              commonItems={rankedCommonItems}
+              queueNotice={queueNotice}
+              onToggleCommon={toggleCommonItem}
+              onAddTypedItem={addTypedItem}
+              onContinue={handleContinueToReview}
+              canContinue={canReviewContinue}
+            />
+          ) : step === 'done' ? (
+            <DoneStep
+              savedCount={savedCount}
+              items={queue}
+              currency={currency}
+              onLogMore={() => {
+                setQueue([])
+                setActiveIndex(0)
+                setNewItemName('')
+                setSaveError(null)
+                setSavedCount(0)
+                setStep('queue')
+              }}
+              onGoToRecap={() => router.push('/log')}
+            />
+          ) : activeItem ? (
+            <ReviewStep
+              item={activeItem}
+              currency={currency}
+              currentIndex={activeIndex}
+              totalItems={queue.length}
+              mode={mode}
+              setMode={setMode}
+              priorEntry={priorEntry ?? null}
+              saving={saving}
+              saveError={saveError}
+              onAmountChange={(value) => updateActiveItem({ amount: value })}
+              onTypeSelect={(type) => updateActiveItem({ categoryType: type, categorySource: 'manual' })}
+              onNoteChange={(value) => updateActiveItem({ note: value })}
+              onNext={handleNext}
+              onSaveAll={handleSaveAll}
+              canAdvance={canAdvance}
+              isLastItem={isLastItem}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── NameStep ─────────────────────────────────────────────────
-function suggestType(label: string): CategoryType | null {
-  const l = label.toLowerCase()
-  if (['rent', 'netflix', 'subscription', 'internet'].some(k => l.includes(k))) return 'fixed'
-  if (['loan', 'debt', 'credit'].some(k => l.includes(k))) return 'debt'
-  return 'everyday'
-}
-
-function NameStep(
-  {
-    name,
-    setName,
-    selectedType,
-    setSelectedType,
-    dictMatch,
-    typeOverride,
-    setTypeOverride,
-    onContinue,
-  }: {
-    name: string
-    setName: (v: string) => void
-    selectedType: CategoryType | null
-    setSelectedType: (t: CategoryType) => void
-    dictMatch: DictEntry | null
-    typeOverride: boolean
-    setTypeOverride: (v: boolean) => void
-    onContinue: () => void
+function DoneStep({
+  savedCount,
+  items,
+  currency,
+  onLogMore,
+  onGoToRecap,
+}: {
+  savedCount: number
+  items: PendingExpenseItem[]
+  currency: string
+  onLogMore: () => void
+  onGoToRecap: () => void
+}) {
+  const formatSummaryAmount = (value: string) => {
+    const amount = parseFloat(value.replace(/,/g, '')) || 0
+    return `${currency} ${amount.toLocaleString()}`
   }
-) {
-  const canContinue = name.trim().length > 0 && selectedType !== null
 
   return (
     <div>
-      <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--text-2)', lineHeight: 1.65 }}>
-        What was this for?
+      <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, lineHeight: 1.15 }}>
+        {savedCount} {savedCount === 1 ? 'expense added' : 'expenses added'}
+      </p>
+      <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-base)', color: T.text2, lineHeight: 1.5 }}>
+        Your expense log is up to date.
       </p>
 
-      {/* Name input */}
-      <input
-        autoFocus
-        type="text"
-        placeholder="e.g. Netflix, Rent, Groceries"
-        value={name}
-        onChange={e => {
-          const value = e.target.value
-          setName(value)
-
-          if (!typeOverride) {
-            const suggestion = suggestType(value)
-            if (suggestion) setSelectedType(suggestion)
-          }
-
-          setTypeOverride(false)
-        }}
-        style={{
-          width: '100%', height: 52, borderRadius: 'var(--radius-md)',
-          border: `1.5px solid ${name ? 'var(--brand-dark)' : 'var(--border)'}`,
-          padding: '0 16px', fontSize: 16, color: 'var(--text-1)',
-          background: 'var(--white)', outline: 'none',
-          boxSizing: 'border-box', fontFamily: 'inherit',
-          transition: 'border-color 0.15s',
-          marginBottom: 8,
-        }}
-      />
-
-      {/* Dictionary match hint */}
-      {dictMatch && !typeOverride && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-            Remembered from last time
-          </span>
-          <button
-            onClick={() => {
-              setTypeOverride(true)
-              if (selectedType) setSelectedType(selectedType)
-            }}
+      <div style={{ marginBottom: 'var(--space-lg)', borderTop: `${T.borderWidth} solid ${T.borderSubtle}`, borderBottom: `${T.borderWidth} solid ${T.borderSubtle}` }}>
+        {items.map((item, index) => (
+          <div
+            key={item.id}
             style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 12, color: 'var(--brand-dark)', fontWeight: 500, padding: 0,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 'var(--space-md)',
+              padding: 'var(--space-md) 0',
+              borderBottom: index < items.length - 1 ? `${T.borderWidth} solid ${T.borderSubtle}` : 'none',
             }}
           >
-            Change
-          </button>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+                {formatDisplayLabel(item.label)}
+              </p>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.4 }}>
+                {item.categoryType ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].title : 'Uncategorized'}
+              </p>
+            </div>
+            <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, whiteSpace: 'nowrap' }}>
+              {formatSummaryAmount(item.amount)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+        <button
+          onClick={onLogMore}
+          style={{
+            width: '100%',
+            height: 'var(--button-height)',
+            borderRadius: 'var(--radius-md)',
+            background: T.brandDark,
+            border: 'none',
+            color: T.textInverse,
+            fontSize: 'var(--text-base)',
+          fontWeight: 'var(--weight-semibold)',
+          cursor: 'pointer',
+        }}
+        >
+          Log more
+        </button>
+        <button
+          onClick={onGoToRecap}
+          style={{
+            width: '100%',
+            height: 'var(--button-height)',
+            borderRadius: 'var(--radius-md)',
+            background: T.white,
+            border: `${T.borderWidth} solid ${T.border}`,
+            color: T.text1,
+            fontSize: 'var(--text-base)',
+            fontWeight: 'var(--weight-semibold)',
+            cursor: 'pointer',
+          }}
+        >
+          View expense log
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function QueueStep({
+  newItemName,
+  setNewItemName,
+  queue,
+  commonItems,
+  queueNotice,
+  onToggleCommon,
+  onAddTypedItem,
+  onContinue,
+  canContinue,
+}: {
+  newItemName: string
+  setNewItemName: (value: string) => void
+  queue: PendingExpenseItem[]
+  commonItems: DictEntry[]
+  queueNotice: string | null
+  onToggleCommon: (label: string) => void
+  onAddTypedItem: () => void
+  onContinue: () => void
+  canContinue: boolean
+}) {
+  const selectedSet = new Set(queue.map((item) => normalizeLabel(item.label)))
+  const canAddTypedItem = newItemName.trim().length > 0
+
+  return (
+    <div>
+      {/* Title */}
+      <p style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: T.text1, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
+        What did you spend on?
+      </p>
+      <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
+        Tap what applies, or add something new.
+      </p>
+
+      {/* Common items */}
+      {commonItems.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Common items
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {commonItems.map((item) => {
+              const label = item.label
+              const displayLabel = formatDisplayLabel(label)
+              const isSelected = selectedSet.has(normalizeLabel(label))
+
+              return (
+                <button
+                  key={label}
+                  onClick={() => onToggleCommon(label)}
+                  style={{
+                    height: '38px',
+                    padding: '0 var(--space-md)',
+                    borderRadius: 'var(--radius-full)',
+                    border: isSelected
+                      ? `${T.borderWidth} solid ${T.brandMid}`
+                      : `${T.borderWidth} solid ${T.border}`,
+                    background: isSelected ? T.brandSoft : T.grey100,
+                    color: isSelected ? T.brandDark : T.text1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    transition: 'all 0.15s',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>{displayLabel}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
-      {(!dictMatch || typeOverride) && name.trim() && (
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-muted)' }}>
-          We'll remember this for next time.
+
+      {/* Free-text input row */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input
+          value={newItemName}
+          onChange={(event) => setNewItemName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              onAddTypedItem()
+            }
+          }}
+          placeholder="Add something else"
+          style={{
+            flex: 1,
+            height: 48,
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            padding: '0 14px',
+            fontSize: 15,
+            color: T.text1,
+            background: T.white,
+            outline: 'none',
+            boxSizing: 'border-box',
+            fontFamily: 'inherit',
+          }}
+        />
+        <button
+          onClick={onAddTypedItem}
+          disabled={!canAddTypedItem}
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 'var(--radius-sm)',
+            border: `${T.borderWidth} solid ${T.border}`,
+            background: canAddTypedItem ? T.brandSoft : T.white,
+            color: canAddTypedItem ? T.brandDark : T.textMuted,
+            cursor: canAddTypedItem ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+
+      {/* Queue notice */}
+      {queueNotice && (
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+          {queueNotice}
         </p>
       )}
 
-      {/* Type chips */}
-      <TypeChips selected={selectedType} onSelect={setSelectedType} />
-
-      {/* Continue */}
+      {/* CTA */}
       <button
         onClick={onContinue}
         disabled={!canContinue}
         style={{
-          width: '100%', height: 52, borderRadius: 14, marginTop: 24,
-          background: canContinue ? 'var(--brand-dark)' : 'var(--border)',
+          width: '100%',
+          height: 52,
+          borderRadius: 'var(--radius-md)',
+          background: canContinue ? T.brandDark : T.grey200,
           border: 'none',
-          color: canContinue ? '#fff' : 'var(--text-muted)',
-          fontSize: 15, fontWeight: 600,
+          color: canContinue ? T.textInverse : T.textMuted,
+          fontSize: 'var(--text-base)',
+          fontWeight: 'var(--weight-semibold)',
           cursor: canContinue ? 'pointer' : 'not-allowed',
-          transition: 'background 0.15s',
+          letterSpacing: '-0.01em',
+          marginTop: 4,
         }}
       >
-        Continue
+        Continue with {queue.length} {queue.length === 1 ? 'item' : 'items'}
       </button>
     </div>
   )
 }
 
-// ─── AmountStep ───────────────────────────────────────────────
-function AmountStep({ name, selectedType, amount, setAmount, note, setNote, currency, saving, saveError, parsedAmount, onSave, onTypeChange, mode, setMode, priorEntry }: {
-  name: string
-  selectedType: CategoryType | null
-  amount: string
-  setAmount: (v: string) => void
-  note: string
-  setNote: (v: string) => void
+function ReviewStep({
+  item,
+  currency,
+  currentIndex,
+  totalItems,
+  mode,
+  setMode,
+  priorEntry,
+  saving,
+  saveError,
+  onAmountChange,
+  onTypeSelect,
+  onNoteChange,
+  onNext,
+  onSaveAll,
+  canAdvance,
+  isLastItem,
+}: {
+  item: PendingExpenseItem
   currency: string
+  currentIndex: number
+  totalItems: number
+  mode: 'add' | 'update'
+  setMode: (mode: 'add' | 'update') => void
+  priorEntry: { id: string; amount: number } | null
   saving: boolean
   saveError: string | null
-  parsedAmount: number
-  onSave: () => void
-  onTypeChange: () => void
-  mode:       'add' | 'update'
-  setMode:    (m: 'add' | 'update') => void
-  priorEntry: { id: string; amount: number } | null
+  onAmountChange: (value: string) => void
+  onTypeSelect: (type: CategoryType | null) => void
+  onNoteChange: (value: string) => void
+  onNext: () => void
+  onSaveAll: () => void
+  canAdvance: boolean
+  isLastItem: boolean
 }) {
-  const typeLabel = selectedType
-    ? (TYPE_OPTIONS.find(o => o.value === selectedType)?.label ?? selectedType)
-    : null
+  const [showNote, setShowNote] = useState(Boolean(item.note))
+  useEffect(() => {
+    setShowNote(Boolean(item.note))
+  }, [item.id, item.note])
 
-  const displayAmount = (() => {
-    if (!amount) return ''
-    const raw = amount.replace(/,/g, '')
-    const parts = raw.split('.')
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-    return parts.join('.')
-  })()
-
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/,/g, '')
-    if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
-    setAmount(raw)
-  }
+  const displayAmount = item.amount
+    ? item.amount.replace(/,/g, '').split('.').map((part, index) => (
+      index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
+    )).join('.')
+    : ''
 
   return (
     <div>
-      {/* Update vs add another chips — only shown when a prior entry exists */}
-      {priorEntry && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {(['update', 'add'] as const).map(m => (
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <span style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 'var(--space-xs)' }}>
+          {currentIndex + 1} of {totalItems}
+        </span>
+        <div style={{ height: 'var(--size-bar-sm)', background: T.grey100, borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%',
+            width: `${((currentIndex + 1) / totalItems) * 100}%`,
+            background: T.brandDark,
+            borderRadius: 'var(--radius-full)',
+            transition: 'width 0.3s ease',
+          }} />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          minHeight: '40px',
+          padding: '0 var(--space-md)',
+          borderRadius: 'var(--radius-full)',
+          background: T.grey50,
+          color: T.text1,
+          fontSize: 'var(--text-lg)',
+          fontWeight: 'var(--weight-semibold)',
+          lineHeight: 1,
+        }}>
+          {formatDisplayLabel(item.label)}
+        </span>
+      </div>
+
+      {priorEntry && totalItems === 1 && (
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
+          {(['update', 'add'] as const).map((value) => (
             <button
-              key={m}
+              key={value}
               onClick={() => {
-                setMode(m)
-                if (m === 'update') setAmount(String(priorEntry.amount))
+                setMode(value)
+                if (value === 'update') onAmountChange(String(priorEntry.amount))
               }}
               style={{
-                flex: 1, height: 40, borderRadius: 99,
-                border: mode === m ? `2px solid var(--brand-dark)` : '1px solid var(--border)',
-                background: mode === m ? 'var(--brand-dark)' : 'var(--white)',
-                color: mode === m ? '#fff' : 'var(--text-2)',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                flex: 1,
+                height: '40px',
+                borderRadius: 'var(--radius-full)',
+                border: mode === value ? `2px solid ${T.brandDark}` : `${T.borderWidth} solid ${T.grey200}`,
+                background: mode === value ? T.brandDark : T.grey100,
+                color: mode === value ? T.textInverse : T.text2,
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-medium)',
+                cursor: 'pointer',
                 transition: 'all 0.15s',
               }}
             >
-              {m === 'update' ? 'Update entry' : 'Add another'}
+              {value === 'update' ? 'Update entry' : 'Add another'}
             </button>
           ))}
         </div>
       )}
 
-      {/* Expense name + type pill */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-        {name && (
-          <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)' }}>
-            {name}
-          </span>
-        )}
-        {typeLabel && (
-          <button
-            onClick={onTypeChange}
-            style={{
-              background: 'color-mix(in srgb, var(--brand-dark) 10%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--brand-dark) 20%, transparent)',
-              borderRadius: 99, padding: '3px 10px',
-              fontSize: 11, fontWeight: 600, color: 'var(--brand-dark)',
-              cursor: 'pointer',
-            }}
-          >
-            {typeLabel}
-          </button>
-        )}
-      </div>
-
-      {/* Amount input */}
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Amount
+        </p>
       <div style={{
-        display: 'flex', alignItems: 'center',
-        border: `1.5px solid ${amount ? 'var(--brand-dark)' : 'var(--border)'}`,
-        borderRadius: 12, background: 'var(--white)',
-        overflow: 'hidden', marginBottom: 16,
-        transition: 'border-color 0.15s',
+        display: 'flex',
+        alignItems: 'center',
+        height: '56px',
+        border: `${T.borderWidth} solid ${T.border}`,
+        borderRadius: 'var(--radius-sm)',
+        background: T.white,
+        overflow: 'hidden',
       }}>
         <span style={{
-          padding: '0 14px', fontSize: 14, fontWeight: 600,
-          color: 'var(--text-3)', borderRight: '1px solid var(--border)',
-          whiteSpace: 'nowrap', flexShrink: 0,
+          padding: '0 var(--space-md)',
+          fontSize: 'var(--text-base)',
+          fontWeight: 'var(--weight-medium)',
+          color: T.text3,
+          borderRight: `${T.borderWidth} solid ${T.border}`,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          background: T.grey50,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}>
           {currency}
         </span>
@@ -486,85 +919,147 @@ function AmountStep({ name, selectedType, amount, setAmount, note, setNote, curr
           inputMode="decimal"
           placeholder="0.00"
           value={displayAmount}
-          onChange={handleAmountChange}
+          onChange={(event) => {
+            const raw = event.target.value.replace(/,/g, '')
+            if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+            onAmountChange(raw)
+          }}
           style={{
-            flex: 1, height: 52, border: 'none', outline: 'none',
-            padding: '0 14px', fontSize: 22, fontWeight: 600,
-            color: 'var(--text-1)', background: 'transparent', fontFamily: 'inherit',
+            flex: 1,
+            height: '100%',
+            border: 'none',
+            outline: 'none',
+            padding: '0 var(--space-md)',
+            fontSize: 'var(--text-xl)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.text1,
+            background: 'transparent',
+            fontFamily: 'inherit',
           }}
         />
       </div>
+      </div>
 
-      {/* Note */}
-      <input
-        type="text"
-        placeholder="Add a note (optional)"
-        value={note}
-        onChange={e => setNote(e.target.value)}
-        style={{
-          width: '100%', height: 44, borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border)',
-          padding: '0 14px', fontSize: 14, color: 'var(--text-1)',
-          background: 'var(--white)', outline: 'none',
-          boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 16,
-        }}
-      />
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Count this as
+        </p>
+        <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
+        <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
+          {item.categoryType
+            ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].helper
+            : 'Choose how Cenza should count this expense.'}
+        </p>
+      </div>
 
-      {/* Error */}
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        {!showNote && !item.note ? (
+          <button
+            onClick={() => setShowNote(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: T.text3,
+              fontSize: 'var(--text-sm)',
+              fontWeight: 'var(--weight-medium)',
+              cursor: 'pointer',
+            }}
+          >
+            Add a note (optional)
+          </button>
+        ) : (
+          <input
+            type="text"
+            placeholder="Add a note (optional)"
+            value={item.note}
+            onChange={(event) => onNoteChange(event.target.value)}
+            style={{
+              width: '100%',
+              height: '48px',
+              borderRadius: 'var(--radius-sm)',
+              border: `${T.borderWidth} solid ${T.border}`,
+              padding: '0 var(--space-md)',
+              fontSize: 'var(--text-base)',
+              color: T.text1,
+              background: T.white,
+              outline: 'none',
+              boxSizing: 'border-box',
+              fontFamily: 'inherit',
+            }}
+          />
+        )}
+      </div>
+
       {saveError && (
         <p style={{
-          margin: '0 0 16px', padding: '10px 14px', borderRadius: 10,
-          background: '#FEF2F2', border: '1px solid #FECACA',
-          fontSize: 13, color: '#D93025', lineHeight: 1.5,
+          margin: '0 0 var(--space-md)',
+          padding: '10px 14px',
+          borderRadius: 'var(--radius-sm)',
+          background: T.redLight,
+          border: `${T.borderWidth} solid ${T.redBorder}`,
+          fontSize: 'var(--text-sm)',
+          color: T.redDark,
+          lineHeight: 1.5,
         }}>
           {saveError}
         </p>
       )}
 
-      {/* Save */}
       <button
-        onClick={onSave}
-        disabled={parsedAmount <= 0 || saving}
+        onClick={isLastItem ? onSaveAll : onNext}
+        disabled={!canAdvance || saving}
         style={{
-          width: '100%', height: 52, borderRadius: 14,
-          background: parsedAmount > 0 ? 'var(--brand-dark)' : 'var(--border)',
+          width: '100%',
+          height: '52px',
+          borderRadius: 'var(--radius-md)',
+          background: canAdvance ? 'var(--brand-dark)' : 'var(--grey-200)',
           border: 'none',
-          color: parsedAmount > 0 ? '#fff' : 'var(--text-muted)',
-          fontSize: 15, fontWeight: 600,
-          cursor: parsedAmount > 0 ? 'pointer' : 'not-allowed',
-          transition: 'background 0.15s',
+          color: canAdvance ? T.textInverse : T.textMuted,
+          fontSize: 'var(--text-base)',
+          fontWeight: 'var(--weight-semibold)',
+          cursor: canAdvance ? 'pointer' : 'not-allowed',
+          letterSpacing: '-0.01em',
           opacity: saving ? 0.7 : 1,
         }}
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? 'Saving…' : isLastItem ? 'Save all' : 'Next'}
       </button>
     </div>
   )
 }
 
-// ─── TypeChips ────────────────────────────────────────────────
 function TypeChips({ selected, onSelect }: {
   selected: CategoryType | null
-  onSelect: (t: CategoryType) => void
+  onSelect: (type: CategoryType | null) => void
 }) {
   return (
-    <div style={{ display: 'flex', gap: 8 }}>
-      {TYPE_OPTIONS.map(option => (
-        <button
-          key={option.value}
-          onClick={() => onSelect(option.value)}
-          style={{
-            padding: '8px 12px',
-            borderRadius: 10,
-            border: selected === option.value ? '2px solid #5C3489' : '1px solid #E4E7EC',
-            background: selected === option.value ? '#F5F0FA' : '#FFFFFF',
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+      {(Object.entries(TYPE_COPY) as [Exclude<CategoryType, 'goal'>, { title: string }][])
+        .map(([value, copy]) => (
+          <button
+            key={value}
+            onClick={() => onSelect(selected === value ? null : value)}
+            style={{
+              height: '40px',
+              padding: '0 var(--space-md)',
+              borderRadius: 'var(--radius-full)',
+              border: selected === value
+                ? `${T.borderWidth} solid ${T.brandMid}`
+                : `${T.borderWidth} solid ${T.grey200}`,
+              background: selected === value ? T.brandSoft : T.grey50,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: selected === value ? T.brandDark : T.text1 }}>
+              {copy.title}
+            </div>
+          </button>
+        ))}
     </div>
   )
 }

@@ -215,6 +215,23 @@ const reference = receivedConfirmed
           Add expense
         </button>
       </div>
+      <button
+        onClick={() => router.push('/log')}
+        style={{
+          marginTop: 10,
+          width: '100%',
+          height: 44,
+          borderRadius: 12,
+          background: 'transparent',
+          color: 'var(--text-2)',
+          border: '1px solid var(--border)',
+          fontWeight: 600,
+          fontSize: 14,
+          cursor: 'pointer',
+        }}
+      >
+        View expense log
+      </button>
     </div>
   )
 
@@ -288,6 +305,23 @@ const reference = receivedConfirmed
             Add an expense
           </button>
         </div>
+        <button
+          onClick={() => router.push('/log')}
+          style={{
+            marginTop: 10,
+            width: '100%',
+            height: 44,
+            borderRadius: 12,
+            background: 'transparent',
+            color: 'var(--text-2)',
+            border: '1px solid var(--border)',
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: 'pointer',
+          }}
+        >
+          View expense log
+        </button>
       </div>
     )
   }

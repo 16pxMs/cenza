@@ -1,11 +1,10 @@
-import { GOAL_META } from '@/constants/goals'
 import { formatCycleLabel, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
 import { fmt } from '@/lib/finance'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
-export type LogGroupKey = 'fixed' | 'goals' | 'daily' | 'debts' | 'other'
+export type LogGroupKey = 'fixed' | 'daily' | 'debts' | 'other'
 
 export interface LogSubItem {
   key: string
@@ -76,7 +75,6 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const [
     { data: txns },
     { data: expenses },
-    { data: targets },
     { data: budgets },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
@@ -88,9 +86,6 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
-    (supabase.from('goal_targets') as any)
-      .select('goal_id, amount, added_at')
-      .eq('user_id', userId),
     (supabase.from('spending_budgets') as any)
       .select('categories')
       .eq('user_id', userId)
@@ -101,17 +96,8 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const currency = profile.currency ?? 'KES'
   const txRows = (txns ?? []) as LogTransactionRow[]
 
-  const addedAtMap: Record<string, string> = {}
-  for (const row of targets ?? []) {
-    if (row.added_at) addedAtMap[row.goal_id] = row.added_at
-  }
-
   const logged: Record<string, number> = {}
   for (const txn of txRows) {
-    if (txn.category_type === 'goal') {
-      const addedAt = addedAtMap[txn.category_key]
-      if (addedAt && txn.date < addedAt.slice(0, 10)) continue
-    }
     logged[txn.category_key] = (logged[txn.category_key] ?? 0) + Number(txn.amount)
   }
 
@@ -125,19 +111,6 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
       loggedAmount: logged[entry.key] ?? 0,
       plannedAmount: entry.monthly,
     }))
-
-  const goalItems: LogSubItem[] = (profile.goals ?? [])
-    .filter((goalId: string) => !!GOAL_META[goalId as keyof typeof GOAL_META])
-    .map((goalId: string) => {
-      const target = (targets ?? []).find((row: any) => row.goal_id === goalId)
-      return {
-        key: goalId,
-        label: GOAL_META[goalId as keyof typeof GOAL_META].label,
-        sublabel: target?.amount ? fmt(target.amount, currency) : null,
-        groupType: 'goal',
-        loggedAmount: logged[goalId] ?? 0,
-      }
-    })
 
   const dailyItems: LogSubItem[] = ((budgets?.categories ?? []) as any[]).map(category => ({
     key: category.key,
@@ -162,7 +135,6 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
 
   const knownKeys = new Set([
     ...fixedItems.map(item => item.key),
-    ...goalItems.map(item => item.key),
     ...dailyItems.map(item => item.key),
     ...debtItems.map(item => item.key),
   ])
@@ -197,10 +169,9 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     cycleLabel: formatCycleLabel(getCycleByDate(new Date(), schedule)),
     currency,
     sections: [
-      { key: 'fixed', label: 'Fixed spending', groupType: 'fixed', items: [...fixedItems, ...toSubItems(orphanFixedMap, 'fixed')] },
-      { key: 'goals', label: 'Goals', groupType: 'goal', items: goalItems },
-      { key: 'daily', label: 'Daily expenses', groupType: 'everyday', items: [...dailyItems, ...toSubItems(orphanDailyMap, 'everyday')] },
-      { key: 'debts', label: 'Debts', groupType: 'debt', items: debtItems },
+      { key: 'fixed', label: 'Essentials', groupType: 'fixed', items: [...fixedItems, ...toSubItems(orphanFixedMap, 'fixed')] },
+      { key: 'daily', label: 'Life', groupType: 'everyday', items: [...dailyItems, ...toSubItems(orphanDailyMap, 'everyday')] },
+      { key: 'debts', label: 'Debt', groupType: 'debt', items: debtItems },
       ...(otherItems.length > 0
         ? [{ key: 'other' as LogGroupKey, label: 'Other', groupType: 'everyday', items: otherItems }]
         : []),

@@ -8,36 +8,26 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { IconBack, IconTrash } from '@/components/ui/Icons'
+import { IconBack, IconMinus } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogPageData, LogSection, LogSubItem } from '@/lib/loaders/log'
 import { deleteCurrentCycleCategoryEntries, recordRefund } from './actions'
 
 const T = {
-  brandDark: '#5C3489',
-  pageBg: '#F8F9FA',
-  white: '#FFFFFF',
-  border: '#E4E7EC',
-  text1: '#101828',
-  text3: '#667085',
-  textMuted: '#98A2B3',
-}
-
-const GOAL_ICONS: Record<string, string> = {
-  emergency: '🛡️',
-  car: '🚗',
-  travel: '✈️',
-  home: '🏠',
-  education: '🎓',
-  business: '💼',
-  family: '👨‍👩‍👧',
-  other: '🎯',
+  brandDark: 'var(--brand-dark)',
+  pageBg: 'var(--page-bg)',
+  white: 'var(--white)',
+  border: 'var(--border)',
+  borderSubtle: 'var(--border-subtle)',
+  text1: 'var(--text-1)',
+  text3: 'var(--text-3)',
+  textMuted: 'var(--text-muted)',
+  textInverse: 'var(--text-inverse)',
 }
 
 const SECTION_EMPTY: Record<string, string> = {
-  fixed: 'No fixed expenses set up for this month.',
-  goals: 'No active goals. Add one from the Goals tab.',
-  daily: 'No spending categories set up yet.',
+  fixed: 'No essential expenses logged this month.',
+  daily: 'No life expenses logged this month.',
   debts: 'No debt payments logged this month.',
   other: '',
 }
@@ -61,18 +51,26 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
 
+  const visibleSections = data.sections.filter((section) => !(section.items.length === 0 && (section.key === 'daily' || section.key === 'debts')))
+  const totalLogged = visibleSections.reduce(
+    (sum, section) => sum + section.items.reduce((sectionSum, item) => sectionSum + item.loggedAmount, 0),
+    0,
+  )
+  const totalEntries = visibleSections.reduce((sum, section) => sum + section.items.filter((item) => item.loggedAmount > 0).length, 0)
+
   const logItem = (item: LogSubItem) => {
     const params = new URLSearchParams({
       key: item.key,
       label: item.label,
       type: item.groupType,
+      returnTo: '/log',
       ...(item.plannedAmount ? { amount: String(item.plannedAmount) } : {}),
     })
     router.push(`/log/new?${params.toString()}`)
   }
 
   const logOther = () => {
-    router.push('/log/new?isOther=true')
+    router.push('/log/new?isOther=true&returnTo=/log')
   }
 
   useEffect(() => {
@@ -141,174 +139,140 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     const totalLogged = section.items.reduce((sum, item) => sum + item.loggedAmount, 0)
 
     return (
-      <div key={section.key} style={{ margin: isDesktop ? '0 32px 16px' : '0 16px 16px' }}>
+      <section
+        key={section.key}
+        style={{
+          padding: isDesktop ? '20px 24px 0' : '18px 16px 0',
+        }}
+      >
         <div style={{
-          background: T.white,
-          border: `1px solid var(--border)`,
-          borderRadius: 16,
-          overflow: 'hidden',
+          padding: 0,
+          paddingBottom: section.items.length > 0 ? 10 : 0,
         }}>
-          <div style={{
-            padding: '13px 16px 12px',
-            borderBottom: section.items.length > 0 ? '1px solid #F2F4F7' : 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: T.text3 }}>
-                {section.label}
-              </p>
-              {isAccordion && (
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: T.textMuted,
-                  background: '#F1F3F5',
-                  borderRadius: 99,
-                  padding: '2px 7px',
-                }}>
-                  {section.items.length}
-                </span>
-              )}
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <span style={{ margin: 0, fontSize: 16, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>
+              {section.label}
+            </span>
             {totalLogged > 0 && (
-              <span style={{ fontSize: 13, fontWeight: 600, color: T.brandDark }}>
-                {fmt(totalLogged, data.currency)}
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {section.items.length === 0 && SECTION_EMPTY[section.key] && (
-              <p style={{ fontSize: 13, color: T.textMuted, margin: '12px 16px 16px' }}>
-                {SECTION_EMPTY[section.key]}
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: T.text3, lineHeight: 1.4 }}>
+                {fmt(totalLogged, data.currency)} total
               </p>
             )}
-
-            {visibleItems.map((item, index) => {
-              const isLogged = item.loggedAmount > 0
-              const isLast = index === visibleItems.length - 1
-              const isDeleting = deletingKey === item.key
-              const goalIcon = item.groupType === 'goal' ? GOAL_ICONS[item.key] : null
-
-              return (
-                <div
-                  key={item.key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    background: T.white,
-                    borderBottom: isLast ? 'none' : '1px solid #F2F4F7',
-                    minHeight: 60,
-                  }}
-                >
-                  <button
-                    onClick={() => logItem(item)}
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      border: 'none',
-                      background: 'transparent',
-                      padding: '12px 16px',
-                      minHeight: 60,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    {goalIcon && (
-                      <div style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        flexShrink: 0,
-                        background: '#F3EDFB',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 17,
-                      }}>
-                        {goalIcon}
-                      </div>
-                    )}
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: isLogged ? 500 : 400, color: T.text1, lineHeight: 1.3 }}>
-                        {item.label}
-                      </div>
-                      {item.sublabel && !isLogged && (
-                        <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>
-                          {item.sublabel}
-                        </div>
-                      )}
-                    </div>
-
-                    {isLogged ? (
-                      <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
-                        {fmt(item.loggedAmount, data.currency)}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 20, color: T.textMuted, flexShrink: 0, lineHeight: 1, marginLeft: 8, opacity: 0.4 }}>
-                        ›
-                      </span>
-                    )}
-                  </button>
-
-                  {isLogged && (
-                    <button
-                      onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
-                      disabled={isDeleting}
-                      style={{
-                        width: 44,
-                        height: 60,
-                        flexShrink: 0,
-                        background: 'transparent',
-                        border: 'none',
-                        borderLeft: '1px solid #F2F4F7',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        opacity: isDeleting ? 0.4 : 1,
-                      }}
-                    >
-                      <IconTrash size={14} color="#C8CCCF" />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
           </div>
+        </div>
 
-          {isAccordion && (
-            <button
-              onClick={() => setExpanded(prev => {
-                const next = new Set(prev)
-                next.has(section.key) ? next.delete(section.key) : next.add(section.key)
-                return next
-              })}
-              style={{
-                width: '100%',
-                background: 'none',
-                border: 'none',
-                padding: '12px 16px',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-                color: T.brandDark,
-                textAlign: 'left',
-              }}
-            >
-              {isOpen ? 'Show less' : `View ${hiddenCount} more`}
-            </button>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {section.items.length === 0 && SECTION_EMPTY[section.key] && (
+            <p style={{ fontSize: 13, color: T.textMuted, margin: '12px 0 16px' }}>
+              {SECTION_EMPTY[section.key]}
+            </p>
           )}
 
-          {!isAccordion && section.items.length > 0 && <div style={{ height: 4 }} />}
+          {visibleItems.map((item, index) => {
+            const isLogged = item.loggedAmount > 0
+            const isDeleting = deletingKey === item.key
+            return (
+              <div
+                key={item.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: T.white,
+                  minHeight: 60,
+                  gap: 12,
+                }}
+              >
+                {isLogged && (
+                  <button
+                    onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
+                    disabled={isDeleting}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: 'var(--grey-100)',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      opacity: isDeleting ? 0.4 : 1,
+                      padding: 0,
+                      flexShrink: 0,
+                      marginLeft: 0,
+                    }}
+                  >
+                    <IconMinus size={14} color={T.textMuted} />
+                  </button>
+                )}
+
+                <button
+                  onClick={() => logItem(item)}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '12px 0',
+                    minHeight: 60,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: T.text1, lineHeight: 1.3 }}>
+                      {item.label}
+                    </div>
+                    {item.sublabel && !isLogged && (
+                      <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>
+                        {item.sublabel}
+                      </div>
+                    )}
+                  </div>
+
+                  {isLogged ? (
+                    <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
+                      {fmt(item.loggedAmount, data.currency)}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 20, color: T.textMuted, flexShrink: 0, lineHeight: 1, marginLeft: 8, opacity: 0.4 }}>
+                      ›
+                    </span>
+                  )}
+                </button>
+              </div>
+            )
+          })}
         </div>
-      </div>
+
+        {isAccordion && (
+          <button
+            onClick={() => setExpanded(prev => {
+              const next = new Set(prev)
+              next.has(section.key) ? next.delete(section.key) : next.add(section.key)
+              return next
+            })}
+            style={{
+              width: '100%',
+              background: 'none',
+              border: 'none',
+              padding: '18px 0 18px',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 500,
+              color: T.brandDark,
+              textAlign: 'left',
+            }}
+          >
+            {isOpen ? 'Show less' : `Show all ${section.items.length}`}
+          </button>
+        )}
+
+        {!isAccordion && section.items.length > 0 && <div style={{ height: 2 }} />}
+      </section>
     )
   }
 
@@ -325,11 +289,53 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           {data.cycleLabel}
         </p>
         <h1 style={{ fontSize: isDesktop ? 28 : 26, fontWeight: 700, color: T.text1, margin: 0, letterSpacing: -0.5 }}>
-          Add an expense
+          Expense log
         </h1>
       </div>
 
-      {data.sections.map(renderSection)}
+      <div style={{ margin: isDesktop ? '0 32px 20px' : '0 16px 16px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          padding: isDesktop ? '0 0 20px' : '0 0 16px',
+        }}>
+          <div>
+            <p style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Logged total
+            </p>
+            <p style={{ margin: 0, fontSize: 15, color: T.text3, lineHeight: 1.4 }}>
+              {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'} logged
+            </p>
+          </div>
+          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.text1, letterSpacing: '-0.03em', whiteSpace: 'nowrap' }}>
+            {fmt(totalLogged, data.currency)}
+          </p>
+        </div>
+
+        <div style={{
+          background: T.white,
+          borderRadius: 20,
+          overflow: 'hidden',
+        }}>
+          {visibleSections.map((section, index) => {
+            const sectionNode = renderSection(section)
+            if (!sectionNode) return null
+
+            return (
+              <div
+                key={section.key}
+                style={{
+                  borderTop: index === 0 ? 'none' : `1px solid ${T.borderSubtle}`,
+                }}
+              >
+                {sectionNode}
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {isDesktop && (
         <div style={{ padding: '0 32px' }}>
@@ -344,10 +350,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               cursor: 'pointer',
               fontSize: 14,
               fontWeight: 600,
-              color: '#fff',
+              color: T.textInverse,
             }}
           >
-            Add an expense
+            Add expense
           </button>
         </div>
       )}
@@ -356,54 +362,67 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         <Sheet
           open={true}
           onClose={() => setPendingDelete(null)}
-          title={deleteStep === 'reason' ? 'Why are you removing this?' : deleteStep === 'refund' ? 'Log a refund' : 'Are you sure?'}
+          title={deleteStep === 'reason' ? 'What happened?' : deleteStep === 'refund' ? 'Log a refund' : 'Are you sure?'}
         >
           {deleteStep === 'reason' && (
             <div>
-              <p style={{ fontSize: 14, color: '#475467', margin: '0 0 20px', lineHeight: 1.6 }}>
-                You logged <strong>{fmt(pendingDelete.loggedAmount, data.currency)}</strong> for{' '}
-                <strong>{pendingDelete.label}</strong> this month.
+              <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
+                {pendingDelete.label} · {fmt(pendingDelete.loggedAmount, data.currency)} · {data.cycleLabel}
               </p>
-              {[
+
+              <div style={{
+                background: T.white,
+                border: `1px solid ${T.border}`,
+                borderRadius: 18,
+                overflow: 'hidden',
+              }}>
+                {[
                 {
-                  label: '✏️ I logged the wrong amount',
-                  sub: 'Correct it right here',
+                  label: 'Wrong amount',
+                  sub: 'Edit this expense',
                   action: () => { setPendingDelete(null); logItem(pendingDelete) },
                 },
                 {
-                  label: '💸 I got a refund',
-                  sub: 'Log it here so your totals stay honest',
+                  label: 'Refund',
+                  sub: 'Log money returned to you',
                   action: () => { setRefundAmount(''); setRefundNote(''); setDeleteStep('refund') },
                 },
                 {
-                  label: '🚫 This never happened',
-                  sub: 'Remove it entirely',
+                  label: "Didn't happen",
+                  sub: 'Remove this expense',
                   action: () => setDeleteStep('confirm'),
                 },
-              ].map(option => (
-                <button
-                  key={option.label}
-                  onClick={option.action}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '14px 16px',
-                    background: T.white,
-                    border: '1px solid var(--border)',
-                    borderRadius: 14,
-                    cursor: 'pointer',
-                    marginBottom: 10,
-                    display: 'block',
-                  }}
-                >
-                  <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
-                  <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
-                </button>
-              ))}
+                ].map((option, index, options) => (
+                  <button
+                    key={option.label}
+                    onClick={option.action}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '14px 16px',
+                      background: T.white,
+                      border: 'none',
+                      borderBottom: index < options.length - 1 ? `1px solid ${T.borderSubtle}` : 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
+                      <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
+                    </div>
+                    <span style={{ fontSize: 18, lineHeight: 1, color: T.textMuted, opacity: 0.7 }}>›</span>
+                  </button>
+                ))}
+              </div>
+
               <button
                 onClick={() => setPendingDelete(null)}
                 style={{
-                  marginTop: 4,
+                  marginTop: 12,
                   width: '100%',
                   padding: '12px',
                   background: 'none',
@@ -436,7 +455,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   cursor: 'pointer',
                   fontSize: 15,
                   fontWeight: 600,
-                  color: '#fff',
+                  color: T.textInverse,
                   opacity: deletingKey === pendingDelete.key ? 0.6 : 1,
                 }}
               >
@@ -539,7 +558,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   cursor: 'pointer',
                   fontSize: 15,
                   fontWeight: 600,
-                  color: refundAmount && parseFloat(refundAmount) > 0 ? '#fff' : T.textMuted,
+                  color: refundAmount && parseFloat(refundAmount) > 0 ? T.textInverse : T.textMuted,
                 }}
               >
                 {savingRefund ? 'Saving…' : 'Log refund'}
@@ -599,10 +618,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             cursor: 'pointer',
             fontSize: 14,
             fontWeight: 600,
-            color: '#fff',
+            color: T.textInverse,
           }}
-        >
-          Add an expense
+          >
+          Add expense
         </button>
       </div>
       <BottomNav />

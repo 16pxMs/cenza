@@ -162,15 +162,17 @@ export default function FirstLogPage() {
   const finalKey = selected?.categoryKey
     ?? `custom_${finalLabel.toLowerCase().replace(/\s+/g, '_').slice(0, 40)}`
 
-  const canSave = amountNum > 0 && finalLabel.length > 0
+  const sessionReady = !!user && !!ctxProfile
+  const canSave = amountNum > 0 && finalLabel.length > 0 && sessionReady
 
   const handleSave = async () => {
-    if (!canSave) return
+    if (amountNum <= 0 || finalLabel.length === 0) return
 
     setSaving(true)
     setSaveError(null)
 
     if (!user || !ctxProfile) {
+      setSaveError('Your account is still loading. Try again in a moment.')
       setSaving(false)
       return
     }
@@ -416,7 +418,13 @@ export default function FirstLogPage() {
           letterSpacing: -0.1,
         }}
       >
-        {saving ? 'Saving…' : amountNum > 0 ? `Save ${currency} ${displayAmount}` : 'Enter an amount'}
+        {saving
+          ? 'Saving…'
+          : !sessionReady
+            ? 'Getting your account ready…'
+            : amountNum > 0
+              ? `Save ${currency} ${displayAmount}`
+              : 'Enter an amount'}
       </button>
     </div>
   )
