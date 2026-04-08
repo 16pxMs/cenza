@@ -1,6 +1,6 @@
 import { GOAL_META } from '@/constants/goals'
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
@@ -71,7 +71,7 @@ function toGoalLabel(goalId: GoalId, destination: string | null): string {
 
 export async function loadOverviewPageData(userId: string, profile: UserProfile): Promise<OverviewPageData> {
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const cycleId = deriveCurrentCycleId(profile)
 
   const [
     { data: txns },

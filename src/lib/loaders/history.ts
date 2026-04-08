@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
@@ -72,7 +72,7 @@ function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
 
 export async function loadHistoryPageData(userId: string, profile: UserProfile): Promise<HistoryPageData> {
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const cycleId = deriveCurrentCycleId(profile)
 
   const [
     { data: txnRows },

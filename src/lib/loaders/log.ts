@@ -2,7 +2,7 @@ import { GOAL_META } from '@/constants/goals'
 import { formatCycleLabel, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
 import { fmt } from '@/lib/finance'
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
 export type LogGroupKey = 'fixed' | 'goals' | 'daily' | 'debts' | 'other'
@@ -70,7 +70,7 @@ export interface LogPageData {
 
 export async function loadLogPageData(userId: string, profile: UserProfile): Promise<LogPageData> {
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const cycleId = deriveCurrentCycleId(profile)
   const schedule = profileToPaySchedule(profile)
 
   const [

@@ -52,6 +52,15 @@ export async function getOrCreateCycle(
   return startStr  // cycle_id IS the start_date string
 }
 
+function deriveCycleStartDate(
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+  date?: Date,
+): string {
+  const schedule = profileToPaySchedule(profile)
+  const cycle = date ? getCycleByDate(date, schedule) : getCurrentCycle(schedule)
+  return toLocalDateStr(cycle.startDate)
+}
+
 /**
  * Convenience: derive schedule from profile and get current cycle id.
  * This is the main entry point used by page components.
@@ -63,6 +72,16 @@ export async function getCurrentCycleId(
 ): Promise<string> {
   const schedule = profileToPaySchedule(profile)
   return getOrCreateCycle(supabase, userId, schedule)
+}
+
+/**
+ * Read-only current cycle key for page loaders and UI state.
+ * Does not touch the database.
+ */
+export function deriveCurrentCycleId(
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+): string {
+  return deriveCycleStartDate(profile)
 }
 
 /**
@@ -79,6 +98,17 @@ export async function getCycleIdForDate(
 ): Promise<string> {
   const schedule = profileToPaySchedule(profile)
   return getOrCreateCycle(supabase, userId, schedule, date)
+}
+
+/**
+ * Read-only cycle key for an arbitrary local date.
+ * Use this in loaders and UI code that only needs the derived key.
+ */
+export function deriveCycleIdForDate(
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+  date: Date,
+): string {
+  return deriveCycleStartDate(profile, date)
 }
 
 /**
@@ -100,6 +130,24 @@ export async function getPrevCycleId(
     prevDate.setDate(prevDate.getDate() - 1)
 
     return await getOrCreateCycle(supabase, userId, schedule, prevDate)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read-only previous cycle key for loaders and comparisons.
+ * Does not touch the database.
+ */
+export function derivePrevCycleId(
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+): string | null {
+  try {
+    const schedule = profileToPaySchedule(profile)
+    const currentCycle = getCurrentCycle(schedule)
+    const prevDate = new Date(currentCycle.startDate)
+    prevDate.setDate(prevDate.getDate() - 1)
+    return deriveCycleStartDate(profile, prevDate)
   } catch {
     return null
   }

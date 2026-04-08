@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
 export interface LedgerTransaction {
@@ -22,7 +22,7 @@ export async function loadHistoryLedgerPageData(
   categoryKey: string
 ): Promise<HistoryLedgerPageData> {
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const cycleId = deriveCurrentCycleId(profile)
 
   const { data } = await (supabase.from('transactions') as any)
     .select('id, date, amount, note')

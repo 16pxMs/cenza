@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { GoalId, UserProfile } from '@/types/database'
 
 export interface NewGoalPageData {
@@ -17,7 +17,7 @@ export async function loadNewGoalPageData(
   goalType: GoalId | null
 ): Promise<NewGoalPageData> {
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const cycleId = deriveCurrentCycleId(profile)
 
   const fetchSaved = goalType
     ? (supabase.from('transactions') as any)

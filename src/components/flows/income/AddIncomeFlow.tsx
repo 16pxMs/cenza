@@ -85,7 +85,7 @@ export function AddIncomeFlow({
     setSalary('')
     setExtras([])
     setError(null)
-  }, [incomeType, isFirstTime, controlledStep])
+  }, [incomeType, isFirstTime])
 
   const activeType = selectedType ?? incomeType
 

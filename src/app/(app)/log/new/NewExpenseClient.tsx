@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { saveExpense } from './actions'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
@@ -103,8 +103,8 @@ export function NewExpenseClient() {
   // Load current cycle ID once user and profile are available
   useEffect(() => {
     if (!user || !profile) return
-    getCurrentCycleId(supabase as any, user.id, profile as any).then(id => setCycleId(id))
-  }, [user, profile, supabase])
+    setCycleId(deriveCurrentCycleId(profile as any))
+  }, [user, profile])
 
   // Fetch prior entry for known items (to offer update vs add-another)
   useEffect(() => {

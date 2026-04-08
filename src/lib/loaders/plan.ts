@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
 interface PlanIncomeRow {
@@ -31,7 +31,7 @@ export interface PlanPageData {
 
 export async function loadPlanPageData(userId: string, profile: UserProfile): Promise<PlanPageData> {
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const cycleId = deriveCurrentCycleId(profile)
 
   const [incomeRes, targetsRes, expensesRes, budgetsRes] = await Promise.all([
     (supabase.from('income_entries') as any)
