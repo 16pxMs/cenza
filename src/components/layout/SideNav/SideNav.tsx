@@ -1,17 +1,16 @@
 // ─────────────────────────────────────────────────────────────
 // SideNav — Sticky left navigation for desktop (1024px+)
-// 3 tabs: Overview (/app), Recap (/history), Budget (/income)
+// 2 tabs: Overview (/app), Recap (/history)
 // Active tab derived from current pathname
 // ─────────────────────────────────────────────────────────────
 'use client'
 import { useRouter, usePathname } from 'next/navigation'
 import styles from './SideNav.module.css'
-import { IconOverview, IconSpend, IconFinance } from '@/components/ui/Icons'
+import { IconOverview, IconSpend } from '@/components/ui/Icons'
 
 const TABS = [
   { href: '/app',     label: 'Overview', Icon: IconOverview },
   { href: '/history', label: 'Recap',    Icon: IconSpend    },
-  { href: '/income',  label: 'Budget',   Icon: IconFinance  },
 ]
 
 export function SideNav() {

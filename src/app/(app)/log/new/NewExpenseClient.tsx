@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { saveExpenseBatch } from './actions'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
@@ -29,6 +30,12 @@ interface PendingExpenseItem {
   amount: string
   note: string
   source: QueueSource
+}
+
+interface RecentLoggedEntry {
+  label: string
+  amount: number
+  date: string
 }
 
 const T = {
@@ -134,6 +141,34 @@ function formatMonthLabel() {
   return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
+function parseLocalDate(iso: string) {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, (month ?? 1) - 1, day ?? 1)
+}
+
+function formatRecentEntryHint(entry: RecentLoggedEntry, currency: string) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const entryDate = parseLocalDate(entry.date)
+  entryDate.setHours(0, 0, 0, 0)
+
+  const diffDays = Math.round((today.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24))
+  const amount = `${currency} ${entry.amount.toLocaleString()}`
+
+  if (diffDays <= 0) {
+    return `You logged this today for ${amount}.`
+  }
+  if (diffDays === 1) {
+    return `You logged this yesterday for ${amount}.`
+  }
+  if (diffDays === 2) {
+    return `You logged this 2 days ago for ${amount}.`
+  }
+
+  const dateLabel = entryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `You last logged this on ${dateLabel} for ${amount}.`
+}
+
 export function NewExpenseClient() {
   const router = useRouter()
   const params = useSearchParams()
@@ -177,6 +212,7 @@ export function NewExpenseClient() {
   const [priorEntry, setPriorEntry] = useState<{ id: string; amount: number } | null | undefined>(undefined)
   const [dictionary, setDictionary] = useState<Record<string, DictEntry>>({})
   const [commonItems, setCommonItems] = useState<DictEntry[]>(() => buildDefaultCommonItems())
+  const [recentByLabel, setRecentByLabel] = useState<Record<string, RecentLoggedEntry>>({})
 
   const currency = profile?.currency || 'USD'
   const activeItem = queue[activeIndex] ?? null
@@ -229,12 +265,13 @@ export function NewExpenseClient() {
         }
 
         const { data: recentRows } = await (supabase.from('transactions') as any)
-          .select('category_label, category_type, category_key, date')
+          .select('category_label, category_type, category_key, amount, date')
           .eq('user_id', user.id)
           .order('date', { ascending: false })
-          .limit(40)
+          .limit(60)
 
         const recentSeen = new Set<string>()
+        const recentMap: Record<string, RecentLoggedEntry> = {}
         for (const row of recentRows ?? []) {
           const normalized = normalizeLabel(row.category_label ?? '')
           if (!normalized || recentSeen.has(normalized)) continue
@@ -243,19 +280,24 @@ export function NewExpenseClient() {
           const existing = dict[normalized]
           if (existing) {
             existing.lastUsed = row.date ?? null
-            continue
+          } else {
+            const entry: DictEntry = {
+              categoryType: (row.category_type as CategoryType) ?? suggestType(row.category_label ?? '') ?? 'everyday',
+              label: row.category_label,
+              key: row.category_key ?? normalized.replace(/\s+/g, '_'),
+              usageCount: 0,
+              lastUsed: row.date ?? null,
+            }
+
+            dict[normalized] = entry
+            items.push(entry)
           }
 
-          const entry: DictEntry = {
-            categoryType: (row.category_type as CategoryType) ?? suggestType(row.category_label ?? '') ?? 'everyday',
+          recentMap[normalized] = {
             label: row.category_label,
-            key: row.category_key ?? normalized.replace(/\s+/g, '_'),
-            usageCount: 0,
-            lastUsed: row.date ?? null,
+            amount: Math.abs(Number(row.amount ?? 0)),
+            date: row.date,
           }
-
-          dict[normalized] = entry
-          items.push(entry)
         }
 
         const starterLabels = new Set(DEFAULT_COMMON_ITEMS.map((item) => normalizeLabel(item.label)))
@@ -303,6 +345,7 @@ export function NewExpenseClient() {
 
         setDictionary(dict)
         setCommonItems(ranked)
+        setRecentByLabel(recentMap)
       })
   }, [supabase, user])
 
@@ -348,19 +391,20 @@ export function NewExpenseClient() {
 
   const addTypedItem = () => {
     const normalized = normalizeLabel(newItemName)
-    if (!normalized) return
+    if (!normalized) return false
 
     const exists = queue.some((item) => normalizeLabel(item.label) === normalized)
     if (exists) {
       setQueueNotice(`"${newItemName.trim()}" is already in your list.`)
       setNewItemName('')
-      return
+      return false
     }
 
     const dictEntry = dictionary[normalized] ?? null
     setQueue((current) => [...current, buildPendingItem(newItemName, 'typed', dictEntry)])
     setQueueNotice(null)
     setNewItemName('')
+    return true
   }
 
   const handleBack = () => {
@@ -429,6 +473,7 @@ export function NewExpenseClient() {
   const isLastItem = activeIndex === queue.length - 1
   const canReviewContinue = queue.length > 0
   const canAdvance = !!activeItem?.categoryType && parsedAmount > 0
+  const recentMatch = activeItem ? recentByLabel[normalizeLabel(activeItem.label)] ?? null : null
 
   return (
     <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', flexDirection: 'column' }}>
@@ -509,6 +554,7 @@ export function NewExpenseClient() {
             <ReviewStep
               item={activeItem}
               currency={currency}
+              recentMatch={recentMatch}
               currentIndex={activeIndex}
               totalItems={queue.length}
               mode={mode}
@@ -587,38 +633,22 @@ function DoneStep({
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-        <button
+        <PrimaryBtn
+          size="lg"
           onClick={onLogMore}
-          style={{
-            width: '100%',
-            height: 'var(--button-height)',
-            borderRadius: 'var(--radius-md)',
-            background: T.brandDark,
-            border: 'none',
-            color: T.textInverse,
-            fontSize: 'var(--text-base)',
-          fontWeight: 'var(--weight-semibold)',
-          cursor: 'pointer',
-        }}
         >
           Log more
-        </button>
-        <button
+        </PrimaryBtn>
+        <SecondaryBtn
+          size="lg"
           onClick={onGoToRecap}
           style={{
-            width: '100%',
-            height: 'var(--button-height)',
-            borderRadius: 'var(--radius-md)',
-            background: T.white,
-            border: `${T.borderWidth} solid ${T.border}`,
+            borderColor: T.border,
             color: T.text1,
-            fontSize: 'var(--text-base)',
-            fontWeight: 'var(--weight-semibold)',
-            cursor: 'pointer',
           }}
         >
           View expense log
-        </button>
+        </SecondaryBtn>
       </div>
     </div>
   )
@@ -641,12 +671,38 @@ function QueueStep({
   commonItems: DictEntry[]
   queueNotice: string | null
   onToggleCommon: (label: string) => void
-  onAddTypedItem: () => void
+  onAddTypedItem: () => boolean
   onContinue: () => void
   canContinue: boolean
 }) {
+  const [showAddInput, setShowAddInput] = useState(Boolean(newItemName))
+  const addInputRef = useRef<HTMLInputElement | null>(null)
   const selectedSet = new Set(queue.map((item) => normalizeLabel(item.label)))
   const canAddTypedItem = newItemName.trim().length > 0
+
+  useEffect(() => {
+    if (newItemName.trim()) {
+      setShowAddInput(true)
+    }
+  }, [newItemName])
+
+  useEffect(() => {
+    if (showAddInput) {
+      addInputRef.current?.focus()
+    }
+  }, [showAddInput])
+
+  const collapseAddInput = () => {
+    setNewItemName('')
+    setShowAddInput(false)
+  }
+
+  const handleAddTypedItem = () => {
+    const didAdd = onAddTypedItem()
+    if (didAdd) {
+      setShowAddInput(false)
+    }
+  }
 
   return (
     <div>
@@ -698,53 +754,80 @@ function QueueStep({
         </div>
       )}
 
-      {/* Free-text input row */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input
-          value={newItemName}
-          onChange={(event) => setNewItemName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              onAddTypedItem()
-            }
-          }}
-          placeholder="Add something else"
-          style={{
-            flex: 1,
-            height: 48,
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            padding: '0 14px',
-            fontSize: 15,
-            color: T.text1,
-            background: T.white,
-            outline: 'none',
-            boxSizing: 'border-box',
-            fontFamily: 'inherit',
-          }}
-        />
-        <button
-          onClick={onAddTypedItem}
-          disabled={!canAddTypedItem}
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 'var(--radius-sm)',
-            border: `${T.borderWidth} solid ${T.border}`,
-            background: canAddTypedItem ? T.brandSoft : T.white,
-            color: canAddTypedItem ? T.brandDark : T.textMuted,
-            cursor: canAddTypedItem ? 'pointer' : 'not-allowed',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            transition: 'all 0.15s ease',
-          }}
-        >
-          <Plus size={18} />
-        </button>
-      </div>
+      {/* Add-new-item affordance */}
+      {showAddInput ? (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              ref={addInputRef}
+              value={newItemName}
+              onChange={(event) => setNewItemName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handleAddTypedItem()
+                }
+                if (event.key === 'Escape') {
+                  collapseAddInput()
+                }
+              }}
+              placeholder="Add something else"
+              style={{
+                flex: 1,
+                height: 48,
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                padding: '0 14px',
+                fontSize: 'var(--text-base)',
+                color: T.text1,
+                background: T.white,
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={handleAddTypedItem}
+              disabled={!canAddTypedItem}
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 'var(--radius-sm)',
+                border: `${T.borderWidth} solid ${T.border}`,
+                background: canAddTypedItem ? T.brandSoft : T.white,
+                color: canAddTypedItem ? T.brandDark : T.textMuted,
+                cursor: canAddTypedItem ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+          <div style={{ marginTop: 'var(--space-xs)' }}>
+            <TertiaryBtn
+              size="sm"
+              onClick={collapseAddInput}
+              style={{ paddingInline: 0, color: T.text3 }}
+            >
+              Cancel
+            </TertiaryBtn>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 16 }}>
+          <TertiaryBtn
+            size="md"
+            onClick={() => setShowAddInput(true)}
+            style={{ paddingInline: 0, color: T.text2 }}
+          >
+            Add something else
+          </TertiaryBtn>
+        </div>
+      )}
 
       {/* Queue notice */}
       {queueNotice && (
@@ -754,25 +837,18 @@ function QueueStep({
       )}
 
       {/* CTA */}
-      <button
+      <PrimaryBtn
+        size="lg"
         onClick={onContinue}
         disabled={!canContinue}
         style={{
-          width: '100%',
-          height: 52,
-          borderRadius: 'var(--radius-md)',
           background: canContinue ? T.brandDark : T.grey200,
-          border: 'none',
           color: canContinue ? T.textInverse : T.textMuted,
-          fontSize: 'var(--text-base)',
-          fontWeight: 'var(--weight-semibold)',
-          cursor: canContinue ? 'pointer' : 'not-allowed',
-          letterSpacing: '-0.01em',
           marginTop: 4,
         }}
       >
         Continue with {queue.length} {queue.length === 1 ? 'item' : 'items'}
-      </button>
+      </PrimaryBtn>
     </div>
   )
 }
@@ -780,6 +856,7 @@ function QueueStep({
 function ReviewStep({
   item,
   currency,
+  recentMatch,
   currentIndex,
   totalItems,
   mode,
@@ -797,6 +874,7 @@ function ReviewStep({
 }: {
   item: PendingExpenseItem
   currency: string
+  recentMatch: RecentLoggedEntry | null
   currentIndex: number
   totalItems: number
   mode: 'add' | 'update'
@@ -855,6 +933,16 @@ function ReviewStep({
         }}>
           {formatDisplayLabel(item.label)}
         </span>
+        {recentMatch && (
+          <p style={{
+            margin: '10px 0 0',
+            fontSize: 'var(--text-sm)',
+            color: T.text3,
+            lineHeight: 1.5,
+          }}>
+            {formatRecentEntryHint(recentMatch, currency)}
+          </p>
+        )}
       </div>
 
       {priorEntry && totalItems === 1 && (
@@ -1006,25 +1094,18 @@ function ReviewStep({
         </p>
       )}
 
-      <button
+      <PrimaryBtn
+        size="lg"
         onClick={isLastItem ? onSaveAll : onNext}
         disabled={!canAdvance || saving}
         style={{
-          width: '100%',
-          height: '52px',
-          borderRadius: 'var(--radius-md)',
-          background: canAdvance ? 'var(--brand-dark)' : 'var(--grey-200)',
-          border: 'none',
+          background: canAdvance ? T.brandDark : T.grey200,
           color: canAdvance ? T.textInverse : T.textMuted,
-          fontSize: 'var(--text-base)',
-          fontWeight: 'var(--weight-semibold)',
-          cursor: canAdvance ? 'pointer' : 'not-allowed',
-          letterSpacing: '-0.01em',
           opacity: saving ? 0.7 : 1,
         }}
       >
-        {saving ? 'Saving…' : isLastItem ? 'Save all' : 'Next'}
-      </button>
+        {saving ? 'Saving…' : isLastItem ? 'Save' : 'Next'}
+      </PrimaryBtn>
     </div>
   )
 }

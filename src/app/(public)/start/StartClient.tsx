@@ -12,7 +12,6 @@ export default function StartClient() {
 
       <Link href="/" className={styles.backButton}>
         <ArrowLeft size={16} />
-        Back
       </Link>
 
       <div className={styles.content}>

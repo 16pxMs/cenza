@@ -35,9 +35,9 @@ export default function LoginClient() {
         type="button"
         onClick={() => window.location.href = '/'}
         className={styles.backButton}
+        aria-label="Go back"
       >
         <ArrowLeft size={16} />
-        Back
       </button>
 
       <div className={styles.authCard}>

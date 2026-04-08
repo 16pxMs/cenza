@@ -5,23 +5,36 @@ import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { SetupFlowPage } from '@/components/layout/SetupFlowPage/SetupFlowPage'
+import { PrimaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
-import { GOAL_META, GOAL_OPTIONS } from '@/constants/goals'
+import { GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
 import type { NewGoalPageData } from '@/lib/loaders/new-goal'
 import { saveNewGoal } from './actions'
 
 const T = {
-  pageBg: '#F8F9FA',
-  white: '#FFFFFF',
-  border: '#E4E7EC',
-  borderStrong: '#D0D5DD',
-  text1: '#101828',
-  text2: '#475467',
-  text3: '#667085',
-  textMuted: '#98A2B3',
-  brandDark: '#5C3489',
+  pageBg: 'var(--page-bg)',
+  white: 'var(--white)',
+  border: 'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  borderSubtle: 'var(--border-subtle)',
+  text1: 'var(--text-1)',
+  text2: 'var(--text-2)',
+  text3: 'var(--text-3)',
+  textMuted: 'var(--text-muted)',
+  textInverse: 'var(--text-inverse)',
+  brand: 'var(--brand)',
+  brandMid: 'var(--brand-mid)',
+  brandDark: 'var(--brand-dark)',
+  grey100: 'var(--grey-100)',
+  grey200: 'var(--grey-200)',
+  green: 'var(--green)',
+  greenBg: 'var(--green-bg)',
+  amber: 'var(--amber)',
+  amberBg: 'var(--amber-bg)',
+  red: 'var(--red)',
+  redBg: 'var(--red-bg)',
 }
 
 const TIMELINE_OPTIONS = [
@@ -31,6 +44,17 @@ const TIMELINE_OPTIONS = [
   { months: 36, label: '3 years' },
 ]
 
+const GOAL_PICK_BLURBS: Record<GoalId, string> = {
+  emergency: 'Build a buffer for genuine emergencies.',
+  car: 'Save toward a car purchase or upkeep.',
+  travel: 'Set money aside for a trip.',
+  home: 'Work toward a deposit or housing goal.',
+  education: 'Save for fees, courses, or school costs.',
+  business: 'Build capital for launch or growth.',
+  family: 'Set money aside for family needs.',
+  other: 'Create a goal in your own words.',
+}
+
 interface NewGoalClientProps {
   data: NewGoalPageData
   initialGoalType: GoalId | null
@@ -39,11 +63,11 @@ interface NewGoalClientProps {
 }
 
 function feasibility(pct: number): { label: string; color: string; bg: string } {
-  if (pct === 0) return { label: '', color: T.textMuted, bg: '#F1F3F5' }
-  if (pct <= 15) return { label: 'Very achievable', color: '#1A7A45', bg: '#F0FDF4' }
-  if (pct <= 30) return { label: 'Achievable', color: '#1A7A45', bg: '#F0FDF4' }
-  if (pct <= 45) return { label: 'Ambitious', color: '#D97706', bg: '#FFFBEB' }
-  return { label: 'Stretch goal', color: '#D93025', bg: '#FEF2F2' }
+  if (pct === 0) return { label: '', color: T.textMuted, bg: T.grey100 }
+  if (pct <= 15) return { label: 'Very achievable', color: T.green, bg: T.greenBg }
+  if (pct <= 30) return { label: 'Achievable', color: T.green, bg: T.greenBg }
+  if (pct <= 45) return { label: 'Ambitious', color: T.amber, bg: T.amberBg }
+  return { label: 'Stretch goal', color: T.red, bg: T.redBg }
 }
 
 function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalClientProps) {
@@ -66,6 +90,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   const [destination, setDestination] = useState('')
   const [targetAmount, setTargetAmount] = useState('')
   const [selectedMonths, setSelectedMonths] = useState(12)
+  const [showEmergencyInfo, setShowEmergencyInfo] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const target = parseFloat(targetAmount) || 0
@@ -172,6 +197,57 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
           ? 'goal_destination'
           : 'goal_target'
 
+  const targetCopyOverride = (() => {
+    if (step !== 'target' || !selectedGoal) return undefined
+
+    switch (selectedGoal) {
+      case 'emergency':
+        return {
+          title: 'Emergency fund',
+          subtitle: 'Choose how much to keep set aside for emergencies.',
+        }
+      case 'car':
+        return {
+          title: 'Car fund',
+          subtitle: 'Choose how much to set aside for your car.',
+        }
+      case 'travel':
+        return {
+          title: destination.trim() || 'Travel fund',
+          subtitle: destination.trim()
+            ? `Choose how much to set aside for ${destination.trim()}.`
+            : 'Choose how much to set aside for this trip.',
+        }
+      case 'home':
+        return {
+          title: 'Home deposit',
+          subtitle: 'Choose how much you want to put toward your deposit.',
+        }
+      case 'education':
+        return {
+          title: 'Education fund',
+          subtitle: 'Choose how much to set aside for education.',
+        }
+      case 'business':
+        return {
+          title: 'Business capital',
+          subtitle: 'Choose how much to set aside for your business.',
+        }
+      case 'family':
+        return {
+          title: 'Family fund',
+          subtitle: 'Choose how much to set aside for family needs.',
+        }
+      case 'other':
+        return {
+          title: customName.trim() || 'Your goal',
+          subtitle: 'Choose how much you want to work toward.',
+        }
+      default:
+        return undefined
+    }
+  })()
+
   const step1 = (
     <div>
       {availableGoals.length === 0 ? (
@@ -179,32 +255,44 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
           You've added all available goal types.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {availableGoals.map(goal => (
             <button
               key={goal.id}
               onClick={() => selectGoal(goal.id)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '16px', borderRadius: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                padding: '18px 18px 18px 20px',
+                borderRadius: 18,
                 border: `1px solid var(--border)`,
                 background: T.white,
-                cursor: 'pointer', textAlign: 'left',
+                cursor: 'pointer',
+                textAlign: 'left',
               }}
             >
-              <div style={{
-                width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-                background: goal.light,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 22,
-              }}>
-                {goal.icon}
-              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginBottom: 2 }}>{goal.label}</div>
-                <div style={{ fontSize: 13, color: T.text3, lineHeight: 1.4 }}>{goal.description}</div>
+                <div style={{
+                  fontSize: 'var(--text-md)',
+                  fontWeight: 'var(--weight-semibold)',
+                  color: T.text1,
+                  marginBottom: 4,
+                  letterSpacing: -0.2,
+                  lineHeight: 1.25,
+                }}>
+                  {goal.label}
+                </div>
+                <div style={{
+                  fontSize: 'var(--text-base)',
+                  fontWeight: 'var(--weight-regular)',
+                  color: T.text3,
+                  lineHeight: 1.5,
+                  maxWidth: 420,
+                }}>
+                  {GOAL_PICK_BLURBS[goal.id]}
+                </div>
               </div>
-              <div style={{ color: T.textMuted, fontSize: 18, flexShrink: 0 }}>›</div>
             </button>
           ))}
         </div>
@@ -233,19 +321,17 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
         }}
       />
       <div style={{ height: 16 }} />
-      <button
+      <PrimaryBtn
+        size="lg"
         onClick={() => setStep('target')}
         disabled={destination.trim().length === 0}
         style={{
-          width: '100%', height: 52, borderRadius: 14,
           background: destination.trim() ? T.brandDark : T.border,
-          border: 'none', color: destination.trim() ? '#fff' : T.textMuted,
-          fontSize: 15, fontWeight: 600,
-          cursor: destination.trim() ? 'pointer' : 'not-allowed', transition: 'background 0.15s',
+          color: destination.trim() ? '#fff' : T.textMuted,
         }}
       >
         Continue
-      </button>
+      </PrimaryBtn>
       <button
         onClick={() => setStep('target')}
         style={{
@@ -271,20 +357,17 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
         placeholder="e.g. New laptop, Wedding fund, Gap year"
       />
       <div style={{ height: 16 }} />
-      <button
+      <PrimaryBtn
+        size="lg"
         onClick={() => setStep('target')}
         disabled={customName.trim().length === 0}
         style={{
-          width: '100%', height: 52, borderRadius: 14,
           background: customName.trim() ? T.brandDark : T.border,
-          border: 'none', color: customName.trim() ? '#fff' : T.textMuted,
-          fontSize: 15, fontWeight: 600,
-          cursor: customName.trim() ? 'pointer' : 'not-allowed',
-          transition: 'background 0.15s',
+          color: customName.trim() ? '#fff' : T.textMuted,
         }}
       >
         Continue
-      </button>
+      </PrimaryBtn>
     </div>
   )
 
@@ -298,17 +381,35 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   const step3 = (
     <div>
       {selectedGoal === 'emergency' && (
-        <div style={{
-          marginBottom: 24, padding: '16px',
-          background: '#F5F0FA', border: '1px solid #E4D9F4', borderRadius: 16,
-        }}>
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600, color: T.brandDark }}>
-            What is an emergency fund?
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: T.text2, lineHeight: 1.65 }}>
-            It's money set aside only for genuine emergencies — job loss, a medical bill, an unexpected repair.
-            It sits completely separately from your savings and is never touched for planned purchases.
-          </p>
+        <div style={{ marginBottom: 20 }}>
+          <button
+            type="button"
+            onClick={() => setShowEmergencyInfo(value => !value)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: 0,
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: T.text3 }}>
+              What is an emergency fund?
+            </span>
+            <span style={{ fontSize: 15, color: T.textMuted }}>
+              {showEmergencyInfo ? '−' : '+'}
+            </span>
+          </button>
+          {showEmergencyInfo && (
+            <p style={{ margin: '8px 0 0', fontSize: 12.5, color: T.text3, lineHeight: 1.55, maxWidth: 520 }}>
+              It is money set aside only for genuine emergencies like job loss, a medical bill, or an unexpected repair.
+              Keep it separate from the savings you use for planned purchases.
+            </p>
+          )}
         </div>
       )}
 
@@ -325,15 +426,21 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
                   key={suggestion.label}
                   onClick={() => setTargetAmount(String(suggestion.amount))}
                   style={{
-                    flex: 1, padding: '12px 10px', borderRadius: 14,
-                    border: active ? `1.5px solid ${T.brandDark}` : '1px solid var(--border)',
-                    background: active ? '#F0E9FA' : T.white,
+                    flex: 1, padding: '14px 12px', borderRadius: 18,
+                    border: active ? `1px solid ${T.brandMid}` : `1px solid ${T.border}`,
+                    background: active ? T.brand : T.white,
                     cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
                   }}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T.brandDark, marginBottom: 2 }}>{suggestion.label}</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text1 }}>{fmt(suggestion.amount, data.currency)}</div>
-                  <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>of fixed expenses</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.text2, marginBottom: 4 }}>
+                    {suggestion.label}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text1, letterSpacing: -0.2 }}>
+                    {fmt(suggestion.amount, data.currency)}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text3, marginTop: 4, lineHeight: 1.45 }}>
+                    {`Covers ${suggestion.label} of essentials`}
+                  </div>
                 </button>
               )
             })}
@@ -341,8 +448,13 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
         </div>
       )}
 
+      {emergencySuggestions.length > 0 && (
+        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: T.text3 }}>
+          Or enter your own amount
+        </p>
+      )}
       <Input
-        label="Target amount"
+        label={emergencySuggestions.length > 0 ? '' : 'Target amount'}
         value={targetAmount}
         onChange={value => setTargetAmount(value)}
         prefix={data.currency}
@@ -353,15 +465,15 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
       {data.alreadySaved > 0 && (
         <div style={{
           marginTop: 10, padding: '10px 14px', borderRadius: 10,
-          background: '#F0FDF4', border: '1px solid #BBF7D0',
-          fontSize: 13, color: '#1A7A45',
+          background: T.greenBg, border: `1px solid ${T.green}33`,
+          fontSize: 13, color: T.green,
         }}>
           You've already saved {fmt(data.alreadySaved, data.currency)} toward this goal.
         </div>
       )}
 
       {benchmarkTip && selectedGoal !== 'emergency' && (
-        <p style={{ margin: '10px 0 0', fontSize: 13, color: T.text3, lineHeight: 1.6, fontStyle: 'italic' }}>
+        <p style={{ margin: '10px 0 0', fontSize: 13, color: T.text3, lineHeight: 1.6 }}>
           {benchmarkTip}
         </p>
       )}
@@ -380,10 +492,10 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
                   onClick={() => setSelectedMonths(option.months)}
                   style={{
                     flex: 1, padding: '9px 0', borderRadius: 99,
-                    border: active ? `2px solid var(--border-focus)` : `1px solid var(--border-strong)`,
-                    background: active ? T.brandDark : T.white,
-                    color: active ? '#fff' : T.text2,
-                    fontSize: 12, fontWeight: active ? 600 : 400,
+                    border: active ? `1px solid ${T.brandMid}` : `1px solid ${T.border}`,
+                    background: active ? T.brand : T.white,
+                    color: active ? T.brandDark : T.text2,
+                    fontSize: 12, fontWeight: 600,
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
@@ -395,31 +507,34 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
 
           {monthlyRequired > 0 && (
             <div style={{
-              padding: '16px', borderRadius: 14,
-              background: signal.bg, border: `1px solid ${signal.color}22`,
+              padding: '14px 16px', borderRadius: 16,
+              background: T.white, border: `1px solid ${T.borderSubtle}`,
             }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>{fmt(monthlyRequired, data.currency)}</span>
-                <span style={{ fontSize: 13, color: T.text3 }}>/ month</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: T.text1, letterSpacing: -0.2 }}>
+                    {fmt(monthlyRequired, data.currency)}
+                  </span>
+                  <span style={{ fontSize: 13, color: T.text3 }}>/ month</span>
+                </div>
+                {signal.label && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 600, color: signal.color,
+                    background: signal.bg, borderRadius: 20, padding: '4px 10px',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {signal.label}
+                  </span>
+                )}
               </div>
               {data.totalIncome > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, color: T.text3 }}>
-                    That's {incomePercent.toFixed(0)}% of your income
-                  </span>
-                  {signal.label && (
-                    <span style={{
-                      fontSize: 12, fontWeight: 600, color: signal.color,
-                      background: `${signal.color}18`, borderRadius: 20, padding: '2px 10px',
-                    }}>
-                      {signal.label}
-                    </span>
-                  )}
+                <div style={{ marginTop: 8, fontSize: 13, color: T.text3 }}>
+                  About {incomePercent.toFixed(0)}% of your income
                 </div>
               ) : (
-                <span style={{ fontSize: 13, color: T.text3 }}>
+                <div style={{ marginTop: 8, fontSize: 13, color: T.text3 }}>
                   To reach your target in {selectedMonths < 12 ? `${selectedMonths} months` : selectedMonths === 12 ? '1 year' : `${selectedMonths / 12} years`}
-                </span>
+                </div>
               )}
               {incomePercent > 45 && data.totalIncome > 0 && (
                 <p style={{ margin: '10px 0 0', fontSize: 12.5, color: T.text2, lineHeight: 1.5, paddingTop: 10, borderTop: `1px solid var(--border-subtle)` }}>
@@ -431,31 +546,18 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
         </div>
       )}
 
-      <div style={{ marginTop: 28 }}>
-        <button
+      <div style={{ marginTop: 32 }}>
+        <PrimaryBtn
+          size="lg"
           onClick={() => handleSave()}
           disabled={target <= 0 || saving}
           style={{
-            width: '100%', height: 56, borderRadius: 16,
             background: target > 0 ? T.brandDark : T.border,
-            border: 'none', color: target > 0 ? '#fff' : T.textMuted,
-            fontSize: 16, fontWeight: 600, letterSpacing: -0.1,
-            cursor: target > 0 ? 'pointer' : 'not-allowed', transition: 'background 0.15s',
+            color: target > 0 ? '#fff' : T.textMuted,
           }}
         >
           {saving ? 'Saving…' : 'Add to my plan'}
-        </button>
-        <button
-          onClick={() => handleSave(false)}
-          disabled={saving}
-          style={{
-            marginTop: 12, width: '100%', padding: '12px',
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: 14, color: T.textMuted,
-          }}
-        >
-          I'll set a target later
-        </button>
+        </PrimaryBtn>
       </div>
     </div>
   )
@@ -466,6 +568,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
       onBack={goBack}
       isDesktop={isDesktop}
       isSaving={saving}
+      copyOverride={targetCopyOverride}
     >
       {step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
     </SetupFlowPage>

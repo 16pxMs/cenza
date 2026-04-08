@@ -66,6 +66,14 @@
   --red-border: #FECACA;
   --red-dark:   #991B1B;
 
+  /* Category palette
+     Rule: category colors are decorative/data colors, not status colors.
+     Keep them calm, distinct, and lower-drama than CTA/status hues. */
+  --category-essentials: #5E5CE6;
+  --category-goals:      #0A84FF;
+  --category-life:       #40C8B7;
+  --category-debt:       #8E8E93;
+
   /* Shadows
      Rule: never a single-layer shadow. Always 2 layers — one tight (ambient),
      one diffuse (depth). Opacity stays low — light creates depth, not drama.
@@ -137,9 +145,9 @@
 
   /* button */
   --control-sm: 34px;
-  --button-height-sm: 46px;
-  --button-height: 52px;
-  --button-height-md: 50px;
+  --button-height-sm: 34px;
+  --button-height-md: 40px;
+  --button-height: 48px;
 
   /* Card spacing */
   --space-card-sm: 18px;

@@ -92,7 +92,6 @@ function CelebrationContent({
   const meta = GOAL_META[goalId]
   return (
     <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
-      <div style={{ fontSize: 60, marginBottom: 16, lineHeight: 1 }}>{meta.icon}</div>
       <div style={{ fontSize: 22, fontWeight: 600, color: '#101828', marginBottom: 8 }}>
         You reached your goal!
       </div>
@@ -172,26 +171,11 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalsPageGoalData; currency
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            background: meta.light,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 20,
-            flexShrink: 0,
-          }}>
-            {meta.icon}
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>{label}</div>
-            {!goal.target && (
-              <div style={{ fontSize: 12, color: T.brandDark, fontWeight: 500, marginTop: 2 }}>Set a target →</div>
-            )}
-          </div>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>{label}</div>
+          {!goal.target && (
+            <div style={{ fontSize: 12, color: T.brandDark, fontWeight: 500, marginTop: 2 }}>Set a target →</div>
+          )}
         </div>
         {goal.target != null && (isDone || pct > 0) && (
           <div style={{
@@ -414,26 +398,23 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 'var(--space-xxl)' }}>
             {[
-              { icon: '🚨', label: 'Emergency fund' },
-              { icon: '✈️', label: 'Holiday' },
-              { icon: '🏠', label: 'House deposit' },
-              { icon: '🎓', label: 'School fees' },
-              { icon: '🚗', label: 'New car' },
+              { label: 'Emergency fund' },
+              { label: 'Holiday' },
+              { label: 'House deposit' },
+              { label: 'School fees' },
+              { label: 'New car' },
             ].map(example => (
               <div
                 key={example.label}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
                   padding: '6px 12px',
-                  background: 'rgba(92,52,137,0.06)',
+                  background: 'var(--brand)',
+                  border: '1px solid var(--brand-mid)',
                   borderRadius: 'var(--radius-full)',
                   fontSize: 'var(--text-sm)',
                   color: 'var(--text-2)',
                 }}
               >
-                <span>{example.icon}</span>
                 <span>{example.label}</span>
               </div>
             ))}
@@ -497,7 +478,7 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
         <Sheet
           open={true}
           onClose={() => setEditGoal(null)}
-          title={`${GOAL_META[editGoal].icon}  ${GOAL_META[editGoal].label}`}
+          title={GOAL_META[editGoal].label}
         >
           <p style={{ fontSize: 13, color: T.text3, margin: '0 0 20px', lineHeight: 1.5 }}>
             {GOAL_META[editGoal].tip}
@@ -511,7 +492,7 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
             type="number"
           />
           <div style={{ height: 12 }} />
-          <PrimaryBtn onClick={handleSaveTarget} disabled={editSaving}>
+          <PrimaryBtn size="lg" onClick={handleSaveTarget} disabled={editSaving}>
             {editSaving ? 'Saving…' : 'Save target'}
           </PrimaryBtn>
           <button
@@ -545,45 +526,37 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
                 <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
                   You're removing <strong>{meta.label}</strong>. Help us understand why. We'll handle it the right way.
                 </p>
-                {[
-                  { label: '🎉 I reached this goal', sub: 'Celebrate and keep the history', step: 'done' as const },
-                  { label: '💸 I used the money on something else', sub: 'Acknowledge and archive', step: 'used' as const },
-                  { label: '🔄 I changed my mind', sub: 'Remove it cleanly', step: 'leaving' as const },
-                ].map(option => (
-                  <button
-                    key={option.step}
-                    onClick={() => setDeleteStep(option.step)}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '14px 16px',
-                      background: T.white,
-                      border: '1px solid var(--border)',
-                      borderRadius: 14,
-                      cursor: 'pointer',
-                      marginBottom: 10,
-                      display: 'block',
-                    }}
-                  >
-                    <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
-                    <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
-                  </button>
-                ))}
-                <button
-                  onClick={() => setDeleteGoalId(null)}
-                  style={{
-                    marginTop: 4,
-                    width: '100%',
-                    padding: '12px',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    color: T.textMuted,
-                  }}
-                >
-                  Cancel
-                </button>
+                <div style={{
+                  background: T.white,
+                  border: '1px solid var(--border)',
+                  borderRadius: 18,
+                  overflow: 'hidden',
+                }}>
+                  {[
+                    { label: 'Reached this goal', sub: 'Celebrate and keep the history', step: 'done' as const },
+                    { label: 'Used the money', sub: 'Acknowledge it and archive', step: 'used' as const },
+                    { label: 'Changed my mind', sub: 'Remove it cleanly', step: 'leaving' as const },
+                  ].map((option, index, options) => (
+                    <button
+                      key={option.step}
+                      onClick={() => setDeleteStep(option.step)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '14px 16px',
+                        background: T.white,
+                        border: 'none',
+                        borderBottom: index < options.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
+                        <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )
           })()}
@@ -710,21 +683,17 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
               >
                 Yes, remove it
               </button>
-              <button
+              <TertiaryBtn
+                size="md"
                 onClick={() => setDeleteStep('reason')}
                 style={{
                   marginTop: 10,
-                  width: '100%',
                   padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 14,
                   color: T.text3,
                 }}
               >
                 Go back
-              </button>
+              </TertiaryBtn>
             </div>
           )}
         </Sheet>
@@ -732,3 +701,4 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
     </>
   )
 }
+import { TertiaryBtn } from '@/components/ui/Button/Button'

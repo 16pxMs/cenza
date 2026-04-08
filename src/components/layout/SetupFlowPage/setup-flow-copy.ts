@@ -41,9 +41,9 @@ export const SETUP_PAGE_COPY: Record<SetupPageCopyKey, SetupPageCopy> = {
     savingText: 'Saving your spending budget…',
   },
   goal_pick: {
-    eyebrow: 'Goals',
+    eyebrow: '',
     title: 'What are you saving for?',
-    subtitle: 'Choose the goal you want to add next.',
+    subtitle: '',
     savingText: 'Saving your goal…',
   },
   goal_name: {
@@ -59,7 +59,7 @@ export const SETUP_PAGE_COPY: Record<SetupPageCopyKey, SetupPageCopy> = {
     savingText: 'Saving your goal…',
   },
   goal_target: {
-    eyebrow: 'Goal target',
+    eyebrow: '',
     title: 'Set a target',
     subtitle: 'Pick the amount you want to work toward.',
     savingText: 'Saving your goal…',

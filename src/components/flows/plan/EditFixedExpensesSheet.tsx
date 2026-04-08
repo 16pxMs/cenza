@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 
 const T = {
   white:     '#FFFFFF',
@@ -304,28 +305,30 @@ export function FixedExpensesEditor({
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button
+          <SecondaryBtn
+            size="md"
             onClick={closeAdd}
             style={{
-              flex: 1, height: 40, borderRadius: 10,
-              background: T.white, border: `1px solid ${T.border}`,
-              fontSize: 13, color: T.text3, cursor: 'pointer',
+              flex: 1,
+              borderColor: T.border,
+              color: T.text3,
             }}
           >
             Cancel
-          </button>
-          <button
+          </SecondaryBtn>
+          <PrimaryBtn
+            size="md"
             onClick={addRow}
             disabled={!addLabel.trim() || !parseFloat(stripCommas(addAmount))}
             style={{
-              flex: 1, height: 40, borderRadius: 10,
-              background: T.brandDark, border: 'none',
-              fontSize: 13, fontWeight: 600, color: '#fff',
-              cursor: 'pointer', opacity: (!addLabel.trim() || !parseFloat(stripCommas(addAmount))) ? 0.5 : 1,
+              flex: 1,
+              background: T.brandDark,
+              color: 'var(--text-inverse)',
+              opacity: (!addLabel.trim() || !parseFloat(stripCommas(addAmount))) ? 0.5 : 1,
             }}
           >
             Add
-          </button>
+          </PrimaryBtn>
         </div>
       </Sheet>
     </div>

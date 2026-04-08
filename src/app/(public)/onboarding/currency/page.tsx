@@ -19,7 +19,7 @@ import {
   type CurrencyOption,
 } from '@/lib/locale'
 import { IconChevronX } from '@/components/ui/Icons'
-import { CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2 } from 'lucide-react'
 import styles from '../onboarding.module.css'
 
 export default function OnboardingCurrencyPage() {
@@ -247,15 +247,14 @@ export default function OnboardingCurrencyPage() {
               border: 'none',
               cursor: 'pointer',
               padding: '0 0 var(--space-lg)',
-              fontSize: 'var(--text-sm)',
               color: 'var(--text-3)',
               display: 'flex',
               alignItems: 'center',
-              gap: 'var(--space-xs)',
               fontFamily: 'inherit',
             }}
+            aria-label="Go back"
           >
-            ← Back
+            <ArrowLeft size={16} />
           </button>
         )}
 

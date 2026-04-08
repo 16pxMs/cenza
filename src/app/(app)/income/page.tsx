@@ -26,7 +26,12 @@ export default async function IncomePage({ searchParams }: IncomePageProps) {
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const preview = readSearchParam(resolvedSearchParams, 'preview') === '1'
+
+  if (!preview) {
+    redirect('/app')
+  }
+
   const data = await loadIncomePageData(user.id, profile)
 
-  return <IncomePageClient data={data} preview={preview} />
+  return <IncomePageClient data={data} preview={true} />
 }

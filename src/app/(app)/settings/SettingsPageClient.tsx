@@ -9,6 +9,7 @@ import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { IconBack } from '@/components/ui/Icons'
@@ -456,29 +457,30 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
               </p>
             )}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button
+              <SecondaryBtn
+                size="md"
                 onClick={() => { setDeleteStep('idle'); setDeleteError(null) }}
                 style={{
-                  flex: 1, height: 44, borderRadius: 12,
-                  background: T.pageBg, border: `1px solid ${T.border}`,
-                  fontSize: 14, fontWeight: 500, color: T.text2, cursor: 'pointer',
+                  flex: 1,
+                  borderColor: 'var(--border)',
+                  color: T.text2,
                 }}
               >
                 Cancel
-              </button>
-              <button
+              </SecondaryBtn>
+              <PrimaryBtn
+                size="md"
                 onClick={handleDeleteAccount}
                 disabled={deleting}
                 style={{
-                  flex: 1, height: 44, borderRadius: 12,
-                  background: '#D93025', border: 'none',
-                  fontSize: 14, fontWeight: 600, color: '#fff',
-                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  flex: 1,
+                  background: 'var(--red-dark)',
+                  color: 'var(--text-inverse)',
                   opacity: deleting ? 0.7 : 1,
                 }}
               >
                 {deleting ? 'Deleting…' : 'Yes, delete'}
-              </button>
+              </PrimaryBtn>
             </div>
           </div>
         )}

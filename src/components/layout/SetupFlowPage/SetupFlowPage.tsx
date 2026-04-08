@@ -19,6 +19,7 @@ interface Props {
   children: ReactNode
   isDesktop?: boolean
   isSaving?: boolean
+  copyOverride?: Partial<(typeof SETUP_PAGE_COPY)[SetupPageCopyKey]>
 }
 
 export function SetupFlowPage({
@@ -27,8 +28,12 @@ export function SetupFlowPage({
   children,
   isDesktop,
   isSaving,
+  copyOverride,
 }: Props) {
-  const copy = SETUP_PAGE_COPY[pageKey]
+  const copy = {
+    ...SETUP_PAGE_COPY[pageKey],
+    ...copyOverride,
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: T.pageBg }}>
@@ -42,14 +47,11 @@ export function SetupFlowPage({
             padding: '0 0 18px',
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
             color: T.text3,
-            fontSize: 14,
-            fontWeight: 500,
           }}
+          aria-label="Go back"
         >
           <ArrowLeft size={16} />
-          Back
         </button>
 
         <section
@@ -61,15 +63,19 @@ export function SetupFlowPage({
           }}
         >
           <div style={{ marginBottom: 24 }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              {copy.eyebrow}
-            </p>
-            <h1 style={{ margin: '0 0 8px', fontSize: isDesktop ? 34 : 30, fontWeight: 700, color: T.text1, letterSpacing: '-0.7px', lineHeight: 1.05 }}>
+            {copy.eyebrow ? (
+              <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                {copy.eyebrow}
+              </p>
+            ) : null}
+            <h1 style={{ margin: '0 0 8px', fontSize: isDesktop ? 34 : 28, fontWeight: 700, color: T.text1, letterSpacing: '-0.7px', lineHeight: 1.05 }}>
               {copy.title}
             </h1>
-            <p style={{ margin: 0, fontSize: 14, color: T.text3, lineHeight: 1.6, maxWidth: 520 }}>
-              {copy.subtitle}
-            </p>
+            {copy.subtitle ? (
+              <p style={{ margin: 0, fontSize: 14, color: T.text3, lineHeight: 1.6, maxWidth: 520 }}>
+                {copy.subtitle}
+              </p>
+            ) : null}
           </div>
 
           {children}

@@ -23,15 +23,17 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { formatDate, getConfidenceLevel, CONFIDENCE_LABEL, CONFIDENCE_COLOR } from '@/lib/finance'
 
 const T = {
-  brand:        '#EADFF4',
-  brandDark:    '#5C3489',
-  white:        '#FFFFFF',
-  border:       '#E4E7EC',
-  borderStrong: '#D0D5DD',
-  text1:        '#101828',
-  text2:        '#475467',
-  text3:        '#667085',
-  textMuted:    '#98A2B3',
+  brand:        'var(--brand)',
+  brandMid:     'var(--brand-mid)',
+  brandDark:    'var(--brand-dark)',
+  white:        'var(--white)',
+  border:       'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  text1:        'var(--text-1)',
+  text2:        'var(--text-2)',
+  text3:        'var(--text-3)',
+  textMuted:    'var(--text-muted)',
+  grey100:      'var(--grey-100)',
 }
 
 
@@ -116,10 +118,10 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       onClick={onClick}
       style={{
         flex: 1, padding: '10px 0', borderRadius: 99,
-        border: active ? `2px solid var(--border-focus)` : `1px solid var(--border-strong)`,
-        background: active ? T.brandDark : T.white,
-        color: active ? T.white : T.text2,
-        fontSize: 13, fontWeight: active ? 600 : 400,
+        border: active ? `1px solid ${T.brandMid}` : `1px solid ${T.border}`,
+        background: active ? T.brand : T.grey100,
+        color: active ? T.brandDark : T.text2,
+        fontSize: 13, fontWeight: 600,
         cursor: 'pointer', transition: 'all 0.15s',
       }}
     >
@@ -130,10 +132,10 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 
 function QuickChip({ item, currency, onClick }: { item: QuickItem; currency: string; onClick: () => void }) {
   const s = item.source === 'logged'
-    ? { bg: '#EADFF4', color: '#3D1F63', border: '1px solid #C9AEE8', shadow: 'none' }
+    ? { bg: T.brand, color: T.brandDark, border: `1px solid ${T.brandMid}`, shadow: 'none' }
     : item.source === 'planned'
-    ? { bg: T.white,   color: T.text2,   border: `1px solid var(--border-strong)`, shadow: 'none' }
-    : { bg: T.white,   color: T.text3,   border: `1px solid var(--border)`,        shadow: 'none' }
+    ? { bg: T.grey100, color: T.text2, border: `1px solid ${T.border}`, shadow: 'none' }
+    : { bg: T.white, color: T.text3, border: `1px solid ${T.border}`, shadow: 'none' }
 
   return (
     <button

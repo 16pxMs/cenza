@@ -6,6 +6,7 @@ import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import type { IncomePageData } from '@/lib/loaders/income'
 
 const T = {
@@ -121,16 +122,12 @@ export default function IncomePageClient({
             <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.6 }}>
               Decide where your money goes before it's spent. Income, fixed bills, and day-to-day spending.
             </p>
-            <button
+            <PrimaryBtn
+              size="lg"
               onClick={() => router.push('/income/new?returnTo=/income')}
-              style={{
-                width: '100%', height: 48, borderRadius: 14,
-                background: T.brandDark, border: 'none', cursor: 'pointer',
-                fontSize: 15, fontWeight: 600, color: '#fff',
-              }}
             >
               Add your income to get started
-            </button>
+            </PrimaryBtn>
           </div>
 
           {[
@@ -257,10 +254,13 @@ export default function IncomePageClient({
                 <p style={{ margin: '0 0 1px', fontSize: 14, fontWeight: 600, color: T.text1 }}>Fixed commitments</p>
                 <p style={{ margin: 0, fontSize: 12, color: T.textMuted }}>Rent, bills, subscriptions</p>
               </div>
-              <button onClick={() => router.push('/income/fixed?returnTo=/income')} style={{
-                background: T.brandDark, border: 'none', borderRadius: 10,
-                padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff',
-              }}>Add</button>
+              <SecondaryBtn
+                size="sm"
+                onClick={() => router.push('/income/fixed?returnTo=/income')}
+                style={{ width: 'auto', minWidth: 68, padding: '0 14px' }}
+              >
+                Add
+              </SecondaryBtn>
             </div>
           )}
 
@@ -298,10 +298,13 @@ export default function IncomePageClient({
                     : 'Food, transport, entertainment'}
                 </p>
               </div>
-              <button onClick={() => router.push('/income/budget?returnTo=/income')} style={{
-                background: T.brandDark, border: 'none', borderRadius: 10,
-                padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff',
-              }}>Add</button>
+              <SecondaryBtn
+                size="sm"
+                onClick={() => router.push('/income/budget?returnTo=/income')}
+                style={{ width: 'auto', minWidth: 68, padding: '0 14px' }}
+              >
+                Add
+              </SecondaryBtn>
             </div>
           )}
         </>

@@ -17,6 +17,13 @@ interface RecordRefundInput {
   note?: string
 }
 
+interface UpdateLogEntryInput {
+  id: string
+  amount: number
+  date: string
+  note?: string
+}
+
 export async function recordRefund(input: RecordRefundInput): Promise<void> {
   const { user, profile } = await getAppSession()
 
@@ -37,6 +44,31 @@ export async function recordRefund(input: RecordRefundInput): Promise<void> {
     amount,
     note: input.note,
   })
+
+  revalidatePath('/log')
+  revalidatePath('/history')
+  revalidatePath('/app')
+}
+
+export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> {
+  const { user } = await getAppSession()
+
+  if (!user) {
+    throw new Error('Not authenticated')
+  }
+
+  const amount = Number(input.amount)
+  if (!input.id.trim()) throw new Error('Entry id is required')
+  if (!input.date.trim()) throw new Error('Entry date is required')
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
+
+  const supabase = await createClient()
+  const { error } = await (supabase.from('transactions') as any)
+    .update({ amount, date: input.date, note: input.note?.trim() || null })
+    .eq('id', input.id)
+    .eq('user_id', user.id)
+
+  if (error) throw new Error(`Failed to update entry: ${error.message}`)
 
   revalidatePath('/log')
   revalidatePath('/history')

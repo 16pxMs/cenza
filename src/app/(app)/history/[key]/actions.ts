@@ -9,6 +9,7 @@ import type { CategoryType } from '@/types/database'
 interface UpdateHistoryEntryInput {
   id: string
   amount: number
+  date: string
   note?: string
   categoryKey: string
 }
@@ -35,11 +36,12 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   const amount = Number(input.amount)
   if (!input.id.trim()) throw new Error('Entry id is required')
   if (!input.categoryKey.trim()) throw new Error('Category key is required')
+  if (!input.date.trim()) throw new Error('Entry date is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
   const supabase = await createClient()
   const { error } = await (supabase.from('transactions') as any)
-    .update({ amount, note: input.note?.trim() || null })
+    .update({ amount, date: input.date, note: input.note?.trim() || null })
     .eq('id', input.id)
     .eq('user_id', user.id)
 

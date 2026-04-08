@@ -4,6 +4,7 @@
 // Keep the editor reusable, and treat this Sheet wrapper as secondary.
 import { useState, useEffect, useRef } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 
 const T = {
   white:     'var(--white)',
@@ -361,28 +362,30 @@ export function SpendingBudgetEditor({
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button
+            <SecondaryBtn
+              size="md"
               onClick={closeCustom}
               style={{
                 flex: 1, height: 40, borderRadius: 10,
-                background: T.white, border: `1px solid var(--border)`,
-                fontSize: 13, color: T.text3, cursor: 'pointer',
+                borderColor: 'var(--border)',
+                color: T.text3,
               }}
             >
               Cancel
-            </button>
-            <button
+            </SecondaryBtn>
+            <PrimaryBtn
+              size="md"
               onClick={addCustom}
               disabled={!addLabel.trim() || !parseFloat(stripCommas(addAmount))}
               style={{
-                flex: 1, height: 40, borderRadius: 10,
-                background: T.brandDark, border: 'none',
-                fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+                flex: 1,
+                background: T.brandDark,
+                color: 'var(--text-inverse)',
                 opacity: (!addLabel.trim() || !parseFloat(stripCommas(addAmount))) ? 0.45 : 1,
               }}
             >
               Add
-            </button>
+            </PrimaryBtn>
           </div>
         </Sheet>
 

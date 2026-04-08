@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { PrimaryBtn } from '@/components/ui/Button/Button'
 import type { PlanPageData } from '@/lib/loaders/plan'
 
 const T = {
@@ -274,18 +275,18 @@ export default function PlanPageClient({ data }: { data: PlanPageData }) {
         )}
 
         <div style={{ marginTop: 24, ...fade(0.25) }}>
-          <button
+          <PrimaryBtn
+            size="lg"
             onClick={() => router.push('/app')}
             style={{
-              width: '100%', height: 56, borderRadius: 16,
-              background: T.brandDark, border: 'none', color: '#fff',
-              fontSize: 16, fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
             }}
           >
             Let's start <ArrowRight size={18} />
-          </button>
+          </PrimaryBtn>
           <p style={{
             textAlign: 'center', marginTop: 14,
             fontSize: 12.5, color: T.text3, lineHeight: 1.5,

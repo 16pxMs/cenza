@@ -13,6 +13,11 @@ export interface LogSubItem {
   groupType: string
   loggedAmount: number
   plannedAmount?: number
+  latestLoggedDate?: string | null
+  entryCount?: number
+  singleEntryId?: string | null
+  singleEntryDate?: string | null
+  singleEntryNote?: string | null
 }
 
 export interface LogSection {
@@ -23,11 +28,13 @@ export interface LogSection {
 }
 
 interface LogTransactionRow {
+  id: string
   category_key: string
   category_label: string
   category_type: string
   amount: number | string
   date: string
+  note?: string | null
 }
 
 const EXPENSE_LABELS: Record<string, string> = {
@@ -48,7 +55,7 @@ function titleCase(value: string) {
 }
 
 function toSubItems(
-  map: Record<string, { label: string; amount: number }>,
+  map: Record<string, { label: string; amount: number; latestDate?: string | null; entryCount?: number; singleEntryId?: string | null; singleEntryDate?: string | null; singleEntryNote?: string | null }>,
   groupType: string
 ): LogSubItem[] {
   return Object.entries(map).map(([key, { label, amount }]) => ({
@@ -57,6 +64,11 @@ function toSubItems(
     sublabel: null,
     groupType,
     loggedAmount: amount,
+    latestLoggedDate: map[key].latestDate ?? null,
+    entryCount: map[key].entryCount ?? 0,
+    singleEntryId: map[key].singleEntryId ?? null,
+    singleEntryDate: map[key].singleEntryDate ?? null,
+    singleEntryNote: map[key].singleEntryNote ?? null,
   }))
 }
 
@@ -78,7 +90,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     { data: budgets },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('category_key, category_label, category_type, amount, date')
+      .select('id, category_key, category_label, category_type, amount, date, note')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     (supabase.from('fixed_expenses') as any)
@@ -97,8 +109,20 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const txRows = (txns ?? []) as LogTransactionRow[]
 
   const logged: Record<string, number> = {}
+  const latestLoggedDateByKey: Record<string, string> = {}
+  const entryCountByKey: Record<string, number> = {}
+  const singleEntryMetaByKey: Record<string, { id: string; date: string; note: string | null } | null> = {}
   for (const txn of txRows) {
     logged[txn.category_key] = (logged[txn.category_key] ?? 0) + Number(txn.amount)
+    entryCountByKey[txn.category_key] = (entryCountByKey[txn.category_key] ?? 0) + 1
+    if (!(txn.category_key in singleEntryMetaByKey)) {
+      singleEntryMetaByKey[txn.category_key] = { id: txn.id, date: txn.date, note: txn.note ?? null }
+    } else {
+      singleEntryMetaByKey[txn.category_key] = null
+    }
+    if (!latestLoggedDateByKey[txn.category_key] || txn.date > latestLoggedDateByKey[txn.category_key]) {
+      latestLoggedDateByKey[txn.category_key] = txn.date
+    }
   }
 
   const fixedItems: LogSubItem[] = (expenses?.entries ?? [])
@@ -110,6 +134,11 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
       groupType: 'fixed',
       loggedAmount: logged[entry.key] ?? 0,
       plannedAmount: entry.monthly,
+      latestLoggedDate: latestLoggedDateByKey[entry.key] ?? null,
+      entryCount: entryCountByKey[entry.key] ?? 0,
+      singleEntryId: singleEntryMetaByKey[entry.key]?.id ?? null,
+      singleEntryDate: singleEntryMetaByKey[entry.key]?.date ?? null,
+      singleEntryNote: singleEntryMetaByKey[entry.key]?.note ?? null,
     }))
 
   const dailyItems: LogSubItem[] = ((budgets?.categories ?? []) as any[]).map(category => ({
@@ -118,18 +147,36 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     sublabel: category.budget ? fmt(category.budget, currency) : null,
     groupType: 'everyday',
     loggedAmount: logged[category.key] ?? 0,
+    latestLoggedDate: latestLoggedDateByKey[category.key] ?? null,
+    entryCount: entryCountByKey[category.key] ?? 0,
+    singleEntryId: singleEntryMetaByKey[category.key]?.id ?? null,
+    singleEntryDate: singleEntryMetaByKey[category.key]?.date ?? null,
+    singleEntryNote: singleEntryMetaByKey[category.key]?.note ?? null,
   }))
 
-  const debtMap: Record<string, { label: string; amount: number }> = {}
+  const debtMap: Record<string, { label: string; amount: number; latestDate?: string | null; entryCount?: number; singleEntryId?: string | null; singleEntryDate?: string | null; singleEntryNote?: string | null }> = {}
   for (const txn of txRows) {
     if (txn.category_type !== 'debt') continue
     if (!debtMap[txn.category_key]) {
       debtMap[txn.category_key] = {
         label: titleCase(txn.category_label ?? txn.category_key),
         amount: 0,
+        latestDate: null,
+        entryCount: 0,
+        singleEntryId: txn.id,
+        singleEntryDate: txn.date,
+        singleEntryNote: txn.note ?? null,
       }
+    } else {
+      debtMap[txn.category_key].singleEntryId = null
+      debtMap[txn.category_key].singleEntryDate = null
+      debtMap[txn.category_key].singleEntryNote = null
     }
     debtMap[txn.category_key].amount += Number(txn.amount)
+    debtMap[txn.category_key].entryCount = (debtMap[txn.category_key].entryCount ?? 0) + 1
+    if (!debtMap[txn.category_key].latestDate || txn.date > debtMap[txn.category_key].latestDate!) {
+      debtMap[txn.category_key].latestDate = txn.date
+    }
   }
   const debtItems = toSubItems(debtMap, 'debt')
 
@@ -139,9 +186,9 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     ...debtItems.map(item => item.key),
   ])
 
-  const orphanFixedMap: Record<string, { label: string; amount: number }> = {}
-  const orphanDailyMap: Record<string, { label: string; amount: number }> = {}
-  const otherMap: Record<string, { label: string; amount: number }> = {}
+  const orphanFixedMap: Record<string, { label: string; amount: number; latestDate?: string | null; entryCount?: number; singleEntryId?: string | null; singleEntryDate?: string | null; singleEntryNote?: string | null }> = {}
+  const orphanDailyMap: Record<string, { label: string; amount: number; latestDate?: string | null; entryCount?: number; singleEntryId?: string | null; singleEntryDate?: string | null; singleEntryNote?: string | null }> = {}
+  const otherMap: Record<string, { label: string; amount: number; latestDate?: string | null; entryCount?: number; singleEntryId?: string | null; singleEntryDate?: string | null; singleEntryNote?: string | null }> = {}
 
   for (const txn of txRows) {
     if (knownKeys.has(txn.category_key)) continue
@@ -152,14 +199,35 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     const amount = Number(txn.amount)
 
     if (txn.category_type === 'fixed') {
-      if (!orphanFixedMap[key]) orphanFixedMap[key] = { label, amount: 0 }
+      if (!orphanFixedMap[key]) orphanFixedMap[key] = { label, amount: 0, latestDate: null, entryCount: 0, singleEntryId: txn.id, singleEntryDate: txn.date, singleEntryNote: txn.note ?? null }
+      else {
+        orphanFixedMap[key].singleEntryId = null
+        orphanFixedMap[key].singleEntryDate = null
+        orphanFixedMap[key].singleEntryNote = null
+      }
       orphanFixedMap[key].amount += amount
+      orphanFixedMap[key].entryCount = (orphanFixedMap[key].entryCount ?? 0) + 1
+      if (!orphanFixedMap[key].latestDate || txn.date > orphanFixedMap[key].latestDate!) orphanFixedMap[key].latestDate = txn.date
     } else if (txn.category_type === 'everyday') {
-      if (!orphanDailyMap[key]) orphanDailyMap[key] = { label, amount: 0 }
+      if (!orphanDailyMap[key]) orphanDailyMap[key] = { label, amount: 0, latestDate: null, entryCount: 0, singleEntryId: txn.id, singleEntryDate: txn.date, singleEntryNote: txn.note ?? null }
+      else {
+        orphanDailyMap[key].singleEntryId = null
+        orphanDailyMap[key].singleEntryDate = null
+        orphanDailyMap[key].singleEntryNote = null
+      }
       orphanDailyMap[key].amount += amount
+      orphanDailyMap[key].entryCount = (orphanDailyMap[key].entryCount ?? 0) + 1
+      if (!orphanDailyMap[key].latestDate || txn.date > orphanDailyMap[key].latestDate!) orphanDailyMap[key].latestDate = txn.date
     } else {
-      if (!otherMap[key]) otherMap[key] = { label, amount: 0 }
+      if (!otherMap[key]) otherMap[key] = { label, amount: 0, latestDate: null, entryCount: 0, singleEntryId: txn.id, singleEntryDate: txn.date, singleEntryNote: txn.note ?? null }
+      else {
+        otherMap[key].singleEntryId = null
+        otherMap[key].singleEntryDate = null
+        otherMap[key].singleEntryNote = null
+      }
       otherMap[key].amount += amount
+      otherMap[key].entryCount = (otherMap[key].entryCount ?? 0) + 1
+      if (!otherMap[key].latestDate || txn.date > otherMap[key].latestDate!) otherMap[key].latestDate = txn.date
     }
   }
 

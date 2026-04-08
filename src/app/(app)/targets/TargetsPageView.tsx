@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 
 const T = {
   brand: '#EADFF4',
@@ -266,8 +267,12 @@ export default function TargetsPageView({ goals, currency, totalIncome, onDone, 
       <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.pageBg, borderBottom: `1px solid var(--border-subtle)` }}>
         <div style={{ height: 56, display: 'flex', alignItems: 'center', padding: isDesktop ? '0 80px' : '0 16px' }}>
           <div style={{ flex: 1 }}>
-            <button onClick={handleBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text2, padding: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              ← Back
+            <button
+              onClick={handleBack}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.text2, padding: 4, display: 'flex', alignItems: 'center' }}
+              aria-label="Go back"
+            >
+              <ArrowLeft size={16} />
             </button>
           </div>
           <span style={{ fontSize: 13, color: T.text3 }}>{step + 1} of {goals.length}</span>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import './AddIncomeSheet.css'
 import { Input } from '@/components/ui/Input/Input'
 import { PrimaryBtn } from '@/components/ui/Button/Button'
@@ -155,11 +156,12 @@ export function AddIncomeFlow({
               }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                padding: '0 0 16px', fontSize: 13, color: 'var(--text-3)',
-                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '0 0 16px', color: 'var(--text-3)',
+                display: 'flex', alignItems: 'center',
               }}
+              aria-label="Go back"
             >
-              ← Back
+              <ArrowLeft size={16} />
             </button>
           )}
 
@@ -215,7 +217,7 @@ export function AddIncomeFlow({
             </div>
           )}
 
-          <PrimaryBtn onClick={handleSave} disabled={!canSave}>Save income</PrimaryBtn>
+          <PrimaryBtn size="lg" onClick={handleSave} disabled={!canSave}>Save income</PrimaryBtn>
         </>
       )}
     </>

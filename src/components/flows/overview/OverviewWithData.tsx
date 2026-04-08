@@ -16,6 +16,7 @@ import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
 import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemainingPct } from '@/lib/math/finance'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import { GoalContribSheet } from './GoalContribSheet'
 
 const GOAL_META: Record<string, {
@@ -162,16 +163,9 @@ const reference = receivedConfirmed
         </div>
       )}
 
-      <button
-        onClick={onLogExpense}
-        style={{
-          width: '100%', height: 50, borderRadius: 12,
-          background: 'var(--brand-dark)', color: '#fff',
-          border: 'none', fontWeight: 600, fontSize: 15, cursor: 'pointer',
-        }}
-      >
+      <PrimaryBtn size="lg" onClick={onLogExpense}>
         Log your first expense
-      </button>
+      </PrimaryBtn>
     </div>
   )
 
@@ -192,46 +186,34 @@ const reference = receivedConfirmed
       </p>
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
+        <PrimaryBtn
+          size="lg"
           onClick={() => router.push('/income/new?returnTo=/app')}
-          style={{
-            flex: 1, height: 48, borderRadius: 12,
-            background: 'var(--brand-dark)', color: '#fff',
-            border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer',
-          }}
+          style={{ flex: 1 }}
         >
           Add income
-        </button>
-        <button
+        </PrimaryBtn>
+        <SecondaryBtn
           onClick={onLogExpense}
           style={{
-            height: 48, borderRadius: 12, padding: '0 18px',
-            background: 'transparent', color: 'var(--brand-dark)',
-            border: '1px solid var(--border)',
-            fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            width: 'auto',
+            padding: '0 18px',
             whiteSpace: 'nowrap',
           }}
         >
           Add expense
-        </button>
+        </SecondaryBtn>
       </div>
-      <button
+      <SecondaryBtn
+        size="lg"
         onClick={() => router.push('/log')}
         style={{
           marginTop: 10,
-          width: '100%',
-          height: 44,
-          borderRadius: 12,
-          background: 'transparent',
           color: 'var(--text-2)',
-          border: '1px solid var(--border)',
-          fontWeight: 600,
-          fontSize: 14,
-          cursor: 'pointer',
         }}
       >
         View expense log
-      </button>
+      </SecondaryBtn>
     </div>
   )
 
@@ -294,34 +276,20 @@ const reference = receivedConfirmed
         )}
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={onLogExpense}
-            style={{
-              width: '100%', height: 48, borderRadius: 12,
-              background: 'var(--brand-dark)', color: '#fff',
-              border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer',
-            }}
-          >
+          <PrimaryBtn size="lg" onClick={onLogExpense}>
             Add an expense
-          </button>
+          </PrimaryBtn>
         </div>
-        <button
+        <SecondaryBtn
+          size="lg"
           onClick={() => router.push('/log')}
           style={{
             marginTop: 10,
-            width: '100%',
-            height: 44,
-            borderRadius: 12,
-            background: 'transparent',
             color: 'var(--text-2)',
-            border: '1px solid var(--border)',
-            fontWeight: 600,
-            fontSize: 14,
-            cursor: 'pointer',
           }}
         >
           View expense log
-        </button>
+        </SecondaryBtn>
       </div>
     )
   }
@@ -349,17 +317,9 @@ const reference = receivedConfirmed
       <p style={{ margin: '0 0 20px', fontSize: 15, color: 'var(--text-2)', lineHeight: 1.65 }}>
         {spendBodyCopy}
       </p>
-      <button
-        onClick={onLogExpense}
-        style={{
-          width: '100%', height: 56, borderRadius: 16,
-          background: 'var(--brand-dark)', color: '#fff',
-          border: 'none', fontWeight: 600, fontSize: 16, cursor: 'pointer',
-          letterSpacing: -0.1,
-        }}
-      >
+      <PrimaryBtn size="lg" onClick={onLogExpense}>
         Add an expense
-      </button>
+      </PrimaryBtn>
     </div>
   )
 
@@ -379,17 +339,12 @@ const reference = receivedConfirmed
       <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
         Emergency fund, travel, school fees. Adding a goal helps Cenza show what your money is building toward.
       </p>
-      <button
+      <SecondaryBtn
         onClick={() => router.push('/goals/new?from=overview')}
-        style={{
-          width: '100%', height: 46, borderRadius: 12,
-          background: 'transparent', color: 'var(--brand-dark)',
-          border: '1.5px solid #C9AEE8',
-          fontWeight: 600, fontSize: 14, cursor: 'pointer',
-        }}
+        size="md"
       >
         Create a goal
-      </button>
+      </SecondaryBtn>
     </div>
   )
 
@@ -408,16 +363,18 @@ const reference = receivedConfirmed
             Your goals
           </p>
           {!isComplete && (
-            <button
+            <SecondaryBtn
               onClick={(e) => { e.stopPropagation(); router.push('/targets') }}
+              size="sm"
               style={{
-                fontSize: 11, fontWeight: 600, color: 'var(--brand-dark)',
-                background: '#EADFF4', borderRadius: 99, padding: '4px 10px',
-                border: 'none', cursor: 'pointer',
+                width: 'auto',
+                minWidth: 88,
+                padding: '0 10px',
+                whiteSpace: 'nowrap',
               }}
             >
               {filledGoals === 0 ? 'Set targets' : 'Continue'}
-            </button>
+            </SecondaryBtn>
           )}
         </div>
         {(() => {
@@ -438,20 +395,21 @@ const reference = receivedConfirmed
                       {/* Row 1: name + add button */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <span style={{ fontSize: 16 }}>{m.icon}</span>
                           <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{label}</span>
                         </div>
-                        <button
+                        <SecondaryBtn
                           onClick={(e) => { e.stopPropagation(); setActiveGoalContrib(gid) }}
+                          size="sm"
                           style={{
-                            display: 'flex', alignItems: 'center', gap: 4,
-                            fontSize: 12, fontWeight: 600, color: 'var(--brand-dark)',
-                            background: '#EADFF4', border: 'none', borderRadius: 99,
-                            padding: '4px 10px', cursor: 'pointer',
+                            width: 'auto',
+                            minWidth: 96,
+                            padding: '0 12px',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
                           }}
                         >
-                          + Add
-                        </button>
+                          Add money
+                        </SecondaryBtn>
                       </div>
 
                       {/* Progress bar */}
@@ -542,7 +500,7 @@ const reference = receivedConfirmed
   if (reference > 0 && spentPct <= 75 && totalSpent > 0) {
     insights.push({
       Icon: CheckCircle,
-      text: `You're on track. ${fmt(remaining, currency)} in hand for the remaining ${daysLeft} days.`,
+      text: 'Your essentials are covered, and you still have a strong buffer this month.',
       color: '#1A7A45',
     })
   }
@@ -674,16 +632,9 @@ const reference = receivedConfirmed
             Credit cards, mobile loans, repayments. Adding them gives you the full picture.
           </p>
           {onAddDebts && (
-            <button
-              onClick={onAddDebts}
-              style={{
-                width: '100%', height: 42, borderRadius: 12,
-                background: 'var(--brand-dark)', color: '#fff',
-                border: 'none', fontWeight: 600, fontSize: 13.5, cursor: 'pointer',
-              }}
-            >
+            <PrimaryBtn size="md" onClick={onAddDebts}>
               Add debts
-            </button>
+            </PrimaryBtn>
           )}
         </div>
       )}
@@ -697,7 +648,6 @@ const reference = receivedConfirmed
             onClose={() => setActiveGoalContrib(null)}
             goalId={activeGoalContrib}
             goalLabel={m?.label ?? activeGoalContrib}
-            goalIcon={m?.icon ?? '⭐'}
             currency={currency}
             onSave={async (amount, note) => {
               await onContribGoal?.(activeGoalContrib, m?.label ?? activeGoalContrib, amount, note)

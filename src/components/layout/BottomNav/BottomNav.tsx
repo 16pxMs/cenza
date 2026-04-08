@@ -6,12 +6,11 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import styles from './BottomNav.module.css'
-import { IconOverview, IconSpend, IconFinance } from '@/components/ui/Icons'
+import { IconOverview, IconSpend } from '@/components/ui/Icons'
 
 const TABS = [
   { href: '/app',     label: 'Overview', Icon: IconOverview },
   { href: '/history', label: 'Recap',    Icon: IconSpend    },
-  { href: '/income',  label: 'Budget',   Icon: IconFinance  },
 ]
 
 export function BottomNav() {

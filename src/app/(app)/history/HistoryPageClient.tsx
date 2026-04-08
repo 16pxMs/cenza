@@ -101,10 +101,10 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
 
   // Breakdown segments for the bar
   const segments = [
-    { label: 'Essentials', amount: data.breakdown.find(i => i.label === 'Fixed')?.amount ?? 0, color: 'var(--brand-dark)' },
-    { label: 'Goals',  amount: data.breakdown.find(i => i.label === 'Goals')?.amount  ?? 0, color: 'var(--brand-deep)' },
-    { label: 'Life', amount: data.breakdown.find(i => i.label === 'Daily')?.amount ?? 0, color: 'var(--brand-mid)' },
-    { label: 'Debt', amount: data.breakdown.find(i => i.label === 'Debts')?.amount ?? 0, color: 'var(--red)' },
+    { label: 'Essentials', amount: data.breakdown.find(i => i.label === 'Fixed')?.amount ?? 0, color: 'var(--category-essentials)' },
+    { label: 'Goals',  amount: data.breakdown.find(i => i.label === 'Goals')?.amount  ?? 0, color: 'var(--category-goals)' },
+    { label: 'Life', amount: data.breakdown.find(i => i.label === 'Daily')?.amount ?? 0, color: 'var(--category-life)' },
+    { label: 'Debt', amount: data.breakdown.find(i => i.label === 'Debts')?.amount ?? 0, color: 'var(--category-debt)' },
   ].filter(s => s.amount > 0)
 
   const content = (
@@ -192,7 +192,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
         {/* ── 3. Where It Went — bar + all rows as one section ── */}
         {data.totalSpent > 0 && (
           <div style={{ marginBottom: 'var(--space-card-md)' }}>
-            <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Where it went
             </p>
 
@@ -200,8 +200,8 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
 
               {/* Segmented bar */}
               {segments.length > 0 && (
-                <div style={{ padding: 'var(--space-card-sm) var(--space-card-sm) var(--radius-md)' }}>
-                  <div style={{ display: 'flex', height: 'var(--size-bar-md)', borderRadius: 'var(--radius-full)', overflow: 'hidden', marginBottom: 'var(--radius-md)', gap: 'var(--space-xs)' }}>
+                <div style={{ padding: 'var(--space-card-sm) var(--space-card-sm) var(--space-md)' }}>
+                  <div style={{ display: 'flex', height: 'var(--size-bar-sm)', borderRadius: 'var(--radius-full)', overflow: 'hidden', marginBottom: 'var(--space-sm)', gap: 'var(--space-2xs)' }}>
                     {segments.map(s => (
                       <div
                         key={s.label}
@@ -211,19 +211,19 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
                           background: s.color,
                           borderRadius: 'var(--radius-full)',
                           transition: 'width 0.4s ease',
-                          minWidth: 'var(--space-xs)',
+                          minWidth: 'var(--space-2xs)',
                         }}
                       />
                     ))}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
                     {segments.map(s => (
                       <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-                          <div style={{ width: 'var(--size-dot-sm)', height: 'var(--size-dot-sm)', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0, opacity: 0.9 }} />
                           <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>{s.label}</span>
                         </div>
-                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: s.label === 'Debt' ? 'var(--red)' : T.text2 }}>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text2 }}>
                           {formatAmount(s.amount, { currency: data.currency, variant: 'compact' })}
                         </span>
                       </div>

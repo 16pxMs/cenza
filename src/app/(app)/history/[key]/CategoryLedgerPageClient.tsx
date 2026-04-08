@@ -5,9 +5,9 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
-import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
 import type { CategoryType } from '@/types/database'
@@ -15,15 +15,24 @@ import type { HistoryLedgerPageData, LedgerTransaction } from '@/lib/loaders/his
 import { deleteHistoryEntry, refundHistoryCategory, updateHistoryEntry } from './actions'
 
 const T = {
-  brandDark: '#5C3489',
-  pageBg: '#F8F9FA',
-  white: '#FFFFFF',
-  border: '#E4E7EC',
-  borderStrong: '#D0D5DD',
-  text1: '#101828',
-  text2: '#475467',
-  text3: '#667085',
-  textMuted: '#98A2B3',
+  brand: 'var(--brand)',
+  brandDark: 'var(--brand-dark)',
+  white: 'var(--white)',
+  border: 'var(--border)',
+  borderSubtle: 'var(--border-subtle)',
+  borderStrong: 'var(--border-strong)',
+  text1: 'var(--text-1)',
+  text2: 'var(--text-2)',
+  text3: 'var(--text-3)',
+  textMuted: 'var(--text-muted)',
+  textInverse: 'var(--text-inverse)',
+  greenLight: 'var(--green-light)',
+  greenBorder: 'var(--green-border)',
+  greenDark: 'var(--green-dark)',
+  red: 'var(--red)',
+  redDark: 'var(--red-dark)',
+  amber: 'var(--amber)',
+  grey100: 'var(--grey-100)',
 }
 
 interface CategoryLedgerPageClientProps {
@@ -32,6 +41,7 @@ interface CategoryLedgerPageClientProps {
   categoryLabel: string
   planned: number
   categoryType: CategoryType
+  returnTo: string
 }
 
 export default function CategoryLedgerPageClient({
@@ -40,6 +50,7 @@ export default function CategoryLedgerPageClient({
   categoryLabel,
   planned,
   categoryType,
+  returnTo,
 }: CategoryLedgerPageClientProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -47,6 +58,7 @@ export default function CategoryLedgerPageClient({
 
   const [editId, setEditId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
+  const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<LedgerTransaction | null>(null)
@@ -63,8 +75,17 @@ export default function CategoryLedgerPageClient({
   const openEdit = (txn: LedgerTransaction) => {
     setEditId(txn.id)
     setEditAmount(String(txn.amount))
+    setEditDate(txn.date)
     setEditNote(txn.note ?? '')
     setTimeout(() => amountRef.current?.focus(), 80)
+  }
+
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
+    router.push(returnTo)
   }
 
   const refreshPage = () => {
@@ -80,6 +101,7 @@ export default function CategoryLedgerPageClient({
       await updateHistoryEntry({
         id: editId,
         amount,
+        date: editDate,
         note: editNote,
         categoryKey,
       })
@@ -137,12 +159,12 @@ export default function CategoryLedgerPageClient({
   const overBudget = planned > 0 && data.totalSpent > planned
   const pct = planned > 0 ? Math.min(100, (data.totalSpent / planned) * 100) : 0
   const barColor = overBudget
-    ? '#EF4444'
+    ? T.red
     : categoryType === 'fixed'
-      ? '#22C55E'
+      ? 'var(--green)'
       : categoryType === 'goal'
-        ? '#5C3489'
-        : pct > 75 ? '#F59E0B' : '#22C55E'
+        ? T.brandDark
+        : pct > 75 ? T.amber : 'var(--green)'
   const spendCount = data.txns.filter(txn => txn.amount > 0).length
   const pad = isDesktop ? '0 32px' : '0 16px'
 
@@ -155,44 +177,44 @@ export default function CategoryLedgerPageClient({
 
   const content = (
     <div style={{ paddingBottom: isDesktop ? 80 : 100 }}>
-      <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 20px' }}>
+      <div style={{ padding: isDesktop ? '32px 32px 18px' : '18px 16px 18px' }}>
         <button
-          onClick={() => router.push('/history')}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 16px', display: 'flex', alignItems: 'center' }}
+          onClick={goBack}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 14px', display: 'flex', alignItems: 'center' }}
         >
           <IconBack size={18} color={T.text3} />
         </button>
-        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {data.monthLabel}
         </p>
-        <h1 style={{ margin: 0, fontSize: isDesktop ? 26 : 22, color: T.text1 }}>
+        <h1 style={{ margin: 0, fontSize: isDesktop ? 'var(--text-3xl)' : 'var(--text-3xl)', fontWeight: 'var(--weight-bold)', lineHeight: 1.04, letterSpacing: '-0.04em', color: T.text1 }}>
           {categoryLabel}
         </h1>
       </div>
 
-      <div style={{ padding: pad, marginBottom: 24 }}>
+      <div style={{ padding: pad, marginBottom: 28 }}>
         <div style={{
           background: T.white,
-          borderRadius: 20,
-          boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
+          borderRadius: 22,
+          border: `1px solid ${T.border}`,
           overflow: 'hidden',
         }}>
-          <div style={{ padding: '22px 20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
+          <div style={{ padding: '24px 20px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
               <div>
-                <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                <p style={{ margin: '0 0 6px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                   Spent
                 </p>
-                <p style={{ margin: 0, fontSize: 32, fontWeight: 700, color: overBudget ? '#EF4444' : T.text1, lineHeight: 1, letterSpacing: -1 }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-bold)', color: overBudget ? T.red : T.text1, lineHeight: 1, letterSpacing: '-0.04em' }}>
                   {fmt(data.totalSpent, data.currency)}
                 </p>
               </div>
               {planned > 0 && (
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                  <p style={{ margin: '0 0 6px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                     Budget
                   </p>
-                  <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: T.text3 }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: T.text3 }}>
                     {fmt(planned, data.currency)}
                   </p>
                 </div>
@@ -200,7 +222,7 @@ export default function CategoryLedgerPageClient({
             </div>
 
             {planned > 0 && (
-              <div style={{ height: 5, background: '#EBEBED', borderRadius: 99, overflow: 'hidden', marginBottom: 10 }}>
+              <div style={{ height: 5, background: T.grey100, borderRadius: 99, overflow: 'hidden', marginBottom: 14 }}>
                 <div style={{
                   height: '100%',
                   borderRadius: 99,
@@ -211,36 +233,39 @@ export default function CategoryLedgerPageClient({
               </div>
             )}
 
-            <p style={{ margin: 0, fontSize: 12, color: T.text3 }}>
-              {overBudget
-                ? `${fmt(data.totalSpent - planned, data.currency)} over budget`
-                : planned > 0 && pct === 100
-                  ? `Exactly on budget · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
-                  : planned > 0
-                    ? `${fmt(planned - data.totalSpent, data.currency)} remaining · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
-                    : `${spendCount} ${spendCount === 1 ? 'entry' : 'entries'} this month`}
-            </p>
-          </div>
-
-          {!showRefundForm && spendCount > 0 && (
-            <button
-              onClick={() => { setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) }}
+            <div
               style={{
-                width: '100%',
-                padding: '13px',
-                background: 'none',
-                border: 'none',
-                borderTop: '1px solid #F0F0F0',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-                color: T.text3,
-                letterSpacing: '0.01em',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
               }}
             >
-              + Log a refund
-            </button>
-          )}
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+                {overBudget
+                  ? `${fmt(data.totalSpent - planned, data.currency)} over budget`
+                  : planned > 0 && pct === 100
+                    ? `Exactly on budget · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
+                    : planned > 0
+                      ? `${fmt(planned - data.totalSpent, data.currency)} remaining · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
+                      : `${spendCount} ${spendCount === 1 ? 'entry' : 'entries'} this month`}
+              </p>
+
+              {!showRefundForm && spendCount > 0 && (
+                <TertiaryBtn
+                  size="sm"
+                  onClick={() => { setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) }}
+                  style={{
+                    color: T.text3,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Got money back
+                </TertiaryBtn>
+              )}
+            </div>
+          </div>
 
           {showRefundForm && (
             <>
@@ -269,8 +294,8 @@ export default function CategoryLedgerPageClient({
                     borderRadius: 10,
                     border: '1px solid var(--border-strong)',
                     padding: '0 12px',
-                    fontSize: 16,
-                    fontWeight: 600,
+                    fontSize: 'var(--text-md)',
+                    fontWeight: 'var(--weight-semibold)',
                     color: T.text1,
                     background: T.white,
                     outline: 'none',
@@ -288,7 +313,7 @@ export default function CategoryLedgerPageClient({
                     borderRadius: 10,
                     border: '1px solid var(--border)',
                     padding: '0 12px',
-                    fontSize: 13,
+                    fontSize: 'var(--text-sm)',
                     color: T.text1,
                     background: T.white,
                     outline: 'none',
@@ -305,8 +330,8 @@ export default function CategoryLedgerPageClient({
                     background: 'transparent',
                     border: 'none',
                     borderRight: '1px solid var(--border-subtle)',
-                    fontSize: 13,
-                    fontWeight: 500,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
                     color: T.text3,
                     cursor: 'pointer',
                   }}
@@ -321,9 +346,9 @@ export default function CategoryLedgerPageClient({
                     height: 44,
                     background: 'transparent',
                     border: 'none',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: parseFloat(refundAmount) > 0 ? '#1A7A45' : T.textMuted,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: parseFloat(refundAmount) > 0 ? T.greenDark : T.textMuted,
                     cursor: 'pointer',
                   }}
                 >
@@ -344,26 +369,26 @@ export default function CategoryLedgerPageClient({
             border: '1px solid var(--border)',
             borderRadius: 16,
           }}>
-            <div style={{ fontSize: 13, color: T.textMuted }}>
+            <div style={{ fontSize: 'var(--text-sm)', color: T.textMuted }}>
               No entries logged yet this month.
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
             {sortedDates.map(date => (
               <div key={date}>
                 <div style={{
-                  fontSize: 11,
-                  fontWeight: 600,
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-semibold)',
                   color: T.textMuted,
-                  marginBottom: 8,
+                  marginBottom: 10,
                   textTransform: 'uppercase',
                   letterSpacing: '0.07em',
                 }}>
                   {formatDate(date)}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {dateGroups[date].map(txn => {
                     const isEditing = editId === txn.id
                     const isRefund = txn.amount < 0
@@ -373,23 +398,23 @@ export default function CategoryLedgerPageClient({
                       <div
                         key={txn.id}
                         style={{
-                          background: isRefund ? '#F0FDF4' : T.white,
-                          border: isRefund ? '1px solid #BBF7D0' : '1px solid var(--border)',
-                          borderRadius: 14,
+                          background: isRefund ? T.greenLight : T.white,
+                          border: isRefund ? `1px solid ${T.greenBorder}` : '1px solid var(--border)',
+                          borderRadius: 16,
                           overflow: 'hidden',
                         }}
                       >
-                        <div style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ padding: '18px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 17, fontWeight: 600, color: isRefund ? '#1A7A45' : T.text1, marginBottom: hasNote ? 3 : 0 }}>
+                            <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: isRefund ? T.greenDark : T.text1, marginBottom: hasNote ? 4 : 0, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
                               {isRefund ? `−${fmt(Math.abs(txn.amount), data.currency)}` : fmt(txn.amount, data.currency)}
                             </div>
                             {isRefund && !hasNote && (
                               <span style={{
-                                fontSize: 10,
-                                fontWeight: 600,
-                                color: '#1A7A45',
-                                background: '#DCFCE7',
+                                fontSize: 'var(--text-xs)',
+                                fontWeight: 'var(--weight-semibold)',
+                                color: T.greenDark,
+                                background: 'var(--green-border)',
                                 borderRadius: 4,
                                 padding: '2px 6px',
                                 textTransform: 'uppercase',
@@ -400,53 +425,58 @@ export default function CategoryLedgerPageClient({
                               </span>
                             )}
                             {hasNote && (
-                              <div style={{ fontSize: 13, color: isRefund ? '#166534' : T.text3 }}>
+                              <div style={{ fontSize: 'var(--text-sm)', color: isRefund ? T.greenDark : T.text3, lineHeight: 1.45 }}>
                                 {txn.note}
                               </div>
                             )}
                           </div>
 
                           {!isRefund && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-                              <button
-                                onClick={() => isEditing ? setEditId(null) : openEdit(txn)}
-                                style={{
-                                  height: 32,
-                                  padding: '0 14px',
-                                  background: isEditing ? '#EADFF4' : '#F1F3F5',
-                                  border: 'none',
-                                  borderRadius: 8,
-                                  fontSize: 12,
-                                  fontWeight: 500,
-                                  color: isEditing ? T.brandDark : T.text2,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {isEditing ? 'Cancel' : 'Edit'}
-                              </button>
-                              {!isEditing && (
-                                <button
-                                  onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                              {isEditing ? (
+                                <TertiaryBtn
+                                  size="sm"
+                                  onClick={() => setEditId(null)}
                                   style={{
-                                    background: 'none',
-                                    border: 'none',
                                     padding: 0,
-                                    fontSize: 12,
-                                    fontWeight: 400,
                                     color: T.textMuted,
-                                    cursor: 'pointer',
-                                    textDecoration: 'none',
+                                    lineHeight: 1,
                                   }}
                                 >
-                                  Delete
-                                </button>
+                                  Cancel
+                                </TertiaryBtn>
+                              ) : (
+                                <SecondaryBtn
+                                  size="sm"
+                                  onClick={() => openEdit(txn)}
+                                  style={{
+                                    width: 'auto',
+                                    minWidth: 72,
+                                    padding: '0 14px',
+                                  }}
+                                >
+                                  Edit
+                                </SecondaryBtn>
+                              )}
+                              {!isEditing && (
+                                <TertiaryBtn
+                                  size="sm"
+                                  onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
+                                  style={{
+                                  padding: 0,
+                                  color: T.textMuted,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                Delete
+                                </TertiaryBtn>
                               )}
                             </div>
                           )}
                         </div>
 
                         {isEditing && (
-                          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFA' }}>
+                          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--grey-25)' }}>
                             <input
                               ref={amountRef}
                               type="text"
@@ -469,8 +499,25 @@ export default function CategoryLedgerPageClient({
                                 borderRadius: 10,
                                 border: '2px solid var(--border-focus)',
                                 padding: '0 12px',
-                                fontSize: 16,
-                                fontWeight: 600,
+                                fontSize: 'var(--text-md)',
+                                fontWeight: 'var(--weight-semibold)',
+                                color: T.text1,
+                                background: T.white,
+                                outline: 'none',
+                                width: '100%',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                            <input
+                              type="date"
+                              value={editDate}
+                              onChange={event => setEditDate(event.target.value)}
+                              style={{
+                                height: 40,
+                                borderRadius: 10,
+                                border: '1px solid var(--border)',
+                                padding: '0 12px',
+                                fontSize: 'var(--text-sm)',
                                 color: T.text1,
                                 background: T.white,
                                 outline: 'none',
@@ -488,7 +535,7 @@ export default function CategoryLedgerPageClient({
                                 borderRadius: 10,
                                 border: '1px solid var(--border)',
                                 padding: '0 12px',
-                                fontSize: 13,
+                                fontSize: 'var(--text-sm)',
                                 color: T.text1,
                                 background: T.white,
                                 outline: 'none',
@@ -498,15 +545,15 @@ export default function CategoryLedgerPageClient({
                             />
                             <button
                               onClick={handleSave}
-                              disabled={saving || parseFloat(editAmount) <= 0}
+                              disabled={saving || parseFloat(editAmount) <= 0 || !editDate}
                               style={{
-                                height: 42,
+                                height: 'var(--button-height-md)',
                                 borderRadius: 10,
                                 background: saving ? T.border : T.brandDark,
                                 border: 'none',
-                                color: '#fff',
-                                fontSize: 14,
-                                fontWeight: 600,
+                                color: T.textInverse,
+                                fontSize: 'var(--text-sm)',
+                                fontWeight: 'var(--weight-semibold)',
                                 cursor: 'pointer',
                               }}
                             >
@@ -528,71 +575,62 @@ export default function CategoryLedgerPageClient({
         <Sheet
           open={true}
           onClose={() => setPendingDelete(null)}
-          title={deleteStep === 'reason' ? 'Why are you removing this?' : 'Are you sure?'}
+          title={deleteStep === 'reason' ? 'What happened?' : 'Are you sure?'}
         >
           {deleteStep === 'reason' && (
             <div>
-              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
-                You logged <strong>{fmt(pendingDelete.amount, data.currency)}</strong> on{' '}
-                <strong>{formatDate(pendingDelete.date)}</strong>.
+              <p style={{ fontSize: 'var(--text-base)', color: T.text3, margin: '0 0 20px', lineHeight: 1.55 }}>
+                {categoryLabel} · {fmt(pendingDelete.amount, data.currency)} · {formatDate(pendingDelete.date)}
               </p>
-              {[
-                {
-                  label: '✏️ I logged the wrong amount',
-                  sub: 'Correct it right here',
-                  action: () => { setPendingDelete(null); openEdit(pendingDelete) },
-                },
-                {
-                  label: '💸 I got a refund',
-                  sub: 'Log it so your totals stay honest',
-                  action: () => { setPendingDelete(null); setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) },
-                },
-                {
-                  label: '🚫 This never happened',
-                  sub: 'Remove it entirely',
-                  action: () => setDeleteStep('confirm'),
-                },
-              ].map(option => (
-                <button
-                  key={option.label}
-                  onClick={option.action}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '14px 16px',
-                    background: T.white,
-                    border: '1px solid var(--border)',
-                    borderRadius: 14,
-                    cursor: 'pointer',
-                    marginBottom: 10,
-                    display: 'block',
-                  }}
-                >
-                  <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
-                  <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
-                </button>
-              ))}
-              <button
-                onClick={() => setPendingDelete(null)}
-                style={{
-                  marginTop: 4,
-                  width: '100%',
-                  padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  color: T.textMuted,
-                }}
-              >
-                Cancel
-              </button>
+              <div style={{
+                background: T.white,
+                border: '1px solid var(--border)',
+                borderRadius: 18,
+                overflow: 'hidden',
+              }}>
+                {[
+                  {
+                    label: 'Wrong amount',
+                    sub: 'Edit this expense',
+                    action: () => { setPendingDelete(null); openEdit(pendingDelete) },
+                  },
+                  {
+                    label: 'Refund',
+                    sub: 'Log money returned to you',
+                    action: () => { setPendingDelete(null); setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) },
+                  },
+                  {
+                    label: "Didn't happen",
+                    sub: 'Remove this expense',
+                    action: () => setDeleteStep('confirm'),
+                  },
+                ].map((option, index, options) => (
+                  <button
+                    key={option.label}
+                    onClick={option.action}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '14px 16px',
+                      background: T.white,
+                      border: 'none',
+                      borderBottom: index < options.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                      cursor: 'pointer',
+                    }}
+                    >
+                      <div>
+                      <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>{option.label}</div>
+                      <div style={{ fontSize: 'var(--text-sm)', color: T.text3, marginTop: 3 }}>{option.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {deleteStep === 'confirm' && (
             <div>
-              <p style={{ fontSize: 14, color: T.text2, margin: '0 0 24px', lineHeight: 1.6 }}>
+              <p style={{ fontSize: 'var(--text-base)', color: T.text2, margin: '0 0 24px', lineHeight: 1.55 }}>
                 This will permanently remove the <strong>{fmt(pendingDelete.amount, data.currency)}</strong> entry
                 from <strong>{formatDate(pendingDelete.date)}</strong>.
               </p>
@@ -603,32 +641,28 @@ export default function CategoryLedgerPageClient({
                   width: '100%',
                   padding: '14px',
                   borderRadius: 14,
-                  background: '#D93025',
+                  background: T.redDark,
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: '#fff',
+                  fontSize: 'var(--text-base)',
+                  fontWeight: 'var(--weight-semibold)',
+                  color: T.textInverse,
                   opacity: deleting ? 0.6 : 1,
                 }}
               >
                 {deleting ? 'Removing…' : 'Yes, remove it'}
               </button>
-              <button
+              <TertiaryBtn
+                size="md"
                 onClick={() => setDeleteStep('reason')}
                 style={{
                   marginTop: 10,
-                  width: '100%',
                   padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 14,
                   color: T.text3,
                 }}
               >
                 Go back
-              </button>
+              </TertiaryBtn>
             </div>
           )}
         </Sheet>
@@ -642,9 +676,8 @@ export default function CategoryLedgerPageClient({
       <main style={{ flex: 1, maxWidth: 640, margin: '0 auto' }}>{content}</main>
     </div>
   ) : (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <main>{content}</main>
-      <BottomNav />
     </div>
   )
 }

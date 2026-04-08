@@ -34,6 +34,7 @@ export default async function CategoryLedgerPage({ params, searchParams }: PageP
   const categoryLabel = readSearchParam(resolvedSearchParams, 'label') ?? key
   const planned = Number(readSearchParam(resolvedSearchParams, 'planned') ?? 0)
   const categoryType = (readSearchParam(resolvedSearchParams, 'type') ?? 'everyday') as CategoryType
+  const returnTo = readSearchParam(resolvedSearchParams, 'returnTo') ?? '/history'
   const data = await loadHistoryLedgerPageData(session.user.id, session.profile, key)
 
   return (
@@ -43,6 +44,7 @@ export default async function CategoryLedgerPage({ params, searchParams }: PageP
       categoryLabel={categoryLabel}
       planned={planned}
       categoryType={categoryType}
+      returnTo={returnTo}
     />
   )
 }

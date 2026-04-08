@@ -1,23 +1,59 @@
-.btnPrimary {
-  width: 100%;
-  height: var(--button-height);
+.btnBase {
   border-radius: var(--radius-md);
-  background: var(--brand-dark);
-  border: 0;
   cursor: pointer;
-  color: var(--white);
-  font-size: 15px;
-  font-weight: 600;
   font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.2px;
   transition: all 0.2s ease;
 }
 
-.btnPrimary:disabled {
+.btnSizeSm {
+  height: var(--button-height-sm);
+  font-size: 14px;
+}
+
+.btnSizeMd {
+  height: var(--button-height-md);
+  font-size: 14px;
+}
+
+.btnSizeLg {
+  height: var(--button-height);
+  font-size: 15px;
+}
+
+.btnPrimary {
+  width: 100%;
+  background: var(--brand-dark);
+  border: 0;
+  color: var(--white);
+}
+
+.btnBase:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.btnPrimary:not(:disabled):hover {
+.btnBase:not(:disabled):hover {
   transform: translateY(-1px);
+}
+
+.btnSecondary {
+  width: 100%;
+  background: var(--white);
+  border: 1px solid var(--brand-mid);
+  color: var(--brand-dark);
+}
+
+.btnTertiary {
+  width: auto;
+  height: auto;
+  min-height: unset;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-brand);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
 }

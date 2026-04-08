@@ -8,10 +8,11 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconMinus } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogPageData, LogSection, LogSubItem } from '@/lib/loaders/log'
-import { deleteCurrentCycleCategoryEntries, recordRefund } from './actions'
+import { deleteCurrentCycleCategoryEntries, recordRefund, updateLogEntry } from './actions'
 
 const T = {
   brandDark: 'var(--brand-dark)',
@@ -23,6 +24,13 @@ const T = {
   text3: 'var(--text-3)',
   textMuted: 'var(--text-muted)',
   textInverse: 'var(--text-inverse)',
+}
+
+function formatEntryDate(iso: string | null | undefined) {
+  if (!iso) return null
+  const [year, month, day] = iso.split('-').map(Number)
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 const SECTION_EMPTY: Record<string, string> = {
@@ -46,10 +54,14 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<LogSubItem | null>(null)
-  const [deleteStep, setDeleteStep] = useState<'reason' | 'confirm' | 'refund'>('reason')
+  const [deleteStep, setDeleteStep] = useState<'reason' | 'confirm' | 'refund' | 'edit'>('reason')
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
+  const [editAmount, setEditAmount] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editNote, setEditNote] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const visibleSections = data.sections.filter((section) => !(section.items.length === 0 && (section.key === 'daily' || section.key === 'debts')))
   const totalLogged = visibleSections.reduce(
@@ -67,6 +79,27 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       ...(item.plannedAmount ? { amount: String(item.plannedAmount) } : {}),
     })
     router.push(`/log/new?${params.toString()}`)
+  }
+
+  const reviewItemEntries = (item: LogSubItem) => {
+    const params = new URLSearchParams({
+      label: item.label,
+      type: item.groupType,
+      returnTo: '/log',
+      ...(item.plannedAmount ? { planned: String(item.plannedAmount) } : {}),
+    })
+    router.push(`/history/${item.key}?${params.toString()}`)
+  }
+
+  const openDirectEdit = (item: LogSubItem) => {
+    if (!item.singleEntryId || !item.singleEntryDate) {
+      reviewItemEntries(item)
+      return
+    }
+    setEditAmount(String(item.loggedAmount))
+    setEditDate(item.singleEntryDate)
+    setEditNote(item.singleEntryNote ?? '')
+    setDeleteStep('edit')
   }
 
   const logOther = () => {
@@ -109,6 +142,32 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       toast('Could not record refund')
     } finally {
       setSavingRefund(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!pendingDelete?.singleEntryId) return
+    const amount = parseFloat(editAmount)
+    if (!amount || amount <= 0 || !editDate) return
+
+    setSavingEdit(true)
+    try {
+      await updateLogEntry({
+        id: pendingDelete.singleEntryId,
+        amount,
+        date: editDate,
+        note: editNote,
+      })
+      toast('Entry updated')
+      setPendingDelete(null)
+      setEditAmount('')
+      setEditDate('')
+      setEditNote('')
+      router.refresh()
+    } catch {
+      toast('Could not update entry')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -171,6 +230,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           {visibleItems.map((item, index) => {
             const isLogged = item.loggedAmount > 0
             const isDeleting = deletingKey === item.key
+            const canManageInline = isLogged && (item.entryCount ?? 0) <= 1
             return (
               <div
                 key={item.key}
@@ -182,7 +242,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   gap: 12,
                 }}
               >
-                {isLogged && (
+                {canManageInline && (
                   <button
                     onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
                     disabled={isDeleting}
@@ -207,7 +267,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                 )}
 
                 <button
-                  onClick={() => logItem(item)}
+                  onClick={() => isLogged ? reviewItemEntries(item) : logItem(item)}
                   style={{
                     flex: 1,
                     display: 'flex',
@@ -249,26 +309,21 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         </div>
 
         {isAccordion && (
-          <button
+          <TertiaryBtn
+            size="sm"
             onClick={() => setExpanded(prev => {
               const next = new Set(prev)
               next.has(section.key) ? next.delete(section.key) : next.add(section.key)
               return next
             })}
             style={{
-              width: '100%',
-              background: 'none',
-              border: 'none',
               padding: '18px 0 18px',
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 500,
               color: T.brandDark,
               textAlign: 'left',
             }}
           >
             {isOpen ? 'Show less' : `Show all ${section.items.length}`}
-          </button>
+          </TertiaryBtn>
         )}
 
         {!isAccordion && section.items.length > 0 && <div style={{ height: 2 }} />}
@@ -339,22 +394,13 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
       {isDesktop && (
         <div style={{ padding: '0 32px' }}>
-          <button
+          <PrimaryBtn
+            size="lg"
             onClick={() => data.isFirstTime ? router.push('/log/first') : logOther()}
-            style={{
-              width: '100%',
-              height: 50,
-              background: T.brandDark,
-              border: 'none',
-              borderRadius: 14,
-              cursor: 'pointer',
-              fontSize: 14,
-              fontWeight: 600,
-              color: T.textInverse,
-            }}
+            style={{ background: T.brandDark, color: T.textInverse }}
           >
             Add expense
-          </button>
+          </PrimaryBtn>
         </div>
       )}
 
@@ -362,12 +408,21 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         <Sheet
           open={true}
           onClose={() => setPendingDelete(null)}
-          title={deleteStep === 'reason' ? 'What happened?' : deleteStep === 'refund' ? 'Log a refund' : 'Are you sure?'}
+          title={
+            deleteStep === 'reason'
+              ? 'What happened?'
+              : deleteStep === 'refund'
+                ? 'Log a refund'
+                : deleteStep === 'edit'
+                  ? 'Edit expense'
+                  : 'Are you sure?'
+          }
         >
           {deleteStep === 'reason' && (
             <div>
               <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
                 {pendingDelete.label} · {fmt(pendingDelete.loggedAmount, data.currency)} · {data.cycleLabel}
+                {pendingDelete.latestLoggedDate ? ` · logged ${formatEntryDate(pendingDelete.latestLoggedDate)}` : ''}
               </p>
 
               <div style={{
@@ -378,9 +433,18 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               }}>
                 {[
                 {
-                  label: 'Wrong amount',
-                  sub: 'Edit this expense',
-                  action: () => { setPendingDelete(null); logItem(pendingDelete) },
+                  label: pendingDelete.entryCount && pendingDelete.entryCount > 1 ? 'Review entries' : 'Edit this expense',
+                  sub: pendingDelete.entryCount && pendingDelete.entryCount > 1
+                    ? 'Edit amount, date, or note'
+                    : 'Edit amount, date, or note',
+                  action: () => {
+                    if ((pendingDelete.entryCount ?? 0) <= 1 && pendingDelete.singleEntryId) {
+                      openDirectEdit(pendingDelete)
+                    } else {
+                      setPendingDelete(null)
+                      reviewItemEntries(pendingDelete)
+                    }
+                  },
                 },
                 {
                   label: 'Refund',
@@ -404,35 +468,107 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                       border: 'none',
                       borderBottom: index < options.length - 1 ? `1px solid ${T.borderSubtle}` : 'none',
                       cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 16,
                     }}
                   >
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
                       <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
                     </div>
-                    <span style={{ fontSize: 18, lineHeight: 1, color: T.textMuted, opacity: 0.7 }}>›</span>
                   </button>
                 ))}
               </div>
+            </div>
+          )}
 
+          {deleteStep === 'edit' && pendingDelete && (
+            <div>
+              <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
+                {pendingDelete.label} · {data.cycleLabel}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={(() => {
+                    if (!editAmount) return ''
+                    const parts = editAmount.split('.')
+                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                    return parts.join('.')
+                  })()}
+                  onChange={event => {
+                    const value = event.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
+                    const parts = value.split('.')
+                    if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
+                    setEditAmount(value)
+                  }}
+                  placeholder="Amount"
+                  style={{
+                    height: 44,
+                    borderRadius: 10,
+                    border: '2px solid var(--border-focus)',
+                    padding: '0 12px',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={event => setEditDate(event.target.value)}
+                  style={{
+                    height: 40,
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    padding: '0 12px',
+                    fontSize: 13,
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={editNote}
+                  onChange={event => setEditNote(event.target.value)}
+                  placeholder="Note (optional)"
+                  style={{
+                    height: 40,
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    padding: '0 12px',
+                    fontSize: 13,
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
               <button
-                onClick={() => setPendingDelete(null)}
+                onClick={handleSaveEdit}
+                disabled={savingEdit || parseFloat(editAmount) <= 0 || !editDate}
                 style={{
-                  marginTop: 12,
                   width: '100%',
-                  padding: '12px',
-                  background: 'none',
+                  marginTop: 14,
+                  padding: '14px',
+                  borderRadius: 14,
+                  background: savingEdit ? T.border : T.brandDark,
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 14,
-                  color: T.textMuted,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: T.textInverse,
                 }}
               >
-                Cancel
+                {savingEdit ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           )}
@@ -461,21 +597,17 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               >
                 {deletingKey === pendingDelete.key ? 'Removing…' : 'Yes, remove it'}
               </button>
-              <button
+              <TertiaryBtn
+                size="md"
                 onClick={() => setDeleteStep('reason')}
                 style={{
                   marginTop: 10,
-                  width: '100%',
                   padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 14,
                   color: T.text3,
                 }}
               >
                 Go back
-              </button>
+              </TertiaryBtn>
             </div>
           )}
 
@@ -546,38 +678,28 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   marginBottom: 20,
                 }}
               />
-              <button
+              <PrimaryBtn
+                size="lg"
                 onClick={handleSaveRefund}
                 disabled={!refundAmount || parseFloat(refundAmount) <= 0 || savingRefund}
                 style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: 14,
                   background: refundAmount && parseFloat(refundAmount) > 0 ? T.brandDark : T.border,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 15,
-                  fontWeight: 600,
                   color: refundAmount && parseFloat(refundAmount) > 0 ? T.textInverse : T.textMuted,
                 }}
               >
                 {savingRefund ? 'Saving…' : 'Log refund'}
-              </button>
-              <button
+              </PrimaryBtn>
+              <TertiaryBtn
+                size="md"
                 onClick={() => setDeleteStep('reason')}
                 style={{
                   marginTop: 10,
-                  width: '100%',
                   padding: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 14,
                   color: T.text3,
                 }}
               >
                 Go back
-              </button>
+              </TertiaryBtn>
             </div>
           )}
         </Sheet>
@@ -607,22 +729,16 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         borderTop: '1px solid var(--border-subtle)',
         zIndex: 40,
       }}>
-        <button
+        <PrimaryBtn
+          size="lg"
           onClick={() => data.isFirstTime ? router.push('/log/first') : logOther()}
           style={{
-            width: '100%',
-            height: 50,
             background: T.brandDark,
-            border: 'none',
-            borderRadius: 14,
-            cursor: 'pointer',
-            fontSize: 14,
-            fontWeight: 600,
             color: T.textInverse,
           }}
-          >
+        >
           Add expense
-        </button>
+        </PrimaryBtn>
       </div>
       <BottomNav />
     </div>
