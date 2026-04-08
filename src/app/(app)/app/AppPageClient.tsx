@@ -24,16 +24,16 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
     setSkipCount(parseInt(localStorage.getItem('cenza_skip_count') ?? '0', 10))
   }, [])
 
-  const hasIncome = overview.incomeData.total > 0
+  const hasStarted = overview.hasStartedCycleData
 
-  const screen = !hasIncome && skipCount === 0
+  const screen = !hasStarted && skipCount === 0
     ? (
       <FirstTimeWelcome
         name={overview.name}
         onStart={() => router.push('/log/first')}
       />
     )
-    : !hasIncome && skipCount >= 1
+    : !hasStarted && skipCount >= 1
       ? (
         <OverviewLocked
           name={overview.name}

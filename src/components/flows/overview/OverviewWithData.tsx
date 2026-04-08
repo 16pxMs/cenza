@@ -180,6 +180,49 @@ const reference = receivedConfirmed
     </div>
   )
 
+  const stateStartedCard = (spent: number) => (
+    <div style={{
+      background: '#fff', borderRadius: 20, padding: '24px',
+      marginTop: 16, boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
+      ...fade(0.08),
+    }}>
+      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+        Spending so far
+      </p>
+      <p style={{ margin: '0 0 10px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
+        {fmt(spent, currency)}
+      </p>
+      <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65 }}>
+        Your dashboard is live now. Add your income next to see what is left after spending.
+      </p>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => router.push('/income/new?returnTo=/app')}
+          style={{
+            flex: 1, height: 48, borderRadius: 12,
+            background: 'var(--brand-dark)', color: '#fff',
+            border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+          }}
+        >
+          Add income
+        </button>
+        <button
+          onClick={onLogExpense}
+          style={{
+            height: 48, borderRadius: 12, padding: '0 18px',
+            background: 'transparent', color: 'var(--brand-dark)',
+            border: '1px solid var(--border)',
+            fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Add expense
+        </button>
+      </div>
+    </div>
+  )
+
   // State C: live spend — hero is what remains, bar depletes as spend grows
   const stateCCard = (spent: number, ref: number) => {
     const remaining   = calculateRemaining(ref, spent)
@@ -269,6 +312,9 @@ const reference = receivedConfirmed
   const spendingCard = hasLogged && totalIncome > 0
     // ── State C: live data ─────────────────────────────────────
     ? stateCCard(totalSpent, reference)
+    : hasLogged
+    // ── Started, but income not added yet ─────────────────────
+    ? stateStartedCard(totalSpent)
     : receivedConfirmed
     // ── State B: received confirmed, nothing logged yet ─────────
     ? stateBCard(reference)
@@ -300,21 +346,21 @@ const reference = receivedConfirmed
     </div>
   )
 
-  // ── Goals contextual card — State B: same context as State A but secondary hierarchy ──
-  const goalsContextCard = (
+  // ── Compact goals prompt ────────────────────────────────────
+  const goalPromptCard = (
     <div style={{
       background: 'var(--white)', border: '1px solid var(--border)',
-      borderRadius: 20, padding: '22px 24px',
+      borderRadius: 18, padding: '18px 20px',
       marginTop: 16, ...fade(0.15),
     }}>
       <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         Goals
       </p>
       <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px', lineHeight: 1.25 }}>
-        Give your money a purpose.
+        Set a goal when you're ready.
       </h3>
       <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-        School fees, an emergency fund, travel — set a goal and watch it build alongside your spend.
+        Emergency fund, travel, school fees. Adding a goal helps Cenza show what your money is building toward.
       </p>
       <button
         onClick={() => router.push('/goals/new?from=overview')}
@@ -325,62 +371,7 @@ const reference = receivedConfirmed
           fontWeight: 600, fontSize: 14, cursor: 'pointer',
         }}
       >
-        Add your first goal
-      </button>
-    </div>
-  )
-
-  // ── Goals empty state (ideas 2 + 3 + 5) ─────────────────────
-  const goalsEmptyState = (
-    <div style={{
-      background: 'var(--white)',
-      border: '1px solid var(--border)',
-      borderRadius: 20,
-      padding: '24px',
-      marginTop: 16,
-      ...fade(0.08),
-    }}>
-      {/* Badge */}
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        background: '#F0FDF4', border: '1px solid #BBF7D0',
-        borderRadius: 99, padding: '4px 12px', marginBottom: 20,
-      }}>
-        <Sparkles size={12} color="#15803D" />
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#15803D', letterSpacing: '0.04em' }}>
-          Set up your first goal
-        </span>
-      </div>
-
-      {/* Title */}
-      <h2 style={{
-        margin: '0 0 8px',
-        fontSize: 20, fontWeight: 700,
-        color: 'var(--text-1)', lineHeight: 1.2,
-        letterSpacing: '-0.2px',
-      }}>
-        Give your money a purpose.
-      </h2>
-
-      {/* Body */}
-      <p style={{
-        margin: '0 0 28px',
-        fontSize: 14, color: 'var(--text-2)', lineHeight: 1.65,
-      }}>
-        Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
-      </p>
-
-      {/* CTA */}
-      <button
-        onClick={() => router.push('/goals/new?from=overview')}
-        style={{
-          width: '100%', height: 52, borderRadius: 14,
-          background: 'var(--brand-dark)', color: '#fff',
-          border: 'none', fontWeight: 600, fontSize: 15,
-          cursor: 'pointer', letterSpacing: '-0.1px',
-        }}
-      >
-        Add your first goal
+        Create a goal
       </button>
     </div>
   )
@@ -708,34 +699,15 @@ const reference = receivedConfirmed
             Has goals, State B   → spending first, quiet goal row (one primary CTA)
             Has goals, State C   → spending first, full goals progress card */}
       {totalGoals === 0 ? (
-        // No goals set — always lead with the goal prompt so balance has meaning
-        <>
-          {goalsEmptyState}
-          {spendingCard}
-        </>
-      ) : receivedConfirmed && !hasLogged ? (
-        // State B: income confirmed, nothing logged — quiet goal row
         <>
           {spendingCard}
-          {goalsContextCard}
+          {goalPromptCard}
         </>
       ) : (
-        // State C: has spending data — spending leads, goals progress below
         <>
           {spendingCard}
           {goalsCard}
         </>
-      )}
-
-      {/* Quiet nudge — fills empty space when nothing logged yet */}
-      {!hasLogged && (
-        <p style={{
-          textAlign: 'center', fontSize: 12, color: 'var(--text-muted)',
-          margin: '28px 0 8px', lineHeight: 1.7,
-          ...fade(0.35),
-        }}>
-          Every expense you add builds a clearer picture.
-        </p>
       )}
 
       {/* Insight card — only shown once there is spend data to surface insights from */}

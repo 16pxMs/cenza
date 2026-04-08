@@ -4,10 +4,8 @@ import { useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
-import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
-import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { SetupFlowPage } from '@/components/layout/SetupFlowPage/SetupFlowPage'
 import { Input } from '@/components/ui/Input/Input'
-import { IconBack } from '@/components/ui/Icons'
 import { GOAL_META, GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
@@ -165,35 +163,17 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
     }
   }
 
-  const meta = selectedGoal ? GOAL_META[selectedGoal] : null
-
-  const header = (
-    <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 16px' }}>
-      <button
-        onClick={goBack}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center' }}
-      >
-        <IconBack size={18} color={T.text3} />
-      </button>
-      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-        {step === 'pick' ? 'New goal' : step === 'name' ? 'Name your goal' : step === 'destination' ? 'Where to?' : 'Set a target'}
-      </p>
-      <h1 style={{ fontSize: isDesktop ? 26 : 22, color: T.text1, margin: 0 }}>
-        {step === 'pick'
-          ? 'What are you saving for?'
-          : step === 'name'
-            ? 'What would you call this goal?'
-            : step === 'destination'
-              ? (destination.trim() ? `Travel to ${destination.trim()}` : 'Where to?')
-              : meta
-                ? `${meta.icon}  ${customName.trim() || (selectedGoal === 'travel' && destination.trim() ? `Travel to ${destination.trim()}` : meta.label)}`
-                : 'Set a target'}
-      </h1>
-    </div>
-  )
+  const pageKey =
+    step === 'pick'
+      ? 'goal_pick'
+      : step === 'name'
+        ? 'goal_name'
+        : step === 'destination'
+          ? 'goal_destination'
+          : 'goal_target'
 
   const step1 = (
-    <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
+    <div>
       {availableGoals.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 0', color: T.text3, fontSize: 14 }}>
           You've added all available goal types.
@@ -233,7 +213,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   )
 
   const stepDestination = (
-    <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
+    <div>
       <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
         Where do you want to go? Even a rough idea helps make the goal feel real.
       </p>
@@ -280,7 +260,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   )
 
   const step2 = (
-    <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
+    <div>
       <p style={{ margin: '0 0 20px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
         Give it a name that means something to you — you can always change it later.
       </p>
@@ -316,7 +296,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
     : []
 
   const step3 = (
-    <div style={{ padding: isDesktop ? '0 32px' : '0 16px' }}>
+    <div>
       {selectedGoal === 'emergency' && (
         <div style={{
           marginBottom: 24, padding: '16px',
@@ -480,23 +460,15 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
     </div>
   )
 
-  const content = (
-    <div style={{ paddingBottom: isDesktop ? 60 : 100 }}>
-      {header}
+  return (
+    <SetupFlowPage
+      pageKey={pageKey}
+      onBack={goBack}
+      isDesktop={isDesktop}
+      isSaving={saving}
+    >
       {step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
-    </div>
-  )
-
-  return isDesktop ? (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <SideNav />
-      <main style={{ flex: 1, maxWidth: 600, margin: '0 auto' }}>{content}</main>
-    </div>
-  ) : (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
-      <main>{content}</main>
-      <BottomNav />
-    </div>
+    </SetupFlowPage>
   )
 }
 

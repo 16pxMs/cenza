@@ -73,6 +73,29 @@ Client files such as `*PageClient.tsx` should mostly handle:
 
 They should receive already-prepared data from the server whenever possible.
 
+### 6. Setup flows are page-first
+
+If a flow is multi-step, edits a major part of the month's setup, or needs room for explanation and backtracking, it should be a dedicated page.
+
+Current page-first setup flows include:
+- `src/app/(app)/income/new/page.tsx`
+- `src/app/(app)/income/fixed/page.tsx`
+- `src/app/(app)/income/budget/page.tsx`
+- `src/app/(app)/goals/new/page.tsx`
+- `src/app/(app)/log/new/page.tsx`
+
+Sheets are still appropriate for quick, contextual actions such as:
+- goal contributions
+- quick confirms
+- delete/refund prompts
+- small settings actions like changing a PIN
+
+Avoid reintroducing setup-heavy sheets for:
+- income setup
+- fixed-expense setup
+- spending-budget setup
+- any other flow that feels route-worthy
+
 ## Current Boundary Map
 
 ### App shell
@@ -163,6 +186,7 @@ Avoid reintroducing these patterns:
 - rebuilding transaction payloads ad hoc in route files
 - querying legacy schema fields like `month` instead of current cycle/date fields
 - leaving unused UI flows in the codebase after structural changes
+- putting multi-step setup flows back into sheets just because a wrapper component already exists
 
 ## Testing Guidance
 
@@ -198,5 +222,6 @@ Before merging feature work, check:
 - Are shared persistence rules reused instead of duplicated?
 - Does the code match the cycle-based schema?
 - Did any Supabase change get mirrored in migrations and types?
+- If this is a setup flow, should it be its own page instead of a sheet?
 
 If the answer is yes across that list, the feature is probably aligned with the current architecture.

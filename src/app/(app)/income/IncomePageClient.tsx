@@ -1,17 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
-import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { AddIncomeSheet, type IncomeData as SheetIncomeData } from '@/components/flows/income/AddIncomeSheet'
-import { EditFixedExpensesSheet, type FixedEntry } from '@/components/flows/plan/EditFixedExpensesSheet'
-import { EditSpendingBudgetSheet, type BudgetCategory } from '@/components/flows/plan/EditSpendingBudgetSheet'
 import type { IncomePageData } from '@/lib/loaders/income'
-import { saveFixedExpenses, saveIncome, saveSpendingBudget } from './actions'
 
 const T = {
   pageBg: 'var(--page-bg)',
@@ -58,17 +53,9 @@ export default function IncomePageClient({
   preview: boolean
 }) {
   const router = useRouter()
-  const { toast } = useToast()
-  const { refreshProfile } = useUser()
   const { isDesktop } = useBreakpoint()
   const currentMonth = new Date().toISOString().slice(0, 7)
-  const [isPending, startTransition] = useTransition()
-
-  const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
-  const [fixedEditOpen, setFixedEditOpen] = useState(false)
-  const [budgetEditOpen, setBudgetEditOpen] = useState(false)
-  const [savingFixed, setSavingFixed] = useState(false)
-  const [savingBudget, setSavingBudget] = useState(false)
+  const [isPending] = useTransition()
 
   const incomeTotal = data.incomeData ? Number(data.incomeData.total ?? 0) : 0
   const fixedTotal = data.fixedExpenses ? Number(data.fixedExpenses.total_monthly ?? 0) : 0
@@ -110,46 +97,6 @@ export default function IncomePageClient({
     borderBottom: border ? `1px solid var(--border-subtle)` : 'none',
   })
 
-  const handleIncomeSave = async (input: SheetIncomeData) => {
-    try {
-      await saveIncome(input)
-      await refreshProfile()
-      toast('Income updated')
-      setIncomeSheetOpen(false)
-      startTransition(() => router.refresh())
-    } catch {
-      toast('Failed to update income. Please try again.')
-    }
-  }
-
-  const handleFixedSave = async (entries: FixedEntry[]) => {
-    try {
-      setSavingFixed(true)
-      await saveFixedExpenses(entries)
-      toast('Fixed expenses updated')
-      setFixedEditOpen(false)
-      startTransition(() => router.refresh())
-    } catch {
-      toast('Failed to update fixed expenses. Please try again.')
-    } finally {
-      setSavingFixed(false)
-    }
-  }
-
-  const handleBudgetSave = async (categories: BudgetCategory[]) => {
-    try {
-      setSavingBudget(true)
-      await saveSpendingBudget(categories)
-      toast('Spending budget updated')
-      setBudgetEditOpen(false)
-      startTransition(() => router.refresh())
-    } catch {
-      toast('Failed to update spending budget. Please try again.')
-    } finally {
-      setSavingBudget(false)
-    }
-  }
-
   const content = (
     <div style={{ maxWidth: 480, margin: '0 auto', padding: isDesktop ? '48px 32px 80px' : '28px 20px 100px' }}>
       <div style={{ marginBottom: 24 }}>
@@ -175,7 +122,7 @@ export default function IncomePageClient({
               Decide where your money goes before it's spent. Income, fixed bills, and day-to-day spending.
             </p>
             <button
-              onClick={() => setIncomeSheetOpen(true)}
+              onClick={() => router.push('/income/new?returnTo=/income')}
               style={{
                 width: '100%', height: 48, borderRadius: 14,
                 background: T.brandDark, border: 'none', cursor: 'pointer',
@@ -263,7 +210,7 @@ export default function IncomePageClient({
                 <p style={{ margin: '0 0 1px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Income</p>
                 <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text1 }}>{fmt(incomeTotal, data.currency)}</p>
               </div>
-              <button onClick={() => setIncomeSheetOpen(true)} style={editBtnStyle}>Edit</button>
+              <button onClick={() => router.push('/income/new?returnTo=/income')} style={editBtnStyle}>Edit</button>
             </div>
             <div style={itemRow(extras.length > 0)}>
               <span style={{ fontSize: 14, color: T.text2 }}>Salary</span>
@@ -289,7 +236,7 @@ export default function IncomePageClient({
                       {fixedPct > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: T.textMuted, marginLeft: 6 }}>{fixedPct}% of income</span>}
                     </p>
                   </div>
-                  <button onClick={() => setFixedEditOpen(true)} style={editBtnStyle}>Edit</button>
+                  <button onClick={() => router.push('/income/fixed?returnTo=/income')} style={editBtnStyle}>Edit</button>
                 </div>
                 {entries.map((entry: any, index: number) => (
                   <div key={entry.key} style={itemRow(index < entries.length - 1)}>
@@ -310,7 +257,7 @@ export default function IncomePageClient({
                 <p style={{ margin: '0 0 1px', fontSize: 14, fontWeight: 600, color: T.text1 }}>Fixed commitments</p>
                 <p style={{ margin: 0, fontSize: 12, color: T.textMuted }}>Rent, bills, subscriptions</p>
               </div>
-              <button onClick={() => setFixedEditOpen(true)} style={{
+              <button onClick={() => router.push('/income/fixed?returnTo=/income')} style={{
                 background: T.brandDark, border: 'none', borderRadius: 10,
                 padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff',
               }}>Add</button>
@@ -329,7 +276,7 @@ export default function IncomePageClient({
                       {budgetPct > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: T.textMuted, marginLeft: 6 }}>{budgetPct}% of income</span>}
                     </p>
                   </div>
-                  <button onClick={() => setBudgetEditOpen(true)} style={editBtnStyle}>Edit</button>
+                  <button onClick={() => router.push('/income/budget?returnTo=/income')} style={editBtnStyle}>Edit</button>
                 </div>
                 {categories.map((category: any, index: number) => (
                   <div key={category.key} style={itemRow(index < categories.length - 1)}>
@@ -351,7 +298,7 @@ export default function IncomePageClient({
                     : 'Food, transport, entertainment'}
                 </p>
               </div>
-              <button onClick={() => setBudgetEditOpen(true)} style={{
+              <button onClick={() => router.push('/income/budget?returnTo=/income')} style={{
                 background: T.brandDark, border: 'none', borderRadius: 10,
                 padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff',
               }}>Add</button>
@@ -362,44 +309,11 @@ export default function IncomePageClient({
     </div>
   )
 
-  const sheets = (
-    <>
-      <AddIncomeSheet
-        open={incomeSheetOpen}
-        onClose={() => setIncomeSheetOpen(false)}
-        onSave={handleIncomeSave}
-        currency={data.currency}
-        isDesktop={isDesktop}
-        incomeType={data.incomeType}
-      />
-      <EditFixedExpensesSheet
-        open={fixedEditOpen}
-        onClose={() => setFixedEditOpen(false)}
-        onSave={handleFixedSave}
-        initialEntries={(data.fixedExpenses?.entries ?? []) as FixedEntry[]}
-        currency={data.currency}
-        isDesktop={isDesktop}
-        saving={savingFixed || isPending}
-      />
-      <EditSpendingBudgetSheet
-        open={budgetEditOpen}
-        onClose={() => setBudgetEditOpen(false)}
-        onSave={handleBudgetSave}
-        initialCategories={(data.spendingBudget?.categories ?? []) as BudgetCategory[]}
-        currency={data.currency}
-        isDesktop={isDesktop}
-        saving={savingBudget || isPending}
-        spendingHistory={data.spendingHistory}
-      />
-    </>
-  )
-
   if (isDesktop) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh' }}>
         <SideNav />
         <main style={{ flex: 1, maxWidth: 720, margin: '0 auto' }}>{content}</main>
-        {sheets}
       </div>
     )
   }
@@ -408,7 +322,6 @@ export default function IncomePageClient({
     <div style={{ minHeight: '100vh', background: T.pageBg, paddingBottom: 88 }}>
       <main>{content}</main>
       <BottomNav />
-      {sheets}
     </div>
   )
 }

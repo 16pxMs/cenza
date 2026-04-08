@@ -9,14 +9,12 @@ import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
-import { saveIncome } from '@/app/(app)/income/actions'
 import { deleteAccountData, saveCurrency, savePaySchedule } from './actions'
 
 const T = {
@@ -41,8 +39,6 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   const { refreshProfile } = useUser()
 
   const [currency, setCurrency] = useState(data.currency)
-  const [monthlyTotal, setMonthlyTotal] = useState<number | null>(data.monthlyTotal)
-  const [incomeSheetOpen, setIncomeSheetOpen] = useState(false)
   const [changePinOpen, setChangePinOpen] = useState(false)
   const hasPinCookie = typeof document !== 'undefined' &&
     document.cookie.split(';').some(cookie => cookie.trim().startsWith('cenza-has-pin=1'))
@@ -97,18 +93,6 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       toast('Failed to save pay schedule. Please try again.')
     } finally {
       setSavingPaySchedule(false)
-    }
-  }
-
-  const handleIncomeSave = async (input: { income: number; extraIncome: any[]; total: number; incomeType?: 'salaried' | 'variable' }) => {
-    try {
-      await saveIncome(input)
-      await refreshProfile()
-      setMonthlyTotal(input.total)
-      setIncomeSheetOpen(false)
-      toast('Income updated')
-    } catch {
-      toast('Failed to update income. Please try again.')
     }
   }
 
@@ -414,8 +398,8 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       {sectionCard(<>
         {row(
           'Monthly income',
-          monthlyTotal ? fmt(monthlyTotal, currency) : 'Not set',
-          () => setIncomeSheetOpen(true),
+          data.monthlyTotal ? fmt(data.monthlyTotal, currency) : 'Not set',
+          () => router.push('/income/new?returnTo=/settings'),
           true,
         )}
       </>)}
@@ -515,16 +499,6 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           <BottomNav />
         </div>
       )}
-
-      <AddIncomeSheet
-        open={incomeSheetOpen}
-        onClose={() => setIncomeSheetOpen(false)}
-        onSave={handleIncomeSave}
-        currency={currency}
-        isDesktop={isDesktop}
-        incomeType={data.incomeType}
-      />
-
       <ChangePinSheet
         open={changePinOpen}
         onClose={() => setChangePinOpen(false)}

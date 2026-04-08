@@ -52,6 +52,7 @@ export interface OverviewPageData {
   name: string
   currency: string
   goals: GoalId[]
+  hasStartedCycleData: boolean
   incomeData: IncomeData
   totalSpent: number
   fixedTotal: number
@@ -163,18 +164,28 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       }
     : null
 
+  const incomeTotal = Number(incomeRow?.total ?? 0)
+  const fixedTotal = Number(fixedExpenses?.total_monthly ?? 0)
+  const budgetTotal = Number(spendingBudgetData?.total_budget ?? 0)
+  const hasStartedCycleData =
+    incomeTotal > 0 ||
+    totalSpent > 0 ||
+    fixedTotal > 0 ||
+    budgetTotal > 0
+
   return {
     name: profile.name ?? 'there',
     currency: profile.currency ?? 'KES',
     goals: (profile.goals ?? []) as GoalId[],
+    hasStartedCycleData,
     incomeData: {
       income: Number(incomeRow?.salary ?? 0),
       extraIncome,
-      total: Number(incomeRow?.total ?? 0),
+      total: incomeTotal,
       received: incomeRow?.received != null ? Number(incomeRow.received) : null,
     },
     totalSpent,
-    fixedTotal: Number(fixedExpenses?.total_monthly ?? 0),
+    fixedTotal,
     spendingBudget: spendingBudgetData,
     categorySpend,
     goalTargets: goalTargetsMap,

@@ -1,4 +1,7 @@
 'use client'
+// EditSpendingBudgetSheet — compatibility wrapper around SpendingBudgetEditor
+// The main app now uses the page-first route at /income/budget for setup.
+// Keep the editor reusable, and treat this Sheet wrapper as secondary.
 import { useState, useEffect, useRef } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 
@@ -54,6 +57,14 @@ interface Props {
   spendingHistory?:  Record<string, number>
 }
 
+interface EditorProps {
+  initialCategories: BudgetCategory[]
+  currency: string
+  onSave: (categories: BudgetCategory[]) => void
+  saving?: boolean
+  spendingHistory?: Record<string, number>
+}
+
 function stripCommas(s: string) { return s.replace(/,/g, '') }
 function withCommas(s: string) {
   const clean = stripCommas(s).replace(/[^\d.]/g, '')
@@ -68,6 +79,26 @@ const nextId = () => ++_uid
 export function EditSpendingBudgetSheet({
   open, onClose, onSave, initialCategories, currency, isDesktop, saving, spendingHistory = {},
 }: Props) {
+  return (
+    <Sheet open={open} onClose={onClose} title="Spending budget" isDesktop={isDesktop}>
+      <SpendingBudgetEditor
+        initialCategories={initialCategories}
+        currency={currency}
+        onSave={onSave}
+        saving={saving}
+        spendingHistory={spendingHistory}
+      />
+    </Sheet>
+  )
+}
+
+export function SpendingBudgetEditor({
+  initialCategories,
+  currency,
+  onSave,
+  saving,
+  spendingHistory = {},
+}: EditorProps) {
   const [rows,       setRows]       = useState<Row[]>([])
   const [addLabel,   setAddLabel]   = useState('')
   const [addAmount,  setAddAmount]  = useState('')
@@ -76,22 +107,20 @@ export function EditSpendingBudgetSheet({
   const inputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
 
   useEffect(() => {
-    if (open) {
-      setRows(
-        initialCategories
-          .filter(c => c.budget > 0)
-          .map(c => ({
-            ...c,
-            _id:     nextId(),
-            _amount: c.budget.toLocaleString(),
-            emoji:   SUGGESTIONS.find(s => s.key === c.key)?.emoji,
-          }))
-      )
-      setShowCustom(false)
-      setAddLabel('')
-      setAddAmount('')
-    }
-  }, [open])
+    setRows(
+      initialCategories
+        .filter(c => c.budget > 0)
+        .map(c => ({
+          ...c,
+          _id:     nextId(),
+          _amount: c.budget.toLocaleString(),
+          emoji:   SUGGESTIONS.find(s => s.key === c.key)?.emoji,
+        }))
+    )
+    setShowCustom(false)
+    setAddLabel('')
+    setAddAmount('')
+  }, [initialCategories])
 
   // Suggestions not yet added
   const usedKeys    = new Set(rows.map(r => r.key))
@@ -136,8 +165,7 @@ export function EditSpendingBudgetSheet({
   const total = rows.reduce((s, r) => s + (parseFloat(stripCommas(r._amount)) || 0), 0)
 
   return (
-    <Sheet open={open} onClose={onClose} title="Spending budget" isDesktop={isDesktop}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
         {/* ── Added categories ── */}
         {rows.length > 0 && (
@@ -355,7 +383,6 @@ export function EditSpendingBudgetSheet({
           {saving ? 'Saving…' : rows.length === 0 ? 'Add a category to save' : `Save — ${currency} ${total.toLocaleString()}/mo`}
         </button>
 
-      </div>
-    </Sheet>
+    </div>
   )
 }
