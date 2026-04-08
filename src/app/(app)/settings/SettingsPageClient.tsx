@@ -202,7 +202,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             <p style={{ margin: '2px 0 0', fontSize: 13, color: T.text3 }}>{data.email}</p>
           </div>
         </div>
-        {row('Account type', 'Google', undefined, true)}
+        {row('Sign-in method', 'Google', undefined, true)}
       </>)}
 
       {sectionLabel('Preferences')}
@@ -398,6 +398,15 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
       {sectionLabel('Security')}
       {sectionCard(<>
+        <p style={{
+          margin: 0,
+          padding: '14px 16px 0',
+          fontSize: 13,
+          color: T.text3,
+          lineHeight: 1.6,
+        }}>
+          PIN unlocks Cenza on this device. Google is still used to reconnect or recover your account.
+        </p>
         {row('PIN', hasPinCookie ? 'Change' : 'Set up', () => setChangePinOpen(true), true)}
       </>)}
 
@@ -413,6 +422,15 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
       {sectionLabel('Account')}
       {sectionCard(<>
+        <p style={{
+          margin: 0,
+          padding: '14px 16px 0',
+          fontSize: 13,
+          color: T.text3,
+          lineHeight: 1.6,
+        }}>
+          Signing out removes this device from quick re-entry. The next login will start with Google reconnect.
+        </p>
         <button
           onClick={async () => {
             await clearPinDeviceState({ forgetDevice: true })
@@ -425,7 +443,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             cursor: 'pointer', fontSize: 15, color: T.text1, boxSizing: 'border-box',
           }}
         >
-          Sign out
+          Sign out on this device
         </button>
 
         {deleteStep === 'idle' ? (

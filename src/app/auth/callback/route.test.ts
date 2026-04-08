@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getPostAuthDestination } from './route'
+import { getPostAuthDestination } from './route-helpers'
 
 describe('getPostAuthDestination', () => {
   it('sends incomplete users to onboarding', () => {

@@ -122,7 +122,7 @@ export function PinEntryClient({ isFreshSession }: Props) {
             margin: 0, fontWeight: 700,
             letterSpacing: '-0.3px',
           }}>
-            Enter your PIN
+            Unlock Cenza
           </h1>
           <p style={{
             fontSize: 'var(--text-sm)',
@@ -130,7 +130,7 @@ export function PinEntryClient({ isFreshSession }: Props) {
             margin: '10px 0 0',
             lineHeight: 1.5,
           }}>
-            This device is already linked to your account. Use your PIN to continue.
+            This device is already linked to your account. Enter your PIN to continue.
           </p>
         </div>
 
@@ -179,7 +179,7 @@ export function PinEntryClient({ isFreshSession }: Props) {
               fontFamily: 'inherit',
             }}
           >
-            Forgot your PIN?
+            Forgot PIN? Reconnect with Google
           </button>
         </div>
 

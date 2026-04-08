@@ -24,7 +24,7 @@ export default function StartClient() {
         </h1>
 
         <p className={styles.description}>
-          Track spending, understand your patterns, and get simple guidance on what to do next.
+          Create your account, connect it securely, and start tracking your money with a plan that makes sense.
         </p>
 
         <div className={styles.ctaArea}>
@@ -34,13 +34,13 @@ export default function StartClient() {
             justifyContent: 'center',
             textDecoration: 'none',
           }}>
-            Get started
+            Try Cenza
           </Link>
 
           <p className={styles.signInRow}>
             Already have an account?
             <Link href="/login" className={styles.tertiaryButton}>
-              Sign in
+              Log in
             </Link>
           </p>
         </div>

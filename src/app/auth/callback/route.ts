@@ -1,20 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/database'
+import { getPostAuthDestination } from './route-helpers'
 
 const COOKIE_BASE = {
   path: '/',
   sameSite: 'lax' as const,
   secure: process.env.NODE_ENV === 'production',
-}
-
-export function getPostAuthDestination(input: {
-  onboardingComplete: boolean
-  hasPin: boolean
-  next: string
-}): string {
-  if (!input.onboardingComplete) return '/onboarding'
-  return input.hasPin ? '/pin' : input.next
 }
 
 export async function GET(request: NextRequest) {

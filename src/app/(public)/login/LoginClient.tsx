@@ -43,19 +43,17 @@ export default function LoginClient() {
       <div className={styles.authCard}>
         <div className={styles.logo}>Cenza</div>
         <h1 className={styles.authTitle}>
-          {knownDevice
-            ? 'Welcome back.'
-            : 'Welcome back.'}
+          {knownDevice ? 'Unlock your account.' : 'Log in to Cenza.'}
         </h1>
         <p className={styles.authSubtitle}>
           {knownDevice
-            ? 'This device already knows your account. Continue with Google to reconnect securely, then we will take you straight to your PIN.'
-            : 'Continue with Google to reconnect securely and pick up where you left off.'}
+            ? 'This is a known device. Reconnect securely with Google and we will take you straight to your PIN.'
+            : 'Use Google to reconnect your secure session and pick up where you left off.'}
         </p>
 
         {knownDevice && (
           <div className={styles.returningNote}>
-            PIN is your normal re-entry step on this device. Google is only used here to restore your secure session.
+            On this device, PIN is your normal re-entry step. Google is only used here to restore your secure session.
           </div>
         )}
 
@@ -67,7 +65,9 @@ export default function LoginClient() {
         </form>
 
         <p className={styles.privacyNote}>
-          By continuing you agree to our Terms & Privacy Policy.
+          {knownDevice
+            ? 'After reconnecting, you will unlock the app with your PIN.'
+            : 'By continuing you agree to our Terms & Privacy Policy.'}
         </p>
       </div>
     </div>
