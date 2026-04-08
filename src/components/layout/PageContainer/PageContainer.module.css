@@ -1,13 +1,13 @@
 .container {
-  padding-left: 16px;
-  padding-right: 16px;
+  padding-left: var(--space-page-mobile);
+  padding-right: var(--space-page-mobile);
 }
 
 @media (min-width: 1024px) {
   .container {
     max-width: var(--container-xl);
     margin: 0 auto;
-    padding-left: var(--space-xl);
-    padding-right: var(--space-xl);
+    padding-left: var(--space-page-desktop);
+    padding-right: var(--space-page-desktop);
   }
 }

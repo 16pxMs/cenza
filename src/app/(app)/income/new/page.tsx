@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { loadIncomePageData } from '@/lib/loaders/income'
+import { loadIncomeSetupPageData } from '@/lib/loaders/income'
 import IncomeFlowPageClient from './IncomeFlowPageClient'
 
 interface IncomeFlowPageProps {
@@ -26,7 +26,7 @@ export default async function IncomeFlowPage({ searchParams }: IncomeFlowPagePro
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const returnTo = readSearchParam(resolvedSearchParams, 'returnTo') ?? '/income'
-  const data = await loadIncomePageData(user.id, profile)
+  const data = await loadIncomeSetupPageData(profile)
 
   return (
     <IncomeFlowPageClient

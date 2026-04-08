@@ -11,10 +11,11 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, AlertTriangle, TrendingUp, Target, Sparkles, CheckCircle, Lightbulb, ChevronRight } from 'lucide-react'
+import { X, AlertTriangle, TrendingUp, Target, CheckCircle, ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
-import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemainingPct, calculateCategoryBudget } from '@/lib/math/finance'
+import { formatAmount } from '@/lib/formatting/amount'
+import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemainingPct } from '@/lib/math/finance'
 import { GoalContribSheet } from './GoalContribSheet'
 
 const GOAL_META: Record<string, {
@@ -41,12 +42,6 @@ interface IncomeData {
   extraIncome: { id: string; label: string; amount: number }[]
   total: number
   received?: number | null  // confirmed received this month (null = not yet confirmed)
-}
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  groceries: '🛒', transport: '🚌', eating_out: '🍽️', airtime: '📱',
-  entertainment: '🎬', personal_care: '💄', household: '🏠', clothing: '👕',
-  health: '💊', savings: '💰', education: '📚', family: '🤲',
 }
 
 interface Props {
@@ -139,7 +134,7 @@ const reference = receivedConfirmed
         Available this month
       </p>
       <p style={{ margin: '0 0 20px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
-        {fmt(ref, currency)}
+        {formatAmount(ref, { currency, variant: 'full' })}
       </p>
 
       {/* Full green bar — tank is full */}
@@ -162,7 +157,7 @@ const reference = receivedConfirmed
           </div>
           <div>
             <p style={{ margin: '0 0 3px', fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Free to spend</p>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{fmt(calculateRemaining(ref, totalSpent), currency)}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>{formatAmount(calculateRemaining(ref, totalSpent), { currency, variant: 'full' })}</p>
           </div>
         </div>
       )}
@@ -190,7 +185,7 @@ const reference = receivedConfirmed
         Spending so far
       </p>
       <p style={{ margin: '0 0 10px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
-        {fmt(spent, currency)}
+        {formatAmount(spent, { currency, variant: 'full' })}
       </p>
       <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65 }}>
         Your dashboard is live now. Add your income next to see what is left after spending.
@@ -240,7 +235,7 @@ const reference = receivedConfirmed
           {isOver ? 'Over budget' : 'Remaining'}
         </p>
         <p style={{ margin: '0 0 20px', fontSize: 36, fontWeight: 700, color: isOver ? '#EF4444' : 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
-          {fmt(Math.abs(remaining), currency)}
+          {formatAmount(remaining, { currency, variant: 'full' })}
         </p>
 
         {ref > 0 && (
@@ -285,24 +280,12 @@ const reference = receivedConfirmed
           <button
             onClick={onLogExpense}
             style={{
-              flex: 1, height: 48, borderRadius: 12,
+              width: '100%', height: 48, borderRadius: 12,
               background: 'var(--brand-dark)', color: '#fff',
               border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer',
             }}
           >
             Add an expense
-          </button>
-          <button
-            onClick={() => router.push('/history')}
-            style={{
-              height: 48, borderRadius: 12, padding: '0 18px',
-              background: 'transparent', color: 'var(--brand-dark)',
-              border: '1px solid var(--border)',
-              fontWeight: 600, fontSize: 14, cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Monthly review
           </button>
         </div>
       </div>
@@ -522,13 +505,6 @@ const reference = receivedConfirmed
       onTap: () => setActiveGoalContrib(neglectedGoal!),
     })
   }
-  if (totalSpent === 0) {
-    insights.push({
-      Icon: Sparkles,
-      text: `Nothing logged yet. Start tracking and Cenza will surface insights here.`,
-      color: '#4A3B66',
-    })
-  }
   if (reference > 0 && spentPct <= 75 && totalSpent > 0) {
     insights.push({
       Icon: CheckCircle,
@@ -537,17 +513,6 @@ const reference = receivedConfirmed
     })
   }
 
-  const TIPS = [
-    'The 50/30/20 rule: 50% on needs, 30% on wants, 20% into savings or goals.',
-    'An emergency fund covering 3 to 6 months of expenses is one of the highest-return things you can build.',
-    'Small, consistent contributions to a goal beat large irregular ones over time.',
-    'Tracking spending is not about restriction — it is about knowing where your money actually goes.',
-    'Paying yourself first means moving money to savings before spending, not after.',
-  ]
-  const displayInsights: Insight[] = insights.length > 0
-    ? insights
-    : [{ Icon: Lightbulb, text: TIPS[new Date().getDate() % TIPS.length], color: '#4A3B66' }]
-
   const insightCard = (
     <div style={{
       marginTop: 16,
@@ -555,14 +520,14 @@ const reference = receivedConfirmed
       borderRadius: 16, padding: '4px 20px',
       ...fade(0.22),
     }}>
-      {displayInsights.map((insight, i) => (
+      {insights.map((insight, i) => (
         <div
           key={i}
           onClick={insight.onTap ?? (insight.href ? () => router.push(insight.href!) : undefined)}
           style={{
             display: 'flex', alignItems: 'flex-start', gap: 12,
             padding: '16px 0',
-            borderBottom: i < displayInsights.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+            borderBottom: i < insights.length - 1 ? '1px solid var(--border-subtle)' : 'none',
             cursor: insight.onTap || insight.href ? 'pointer' : 'default',
           }}
         >
@@ -629,71 +594,6 @@ const reference = receivedConfirmed
         </div>
       )}
 
-      {/* Budget vs actual card — shown when budget is set and spending has been logged */}
-      {(() => {
-        const cats = (spendingBudget?.categories ?? []).filter((c: any) => c.budget > 0)
-        if (cats.length === 0 || !hasLogged) return null
-        return (
-          <div style={{
-            background: 'var(--white)', border: '1px solid var(--border)',
-            borderRadius: 18, overflow: 'hidden', marginTop: 16,
-            ...fade(0.12),
-          }}>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '14px 16px 12px',
-              borderBottom: '1px solid var(--border-subtle)',
-            }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                Spending budget
-              </p>
-            </div>
-            {cats.map((cat: any, i: number) => {
-              const { spent, budgeted, pct, over } = calculateCategoryBudget(
-                categorySpend[cat.key] ?? 0,
-                Number(cat.budget),
-              )
-              const barColor = over ? 'var(--red)' : pct > 75 ? '#F59E0B' : 'var(--green)'
-              const emoji    = CATEGORY_EMOJI[cat.key]
-              const isLast   = i === cats.length - 1
-              return (
-                <div key={cat.key} style={{
-                  padding: '12px 16px',
-                  borderBottom: isLast ? 'none' : '1px solid var(--border-subtle)',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {emoji && <span style={{ fontSize: 14 }}>{emoji}</span>}
-                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)' }}>{cat.label}</span>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: over ? 'var(--red-dark)' : 'var(--text-1)' }}>
-                        {fmt(spent, currency)}
-                      </span>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 3 }}>
-                        / {fmt(budgeted, currency)}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ height: 4, background: 'var(--grey-100)', borderRadius: 99 }}>
-                    <div style={{
-                      height: '100%', width: `${pct}%`,
-                      background: barColor, borderRadius: 99,
-                      transition: 'width 0.5s ease', minWidth: pct > 0 ? 4 : 0,
-                    }} />
-                  </div>
-                  {over && (
-                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--red-dark)', fontWeight: 500 }}>
-                      {fmt(spent - budgeted, currency)} over budget
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )
-      })()}
-
       {/* Card order:
             No goals (any state) → goals empty state first (the why before the what)
             Has goals, State B   → spending first, quiet goal row (one primary CTA)
@@ -710,8 +610,8 @@ const reference = receivedConfirmed
         </>
       )}
 
-      {/* Insight card — only shown once there is spend data to surface insights from */}
-      {totalSpent > 0 && insightCard}
+      {/* Insight card — only shown when there is a real actionable signal */}
+      {insights.length > 0 && insightCard}
 
       {/* Dismissible debt card */}
       {!debtDismissed && (

@@ -67,13 +67,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-md) var(--space-page-mobile) 12px;
+  border-bottom: var(--border-width) solid var(--border);
 }
 
 @media (min-width: 1024px) {
   .header {
-    padding: 24px 28px 16px;
+    padding: var(--space-lg) var(--space-page-desktop) var(--space-md);
   }
 }
 
@@ -98,12 +98,12 @@
 }
 
 .body {
-  padding: 20px 16px;
+  padding: 20px var(--space-page-mobile);
 }
 
 @media (min-width: 1024px) {
   .body {
-    padding: 20px 28px;
+    padding: 20px var(--space-page-desktop);
   }
 }
 

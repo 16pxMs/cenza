@@ -35,19 +35,12 @@ interface GoalTransactionRow {
 export async function loadGoalsPageData(userId: string, profile: UserProfile): Promise<GoalsPageData> {
   const supabase = await createClient()
 
-  const [targetsRes, txnsRes] = await Promise.all([
-    (supabase.from('goal_targets') as any)
-      .select('goal_id, amount, added_at, destination')
-      .eq('user_id', userId),
-    (supabase.from('transactions') as any)
-      .select('category_key, amount, date')
-      .eq('user_id', userId)
-      .eq('category_type', 'goal'),
-  ])
-
   const goals = (profile.goals ?? []) as GoalId[]
-  const targetRows = (targetsRes.data ?? []) as GoalTargetRow[]
-  const transactionRows = (txnsRes.data ?? []) as GoalTransactionRow[]
+  const { data: targetsData } = await (supabase.from('goal_targets') as any)
+    .select('goal_id, amount, added_at, destination')
+    .eq('user_id', userId)
+
+  const targetRows = (targetsData ?? []) as GoalTargetRow[]
 
   const targets: Record<string, number | null> = {}
   const destinations: Record<string, string | null> = {}
@@ -58,6 +51,20 @@ export async function loadGoalsPageData(userId: string, profile: UserProfile): P
     destinations[row.goal_id] = row.destination ?? null
     addedAtMap[row.goal_id] = row.added_at
   }
+
+  const trackedGoalIds = goals.filter(id => id in addedAtMap || targets[id] != null)
+  const earliestAddedAt = Object.values(addedAtMap)
+    .filter(Boolean)
+    .sort()[0]
+
+  const transactionRows = trackedGoalIds.length === 0
+    ? []
+    : ((await (supabase.from('transactions') as any)
+        .select('category_key, amount, date')
+        .eq('user_id', userId)
+        .eq('category_type', 'goal')
+        .in('category_key', trackedGoalIds)
+        .gte('date', earliestAddedAt ? earliestAddedAt.slice(0, 10) : '1900-01-01')).data ?? []) as GoalTransactionRow[]
 
   const savedByGoal: Record<string, number> = {}
   const monthBuckets: Record<string, Record<string, number>> = {}

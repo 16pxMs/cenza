@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
@@ -35,6 +35,7 @@ export interface HistoryPageData {
   totalSpent: number
   totalIncome: number
   breakdown: HistoryBreakdownItem[]
+  availableMonths: string[]
 }
 
 function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
@@ -70,15 +71,21 @@ function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
     }))
 }
 
-export async function loadHistoryPageData(userId: string, profile: UserProfile): Promise<HistoryPageData> {
+export async function loadHistoryPageData(userId: string, profile: UserProfile, targetDate?: Date): Promise<HistoryPageData> {
   const supabase = await createClient()
-  const cycleId = deriveCurrentCycleId(profile)
+  const cycleId = targetDate
+    ? deriveCycleIdForDate(profile, targetDate)
+    : deriveCurrentCycleId(profile)
 
   const [
     { data: txnRows },
     { data: expenses },
     { data: budgets },
     { data: income },
+    { data: txnCycles },
+    { data: incomeCycles },
+    { data: expenseCycles },
+    { data: budgetCycles },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, date, category_type, category_key, category_label, amount, note')
@@ -101,6 +108,18 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile):
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
+    (supabase.from('transactions') as any)
+      .select('cycle_id')
+      .eq('user_id', userId),
+    (supabase.from('income_entries') as any)
+      .select('cycle_id')
+      .eq('user_id', userId),
+    (supabase.from('fixed_expenses') as any)
+      .select('cycle_id')
+      .eq('user_id', userId),
+    (supabase.from('spending_budgets') as any)
+      .select('cycle_id')
+      .eq('user_id', userId),
   ])
 
   const rows: HistoryTransaction[] = (txnRows ?? []).map((row: any) => ({
@@ -124,13 +143,25 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile):
     { label: 'Debts', amount: debtSpent, accent: debtSpent > 0 },
   ] as HistoryBreakdownItem[]).filter(item => item.amount > 0)
 
+  const availableMonths = Array.from(new Set(
+    [
+      ...(txnCycles ?? []),
+      ...(incomeCycles ?? []),
+      ...(expenseCycles ?? []),
+      ...(budgetCycles ?? []),
+    ]
+      .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id.slice(0, 7) : null)
+      .filter((month): month is string => !!month)
+  )).sort()
+
   return {
-    monthLabel: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    monthLabel: (targetDate ?? new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
     currency: profile.currency ?? 'KES',
     rows: categoryRows,
     totalBudget: Number(expenses?.total_monthly ?? 0) + Number(budgets?.total_budget ?? 0),
     totalSpent,
     totalIncome: Number(income?.total ?? 0),
     breakdown,
+    availableMonths,
   }
 }

@@ -2,284 +2,320 @@
 export const dynamic = 'force-dynamic'
 
 import { useRouter } from 'next/navigation'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { IconBack, IconChevronRight } from '@/components/ui/Icons'
-import { fmt } from '@/lib/finance'
+import { IconChevronRight } from '@/components/ui/Icons'
+import { formatAmount } from '@/lib/formatting/amount'
 import type { HistoryCategoryRow, HistoryPageData } from '@/lib/loaders/history'
 
 const T = {
-  brandDark: '#5C3489',
-  white: '#FFFFFF',
-  text1: '#101828',
-  text2: '#475467',
-  text3: '#667085',
-  textMuted: '#98A2B3',
+  white:     'var(--white)',
+  text1:     'var(--text-1)',
+  text2:     'var(--text-2)',
+  text3:     'var(--text-3)',
+  textMuted: 'var(--text-muted)',
 }
 
+// Segmented bar per row — only shown when budget is set
 function BarFill({ pct, type }: { pct: number; type: HistoryCategoryRow['type'] }) {
   const color = type === 'goal'
-    ? T.brandDark
+    ? 'var(--brand-dark)'
     : type === 'fixed' || type === 'subscription'
-      ? (pct > 100 ? '#EF4444' : '#22C55E')
-      : pct > 100 ? '#EF4444' : pct > 75 ? '#F59E0B' : '#22C55E'
+      ? (pct > 100 ? 'var(--red)' : 'var(--green)')
+      : pct > 100 ? 'var(--red)' : pct > 75 ? 'var(--amber)' : 'var(--green)'
 
   return (
-    <div style={{ height: 4, background: '#EBEBED', borderRadius: 99, marginTop: 10 }}>
+    <div style={{ height: 'var(--size-bar-sm)', background: 'var(--grey-100)', borderRadius: 'var(--radius-full)', marginTop: 'var(--space-sm)' }}>
       <div style={{
         height: '100%',
         width: `${Math.min(100, pct)}%`,
         background: color,
-        borderRadius: 99,
+        borderRadius: 'var(--radius-full)',
         transition: 'width 0.4s ease',
-        minWidth: pct > 0 ? 4 : 0,
+        minWidth: pct > 0 ? 'var(--space-xs)' : 0,
       }} />
     </div>
   )
 }
 
-interface HistoryPageClientProps {
-  data: HistoryPageData
+// Verdict — single sentence that answers "how did this month go?"
+function verdictLine(totalIncome: number, totalSpent: number): string {
+  if (totalIncome === 0 || totalSpent === 0) return ''
+  const pctKept = Math.round(((totalIncome - totalSpent) / totalIncome) * 100)
+  const tone = pctKept >= 50 ? 'Clean month.' : pctKept >= 20 ? 'Decent control.' : pctKept >= 0 ? 'Tight month.' : 'You went over budget.'
+  if (pctKept < 0) return tone
+  return `You kept ${pctKept}% of your income. ${tone}`
 }
 
-export default function HistoryPageClient({ data }: HistoryPageClientProps) {
+interface HistoryPageClientProps {
+  data: HistoryPageData
+  targetMonth?: string  // 'YYYY-MM', undefined = current month
+}
+
+function currentYM(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function formatHeroAmount(amount: number, currency: string): string {
+  const abs = Math.abs(amount)
+  const sign = amount < 0 ? '-' : ''
+
+  if (abs < 100_000) {
+    return `${sign}${formatAmount(abs, { currency, variant: 'full' })}`
+  }
+
+  if (abs < 1_000_000) {
+    const compact = (abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1).replace(/\.0$/, '')
+    return `${sign}${currency} ${compact}K`
+  }
+
+  const compact = (abs / 1_000_000).toFixed(2).replace(/\.?0+$/, '')
+  return `${sign}${currency} ${compact}M`
+}
+
+export default function HistoryPageClient({ data, targetMonth }: HistoryPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
 
+  const activeYM    = targetMonth ?? currentYM()
+  const activeIndex = data.availableMonths.indexOf(activeYM)
+  const canGoPrev   = activeIndex > 0
+  const canGoNext   = activeIndex >= 0 && activeIndex < data.availableMonths.length - 1
+  const pad         = isDesktop ? '0 var(--space-page-desktop)' : '0 var(--space-page-mobile)'
+
+  function navToMonth(ym: string) {
+    router.push(ym === currentYM() ? '/history' : `/history?month=${ym}`)
+  }
+
   const unallocated = data.totalIncome - data.totalSpent
-  const sections = [
-    { label: 'Fixed', types: ['fixed', 'subscription'] },
-    { label: 'Goals', types: ['goal'] },
-    { label: 'Daily', types: ['everyday'] },
-    { label: 'Debts', types: ['debt'] },
-  ]
-  const pad = isDesktop ? '0 32px' : '0 16px'
+  const verdict     = verdictLine(data.totalIncome, data.totalSpent)
+
+  // Breakdown segments for the bar
+  const segments = [
+    { label: 'Fixed',  amount: data.breakdown.find(i => i.label === 'Fixed')?.amount  ?? 0, color: 'var(--brand-dark)' },
+    { label: 'Goals',  amount: data.breakdown.find(i => i.label === 'Goals')?.amount  ?? 0, color: 'var(--brand-deep)' },
+    { label: 'Daily',  amount: data.breakdown.find(i => i.label === 'Daily')?.amount  ?? 0, color: 'var(--brand-mid)' },
+    { label: 'Debts',  amount: data.breakdown.find(i => i.label === 'Debts')?.amount  ?? 0, color: 'var(--red)' },
+  ].filter(s => s.amount > 0)
 
   const content = (
-    <div style={{ paddingBottom: isDesktop ? 80 : 100 }}>
-      <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 20px' }}>
-        <button
-          onClick={() => router.push('/app')}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center' }}
-        >
-          <IconBack size={18} color={T.text3} />
-        </button>
-        <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Monthly review
+    <div style={{ paddingBottom: isDesktop ? 'var(--size-touch-footer-desktop)' : 'var(--size-touch-footer-mobile)' }}>
+
+      {/* ── Header + month nav ── */}
+      <div style={{ padding: isDesktop ? 'var(--space-xl) var(--space-page-desktop) var(--space-card-md)' : 'var(--space-lg) var(--space-page-mobile) var(--space-md)' }}>
+        <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Recap
         </p>
-        <h1 style={{ fontSize: isDesktop ? 28 : 24, color: T.text1, margin: 0 }}>
-          {data.monthLabel}
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
+            {data.monthLabel}
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+            <button
+              onClick={() => canGoPrev && navToMonth(data.availableMonths[activeIndex - 1])}
+              disabled={!canGoPrev}
+              style={{ width: 'var(--control-sm)', height: 'var(--control-sm)', borderRadius: 'var(--radius-sm)', border: 'var(--border-width) solid var(--border)', background: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canGoPrev ? 'pointer' : 'default', opacity: canGoPrev ? 1 : 0.3 }}
+            >
+              <ChevronLeft size={15} color={T.text3} />
+            </button>
+            <button
+              onClick={() => canGoNext && navToMonth(data.availableMonths[activeIndex + 1])}
+              disabled={!canGoNext}
+              style={{ width: 'var(--control-sm)', height: 'var(--control-sm)', borderRadius: 'var(--radius-sm)', border: 'var(--border-width) solid var(--border)', background: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canGoNext ? 'pointer' : 'default', opacity: canGoNext ? 1 : 0.3 }}
+            >
+              <ChevronRight size={15} color={T.text3} />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {data.totalIncome > 0 && (
-        <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 16px` }}>
+      <div style={{ padding: pad }}>
+
+        {/* ── 1. Verdict line ── */}
+        {verdict && (
+          <p style={{ margin: '0 0 var(--space-card-md)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text2, lineHeight: 1.5 }}>
+            {verdict}
+          </p>
+        )}
+
+        {/* ── 2. Hero card — In Hand ── */}
+        {data.totalIncome > 0 && (
           <div style={{
             background: T.white,
-            borderRadius: 20,
-            boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
-            display: 'flex',
-            alignItems: 'stretch',
+            borderRadius: 'var(--radius-card)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 'var(--space-lg) var(--space-card-md) var(--space-card-sm)',
+            marginBottom: 'var(--space-card-md)',
           }}>
-            {[
-              { label: 'Income', value: data.totalIncome, color: T.text1 },
-              { label: 'Spent', value: data.totalSpent, color: T.text1 },
-              { label: 'In hand', value: unallocated, color: unallocated >= 0 ? '#1A7A45' : '#D93025' },
-            ].map((column, index) => (
-              <div key={column.label} style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
-                {index > 0 && <div style={{ width: 1, background: '#F0F0F0', margin: '18px 0', flexShrink: 0 }} />}
-                <div style={{ flex: 1, padding: '22px 0', textAlign: 'center' }}>
-                  <p style={{ margin: '0 0 5px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                    {column.label}
-                  </p>
-                  <span style={{ fontSize: index === 2 ? 17 : 15, fontWeight: 700, color: column.color }}>
-                    {fmt(Math.abs(column.value), data.currency)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {data.breakdown.length > 0 && data.totalSpent > 0 && (() => {
-        const segments = [
-          { label: 'Fixed', amount: data.breakdown.find(item => item.label === 'Fixed')?.amount ?? 0, color: '#5C3489' },
-          { label: 'Goals', amount: data.breakdown.find(item => item.label === 'Goals')?.amount ?? 0, color: '#9B72CC' },
-          { label: 'Daily', amount: data.breakdown.find(item => item.label === 'Daily')?.amount ?? 0, color: '#C4A8E0' },
-          { label: 'Debts', amount: data.breakdown.find(item => item.label === 'Debts')?.amount ?? 0, color: '#EF4444' },
-        ].filter(segment => segment.amount > 0)
-
-        return (
-          <div style={{ padding: `0 ${isDesktop ? 32 : 16}px 24px` }}>
-            <div style={{
-              background: T.white,
-              border: '1px solid var(--border)',
-              borderRadius: 16,
-              padding: '18px 20px',
-            }}>
-              <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                Where it went
-              </p>
-
-              <div style={{
-                display: 'flex',
-                height: 8,
-                borderRadius: 99,
-                overflow: 'hidden',
-                marginBottom: 16,
-                gap: 2,
-              }}>
-                {segments.map(segment => (
-                  <div
-                    key={segment.label}
-                    style={{
-                      height: '100%',
-                      width: `${(segment.amount / data.totalSpent) * 100}%`,
-                      background: segment.color,
-                      borderRadius: 99,
-                      transition: 'width 0.4s ease',
-                      minWidth: 4,
-                    }}
-                  />
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {segments.map(segment => (
-                  <div key={segment.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: segment.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: 13.5, color: T.text2 }}>{segment.label}</span>
-                    </div>
-                    <span style={{ fontSize: 13.5, fontWeight: 500, color: segment.label === 'Debts' ? '#EF4444' : T.text1 }}>
-                      {fmt(segment.amount, data.currency)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {sections.map(section => {
-        const sectionRows = data.rows.filter(row => section.types.includes(row.type))
-        if (sectionRows.length === 0) return null
-
-        return (
-          <div key={section.label} style={{ padding: pad, marginBottom: 24 }}>
+            <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              In hand
+            </p>
             <p style={{
-              margin: '0 0 10px',
-              fontSize: 11,
-              fontWeight: 600,
-              color: T.textMuted,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
+              margin: '0 0 var(--space-card-sm)',
+              fontSize: 'var(--text-xl)',
+              fontWeight: 'var(--weight-bold)',
+              lineHeight: 1,
+              letterSpacing: '-0.02em',
+              color: T.text1,
             }}>
-              {section.label}
+              {formatHeroAmount(unallocated, data.currency)}
             </p>
 
-            <div style={{ background: T.white, border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-              {sectionRows.map((row, index) => {
-                const rowPct = row.planned > 0 ? (row.spent / row.planned) * 100 : 0
-                const rowOver = row.planned > 0 && row.spent > row.planned
-                const isLast = index === sectionRows.length - 1
-                const hasLogged = row.spent > 0
-                const showBar = hasLogged && row.planned > 0
-                const ledgerUrl = `/history/${row.key}?label=${encodeURIComponent(row.label)}&planned=${row.planned}&type=${row.type}`
+            <div style={{ height: 'var(--border-width)', background: 'var(--border-subtle)', marginBottom: 'var(--space-md)' }} />
 
-                const inner = (
-                  <div style={{ padding: `18px 16px ${showBar ? 10 : 18}px` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 28 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: hasLogged ? T.text1 : T.textMuted }}>
-                          {row.label}
-                        </div>
-                        {row.planned > 0 && (
-                          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 3 }}>
-                            {fmt(row.planned, data.currency)} budget
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 16 }}>
-                        {hasLogged ? (
-                          <>
-                            <span style={{ fontSize: 15, fontWeight: 600, color: rowOver ? '#EF4444' : T.text1 }}>
-                              {fmt(row.spent, data.currency)}
-                            </span>
-                            <IconChevronRight size={16} color={T.textMuted} />
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 14, color: T.textMuted, fontWeight: 400, letterSpacing: '0.05em' }}>
-                            —
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {showBar && (
-                      <div style={{ marginTop: 10 }}>
-                        <BarFill pct={rowPct} type={row.type} />
-                      </div>
-                    )}
-                  </div>
-                )
-
-                return (
-                  <div key={row.key} style={{ borderBottom: isLast ? 'none' : '1px solid var(--border-subtle)' }}>
-                    {hasLogged ? (
-                      <button
-                        onClick={() => router.push(ledgerUrl)}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: 0,
-                          boxSizing: 'border-box',
-                          display: 'block',
-                        }}
-                      >
-                        {inner}
-                      </button>
-                    ) : (
-                      inner
-                    )}
-                  </div>
-                )
-              })}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'calc(var(--space-sm) + var(--space-xs))' }}>
+              <div>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Income</p>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text2 }}>
+                  {formatAmount(data.totalIncome, { currency: data.currency, variant: 'compact' })}
+                </span>
+              </div>
+              <div>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Spent</p>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text2 }}>
+                  {formatAmount(data.totalSpent, { currency: data.currency, variant: 'compact' })}
+                </span>
+              </div>
             </div>
           </div>
-        )
-      })}
+        )}
 
-      {data.rows.length === 0 && (
-        <div style={{ padding: pad, textAlign: 'center', paddingTop: 40 }}>
-          <p style={{ fontSize: 15, color: T.textMuted, marginBottom: 16 }}>
-            Nothing logged yet this month.
-          </p>
+        {/* ── 3. Where It Went — bar + all rows as one section ── */}
+        {data.totalSpent > 0 && (
+          <div style={{ marginBottom: 'var(--space-card-md)' }}>
+            <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Where it went
+            </p>
+
+            <div style={{ background: T.white, border: 'var(--border-width) solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+
+              {/* Segmented bar */}
+              {segments.length > 0 && (
+                <div style={{ padding: 'var(--space-card-sm) var(--space-card-sm) var(--radius-md)' }}>
+                  <div style={{ display: 'flex', height: 'var(--size-bar-md)', borderRadius: 'var(--radius-full)', overflow: 'hidden', marginBottom: 'var(--radius-md)', gap: 'var(--space-xs)' }}>
+                    {segments.map(s => (
+                      <div
+                        key={s.label}
+                        style={{
+                          height: '100%',
+                          width: `${(s.amount / data.totalSpent) * 100}%`,
+                          background: s.color,
+                          borderRadius: 'var(--radius-full)',
+                          transition: 'width 0.4s ease',
+                          minWidth: 'var(--space-xs)',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                    {segments.map(s => (
+                      <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                          <div style={{ width: 'var(--size-dot-sm)', height: 'var(--size-dot-sm)', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>{s.label}</span>
+                        </div>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: s.label === 'Debts' ? 'var(--red)' : T.text2 }}>
+                          {formatAmount(s.amount, { currency: data.currency, variant: 'compact' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All category rows — no per-type section headers */}
+              {data.rows.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+                  {data.rows.map((row, index) => {
+                    const rowPct    = row.planned > 0 ? (row.spent / row.planned) * 100 : 0
+                    const rowOver   = row.planned > 0 && row.spent > row.planned
+                    const isLast    = index === data.rows.length - 1
+                    const hasLogged = row.spent > 0
+                    const showBar   = hasLogged && row.planned > 0
+                    const ledgerUrl = `/history/${row.key}?label=${encodeURIComponent(row.label)}&planned=${row.planned}&type=${row.type}`
+
+                    const inner = (
+                      <div style={{ padding: `${showBar ? 'var(--radius-md)' : 'var(--radius-md)'} var(--space-card-sm) ${showBar ? 'var(--space-sm)' : 'var(--radius-md)'}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: hasLogged ? T.text1 : T.textMuted }}>
+                            {row.label}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2xs)', flexShrink: 0, marginLeft: 'var(--space-md)' }}>
+                            {hasLogged ? (
+                              <>
+                                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: rowOver ? 'var(--red)' : T.text1 }}>
+                                  {formatAmount(row.spent, { currency: data.currency, variant: 'compact' })}
+                                </span>
+                                <IconChevronRight size={14} color={T.textMuted} />
+                              </>
+                            ) : (
+                              <span style={{ fontSize: 'var(--text-sm)', color: T.textMuted }}>—</span>
+                            )}
+                          </div>
+                        </div>
+                        {showBar && <BarFill pct={rowPct} type={row.type} />}
+                      </div>
+                    )
+
+                    return (
+                      <div key={row.key} style={{ borderBottom: isLast ? 'none' : 'var(--border-width) solid var(--border-subtle)' }}>
+                        {hasLogged ? (
+                          <button
+                            onClick={() => router.push(ledgerUrl)}
+                            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'block', boxSizing: 'border-box' }}
+                          >
+                            {inner}
+                          </button>
+                        ) : inner}
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── 4. Empty state ── */}
+        {data.rows.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 'var(--space-xl) 0' }}>
+            <p style={{ fontSize: 'var(--text-base)', color: T.textMuted, marginBottom: 'var(--space-card-md)' }}>
+              Nothing logged yet this cycle.
+            </p>
+            <button
+              onClick={() => router.push('/log')}
+              style={{
+                height: 'var(--button-height-sm)', borderRadius: 'var(--radius-sm)',
+                background: 'var(--brand-dark)', color: 'var(--text-inverse)',
+                border: 'none', padding: '0 var(--space-xl)',
+                fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-base)', cursor: 'pointer',
+              }}
+            >
+              Log a payment
+            </button>
+          </div>
+        )}
+
+        {/* ── 5. CTA ── */}
+        {data.rows.length > 0 && (
           <button
-            onClick={() => router.push('/log')}
-            style={{
-              height: 48,
-              borderRadius: 12,
-              background: T.brandDark,
-              color: '#fff',
-              border: 'none',
-              padding: '0 28px',
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
+          onClick={() => router.push('/log')}
+          style={{
+            width: '100%', height: 'var(--button-height-md)', borderRadius: 'var(--radius-md)',
+            background: 'var(--brand-dark)', color: 'var(--text-inverse)',
+            border: 'none', fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-base)',
+            cursor: 'pointer', marginBottom: 'var(--space-sm)',
+          }}
           >
-            Log a payment
+            Log an expense
           </button>
-        </div>
-      )}
+        )}
+
+      </div>
     </div>
   )
 
@@ -293,7 +329,7 @@ export default function HistoryPageClient({ data }: HistoryPageClientProps) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 'calc(var(--bottom-nav-height) + var(--space-lg))' }}>
       <main>{content}</main>
       <BottomNav />
     </div>

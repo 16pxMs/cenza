@@ -280,7 +280,7 @@ export default function TargetsPageView({ goals, currency, totalIncome, onDone, 
 
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column',
-        padding: isDesktop ? '48px 80px 180px' : '32px 24px 180px',
+        padding: isDesktop ? '48px 80px 180px' : '32px var(--space-page-mobile) 180px',
         maxWidth: isDesktop ? 560 : '100%',
         margin: '0 auto', width: '100%', boxSizing: 'border-box',
       }}>
@@ -373,7 +373,7 @@ export default function TargetsPageView({ goals, currency, totalIncome, onDone, 
       <div style={{
         position: 'fixed', bottom: isDesktop ? 0 : 64, left: 0, right: 0,
         background: T.pageBg, borderTop: `1px solid var(--border-subtle)`,
-        padding: isDesktop ? '16px 0' : '12px 20px 16px',
+        padding: isDesktop ? '16px 0' : '12px var(--space-page-mobile) 16px',
       }}>
         <div style={{ maxWidth: isDesktop ? 560 : '100%', margin: '0 auto', padding: isDesktop ? '0 80px' : 0 }}>
           {!isLast && (

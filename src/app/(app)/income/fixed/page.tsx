@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { loadIncomePageData } from '@/lib/loaders/income'
+import { loadFixedExpensesSetupPageData } from '@/lib/loaders/income'
 import FixedExpensesPageClient from './FixedExpensesPageClient'
 
 interface FixedExpensesPageProps {
@@ -26,7 +26,7 @@ export default async function FixedExpensesPage({ searchParams }: FixedExpensesP
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const returnTo = readSearchParam(resolvedSearchParams, 'returnTo') ?? '/income'
-  const data = await loadIncomePageData(user.id, profile)
+  const data = await loadFixedExpensesSetupPageData(user.id, profile)
 
   return (
     <FixedExpensesPageClient

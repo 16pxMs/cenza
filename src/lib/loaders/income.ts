@@ -32,6 +32,83 @@ export interface IncomePageData {
   spendingHistory: Record<string, number>
 }
 
+export interface IncomeSetupPageData {
+  currency: string
+  incomeType: 'salaried' | 'variable' | null
+}
+
+export interface FixedExpensesSetupPageData {
+  currency: string
+  fixedExpenses: FixedExpenseRow | null
+}
+
+export interface SpendingBudgetSetupPageData {
+  currency: string
+  spendingBudget: SpendingBudgetRow | null
+  spendingHistory: Record<string, number>
+}
+
+export async function loadIncomeSetupPageData(profile: UserProfile): Promise<IncomeSetupPageData> {
+  return {
+    currency: profile.currency ?? 'KES',
+    incomeType: profile.income_type ?? null,
+  }
+}
+
+export async function loadFixedExpensesSetupPageData(
+  userId: string,
+  profile: UserProfile
+): Promise<FixedExpensesSetupPageData> {
+  const supabase = await createClient()
+  const cycleId = deriveCurrentCycleId(profile)
+
+  const { data } = await (supabase.from('fixed_expenses') as any)
+    .select('total_monthly, entries')
+    .eq('user_id', userId)
+    .eq('cycle_id', cycleId)
+    .maybeSingle()
+
+  return {
+    currency: profile.currency ?? 'KES',
+    fixedExpenses: (data ?? null) as FixedExpenseRow | null,
+  }
+}
+
+export async function loadSpendingBudgetSetupPageData(
+  userId: string,
+  profile: UserProfile
+): Promise<SpendingBudgetSetupPageData> {
+  const supabase = await createClient()
+  const cycleId = deriveCurrentCycleId(profile)
+  const prevCycleId = derivePrevCycleId(profile)
+
+  const [budgetRes, txnsRes] = await Promise.all([
+    (supabase.from('spending_budgets') as any)
+      .select('total_budget, categories')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    prevCycleId
+      ? (supabase.from('transactions') as any)
+          .select('category_key, amount')
+          .eq('user_id', userId)
+          .eq('cycle_id', prevCycleId)
+          .eq('category_type', 'everyday')
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const spendingHistory: Record<string, number> = {}
+  for (const txn of ((txnsRes.data ?? []) as SpendingHistoryRow[])) {
+    spendingHistory[txn.category_key] = (spendingHistory[txn.category_key] ?? 0) + Number(txn.amount)
+  }
+
+  return {
+    currency: profile.currency ?? 'KES',
+    spendingBudget: (budgetRes.data ?? null) as SpendingBudgetRow | null,
+    spendingHistory,
+  }
+}
+
 export async function loadIncomePageData(userId: string, profile: UserProfile): Promise<IncomePageData> {
   const supabase = await createClient()
   const cycleId = deriveCurrentCycleId(profile)

@@ -98,7 +98,7 @@ export default function IncomePageClient({
   })
 
   const content = (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: isDesktop ? '48px 32px 80px' : '28px 20px 100px' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: isDesktop ? '48px var(--space-page-desktop) 80px' : '28px var(--space-page-mobile) 100px' }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: '0 0 3px', fontSize: isDesktop ? 28 : 25, fontWeight: 700, color: T.text1, letterSpacing: '-0.5px', fontFamily: 'var(--font-display)' }}>
           Budget

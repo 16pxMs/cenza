@@ -1,17 +1,17 @@
 // ─────────────────────────────────────────────────────────────
 // SideNav — Sticky left navigation for desktop (1024px+)
-// 3 tabs: Overview (/), Income (/income), Goals (/goals)
+// 3 tabs: Overview (/app), Recap (/history), Budget (/income)
 // Active tab derived from current pathname
 // ─────────────────────────────────────────────────────────────
 'use client'
 import { useRouter, usePathname } from 'next/navigation'
 import styles from './SideNav.module.css'
-import { IconOverview, IconGoals, IconFinance } from '@/components/ui/Icons'
+import { IconOverview, IconSpend, IconFinance } from '@/components/ui/Icons'
 
 const TABS = [
-  { href: '/app',    label: 'Overview', Icon: IconOverview },
-  { href: '/income', label: 'Budgets',  Icon: IconFinance  },
-  { href: '/goals',  label: 'Goals',    Icon: IconGoals    },
+  { href: '/app',     label: 'Overview', Icon: IconOverview },
+  { href: '/history', label: 'Recap',    Icon: IconSpend    },
+  { href: '/income',  label: 'Budget',   Icon: IconFinance  },
 ]
 
 export function SideNav() {
@@ -25,7 +25,10 @@ export function SideNav() {
         <span className={styles.logoName}>Cenza</span>
       </div>
       {TABS.map(t => {
-        const on = pathname === t.href
+        const on =
+          t.href === '/app'
+            ? pathname === '/app'
+            : pathname === t.href || pathname.startsWith(`${t.href}/`)
         return (
           <button
             key={t.href}

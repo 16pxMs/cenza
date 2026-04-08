@@ -155,6 +155,12 @@ export function SpendingBudgetEditor({
     setShowCustom(false)
   }
 
+  const closeCustom = () => {
+    setShowCustom(false)
+    setAddLabel('')
+    setAddAmount('')
+  }
+
   const handleSave = () => {
     const categories: BudgetCategory[] = rows
       .map(r => ({ key: r.key, label: r.label, budget: parseFloat(stripCommas(r._amount)) || 0 }))
@@ -283,89 +289,17 @@ export function SpendingBudgetEditor({
 
         {/* ── Custom category ── */}
         <div style={{ marginTop: 16 }}>
-          {showCustom ? (
-            <div style={{
-              background: 'var(--grey-50)', border: `1px solid var(--border)`,
-              borderRadius: 14, padding: 14,
-            }}>
-              <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                Custom category
-              </p>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <input
-                  type="text"
-                  placeholder="Category name"
-                  value={addLabel}
-                  onChange={e => setAddLabel(e.target.value)}
-                  autoFocus
-                  onKeyDown={e => { if (e.key === 'Enter') addCustom() }}
-                  style={{
-                    flex: 1, height: 42, borderRadius: 10,
-                    border: `1px solid var(--border)`, background: T.white,
-                    padding: '0 12px', fontSize: 14, color: T.text1, outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <div style={{
-                  display: 'flex', alignItems: 'center',
-                  background: T.white, border: `1px solid var(--border)`,
-                  borderRadius: 10, padding: '0 10px', height: 42, width: 110,
-                  boxSizing: 'border-box',
-                }}>
-                  <span style={{ fontSize: 11, color: T.textMuted, marginRight: 4 }}>{currency}</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={addAmount}
-                    onChange={e => setAddAmount(withCommas(e.target.value))}
-                    onKeyDown={e => { if (e.key === 'Enter') addCustom() }}
-                    style={{
-                      flex: 1, border: 'none', background: 'transparent',
-                      fontSize: 14, fontWeight: 600, color: T.text1, outline: 'none',
-                      textAlign: 'right', minWidth: 0,
-                    }}
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => { setShowCustom(false); setAddLabel(''); setAddAmount('') }}
-                  style={{
-                    flex: 1, height: 38, borderRadius: 10,
-                    background: T.white, border: `1px solid var(--border)`,
-                    fontSize: 13, color: T.text3, cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={addCustom}
-                  disabled={!addLabel.trim() || !parseFloat(stripCommas(addAmount))}
-                  style={{
-                    flex: 1, height: 38, borderRadius: 10,
-                    background: T.brandDark, border: 'none',
-                    fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
-                    opacity: (!addLabel.trim() || !parseFloat(stripCommas(addAmount))) ? 0.45 : 1,
-                  }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowCustom(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '10px 0', fontSize: 14, color: T.brandDark, fontWeight: 500,
-              }}
-            >
-              <span style={{ fontSize: 17, lineHeight: 1 }}>+</span>
-              Custom category
-            </button>
-          )}
+          <button
+            onClick={() => setShowCustom(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '10px 0', fontSize: 14, color: T.brandDark, fontWeight: 500,
+            }}
+          >
+            <span style={{ fontSize: 17, lineHeight: 1 }}>+</span>
+            Custom category
+          </button>
         </div>
 
         {/* ── Save ── */}
@@ -382,6 +316,75 @@ export function SpendingBudgetEditor({
         >
           {saving ? 'Saving…' : rows.length === 0 ? 'Add a category to save' : `Save — ${currency} ${total.toLocaleString()}/mo`}
         </button>
+
+        <Sheet open={showCustom} onClose={closeCustom} title="Custom category">
+          <p style={{ margin: '0 0 16px', fontSize: 14, color: T.text3, lineHeight: 1.6 }}>
+            Use this when the spending bucket you need is not in the suggestions. The amount is the monthly budget for that category.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input
+              type="text"
+              placeholder="Category name"
+              value={addLabel}
+              onChange={e => setAddLabel(e.target.value)}
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter' && addLabel.trim() && parseFloat(stripCommas(addAmount))) addCustom() }}
+              style={{
+                width: '100%', height: 44, borderRadius: 10,
+                border: `1px solid var(--border)`, background: T.white,
+                padding: '0 12px', fontSize: 14, color: T.text1, outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: T.white, border: `1px solid var(--border)`,
+              borderRadius: 10, padding: '0 10px', height: 44,
+              boxSizing: 'border-box',
+            }}>
+              <span style={{ fontSize: 11, color: T.textMuted, marginRight: 6 }}>{currency}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={addAmount}
+                onChange={e => setAddAmount(withCommas(e.target.value))}
+                onKeyDown={e => { if (e.key === 'Enter' && addLabel.trim() && parseFloat(stripCommas(addAmount))) addCustom() }}
+                style={{
+                  flex: 1, border: 'none', background: 'transparent',
+                  fontSize: 14, fontWeight: 600, color: T.text1, outline: 'none',
+                  textAlign: 'right', minWidth: 0,
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button
+              onClick={closeCustom}
+              style={{
+                flex: 1, height: 40, borderRadius: 10,
+                background: T.white, border: `1px solid var(--border)`,
+                fontSize: 13, color: T.text3, cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={addCustom}
+              disabled={!addLabel.trim() || !parseFloat(stripCommas(addAmount))}
+              style={{
+                flex: 1, height: 40, borderRadius: 10,
+                background: T.brandDark, border: 'none',
+                fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
+                opacity: (!addLabel.trim() || !parseFloat(stripCommas(addAmount))) ? 0.45 : 1,
+              }}
+            >
+              Add
+            </button>
+          </div>
+        </Sheet>
 
     </div>
   )

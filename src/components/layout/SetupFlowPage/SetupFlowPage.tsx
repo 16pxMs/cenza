@@ -32,7 +32,7 @@ export function SetupFlowPage({
 
   return (
     <div style={{ minHeight: '100vh', background: T.pageBg }}>
-      <main style={{ maxWidth: 640, margin: '0 auto', padding: isDesktop ? '40px 28px 96px' : '24px 16px 88px' }}>
+      <main style={{ maxWidth: 640, margin: '0 auto', padding: isDesktop ? '40px var(--space-page-desktop) 96px' : '24px var(--space-page-mobile) 88px' }}>
         <button
           onClick={onBack}
           style={{

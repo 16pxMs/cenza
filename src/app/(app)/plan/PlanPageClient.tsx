@@ -121,7 +121,7 @@ export default function PlanPageClient({ data }: { data: PlanPageData }) {
     }}>
       <div style={{
         maxWidth: 520, margin: '0 auto',
-        padding: isDesktop ? '60px 40px 0' : '40px 20px 0',
+        padding: isDesktop ? '60px var(--space-page-desktop) 0' : '40px var(--space-page-mobile) 0',
       }}>
         <div style={{ marginBottom: 32, ...fade(0) }}>
           <h1 style={{
