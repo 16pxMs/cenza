@@ -2,6 +2,21 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/database'
 
+const COOKIE_BASE = {
+  path: '/',
+  sameSite: 'lax' as const,
+  secure: process.env.NODE_ENV === 'production',
+}
+
+export function getPostAuthDestination(input: {
+  onboardingComplete: boolean
+  hasPin: boolean
+  next: string
+}): string {
+  if (!input.onboardingComplete) return '/onboarding'
+  return input.hasPin ? '/pin' : input.next
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
@@ -33,7 +48,7 @@ export async function GET(request: NextRequest) {
       // Check if profile exists
       const { data: profile } = await (supabase as any)
         .from('user_profiles')
-        .select('id, onboarding_complete')
+        .select('id, onboarding_complete, pin_hash')
         .eq('id', user.id)
         .single()
 
@@ -66,22 +81,37 @@ export async function GET(request: NextRequest) {
       }
 
       // Existing user
-      const destination = profile.onboarding_complete ? next : '/onboarding'
+      const hasPin = !!profile.pin_hash
+      const destination = getPostAuthDestination({
+        onboardingComplete: profile.onboarding_complete,
+        hasPin,
+        next,
+      })
 
       const redirectResponse = withCookies(
         NextResponse.redirect(`${origin}${destination}`),
         pendingCookies
       )
 
+      redirectResponse.cookies.set('cenza-returning-user', user.id, {
+        ...COOKIE_BASE,
+        httpOnly: false,
+      })
+
+      if (hasPin) {
+        redirectResponse.cookies.set('cenza-has-pin', '1', {
+          ...COOKIE_BASE,
+          httpOnly: false,
+        })
+      }
+
       // Set a 2-minute fresh-auth cookie so /pin can offer PIN reset
       // after the forgot-PIN sign-out → sign-in flow.
       if (profile.onboarding_complete) {
         redirectResponse.cookies.set('cenza-fresh-auth', '1', {
+          ...COOKIE_BASE,
           httpOnly: false,
-          path: '/',
           maxAge: 120,
-          sameSite: 'lax',
-          secure: process.env.NODE_ENV === 'production',
         })
       }
 

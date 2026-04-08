@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { clearPinDeviceState } from '@/lib/actions/pin'
 import { createClient } from '@/lib/supabase/server'
 
 export async function signInWithGoogle() {
@@ -32,7 +33,8 @@ export async function signInWithGoogle() {
 }
 
 export async function signOut() {
+  await clearPinDeviceState({ forgetDevice: true })
   const supabase = await createClient()
   await supabase.auth.signOut()
-  redirect('/login')
+  redirect('/login?tab=login')
 }

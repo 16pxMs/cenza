@@ -11,7 +11,7 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
-import { clearPinVerified } from '@/lib/actions/pin'
+import { clearPinDeviceState } from '@/lib/actions/pin'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
@@ -118,9 +118,9 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
     try {
       await deleteAccountData()
-      await clearPinVerified()
+      await clearPinDeviceState({ forgetDevice: true })
       await supabase.auth.signOut()
-      window.location.href = '/login'
+      window.location.href = '/login?tab=login'
     } catch {
       setDeleteError('Failed to delete account data. Please try again.')
       setDeleting(false)
@@ -415,9 +415,9 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       {sectionCard(<>
         <button
           onClick={async () => {
-            await clearPinVerified()
+            await clearPinDeviceState({ forgetDevice: true })
             await supabase.auth.signOut()
-            window.location.href = '/login'
+            window.location.href = '/login?tab=login'
           }}
           style={{
             width: '100%', textAlign: 'left', background: 'none', border: 'none',

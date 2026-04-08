@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { verifyPin, clearPinVerified } from '@/lib/actions/pin'
+import { verifyPin, clearPinDeviceState } from '@/lib/actions/pin'
 import { PinPad } from '@/components/ui/PinPad'
 import { useUser } from '@/lib/context/UserContext'
 
@@ -88,9 +88,9 @@ export function PinEntryClient({ isFreshSession }: Props) {
   }, [locked])
 
   const handleForgotPin = async () => {
-    await clearPinVerified()
+    await clearPinDeviceState({ forgetDevice: true })
     await supabase.auth.signOut()
-    router.replace('/login')
+    router.replace('/login?tab=login')
   }
 
   const name = profile?.name ?? ''
@@ -124,6 +124,14 @@ export function PinEntryClient({ isFreshSession }: Props) {
           }}>
             Enter your PIN
           </h1>
+          <p style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-3)',
+            margin: '10px 0 0',
+            lineHeight: 1.5,
+          }}>
+            This device is already linked to your account. Use your PIN to continue.
+          </p>
         </div>
 
         {/* Error / lockout message */}

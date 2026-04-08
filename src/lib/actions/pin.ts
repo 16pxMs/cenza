@@ -6,11 +6,21 @@ import { createClient } from '@/lib/supabase/server'
 
 const HAS_PIN      = 'cenza-has-pin'
 const PIN_VERIFIED = 'cenza-pin-verified'
+const RETURNING_USER = 'cenza-returning-user'
 
 const COOKIE_BASE = {
   path:     '/',
   sameSite: 'lax' as const,
   secure:   process.env.NODE_ENV === 'production',
+}
+
+async function setKnownDeviceCookies(userId: string): Promise<void> {
+  const jar = await cookies()
+  // Non-httpOnly: middleware and public-entry UI use these to detect a returning device.
+  jar.set(HAS_PIN, '1', { ...COOKIE_BASE, httpOnly: false })
+  jar.set(RETURNING_USER, userId, { ...COOKIE_BASE, httpOnly: false })
+  // httpOnly session cookie: clears when browser closes
+  jar.set(PIN_VERIFIED, '1', { ...COOKIE_BASE, httpOnly: true })
 }
 
 // opts.onboarding: when true, also sets onboarding_complete = true in the same DB write.
@@ -34,11 +44,7 @@ export async function setupPin(pin: string, opts?: { onboarding?: boolean }): Pr
 
   if (error) throw new Error('Failed to save PIN')
 
-  const jar = await cookies()
-  // Non-httpOnly: middleware reads this to know a PIN exists
-  jar.set(HAS_PIN, '1', { ...COOKIE_BASE, httpOnly: false })
-  // httpOnly session cookie: clears when browser closes
-  jar.set(PIN_VERIFIED, '1', { ...COOKIE_BASE, httpOnly: true })
+  await setKnownDeviceCookies(user.id)
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
@@ -57,8 +63,7 @@ export async function verifyPin(pin: string): Promise<boolean> {
   const match = await bcrypt.compare(pin, profile.pin_hash)
 
   if (match) {
-    const jar = await cookies()
-    jar.set(PIN_VERIFIED, '1', { ...COOKIE_BASE, httpOnly: true })
+    await setKnownDeviceCookies(user.id)
   }
 
   return match
@@ -67,4 +72,15 @@ export async function verifyPin(pin: string): Promise<boolean> {
 export async function clearPinVerified(): Promise<void> {
   const jar = await cookies()
   jar.set(PIN_VERIFIED, '', { ...COOKIE_BASE, httpOnly: true, maxAge: 0 })
+}
+
+export async function clearPinDeviceState(opts?: { forgetDevice?: boolean }): Promise<void> {
+  const jar = await cookies()
+
+  jar.set(PIN_VERIFIED, '', { ...COOKIE_BASE, httpOnly: true, maxAge: 0 })
+
+  if (opts?.forgetDevice) {
+    jar.set(HAS_PIN, '', { ...COOKIE_BASE, httpOnly: false, maxAge: 0 })
+    jar.set(RETURNING_USER, '', { ...COOKIE_BASE, httpOnly: false, maxAge: 0 })
+  }
 }

@@ -87,7 +87,7 @@ export default function LandingPage() {
           Cenza
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Link href="/login?tab=login" style={{
+          <Link href="/login" style={{
             fontSize: 13, color: 'var(--text-1)', fontWeight: 500,
             textDecoration: 'none', padding: '8px 16px',
             borderRadius: 'var(--radius-sm)',
@@ -96,7 +96,7 @@ export default function LandingPage() {
           }}>
             Log in
           </Link>
-          <Link href="/login" style={{
+          <Link href="/start" style={{
             fontSize: 13, color: 'var(--text-inverse)', fontWeight: 600,
             textDecoration: 'none', padding: '8px 16px',
             borderRadius: 'var(--radius-sm)',
@@ -172,7 +172,7 @@ export default function LandingPage() {
 
           {/* CTA */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
-            <Link href="/login" style={{
+            <Link href="/start" style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               height: 52, padding: '0 32px',
               borderRadius: 'var(--radius-md)',

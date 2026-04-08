@@ -234,6 +234,18 @@
   outline-offset: 2px;
 }
 
+.returningNote {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(92, 52, 137, 0.08);
+  border: 1px solid rgba(92, 52, 137, 0.12);
+  color: #5C3489;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .privacyNote {
   text-align: center;
   font-family: var(--font-sans);

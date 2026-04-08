@@ -5,11 +5,10 @@
 // Flow:
 //   1. Any user interaction resets the idle timer
 //   2. After IDLE_MS of inactivity → show warning modal
-//   3. After WARN_MS on the warning → sign out + redirect /login
+//   3. After WARN_MS on the warning → lock + redirect /pin
 //   4. Checks on tab focus (user returns to an idle tab)
 // ─────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { clearPinVerified } from '@/lib/actions/pin'
 
 const IDLE_MS  = 15 * 60 * 1000  // 15 min inactivity → show warning
@@ -19,21 +18,19 @@ const LS_KEY   = 'cenza:last-active'
 const ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'touchstart', 'scroll'] as const
 
 export function SessionTimeout() {
-  const supabase       = createClient()
   const idleTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
   const warnTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [warning, setWarning]       = useState(false)
   const [countdown, setCountdown]   = useState(WARN_MS / 1000)
   const countdownRef   = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const signOut = useCallback(async () => {
+  const lockSession = useCallback(async () => {
     clearTimeout(idleTimer.current ?? undefined)
     clearTimeout(warnTimer.current ?? undefined)
     clearInterval(countdownRef.current ?? undefined)
-    await clearPinVerified()          // clear PIN before session ends
-    await supabase.auth.signOut()
-    window.location.href = '/login'
-  }, [supabase])
+    await clearPinVerified()
+    window.location.href = '/pin'
+  }, [])
 
   const startWarnCountdown = useCallback(() => {
     setWarning(true)
@@ -50,9 +47,9 @@ export function SessionTimeout() {
     }, 1000)
 
     warnTimer.current = setTimeout(() => {
-      signOut()
+      lockSession()
     }, WARN_MS)
-  }, [signOut])
+  }, [lockSession])
 
   const resetIdle = useCallback(() => {
     // Persist last-active so the tab-focus check works across tabs
@@ -91,8 +88,8 @@ export function SessionTimeout() {
       const last = parseInt(localStorage.getItem(LS_KEY) ?? '0', 10)
       const elapsed = Date.now() - last
       if (elapsed >= IDLE_MS + WARN_MS) {
-        // Idle + warn period already elapsed — sign out immediately
-        signOut()
+        // Idle + warn period already elapsed — lock immediately
+        lockSession()
       } else if (elapsed >= IDLE_MS && !warning) {
         // Idle period elapsed but warn not shown yet — show it
         startWarnCountdown()
@@ -100,7 +97,7 @@ export function SessionTimeout() {
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [warning, signOut, startWarnCountdown])
+  }, [warning, lockSession, startWarnCountdown])
 
   if (!warning) return null
 
@@ -166,14 +163,14 @@ export function SessionTimeout() {
         </button>
 
         <button
-          onClick={signOut}
+          onClick={lockSession}
           style={{
             width: '100%', marginTop: 10, padding: '10px 0',
             background: 'none', border: 'none',
             fontSize: 14, color: '#98A2B3', cursor: 'pointer',
           }}
         >
-          Sign out now
+          Lock now
         </button>
       </div>
     </div>

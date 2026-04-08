@@ -1,51 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { signInWithGoogle } from '@/app/auth/actions'
 import styles from './login.module.css'
-
-function WelcomeScreen({ onNext }: { onNext: () => void }) {
-  return (
-    <div className={styles.pageWrapper}>
-      <div className={styles.decorTop} />
-      <div className={styles.decorMid} />
-
-      <Link href="/" className={styles.backButton}>
-        <ArrowLeft size={16} />
-        Back
-      </Link>
-
-      <div className={styles.content}>
-        <div className={styles.logo}>Cenza</div>
-
-        <h1 className={styles.headline}>
-          See your money clearly,
-          <span className={styles.headlineAccent}> Make better moves.</span>
-        </h1>
-
-        <p className={styles.description}>
-          Track spending, understand your patterns, and get simple guidance on what to do next.
-        </p>
-
-        <div className={styles.ctaArea}>
-          <button className={styles.primaryButton} onClick={onNext}>
-            Get started
-          </button>
-
-          <p className={styles.signInRow}>
-            Already have an account?
-            <button type="button" onClick={onNext} className={styles.tertiaryButton}>
-              Sign in
-            </button>
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function GoogleIcon() {
   return (
@@ -55,14 +14,17 @@ function GoogleIcon() {
   )
 }
 
-export default function LoginClient() {
-  const searchParams = useSearchParams()
-  const isReturning = searchParams.get('tab') === 'login'
-  const [showLogin, setShowLogin] = useState(isReturning)
+function hasReturningDevice() {
+  if (typeof document === 'undefined') return false
+  return document.cookie.split(';').some(cookie => cookie.trim().startsWith('cenza-returning-user='))
+}
 
-  if (!showLogin) {
-    return <WelcomeScreen onNext={() => setShowLogin(true)} />
-  }
+export default function LoginClient() {
+  const [knownDevice, setKnownDevice] = useState(false)
+
+  useEffect(() => {
+    setKnownDevice(hasReturningDevice())
+  }, [])
 
   return (
     <div className={styles.authWrapper}>
@@ -71,7 +33,7 @@ export default function LoginClient() {
 
       <button
         type="button"
-        onClick={() => setShowLogin(false)}
+        onClick={() => window.location.href = '/'}
         className={styles.backButton}
       >
         <ArrowLeft size={16} />
@@ -81,18 +43,26 @@ export default function LoginClient() {
       <div className={styles.authCard}>
         <div className={styles.logo}>Cenza</div>
         <h1 className={styles.authTitle}>
-          {isReturning ? 'Welcome back.' : 'Create your account'}
+          {knownDevice
+            ? 'Welcome back.'
+            : 'Welcome back.'}
         </h1>
         <p className={styles.authSubtitle}>
-          {isReturning
-            ? 'Good to see you again. Continue with Google to pick up where you left off.'
-            : 'Log in securely with Google. It only takes a second.'}
+          {knownDevice
+            ? 'This device already knows your account. Continue with Google to reconnect securely, then we will take you straight to your PIN.'
+            : 'Continue with Google to reconnect securely and pick up where you left off.'}
         </p>
+
+        {knownDevice && (
+          <div className={styles.returningNote}>
+            PIN is your normal re-entry step on this device. Google is only used here to restore your secure session.
+          </div>
+        )}
 
         <form action={signInWithGoogle}>
           <button type="submit" className={styles.googleButton}>
             <GoogleIcon />
-            Continue with Google
+            {knownDevice ? 'Reconnect with Google' : 'Continue with Google'}
           </button>
         </form>
 
