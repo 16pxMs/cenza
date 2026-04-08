@@ -29,7 +29,6 @@ interface GoalTargetRow {
 interface GoalTransactionRow {
   category_key: string
   amount: number | string
-  month: string
   date: string
 }
 
@@ -41,7 +40,7 @@ export async function loadGoalsPageData(userId: string, profile: UserProfile): P
       .select('goal_id, amount, added_at, destination')
       .eq('user_id', userId),
     (supabase.from('transactions') as any)
-      .select('category_key, amount, month, date')
+      .select('category_key, amount, date')
       .eq('user_id', userId)
       .eq('category_type', 'goal'),
   ])
@@ -69,7 +68,8 @@ export async function loadGoalsPageData(userId: string, profile: UserProfile): P
 
     savedByGoal[txn.category_key] = (savedByGoal[txn.category_key] ?? 0) + Number(txn.amount)
     if (!monthBuckets[txn.category_key]) monthBuckets[txn.category_key] = {}
-    monthBuckets[txn.category_key][txn.month] = (monthBuckets[txn.category_key][txn.month] ?? 0) + Number(txn.amount)
+    const monthKey = txn.date.slice(0, 7)
+    monthBuckets[txn.category_key][monthKey] = (monthBuckets[txn.category_key][monthKey] ?? 0) + Number(txn.amount)
   }
 
   const monthlyAvg: Record<string, number> = {}

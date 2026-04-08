@@ -12,6 +12,8 @@ Personal finance tracker. Built with Next.js, Supabase, and inline styles.
 - **Vercel** — deployment
 - **Inline styles** — design tokens in `src/constants/tokens.ts`
 
+Architecture notes live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ---
 
 ## Getting started

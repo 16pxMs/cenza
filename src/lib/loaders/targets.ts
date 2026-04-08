@@ -10,6 +10,7 @@ interface GoalTargetRow {
 interface IncomeRow {
   salary: number | string | null
   extra_income: Array<{ amount?: number | string }> | null
+  created_at: string
 }
 
 export interface TargetsPageData {
@@ -27,9 +28,9 @@ export async function loadTargetsPageData(userId: string, profile: UserProfile):
       .select('goal_id, amount, destination')
       .eq('user_id', userId),
     (supabase.from('income_entries') as any)
-      .select('salary, extra_income')
+      .select('salary, extra_income, created_at')
       .eq('user_id', userId)
-      .order('month', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
   ])

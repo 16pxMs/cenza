@@ -48,7 +48,7 @@ export interface ExtraIncomeItem {
 export interface IncomeEntry {
   id:                    string
   user_id:               string
-  cycle_id:              string | null
+  cycle_id:              string
   salary:                number
   extra_income:          ExtraIncomeItem[]
   total:                 number
@@ -59,17 +59,14 @@ export interface IncomeEntry {
 }
 
 export interface FixedExpense {
-  id: string
-  user_id: string
-  key: string | null
-  amount: number | null
-  frequency: Frequency | null
-  monthly_equivalent: number | null
-  month: string | null
-  entries: any[] | null
-  total_monthly: number | null
-  created_at: string
-  updated_at: string
+  id:                   string
+  user_id:              string
+  cycle_id:             string
+  entries:              unknown[] | null
+  total_monthly:        number | null
+  last_confirmed_month: string | null
+  created_at:           string
+  updated_at:           string
 }
 
 export interface SpendingCategory {
@@ -83,24 +80,27 @@ export interface SpendingCategory {
 }
 
 export interface SpendingBudget {
-  id:         string
-  user_id:    string
-  cycle_id:   string | null
-  budgets:    Record<string, number>  // category_key → amount
-  created_at: string
-  updated_at: string
+  id:           string
+  user_id:      string
+  cycle_id:     string
+  categories:   unknown[] | null
+  total_budget: number | null
+  source:       string | null
+  created_at:   string
+  updated_at:   string
 }
 
 export interface Subscription {
-  id: string
-  user_id: string
-  key: string
-  label: string
-  status: SubscriptionStatus
-  amount: number | null
-  needs_check: boolean
-  created_at: string
-  updated_at: string
+  id:                   string
+  user_id:              string
+  key:                  string
+  label:                string
+  status:               SubscriptionStatus
+  amount:               number | null
+  needs_check:          boolean
+  last_confirmed_month: string | null
+  created_at:           string
+  updated_at:           string
 }
 
 export interface GoalTarget {
@@ -118,13 +118,25 @@ export interface Transaction {
   id:             string
   user_id:        string
   date:           string   // 'YYYY-MM-DD'
-  cycle_id:       string | null
+  cycle_id:       string
   category_type:  CategoryType
   category_key:   string
   category_label: string
   amount:         number
   note:           string | null
   created_at:     string
+}
+
+export interface ItemDictionary {
+  id:              string
+  user_id:         string
+  name_normalized: string
+  label:           string
+  category_key:    string
+  category_type:   CategoryType
+  usage_count:     number
+  created_at:      string
+  updated_at:      string
 }
 
 // ─── Supabase database shape (for typed client) ───────────────────────────────
@@ -141,6 +153,7 @@ export interface Database {
       subscriptions:       { Row: Subscription;       Insert: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Subscription> }
       goal_targets:        { Row: GoalTarget;         Insert: Omit<GoalTarget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<GoalTarget> }
       transactions:        { Row: Transaction;        Insert: Omit<Transaction, 'id' | 'created_at'>; Update: Partial<Transaction> }
+      item_dictionary:     { Row: ItemDictionary;     Insert: Omit<ItemDictionary, 'id' | 'created_at' | 'updated_at'>; Update: Partial<ItemDictionary> }
     }
   }
 }
