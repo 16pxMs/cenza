@@ -14,12 +14,12 @@ interface Props {
 }
 
 const T = {
-  brand:  '#5C3489',
-  text1:  '#101828',
-  text2:  '#475467',
-  border: '#E4E7EC',
-  bg:     '#F9FAFB',
-  white:  '#FFFFFF',
+  brand:     'var(--brand-dark)',
+  text1:     'var(--text-1)',
+  text2:     'var(--text-2)',
+  border:    'var(--border)',
+  bgSubtle:  'var(--grey-50)',
+  bgMuted:   'var(--grey-100)',
 }
 
 // Standard phone keypad layout
@@ -53,7 +53,7 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
         }
       `}</style>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 36 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 34 }}>
 
         {/* 4-dot indicator */}
         <div style={{
@@ -64,7 +64,7 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
             <div
               key={i}
               style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 13, height: 13, borderRadius: '50%',
                 background:  i < value.length ? T.brand : 'transparent',
                 border:      `2px solid ${i < value.length ? T.brand : T.border}`,
                 transition:  'background 0.12s, border-color 0.12s',
@@ -76,7 +76,7 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
         {/* Number pad */}
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 12, width: '100%', maxWidth: 288,
+          gap: 12, width: '100%', maxWidth: 276,
         }}>
           {ROWS.flat().map((key, i) => {
             if (key === null) return <div key={`cell-${i}`} />
@@ -88,12 +88,13 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
                   onClick={handleDelete}
                   disabled={disabled || value.length === 0}
                   style={{
-                    height: 64, borderRadius: 16,
-                    background: T.bg, border: `1px solid ${T.border}`,
+                    height: 84, width: 84, borderRadius: '50%',
+                    background: value.length === 0 ? T.bgMuted : T.bgSubtle,
+                    border: `1px solid ${T.border}`,
                     color: T.text2, fontSize: 20,
                     cursor: disabled || value.length === 0 ? 'default' : 'pointer',
-                    opacity: value.length === 0 ? 0.3 : 1,
-                    transition: 'opacity 0.12s',
+                    opacity: value.length === 0 ? 0.55 : 1,
+                    transition: 'opacity 0.12s, background 0.12s',
                     fontFamily: 'inherit',
                   }}
                 >
@@ -108,12 +109,12 @@ export function PinPad({ value, onChange, shake = false, disabled = false }: Pro
                 onClick={() => handleDigit(key)}
                 disabled={disabled}
                 style={{
-                  height: 64, borderRadius: 16,
-                  background: T.white, border: `1px solid ${T.border}`,
-                  color: T.text1, fontSize: 22, fontWeight: 500,
+                  height: 84, width: 84, borderRadius: '50%',
+                  background: T.bgSubtle, border: `1px solid ${T.border}`,
+                  color: T.text1, fontSize: 20, fontWeight: 500,
                   cursor: disabled ? 'default' : 'pointer',
                   fontFamily: 'inherit',
-                  transition: 'background 0.1s',
+                  transition: 'background 0.1s, transform 0.08s',
                 }}
               >
                 {key}

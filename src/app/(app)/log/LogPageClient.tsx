@@ -111,12 +111,8 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     if (searchParams.get('open') !== 'true') return
 
     autoOpened.current = true
-    if (data.isFirstTime) {
-      router.push('/log/first')
-    } else {
-      logOther()
-    }
-  }, [data.isFirstTime, router, searchParams])
+    logOther()
+  }, [router, searchParams])
 
   const handleSaveRefund = async () => {
     if (!pendingDelete) return
@@ -396,7 +392,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         <div style={{ padding: '0 32px' }}>
           <PrimaryBtn
             size="lg"
-            onClick={() => data.isFirstTime ? router.push('/log/first') : logOther()}
+            onClick={() => router.push('/log/new?returnTo=/log')}
             style={{ background: T.brandDark, color: T.textInverse }}
           >
             Add expense
@@ -731,7 +727,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       }}>
         <PrimaryBtn
           size="lg"
-          onClick={() => data.isFirstTime ? router.push('/log/first') : logOther()}
+          onClick={() => router.push('/log/new?returnTo=/log')}
           style={{
             background: T.brandDark,
             color: T.textInverse,

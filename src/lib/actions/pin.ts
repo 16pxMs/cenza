@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 const HAS_PIN      = 'cenza-has-pin'
 const PIN_VERIFIED = 'cenza-pin-verified'
 const RETURNING_USER = 'cenza-returning-user'
+const KNOWN_DEVICE_MAX_AGE = 60 * 60 * 24 * 30
 
 const COOKIE_BASE = {
   path:     '/',
@@ -17,8 +18,8 @@ const COOKIE_BASE = {
 async function setKnownDeviceCookies(userId: string): Promise<void> {
   const jar = await cookies()
   // Non-httpOnly: middleware and public-entry UI use these to detect a returning device.
-  jar.set(HAS_PIN, '1', { ...COOKIE_BASE, httpOnly: false })
-  jar.set(RETURNING_USER, userId, { ...COOKIE_BASE, httpOnly: false })
+  jar.set(HAS_PIN, '1', { ...COOKIE_BASE, httpOnly: false, maxAge: KNOWN_DEVICE_MAX_AGE })
+  jar.set(RETURNING_USER, userId, { ...COOKIE_BASE, httpOnly: false, maxAge: KNOWN_DEVICE_MAX_AGE })
   // httpOnly session cookie: clears when browser closes
   jar.set(PIN_VERIFIED, '1', { ...COOKIE_BASE, httpOnly: true })
 }

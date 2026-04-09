@@ -28,9 +28,11 @@ interface SpendingBudgetData {
 }
 
 interface OverviewTransactionRow {
+  id: string | number
   amount: number | string
   category_key: string
   category_type: string
+  category_label: string | null
   date: string
 }
 
@@ -58,9 +60,22 @@ export interface OverviewPageData {
   fixedTotal: number
   spendingBudget: SpendingBudgetData | null
   categorySpend: Record<string, number>
+  recentActivity: Array<{
+    id: string
+    label: string
+    amount: number
+    date: string
+  }>
   goalTargets: Record<string, number>
   goalSaved: Record<string, number>
   goalLabels: Record<string, string>
+}
+
+function titleFromKey(key: string): string {
+  return key
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 function toGoalLabel(goalId: GoalId, destination: string | null): string {
@@ -81,7 +96,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     { data: goalTargets },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('amount, category_key, category_type, date')
+      .select('id, amount, category_key, category_type, category_label, date')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     (supabase.from('income_entries') as any)
@@ -147,6 +162,19 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     return [nextTotalSpent, nextCategorySpend, nextGoalSavedMap] as const
   })()
 
+  const recentActivity = [...transactionRows]
+    .sort((a, b) => {
+      if (a.date === b.date) return Number(b.id) - Number(a.id)
+      return b.date.localeCompare(a.date)
+    })
+    .slice(0, 3)
+    .map((txn) => ({
+      id: String(txn.id),
+      label: (txn.category_label && txn.category_label.trim()) || titleFromKey(txn.category_key || 'Expense'),
+      amount: Math.abs(Number(txn.amount ?? 0)),
+      date: txn.date,
+    }))
+
   const extraIncome = (incomeRow?.extra_income ?? []).map((item, index) => ({
     id: String(item?.id ?? index),
     label: String(item?.label ?? 'Extra income'),
@@ -188,6 +216,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     fixedTotal,
     spendingBudget: spendingBudgetData,
     categorySpend,
+    recentActivity,
     goalTargets: goalTargetsMap,
     goalSaved: goalSavedMap,
     goalLabels,

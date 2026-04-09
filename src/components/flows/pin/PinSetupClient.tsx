@@ -4,7 +4,7 @@
 // PinSetupClient — enter + confirm PIN flow
 //
 // Used by:
-//   /onboarding/pin  (isReset=false, redirectTo='/')
+//   /onboarding/pin  (isReset=false, redirectTo='/app')
 //   /pin/reset       (isReset=true,  redirectTo='/app')
 // ─────────────────────────────────────────────────────────────
 

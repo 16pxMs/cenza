@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { signInWithGoogle } from '@/app/auth/actions'
 
 const PREVIEW_CATEGORIES = [
   { emoji: '🛒', label: 'Groceries',   spent: 420,  budget: 500  },
@@ -6,7 +7,27 @@ const PREVIEW_CATEGORIES = [
   { emoji: '🍽️', label: 'Eating out', spent: 510,  budget: 400  },
 ]
 
-export default function LandingPage() {
+function TryCenzaAction({
+  label,
+  className,
+}: {
+  label: string
+  className: string
+}) {
+  return (
+    <form action={signInWithGoogle} style={{ margin: 0 }}>
+      <input type="hidden" name="source" value="start" />
+      <button
+        type="submit"
+        className={className}
+      >
+        {label}
+      </button>
+    </form>
+  )
+}
+
+export default async function LandingPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--white)', fontFamily: 'var(--font-sans)' }}>
 
@@ -51,6 +72,37 @@ export default function LandingPage() {
           background: var(--border-strong);
           margin: 40px 0;
         }
+        .landing-btn-base {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--radius-sm);
+          font-size: var(--text-sm);
+          font-weight: var(--weight-semibold);
+          letter-spacing: 0.01em;
+          text-decoration: none;
+          border: 1px solid transparent;
+          padding: 0 16px;
+          height: var(--button-height-sm);
+          cursor: pointer;
+          font-family: var(--font-sans);
+        }
+        .landing-btn-secondary {
+          background: var(--white);
+          color: var(--text-1);
+          border-color: var(--border-strong);
+        }
+        .landing-btn-primary {
+          background: var(--brand-dark);
+          color: var(--text-inverse);
+          border-color: var(--brand-dark);
+        }
+        .landing-btn-hero {
+          height: var(--button-height);
+          border-radius: var(--radius-md);
+          padding: 0 32px;
+          font-size: var(--text-md);
+        }
         @media (min-width: 1024px) {
           .landing-topbar {
             max-width: 1160px;
@@ -81,30 +133,19 @@ export default function LandingPage() {
       {/* ── Top bar ── */}
       <div className="landing-topbar">
         <span style={{
-          fontSize: 15, fontWeight: 700, color: 'var(--text-1)',
+          fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--text-1)',
           letterSpacing: '-0.3px',
         }}>
           Cenza
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Link href="/login" style={{
-            fontSize: 13, color: 'var(--text-1)', fontWeight: 500,
-            textDecoration: 'none', padding: '8px 16px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-strong)',
-            letterSpacing: '-0.1px',
-          }}>
+          <Link href="/login" className="landing-btn-base landing-btn-secondary">
             Log in
           </Link>
-          <Link href="/start" style={{
-            fontSize: 13, color: 'var(--text-inverse)', fontWeight: 600,
-            textDecoration: 'none', padding: '8px 16px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--brand-dark)',
-            letterSpacing: '-0.1px',
-          }}>
-            Try Cenza
-          </Link>
+          <TryCenzaAction
+            label="Try Cenza"
+            className="landing-btn-base landing-btn-primary"
+          />
         </div>
       </div>
 
@@ -172,16 +213,10 @@ export default function LandingPage() {
 
           {/* CTA */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
-            <Link href="/start" style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              height: 52, padding: '0 32px',
-              borderRadius: 'var(--radius-md)',
-              background: 'var(--brand-dark)', color: 'var(--text-inverse)',
-              fontSize: 15, fontWeight: 600, textDecoration: 'none',
-              letterSpacing: '-0.2px',
-            }}>
-              Try Cenza, it's free
-            </Link>
+            <TryCenzaAction
+              label="Try Cenza, it's free"
+              className="landing-btn-base landing-btn-primary landing-btn-hero"
+            />
             <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Free. No card, no catch.</p>
           </div>
         </div>

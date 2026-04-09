@@ -11,7 +11,6 @@ import { useState } from 'react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { OverviewEmpty } from '@/components/flows/overview/OverviewEmpty'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
 import { AddIncomeSheet } from '@/components/flows/income/AddIncomeSheet'
 import {
@@ -700,13 +699,12 @@ function AppShell({ screen }: { screen: DemoScreen }) {
   const incomeData  = screen !== 'app-empty' ? MOCK.income : null
   const goalTargets = (screen === 'app-goals-set' || screen === 'app-expenses-set') ? MOCK.goalTargets : null
 
-  const overview = incomeData === null
-    ? <OverviewEmpty name={MOCK.name} currency={MOCK.currency} onSave={() => setIncomeSheetOpen(true)} />
-    : <OverviewWithData
-        name={MOCK.name} currency={MOCK.currency} goals={MOCK.goals}
-        incomeData={incomeData} goalTargets={goalTargets}
-        isDesktop={isDesktop}
-      />
+  const overview = <OverviewWithData
+    name={MOCK.name} currency={MOCK.currency} goals={MOCK.goals}
+    incomeData={incomeData} goalTargets={goalTargets}
+    isDesktop={isDesktop}
+    onLogExpense={() => setIncomeSheetOpen(true)}
+  />
 
   return (
     <>

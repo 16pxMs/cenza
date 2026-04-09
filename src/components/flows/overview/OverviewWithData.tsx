@@ -2,22 +2,20 @@
 // OverviewWithData — Main overview screen once income is saved
 //
 // Card order:
-//   No goals  → goals empty state first, then spending
-//   Has goals → spending first, then goals progress
-//
-// The "why" comes before the "what" when there's no goal yet.
+//   Spending first, then goals progress (if goals exist)
 // ─────────────────────────────────────────────────────────────
 
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, AlertTriangle, TrendingUp, Target, CheckCircle, ChevronRight } from 'lucide-react'
+import { AlertTriangle, TrendingUp, Target, CheckCircle, ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
 import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemainingPct } from '@/lib/math/finance'
-import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { GoalContribSheet } from './GoalContribSheet'
+import { OverviewEmptyState } from './OverviewEmptyState'
 
 const GOAL_META: Record<string, {
   label: string
@@ -35,8 +33,6 @@ const GOAL_META: Record<string, {
   family:     { label: 'Family',         icon: '👨‍👩‍👧', lightColor: '#EADFF4', borderColor: '#C9AEE8', darkColor: '#5C3489' },
   other:      { label: 'Other Goal',     icon: '⭐', lightColor: '#EADFF4', borderColor: '#C9AEE8', darkColor: '#5C3489' },
 }
-
-const DEBT_DISMISSED_KEY = 'cenza_debt_card_dismissed'
 
 interface IncomeData {
   income: number
@@ -61,30 +57,24 @@ interface Props {
   fixedTotal?: number
   spendingBudget?: { categories: any[] } | null
   categorySpend?: Record<string, number>
+  recentActivity?: Array<{ id: string; label: string; amount: number; date: string }>
   isDesktop?: boolean
 }
 
 export function OverviewWithData({
   name, currency, goals, incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onLogExpense, onConfirmIncome, onContribGoal,
-  totalSpent = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, isDesktop,
+  totalSpent = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
-  const [debtDismissed, setDebtDismissed] = useState(false)
   const [goalsExpanded, setGoalsExpanded] = useState(false)
   const [activeGoalContrib, setActiveGoalContrib] = useState<string | null>(null)
 
   useEffect(() => {
-    setDebtDismissed(localStorage.getItem(DEBT_DISMISSED_KEY) === '1')
     const t = setTimeout(() => setMounted(true), 60)
     return () => clearTimeout(t)
   }, [])
-
-  const dismissDebt = () => {
-    localStorage.setItem(DEBT_DISMISSED_KEY, '1')
-    setDebtDismissed(true)
-  }
 
   // ── Income ──────────────────────────────────────────────────
   const totalIncome = incomeData
@@ -96,15 +86,6 @@ export function OverviewWithData({
   const filledGoals  = goalTargets ? Object.keys(goalTargets).length : 0
   const isComplete   = totalGoals > 0 && filledGoals >= totalGoals
   const pendingGoals = totalGoals - filledGoals
-
-  // ── Spending body copy — contextual once goals exist (idea 4) ─
-  const firstGoalMeta  = goals.length > 0 ? GOAL_META[goals[0]] : null
-  const firstGoalLabel = goals.length > 0 ? (goalLabels[goals[0]] ?? firstGoalMeta?.label ?? '') : ''
-  const spendBodyCopy  = firstGoalMeta
-    ? goals.length === 1
-      ? `Record your expenses to see what's left for your ${firstGoalLabel}.`
-      : `Record your expenses to see what's left for your goals.`
-    : `Add your first expense to see where your money is going.`
 
   // ── Fade-in helper ───────────────────────────────────────────
   const fade = (delay: number): React.CSSProperties => ({
@@ -123,6 +104,7 @@ const reference = receivedConfirmed
 
   const spentPct  = calculatePct(totalSpent, reference)
   const hasLogged = totalSpent > 0
+  const isCanonicalEmpty = totalIncome <= 0 && !hasLogged && !receivedConfirmed
 
   // State B: received confirmed, nothing logged — hero is full available amount
   const stateBCard = (ref: number) => (
@@ -170,6 +152,12 @@ const reference = receivedConfirmed
   )
 
   const stateStartedCard = (spent: number) => (
+    (() => {
+      const incomeStepDone = totalIncome > 0 || receivedConfirmed
+      const setupStepsDone = (hasLogged ? 1 : 0) + (incomeStepDone ? 1 : 0)
+      const setupProgressPct = Math.round((setupStepsDone / 2) * 100)
+
+      return (
     <div style={{
       background: '#fff', borderRadius: 20, padding: '24px',
       marginTop: 16, boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
@@ -181,40 +169,45 @@ const reference = receivedConfirmed
       <p style={{ margin: '0 0 10px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
         {formatAmount(spent, { currency, variant: 'full' })}
       </p>
+
+      <div style={{ height: 5, background: 'var(--grey-100)', borderRadius: 99, marginBottom: 10 }}>
+        <div style={{ height: '100%', width: `${setupProgressPct}%`, background: 'var(--brand-dark)', borderRadius: 99 }} />
+      </div>
+      <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-muted)' }}>
+        Setup progress: {setupStepsDone} of 2 complete
+      </p>
+
       <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65 }}>
         Your dashboard is live now. Add your income next to see what is left after spending.
       </p>
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '10px 12px',
+        borderRadius: 12,
+        background: 'var(--grey-50)',
+        border: '1px solid var(--border-subtle)',
+        marginBottom: 14,
+      }}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+          Next step: add your monthly income.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
         <PrimaryBtn
           size="lg"
           onClick={() => router.push('/income/new?returnTo=/app')}
-          style={{ flex: 1 }}
         >
           Add income
         </PrimaryBtn>
-        <SecondaryBtn
-          onClick={onLogExpense}
-          style={{
-            width: 'auto',
-            padding: '0 18px',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Add expense
-        </SecondaryBtn>
       </div>
-      <SecondaryBtn
-        size="lg"
-        onClick={() => router.push('/log')}
-        style={{
-          marginTop: 10,
-          color: 'var(--text-2)',
-        }}
-      >
-        View expense log
-      </SecondaryBtn>
     </div>
+      )
+    })()
   )
 
   // State C: live spend — hero is what remains, bar depletes as spend grows
@@ -303,50 +296,145 @@ const reference = receivedConfirmed
     : receivedConfirmed
     // ── State B: received confirmed, nothing logged yet ─────────
     ? stateBCard(reference)
-    : (
-    // ── State A: setup mode ────────────────────────────────────
-    <div style={{
-      marginTop: 16, background: '#fff',
-      borderRadius: 20, padding: '22px 24px 24px',
-      border: '1px solid var(--border)',
-      ...fade(totalGoals === 0 ? 0.18 : 0.08),
-    }}>
-      <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-        Your spending
-      </p>
-      <p style={{ margin: '0 0 20px', fontSize: 15, color: 'var(--text-2)', lineHeight: 1.65 }}>
-        {spendBodyCopy}
-      </p>
-      <PrimaryBtn size="lg" onClick={onLogExpense}>
-        Add an expense
-      </PrimaryBtn>
-    </div>
-  )
+    : stateBCard(reference)
 
-  // ── Compact goals prompt ────────────────────────────────────
-  const goalPromptCard = (
-    <div style={{
-      background: 'var(--white)', border: '1px solid var(--border)',
-      borderRadius: 18, padding: '18px 20px',
-      marginTop: 16, ...fade(0.15),
-    }}>
-      <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-        Goals
-      </p>
-      <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px', lineHeight: 1.25 }}>
-        Set a goal when you're ready.
-      </h3>
-      <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-        Emergency fund, travel, school fees. Adding a goal helps Cenza show what your money is building toward.
-      </p>
-      <SecondaryBtn
-        onClick={() => router.push('/goals/new?from=overview')}
-        size="md"
-      >
-        Create a goal
-      </SecondaryBtn>
-    </div>
-  )
+  const isStartedNoIncomeState = hasLogged && totalIncome <= 0 && !receivedConfirmed
+
+  const formatRecentDateLabel = (isoDate: string) => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const [year, month, day] = isoDate.split('-').map(Number)
+    const txnDate = new Date(year, (month ?? 1) - 1, day ?? 1)
+    txnDate.setHours(0, 0, 0, 0)
+
+    const diffDays = Math.round((today.getTime() - txnDate.getTime()) / (1000 * 60 * 60 * 24))
+    if (diffDays <= 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    return txnDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  const startedNoIncomeSections = isStartedNoIncomeState ? (
+    <>
+      <div style={{ marginTop: 14, ...fade(0.12) }}>
+        <div style={{
+          background: 'var(--white)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          padding: '14px',
+        }}>
+          <p style={{
+            margin: '0 0 10px',
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            fontWeight: 600,
+            letterSpacing: '0.07em',
+            textTransform: 'uppercase',
+          }}>
+            Quick actions
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <SecondaryBtn
+              size="md"
+              onClick={onLogExpense}
+              style={{ flex: 1 }}
+            >
+              Log expense
+            </SecondaryBtn>
+            <TertiaryBtn
+              size="md"
+              onClick={() => router.push('/log')}
+              style={{ width: 'auto', padding: '0 14px', whiteSpace: 'nowrap' }}
+            >
+              View log
+            </TertiaryBtn>
+          </div>
+        </div>
+      </div>
+
+      {recentActivity.length > 0 && (
+        <div style={{ marginTop: 14, ...fade(0.16) }}>
+          <div style={{
+            background: 'var(--white)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            padding: '14px 16px',
+          }}>
+            <p style={{
+              margin: '0 0 8px',
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              fontWeight: 600,
+              letterSpacing: '0.07em',
+              textTransform: 'uppercase',
+            }}>
+              Recent activity
+            </p>
+            {recentActivity.map((item, index) => (
+              <div
+                key={item.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  padding: '11px 0',
+                  borderBottom: index < recentActivity.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: '0 0 3px', fontSize: 15, color: 'var(--text-1)', fontWeight: 600 }}>
+                    {item.label}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                    {formatRecentDateLabel(item.date)}
+                  </p>
+                </div>
+                <p style={{ margin: 0, fontSize: 15, color: 'var(--text-1)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {formatAmount(item.amount, { currency, variant: 'full' })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {totalGoals === 0 && (
+        <div style={{ marginTop: 14, ...fade(0.2) }}>
+          <div style={{
+            background: 'var(--white)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            padding: '16px',
+          }}>
+            <p style={{
+              margin: '0 0 8px',
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              fontWeight: 600,
+              letterSpacing: '0.07em',
+              textTransform: 'uppercase',
+            }}>
+              Goals
+            </p>
+            <p style={{ margin: '0 0 8px', fontSize: 28, fontWeight: 600, lineHeight: 1.2, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+              Give your money a purpose.
+            </p>
+            <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+              Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
+            </p>
+            <SecondaryBtn
+              size="lg"
+              onClick={() => router.push('/goals/new?from=overview')}
+              style={{ color: 'var(--text-1)' }}
+            >
+              Add your first goal
+            </SecondaryBtn>
+          </div>
+        </div>
+      )}
+    </>
+  ) : null
 
   // ── Goals progress card (has goals) ─────────────────────────
   const goalsCard = (
@@ -586,57 +674,21 @@ const reference = receivedConfirmed
         </div>
       )}
 
-      {/* Card order:
-            No goals (any state) → goals empty state first (the why before the what)
-            Has goals, State B   → spending first, quiet goal row (one primary CTA)
-            Has goals, State C   → spending first, full goals progress card */}
-      {totalGoals === 0 ? (
-        <>
-          {spendingCard}
-          {goalPromptCard}
-        </>
+      {isCanonicalEmpty ? (
+        <OverviewEmptyState
+          onLogExpense={onLogExpense}
+          onCreateGoal={() => router.push('/goals/new?from=overview')}
+        />
       ) : (
         <>
-          {spendingCard}
-          {goalsCard}
-        </>
-      )}
+      {/* Card order: spending first, goals progress second (if goals exist) */}
+      {spendingCard}
+      {startedNoIncomeSections}
+      {totalGoals > 0 && goalsCard}
 
       {/* Insight card — only shown when there is a real actionable signal */}
       {insights.length > 0 && insightCard}
-
-      {/* Dismissible debt card */}
-      {!debtDismissed && (
-        <div style={{
-          background: 'var(--white)', border: '1px solid var(--border)',
-          borderRadius: 16, padding: '20px',
-          marginTop: 16, position: 'relative',
-          ...fade(0.28),
-        }}>
-          <button
-            onClick={dismissDebt}
-            aria-label="Dismiss"
-            style={{
-              position: 'absolute', top: 14, right: 14,
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: 4, color: 'var(--text-3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <X size={16} />
-          </button>
-          <p style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-1)', margin: '0 0 4px' }}>
-            Do you have any loans or debts?
-          </p>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 16px', lineHeight: 1.6 }}>
-            Credit cards, mobile loans, repayments. Adding them gives you the full picture.
-          </p>
-          {onAddDebts && (
-            <PrimaryBtn size="md" onClick={onAddDebts}>
-              Add debts
-            </PrimaryBtn>
-          )}
-        </div>
+        </>
       )}
 
       {/* Goal contribution sheet */}

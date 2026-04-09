@@ -11,7 +11,7 @@ export interface SettingsPageData {
   name: string
   email: string
   currency: string
-  payScheduleType: 'monthly' | 'twice_monthly'
+  payScheduleType: 'monthly' | 'twice_monthly' | null
   payScheduleDays: number[]
   incomeType: 'salaried' | 'variable' | null
   monthlyTotal: number | null
@@ -33,8 +33,8 @@ export async function loadSettingsPageData(user: User, profile: UserProfile): Pr
     name: profile.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
     email: user.email ?? '',
     currency: profile.currency ?? '',
-    payScheduleType: profile.pay_schedule_type ?? 'monthly',
-    payScheduleDays: profile.pay_schedule_days ?? [1],
+    payScheduleType: profile.pay_schedule_type ?? null,
+    payScheduleDays: profile.pay_schedule_days ?? [],
     incomeType: profile.income_type ?? null,
     monthlyTotal: incomeRow?.total != null ? Number(incomeRow.total) : null,
   }

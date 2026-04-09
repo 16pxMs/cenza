@@ -16,7 +16,7 @@ import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
-import { deleteAccountData, saveCurrency, savePaySchedule } from './actions'
+import { deleteAccountPermanently, saveCurrency, savePaySchedule } from './actions'
 
 const T = {
   pageBg: '#F8F9FA',
@@ -31,6 +31,13 @@ const T = {
 
 const PAY_DAYS = Array.from({ length: 28 }, (_, i) => i + 1)
 const MONTHLY_DAYS = PAY_DAYS
+
+function ordinal(day: number): string {
+  if (day % 10 === 1 && day % 100 !== 11) return `${day}st`
+  if (day % 10 === 2 && day % 100 !== 12) return `${day}nd`
+  if (day % 10 === 3 && day % 100 !== 13) return `${day}rd`
+  return `${day}th`
+}
 
 export default function SettingsPageClient({ data }: { data: SettingsPageData }) {
   const router = useRouter()
@@ -49,8 +56,13 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   const [savingCurrency, setSavingCurrency] = useState(false)
 
   const [showPaySchedule, setShowPaySchedule] = useState(false)
-  const [scheduleType, setScheduleType] = useState<'monthly' | 'twice_monthly'>(data.payScheduleType)
-  const [scheduleDays, setScheduleDays] = useState<number[]>(data.payScheduleDays)
+  const [scheduleType, setScheduleType] = useState<'monthly' | 'twice_monthly'>(data.payScheduleType ?? 'monthly')
+  const [scheduleDays, setScheduleDays] = useState<number[]>(
+    data.payScheduleDays.length > 0 ? data.payScheduleDays : [1]
+  )
+  const [scheduleConfigured, setScheduleConfigured] = useState(
+    !!data.payScheduleType && data.payScheduleDays.length > 0
+  )
   const [savingPaySchedule, setSavingPaySchedule] = useState(false)
 
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm'>('idle')
@@ -89,6 +101,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       await savePaySchedule(scheduleType, scheduleDays)
       await refreshProfile()
       setShowPaySchedule(false)
+      setScheduleConfigured(true)
       toast('Pay schedule saved')
     } catch {
       toast('Failed to save pay schedule. Please try again.')
@@ -102,12 +115,14 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
     setDeleteError(null)
 
     try {
-      await deleteAccountData()
-      await clearPinDeviceState({ forgetDevice: true })
+      await deleteAccountPermanently()
       await supabase.auth.signOut()
-      window.location.href = '/login?tab=login'
-    } catch {
-      setDeleteError('Failed to delete account data. Please try again.')
+      window.location.href = '/'
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Failed to fully delete your account. Please try again.'
+      setDeleteError(message)
       setDeleting(false)
     }
   }
@@ -253,9 +268,11 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
         )}
         {row(
           'Pay schedule',
-          scheduleType === 'monthly'
-            ? `${scheduleDays[0]}${scheduleDays[0] === 1 ? 'st' : scheduleDays[0] === 2 ? 'nd' : scheduleDays[0] === 3 ? 'rd' : 'th'} of the month`
-            : `${scheduleDays[0]}th & ${scheduleDays[1] ?? scheduleDays[0]}th`,
+          scheduleConfigured
+            ? (scheduleType === 'monthly'
+                ? `${ordinal(scheduleDays[0] ?? 1)} of the month`
+                : `${ordinal(scheduleDays[0] ?? 1)} & ${ordinal(scheduleDays[1] ?? scheduleDays[0] ?? 1)}`)
+            : 'Not set',
           () => setShowPaySchedule(value => !value),
           !showPaySchedule,
         )}
@@ -414,11 +431,11 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           color: T.text3,
           lineHeight: 1.6,
         }}>
-          Signing out removes this device from quick re-entry. The next login will start with Google reconnect.
+          Signing out ends this session. This device will still be recognized the next time you come back.
         </p>
         <button
           onClick={async () => {
-            await clearPinDeviceState({ forgetDevice: true })
+            await clearPinDeviceState()
             await supabase.auth.signOut()
             window.location.href = '/login?tab=login'
           }}
@@ -428,7 +445,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             cursor: 'pointer', fontSize: 15, color: T.text1, boxSizing: 'border-box',
           }}
         >
-          Sign out on this device
+          Sign out
         </button>
 
         {deleteStep === 'idle' ? (
@@ -445,7 +462,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
         ) : (
           <div style={{ padding: '16px' }}>
             <p style={{ margin: '0 0 12px', fontSize: 14, color: T.text2, lineHeight: 1.6 }}>
-              This permanently deletes your account and all your data. There is no undo.
+              This permanently deletes your Cenza account, secure login, and all your data. There is no undo.
             </p>
             {deleteError && (
               <p style={{

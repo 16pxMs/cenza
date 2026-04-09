@@ -17,12 +17,13 @@
 }
 .overview-data__heading {
   font-family: var(--font-sans);
-  font-size: 24px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-1);
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.18;
+  letter-spacing: -0.015em;
 }
 .overview-data__heading--desktop {
-  font-size: 28px;
+  font-size: var(--text-lg);
 }

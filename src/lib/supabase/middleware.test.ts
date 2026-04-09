@@ -14,7 +14,7 @@ describe('getMiddlewareRedirectPath', () => {
     })).toBe('/')
   })
 
-  it('redirects known returning devices away from /start and into /login', () => {
+  it('hard-redirects legacy /start traffic back to landing', () => {
     expect(getMiddlewareRedirectPath({
       pathname: '/start',
       hasUser: false,
@@ -23,7 +23,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: true,
       hasPin: false,
       pinVerified: false,
-    })).toBe('/login')
+    })).toBe('/')
   })
 
   it('redirects authenticated returning users on public entry to /pin when PIN is not verified', () => {

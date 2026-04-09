@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { Database } from '@/types/database'
+import { getPublicEntryRedirect } from '@/lib/auth/auth-flow'
 
 interface RedirectDecisionInput {
   pathname: string
@@ -13,16 +14,19 @@ interface RedirectDecisionInput {
 }
 
 export function getMiddlewareRedirectPath(input: RedirectDecisionInput): string | null {
-  if (!input.hasUser && input.pathname === '/start' && input.hasReturningDevice) {
-    return '/login'
+  if (input.pathname === '/start') {
+    return '/'
   }
 
   if (!input.hasUser && !input.isPublic) {
     return '/'
   }
 
-  if (input.hasUser && (input.pathname === '/' || input.pathname === '/login' || input.pathname === '/start')) {
-    return input.hasPin && !input.pinVerified ? '/pin' : '/app'
+  if (input.hasUser && (input.pathname === '/' || input.pathname === '/login')) {
+    return getPublicEntryRedirect({
+      hasPin: input.hasPin,
+      pinVerified: input.pinVerified,
+    })
   }
 
   if (input.hasUser && !input.isPublic && !input.isPinPage && input.hasPin && !input.pinVerified) {
@@ -62,13 +66,13 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const hasReturningDevice = !!request.cookies.get('cenza-returning-user')?.value
   const hasPin = request.cookies.get('cenza-has-pin')?.value === '1'
+  const hasReturningDevice = !!request.cookies.get('cenza-returning-user')?.value || hasPin
   const pinVerified = request.cookies.get('cenza-pin-verified')?.value === '1'
   const isPinPage = pathname === '/pin' || pathname.startsWith('/pin/')
 
   // Public routes that don't need auth
-  const publicRoutes = ['/', '/login', '/start', '/demo', '/auth/callback', '/onboarding']
+  const publicRoutes = ['/', '/login', '/demo', '/auth/callback', '/onboarding']
   const isPublic = publicRoutes.some(r => pathname === r || pathname.startsWith(r + '/'))
 
   const redirectPath = getMiddlewareRedirectPath({

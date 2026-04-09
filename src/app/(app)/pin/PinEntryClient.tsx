@@ -10,22 +10,20 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { verifyPin, clearPinDeviceState } from '@/lib/actions/pin'
+import { signOutAndForgetDevice } from '@/app/auth/actions'
 import { PinPad } from '@/components/ui/PinPad'
-import { useUser } from '@/lib/context/UserContext'
 
 const LOCK_AFTER = 5   // wrong attempts before lockout
 const LOCK_SECS  = 30  // lockout duration in seconds
 
 interface Props {
   isFreshSession: boolean
+  name: string
 }
 
-export function PinEntryClient({ isFreshSession }: Props) {
+export function PinEntryClient({ isFreshSession, name }: Props) {
   const router   = useRouter()
-  const supabase = createClient()
-  const { profile } = useUser()
 
   const [pin,           setPin]           = useState('')
   const [shake,         setShake]         = useState(false)
@@ -88,12 +86,8 @@ export function PinEntryClient({ isFreshSession }: Props) {
   }, [locked])
 
   const handleForgotPin = async () => {
-    await clearPinDeviceState({ forgetDevice: true })
-    await supabase.auth.signOut()
-    router.replace('/login?tab=login')
+    await signOutAndForgetDevice()
   }
-
-  const name = profile?.name ?? ''
 
   return (
     <div style={{

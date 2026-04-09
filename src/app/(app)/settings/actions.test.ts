@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
 const createClient = vi.fn()
+const createAdminClient = vi.fn()
+const clearPinDeviceState = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient }))
+vi.mock('@/lib/actions/pin', () => ({ clearPinDeviceState }))
 
 function makeDeleteBuilder() {
   const eq = vi.fn().mockResolvedValue({ error: null })
@@ -57,7 +61,7 @@ describe('settings actions', () => {
     })
   })
 
-  it('deleteAccountData clears all user-owned tables before deleting the profile', async () => {
+  it('deleteAccountPermanently clears user-owned tables, deletes auth, and clears device state', async () => {
     const transactions = makeDeleteBuilder()
     const incomeEntries = makeDeleteBuilder()
     const goalTargets = makeDeleteBuilder()
@@ -81,11 +85,18 @@ describe('settings actions', () => {
     }
 
     const from = vi.fn((table: string) => tables[table])
-    createClient.mockResolvedValue({ from })
+    createAdminClient.mockReturnValue({
+      from,
+      auth: {
+        admin: {
+          deleteUser: vi.fn().mockResolvedValue({ error: null }),
+        },
+      },
+    })
 
-    const { deleteAccountData } = await import('./actions')
+    const { deleteAccountPermanently } = await import('./actions')
 
-    await deleteAccountData()
+    await deleteAccountPermanently()
 
     expect(from.mock.calls.map(call => call[0])).toEqual([
       'transactions',
@@ -100,5 +111,6 @@ describe('settings actions', () => {
     ])
     expect(userProfiles.eq).toHaveBeenCalledWith('id', 'user-1')
     expect(transactions.eq).toHaveBeenCalledWith('user_id', 'user-1')
+    expect(clearPinDeviceState).toHaveBeenCalledWith({ forgetDevice: true })
   })
 })

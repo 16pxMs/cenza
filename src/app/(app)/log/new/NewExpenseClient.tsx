@@ -185,7 +185,8 @@ export function NewExpenseClient() {
     ? rawParamType
     : null
 
-  const [step, setStep] = useState<Step>(isOther ? 'queue' : 'review')
+  const hasInitialKnownItem = !isOther && Boolean(paramLabel)
+  const [step, setStep] = useState<Step>(hasInitialKnownItem ? 'review' : 'queue')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState(0)
