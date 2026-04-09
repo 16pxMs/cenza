@@ -295,32 +295,13 @@ const reference = receivedConfirmed
         )}
 
         {totalIncome <= 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            padding: '10px 12px',
-            borderRadius: 12,
-            background: 'var(--grey-50)',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: 12,
-          }}>
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45, flex: 1 }}>
-              Add monthly income to unlock your true remaining balance.
-            </p>
-            <SecondaryBtn
-              size="sm"
-              onClick={() => router.push('/income/new?returnTo=/app')}
-              style={{ width: 'auto', minWidth: 92, padding: '0 10px', whiteSpace: 'nowrap' }}
-            >
-              Add income
-            </SecondaryBtn>
-          </div>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
+            Add monthly income to unlock your true remaining balance.
+          </p>
         )}
 
         {/* Income confirmation nudge — contained strip, clearly separated from buttons */}
-        {shouldShowIncomeConfirmPrompt && (
+        {shouldShowIncomeConfirmPrompt && !shouldPrioritizeIncomeCta && (
           <button
             onClick={onConfirmIncome}
             style={{

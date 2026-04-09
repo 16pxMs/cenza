@@ -126,27 +126,29 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
         <span style={{ fontSize: 13, color: T.text1, fontWeight: 600 }}>{currency} {Number(declaredTotal).toLocaleString()}</span>
       </div>
 
-      <div style={{ marginBottom: 20 }}>
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: T.text3, fontWeight: 600 }}>
-          Date received
-        </p>
-        <input
-          type="date"
-          value={receivedDate}
-          onChange={(e) => setReceivedDate(e.target.value)}
-          style={{
-            width: '100%',
-            height: 48,
-            borderRadius: 12,
-            border: `1px solid ${T.border}`,
-            background: T.white,
-            color: T.text1,
-            padding: '0 12px',
-            fontSize: 15,
-            fontWeight: 500,
-          }}
-        />
-      </div>
+      {isVariable && (
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 12, color: T.text3, fontWeight: 600 }}>
+            Date received
+          </p>
+          <input
+            type="date"
+            value={receivedDate}
+            onChange={(e) => setReceivedDate(e.target.value)}
+            style={{
+              width: '100%',
+              height: 48,
+              borderRadius: 12,
+              border: `1px solid ${T.border}`,
+              background: T.white,
+              color: T.text1,
+              padding: '0 12px',
+              fontSize: 15,
+              fontWeight: 500,
+            }}
+          />
+        </div>
+      )}
 
       {isVariable && (
         <button
