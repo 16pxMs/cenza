@@ -386,7 +386,7 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
 
       {data.goalDataList.length === 0 ? (
         <div>
-          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--brand-dark)', letterSpacing: '0.01em' }}>
+          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
             Give your money a purpose.
           </p>
           <h2 style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.3px' }}>

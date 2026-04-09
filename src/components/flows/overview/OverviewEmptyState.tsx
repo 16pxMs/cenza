@@ -153,7 +153,7 @@ export function OverviewEmptyState({ onLogExpense, onCreateGoal }: Props) {
         }}>
           Set up your first goal
         </div>
-        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-2xl)', color: 'var(--text-1)', letterSpacing: '-0.02em' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
           Give your money a purpose.
         </p>
         <p style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--text-2)', lineHeight: 1.6 }}>

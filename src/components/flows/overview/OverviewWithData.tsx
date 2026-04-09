@@ -417,7 +417,7 @@ const reference = receivedConfirmed
             }}>
               Goals
             </p>
-            <p style={{ margin: '0 0 8px', fontSize: 28, fontWeight: 600, lineHeight: 1.2, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
               Give your money a purpose.
             </p>
             <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
