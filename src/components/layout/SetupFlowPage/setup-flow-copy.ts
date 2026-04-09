@@ -19,7 +19,7 @@ export const SETUP_PAGE_COPY: Record<SetupPageCopyKey, SetupPageCopy> = {
   income_new: {
     eyebrow: 'Income',
     title: 'How do you get paid?',
-    subtitle: "This shapes your budget and what's left after spending.",
+    subtitle: 'This helps you stay clear on what is left after spending.',
     savingText: 'Saving your income…',
   },
   income_edit: {

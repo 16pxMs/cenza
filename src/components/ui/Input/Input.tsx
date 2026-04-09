@@ -17,9 +17,10 @@ function addCommas(raw: string): string {
   return parts.join('.')
 }
 
-export function Input({ label, prefix, hint, error, onChange, className, id, type, value, ...props }: Props) {
+export function Input({ label, prefix, hint, error, onChange, className, id, type, value, autoFocus, ...props }: Props) {
   const inputId = id ?? label.replace(/\s+/g, '-').toLowerCase()
   const isNumeric = type === 'number'
+  const shouldAutoFocus = autoFocus ?? isNumeric
 
   const displayValue = isNumeric ? addCommas(value ?? '') : (value ?? '')
 
@@ -47,6 +48,7 @@ export function Input({ label, prefix, hint, error, onChange, className, id, typ
           id={inputId}
           className={`${styles.input} ${className ?? ''}`}
           type={isNumeric ? 'text' : type}
+          autoFocus={shouldAutoFocus}
           inputMode={isNumeric ? 'decimal' : undefined}
           pattern={isNumeric ? '[0-9]*' : undefined}
           enterKeyHint={isNumeric ? 'done' : undefined}

@@ -33,16 +33,14 @@ interface Props {
   showInnerBack?: boolean
 }
 
-const TYPE_OPTIONS: { type: IncomeType; emoji: string; title: string; subtitle: string }[] = [
+const TYPE_OPTIONS: { type: IncomeType; title: string; subtitle: string }[] = [
   {
     type: 'salaried',
-    emoji: '💼',
     title: 'Regular salary',
     subtitle: 'Fixed amount, same day each month',
   },
   {
     type: 'variable',
-    emoji: '📊',
     title: 'It varies',
     subtitle: 'Freelance or variable month-to-month',
   },
@@ -98,7 +96,7 @@ export function AddIncomeFlow({
   const salaryNum = safeNum(salary)
   const canSave = salary !== '' && salaryNum > 0
   const validExtras = extras.filter(x => x.label && safeNum(x.amount) > 0)
-  const extrasTotal = sumAmounts(validExtras)
+  const extrasTotal = activeType === 'variable' ? 0 : sumAmounts(validExtras)
   const total = canSave ? safeNum(salaryNum) + extrasTotal : 0
 
   const handleSave = () => {
@@ -109,9 +107,11 @@ export function AddIncomeFlow({
     setError(null)
     onSave({
       income: salaryNum,
-      extraIncome: validExtras.map(x => ({
-        id: String(x.id), label: x.label, amount: Number(x.amount),
-      })),
+      extraIncome: activeType === 'variable'
+        ? []
+        : validExtras.map(x => ({
+            id: String(x.id), label: x.label, amount: Number(x.amount),
+          })),
       total,
       ...(isFirstTime && selectedType ? { incomeType: selectedType } : {}),
     })
@@ -126,13 +126,12 @@ export function AddIncomeFlow({
               key={opt.type}
               onClick={() => { setSelectedType(opt.type); setActiveStep('amount') }}
               style={{
-                display: 'flex', alignItems: 'center', gap: 14,
+                display: 'flex', alignItems: 'center',
                 width: '100%', padding: '16px 18px', textAlign: 'left',
                 background: 'var(--white)', border: '1px solid var(--border)',
                 borderRadius: 14, cursor: 'pointer',
               }}
             >
-              <span style={{ fontSize: 26, lineHeight: 1, flexShrink: 0 }}>{opt.emoji}</span>
               <div>
                 <p style={{ margin: '0 0 2px', fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>
                   {opt.title}
@@ -166,21 +165,22 @@ export function AddIncomeFlow({
           )}
 
           <Input
-            label={activeType === 'variable' ? 'Typical monthly income' : 'Monthly salary / main income'}
+            label={activeType === 'variable' ? 'Income received this month' : 'Monthly salary / main income'}
             value={salary}
             onChange={v => { setSalary(v); if (error) setError(null) }}
             prefix={currency}
             placeholder="e.g. 50,000"
             type="number"
+            autoFocus
             hint={
               activeType === 'variable'
-                ? 'Your rough average — you can update this any time.'
+                ? 'Enter what came in this month across all sources.'
                 : 'Your regular take-home pay this month.'
             }
             error={error ?? undefined}
           />
 
-          {extras.map((x, i) => (
+          {activeType !== 'variable' && extras.map((x, i) => (
             <div key={x.id} className="income-extra-row">
               <div className="income-extra-row__header">
                 <span className="income-extra-row__label">Extra income {i + 1}</span>
@@ -201,14 +201,17 @@ export function AddIncomeFlow({
                 prefix={currency}
                 placeholder="e.g. 10,000"
                 type="number"
+                autoFocus={false}
               />
             </div>
           ))}
 
-          <button className="income-add-extra" onClick={addExtra}>
-            <IconPlus color="var(--text-3)" size={13} />
-            Add extra income source
-          </button>
+          {activeType !== 'variable' && (
+            <button className="income-add-extra" onClick={addExtra}>
+              <IconPlus color="var(--text-3)" size={13} />
+              Add extra income source
+            </button>
+          )}
 
           {total > 0 && (
             <div className="income-total">
