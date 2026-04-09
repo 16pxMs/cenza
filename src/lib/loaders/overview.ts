@@ -14,6 +14,7 @@ interface IncomeData {
   extraIncome: ExtraIncomeItem[]
   total: number
   received: number | null
+  receivedConfirmedAt: string | null
 }
 
 interface SpendingBudgetCategory {
@@ -41,6 +42,7 @@ interface OverviewIncomeRow {
   extra_income: Array<{ id?: string | number; label?: string; amount?: number | string }> | null
   total: number | string | null
   received: number | string | null
+  received_confirmed_at: string | null
 }
 
 interface OverviewGoalTargetRow {
@@ -53,10 +55,13 @@ interface OverviewGoalTargetRow {
 export interface OverviewPageData {
   name: string
   currency: string
+  incomeType: 'salaried' | 'variable' | null
+  paydayDay: number | null
   goals: GoalId[]
   hasStartedCycleData: boolean
   incomeData: IncomeData
   totalSpent: number
+  debtTotal: number
   fixedTotal: number
   spendingBudget: SpendingBudgetData | null
   categorySpend: Record<string, number>
@@ -100,7 +105,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     (supabase.from('income_entries') as any)
-      .select('salary, extra_income, total, received')
+      .select('salary, extra_income, total, received, received_confirmed_at')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
@@ -139,12 +144,14 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
 
   const [
     totalSpent,
+    debtTotal,
     categorySpend,
     goalSavedMap,
   ] = (() => {
     const nextCategorySpend: Record<string, number> = {}
     const nextGoalSavedMap: Record<string, number> = {}
     const nextTotalSpent = transactionRows.reduce((sum, txn) => sum + Number(txn.amount), 0)
+    let nextDebtTotal = 0
 
     for (const txn of transactionRows) {
       if (txn.category_type === 'goal') {
@@ -157,9 +164,12 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       if (txn.category_type === 'everyday' || txn.category_type === 'subscription') {
         nextCategorySpend[txn.category_key] = (nextCategorySpend[txn.category_key] ?? 0) + Number(txn.amount)
       }
+      if (txn.category_type === 'debt') {
+        nextDebtTotal += Number(txn.amount)
+      }
     }
 
-    return [nextTotalSpent, nextCategorySpend, nextGoalSavedMap] as const
+    return [nextTotalSpent, nextDebtTotal, nextCategorySpend, nextGoalSavedMap] as const
   })()
 
   const recentActivity = [...transactionRows]
@@ -206,6 +216,11 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
   return {
     name: displayFirstName,
     currency: profile.currency ?? 'KES',
+    incomeType: profile.income_type ?? null,
+    paydayDay:
+      profile.income_type === 'salaried'
+        ? Number(profile.pay_schedule_days?.[0] ?? 1)
+        : null,
     goals: (profile.goals ?? []) as GoalId[],
     hasStartedCycleData,
     incomeData: {
@@ -213,8 +228,10 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       extraIncome,
       total: incomeTotal,
       received: incomeRow?.received != null ? Number(incomeRow.received) : null,
+      receivedConfirmedAt: incomeRow?.received_confirmed_at ?? null,
     },
     totalSpent,
+    debtTotal,
     fixedTotal,
     spendingBudget: spendingBudgetData,
     categorySpend,

@@ -1,12 +1,14 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
+import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
 import type { OverviewPageData } from '@/lib/loaders/overview'
-import { addGoalContribution } from './actions'
+import { addGoalContribution, confirmReceivedIncome } from './actions'
 
 interface AppPageClientProps {
   overview: OverviewPageData
@@ -15,27 +17,47 @@ interface AppPageClientProps {
 export default function AppPageClient({ overview }: AppPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
+  const [receivedSheetOpen, setReceivedSheetOpen] = useState(false)
   const screen = (
-    <OverviewWithData
-      name={overview.name}
-      currency={overview.currency}
-      goals={overview.goals}
-      incomeData={overview.incomeData}
-      goalTargets={overview.goalTargets}
-      goalSaved={overview.goalSaved}
-      goalLabels={overview.goalLabels}
-      onLogExpense={() => router.push('/log/new?returnTo=/app')}
-      onContribGoal={async (goalId, goalLabel, amount, note) => {
-        await addGoalContribution({ goalId, goalLabel, amount, note })
-        router.refresh()
-      }}
-      totalSpent={overview.totalSpent}
-      fixedTotal={overview.fixedTotal}
-      spendingBudget={overview.spendingBudget}
-      categorySpend={overview.categorySpend}
-      recentActivity={overview.recentActivity}
-      isDesktop={isDesktop}
-    />
+    <>
+      <OverviewWithData
+        name={overview.name}
+        currency={overview.currency}
+        incomeType={overview.incomeType}
+        paydayDay={overview.paydayDay}
+        goals={overview.goals}
+        incomeData={overview.incomeData}
+        goalTargets={overview.goalTargets}
+        goalSaved={overview.goalSaved}
+        goalLabels={overview.goalLabels}
+        debtTotal={overview.debtTotal}
+        onAddDebts={() => router.push('/log/new?isOther=true&returnTo=/app')}
+        onLogExpense={() => router.push('/log/new?returnTo=/app')}
+        onConfirmIncome={() => setReceivedSheetOpen(true)}
+        onContribGoal={async (goalId, goalLabel, amount, note) => {
+          await addGoalContribution({ goalId, goalLabel, amount, note })
+          router.refresh()
+        }}
+        totalSpent={overview.totalSpent}
+        fixedTotal={overview.fixedTotal}
+        spendingBudget={overview.spendingBudget}
+        categorySpend={overview.categorySpend}
+        recentActivity={overview.recentActivity}
+        isDesktop={isDesktop}
+      />
+      <ReceivedIncomeSheet
+        open={receivedSheetOpen}
+        onClose={() => setReceivedSheetOpen(false)}
+        declaredTotal={overview.incomeData.total}
+        currency={overview.currency}
+        incomeType={overview.incomeType}
+        onConfirm={async (received) => {
+          await confirmReceivedIncome(received)
+          setReceivedSheetOpen(false)
+          router.refresh()
+        }}
+      />
+    </>
   )
 
   if (isDesktop) {

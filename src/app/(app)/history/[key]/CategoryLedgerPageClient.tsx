@@ -180,9 +180,20 @@ export default function CategoryLedgerPageClient({
       <div style={{ padding: isDesktop ? '32px 32px 18px' : '18px 16px 18px' }}>
         <button
           onClick={goBack}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 14px', display: 'flex', alignItems: 'center' }}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            width: 44,
+            height: 44,
+            padding: 0,
+            marginBottom: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <IconBack size={18} color={T.text3} />
+          <IconBack size={18} color="var(--grey-900)" />
         </button>
         <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {data.monthLabel}

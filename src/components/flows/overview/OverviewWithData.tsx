@@ -8,7 +8,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, TrendingUp, Target, CheckCircle, ChevronRight } from 'lucide-react'
+import { AlertTriangle, TrendingUp, Target, ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
@@ -39,11 +39,14 @@ interface IncomeData {
   extraIncome: { id: string; label: string; amount: number }[]
   total: number
   received?: number | null  // confirmed received this month (null = not yet confirmed)
+  receivedConfirmedAt?: string | null
 }
 
 interface Props {
   name: string
   currency: string
+  incomeType?: 'salaried' | 'variable' | null
+  paydayDay?: number | null
   goals: string[]
   incomeData: IncomeData | null
   goalTargets: Record<string, any> | null
@@ -54,6 +57,7 @@ interface Props {
   onConfirmIncome?: () => void
   onContribGoal?: (goalId: string, goalLabel: string, amount: number, note: string) => Promise<void>
   totalSpent?: number
+  debtTotal?: number
   fixedTotal?: number
   spendingBudget?: { categories: any[] } | null
   categorySpend?: Record<string, number>
@@ -62,18 +66,32 @@ interface Props {
 }
 
 export function OverviewWithData({
-  name, currency, goals, incomeData,
+  name, currency, incomeType = null, paydayDay = null, goals, incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onLogExpense, onConfirmIncome, onContribGoal,
-  totalSpent = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], isDesktop,
+  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], isDesktop,
 }: Props) {
   const router = useRouter()
+  const debtNudgeCycleStorageKey = 'cenza-overview-debt-nudge-dismissed-cycle'
+  const getCurrentCycleKey = () => {
+    const now = new Date()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    return `${now.getFullYear()}-${month}`
+  }
   const [mounted, setMounted] = useState(false)
   const [goalsExpanded, setGoalsExpanded] = useState(false)
   const [activeGoalContrib, setActiveGoalContrib] = useState<string | null>(null)
+  const [debtNudgeDismissed, setDebtNudgeDismissed] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
     return () => clearTimeout(t)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const dismissedCycle = window.localStorage.getItem(debtNudgeCycleStorageKey)
+    const currentCycle = getCurrentCycleKey()
+    setDebtNudgeDismissed(dismissedCycle === currentCycle)
   }, [])
 
   // ── Income ──────────────────────────────────────────────────
@@ -97,10 +115,73 @@ export function OverviewWithData({
   // ── Spending card ─────────────────────────────────────────────
   const receivedConfirmed =
   incomeData?.received != null && incomeData.received > 0
+  const isVariableIncome = incomeType === 'variable'
+  const isSalariedIncome = incomeType === 'salaried'
 
 const reference = receivedConfirmed
   ? Number(incomeData?.received ?? 0)
   : totalIncome
+
+  const getDaysSinceRecentPayday = (dayOfMonth: number) => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    const clamp = (year: number, month: number, day: number) => {
+      const maxDay = new Date(year, month + 1, 0).getDate()
+      return Math.min(Math.max(day, 1), maxDay)
+    }
+
+    const thisMonthPayday = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      clamp(today.getFullYear(), today.getMonth(), dayOfMonth)
+    )
+
+    const recentPayday = today >= thisMonthPayday
+      ? thisMonthPayday
+      : new Date(
+          today.getFullYear(),
+          today.getMonth() - 1,
+          clamp(today.getFullYear(), today.getMonth() - 1, dayOfMonth)
+        )
+
+    return Math.floor((today.getTime() - recentPayday.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  const shouldShowIncomeConfirmPrompt = (() => {
+    if (receivedConfirmed || !onConfirmIncome) return false
+
+    if (isVariableIncome) {
+      return true
+    }
+
+    if (!isSalariedIncome) {
+      return totalSpent > 0
+    }
+
+    const daysSincePayday = getDaysSinceRecentPayday(paydayDay ?? 1)
+    const cadenceTrigger = daysSincePayday === 0 || daysSincePayday === 2
+    const contextualTrigger = totalSpent > 0
+
+    return cadenceTrigger || contextualTrigger
+  })()
+
+  const incomeConfirmPromptText = (() => {
+    if (isVariableIncome) {
+      return totalSpent > 0
+        ? 'You have spending logged. Confirm money received so your balance stays accurate.'
+        : 'Log money received as it comes in so your monthly balance stays real.'
+    }
+
+    if (isSalariedIncome) {
+      const daysSincePayday = getDaysSinceRecentPayday(paydayDay ?? 1)
+      if (daysSincePayday === 0) return "It's payday. Confirm income to start this cycle clean."
+      if (daysSincePayday === 2) return "Quick reminder: confirm this month's income."
+      return 'You have spending logged. Confirm income so your remaining amount stays accurate.'
+    }
+
+    return "Confirm this month's income."
+  })()
 
   const spentPct  = calculatePct(totalSpent, reference)
   const hasLogged = totalSpent > 0
@@ -114,7 +195,7 @@ const reference = receivedConfirmed
       ...fade(0.08),
     }}>
       <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-        Available this month
+        {isVariableIncome && !receivedConfirmed ? 'Expected this month' : 'Available this month'}
       </p>
       <p style={{ margin: '0 0 20px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
         {formatAmount(ref, { currency, variant: 'full' })}
@@ -122,11 +203,34 @@ const reference = receivedConfirmed
 
       {/* Full green bar — tank is full */}
       <div style={{ height: 5, background: '#E5E5EA', borderRadius: 99, marginBottom: 8 }}>
-        <div style={{ height: '100%', width: '100%', background: '#22C55E', borderRadius: 99 }} />
+        <div style={{ height: '100%', width: '100%', background: isVariableIncome && !receivedConfirmed ? 'var(--brand-dark)' : '#22C55E', borderRadius: 99 }} />
       </div>
       <p style={{ margin: '0 0 20px', fontSize: 12, color: 'var(--text-muted)' }}>
-        All yours — nothing spent yet
+        {isVariableIncome && !receivedConfirmed
+          ? 'Set as expected income. Log what actually came in to unlock a safer balance view.'
+          : 'All yours — nothing spent yet'}
       </p>
+
+      {shouldShowIncomeConfirmPrompt && (
+        <button
+          onClick={onConfirmIncome}
+          style={{
+            width: '100%', textAlign: 'left', cursor: 'pointer',
+            background: '#F5F0FA', border: '1px solid #E4D9F4',
+            borderRadius: 10, padding: '10px 12px', marginBottom: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          <div style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: 'var(--brand-dark)', flexShrink: 0,
+          }} />
+            <span style={{ flex: 1, fontSize: 13, color: 'var(--brand-dark)', fontWeight: 500 }}>
+              {incomeConfirmPromptText}
+            </span>
+            <ChevronRight size={16} color="var(--brand-dark)" strokeWidth={2.5} />
+          </button>
+      )}
 
       {/* Fixed bills breakdown — clean 2-column stat grid */}
       {fixedTotal > 0 && (
@@ -178,7 +282,9 @@ const reference = receivedConfirmed
       </p>
 
       <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65 }}>
-        Your dashboard is live now. Add your income next to see what is left after spending.
+        {isVariableIncome
+          ? 'Your dashboard is live now. Add expected income next, then log what actually came in.'
+          : 'Your dashboard is live now. Add your income next to see what is left after spending.'}
       </p>
 
       <div style={{
@@ -247,7 +353,7 @@ const reference = receivedConfirmed
         )}
 
         {/* Income confirmation nudge — contained strip, clearly separated from buttons */}
-        {!receivedConfirmed && onConfirmIncome && (
+        {shouldShowIncomeConfirmPrompt && (
           <button
             onClick={onConfirmIncome}
             style={{
@@ -262,7 +368,7 @@ const reference = receivedConfirmed
               background: 'var(--brand-dark)', flexShrink: 0,
             }} />
             <span style={{ flex: 1, fontSize: 13, color: 'var(--brand-dark)', fontWeight: 500 }}>
-              Confirm your income for this month
+              {incomeConfirmPromptText}
             </span>
             <ChevronRight size={16} color="var(--brand-dark)" strokeWidth={2.5} />
           </button>
@@ -548,6 +654,95 @@ const reference = receivedConfirmed
     </div>
   )
 
+  const noGoalsCard = (
+    <div style={{ marginTop: 16, ...fade(0.15) }}>
+      <div style={{
+        background: 'var(--white)',
+        border: '1px solid var(--border)',
+        borderRadius: 16,
+        padding: '16px',
+      }}>
+        <p style={{
+          margin: '0 0 8px',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          fontWeight: 600,
+          letterSpacing: '0.07em',
+          textTransform: 'uppercase',
+        }}>
+          Goals
+        </p>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+          Give your money a purpose.
+        </p>
+        <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+          Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
+        </p>
+        <SecondaryBtn
+          size="lg"
+          onClick={() => router.push('/goals/new?from=overview')}
+          style={{ color: 'var(--text-1)' }}
+        >
+          Add your first goal
+        </SecondaryBtn>
+      </div>
+    </div>
+  )
+
+  const showDebtReminder = debtTotal > 0 || !debtNudgeDismissed
+  const debtReminderCard = showDebtReminder ? (
+    <div style={{ marginTop: 16, ...fade(0.18) }}>
+      <div style={{
+        background: 'var(--white)',
+        border: '1px solid var(--border)',
+        borderRadius: 16,
+        padding: '16px',
+      }}>
+        <p style={{
+          margin: '0 0 8px',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          fontWeight: 600,
+          letterSpacing: '0.07em',
+          textTransform: 'uppercase',
+        }}>
+          Debts
+        </p>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+          {debtTotal > 0 ? 'Keep debt payments visible.' : 'Do you have any debt payments this month?'}
+        </p>
+        <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+          {debtTotal > 0
+            ? `${fmt(debtTotal, currency)} logged as debt this month. Keep tracking repayments so your picture stays complete.`
+            : 'Loans, credit cards, and repayments belong in your monthly view. Add one if it applies.'}
+        </p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <SecondaryBtn
+            size="md"
+            onClick={() => onAddDebts?.()}
+            style={{ flex: 1 }}
+          >
+            {debtTotal > 0 ? 'Review debt entries' : 'Add debt payment'}
+          </SecondaryBtn>
+          {debtTotal <= 0 && (
+            <TertiaryBtn
+              size="md"
+              onClick={() => {
+                setDebtNudgeDismissed(true)
+                if (typeof window !== 'undefined') {
+                  window.localStorage.setItem(debtNudgeCycleStorageKey, getCurrentCycleKey())
+                }
+              }}
+              style={{ width: 'auto', padding: '0 12px', color: 'var(--text-3)' }}
+            >
+              No debts
+            </TertiaryBtn>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null
+
   // ── Insight card ─────────────────────────────────────────────
   const remaining   = reference - totalSpent
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
@@ -585,14 +780,6 @@ const reference = receivedConfirmed
       onTap: () => setActiveGoalContrib(neglectedGoal!),
     })
   }
-  if (reference > 0 && spentPct <= 75 && totalSpent > 0) {
-    insights.push({
-      Icon: CheckCircle,
-      text: 'Your essentials are covered, and you still have a strong buffer this month.',
-      color: '#1A7A45',
-    })
-  }
-
   const insightCard = (
     <div style={{
       marginTop: 16,
@@ -684,7 +871,8 @@ const reference = receivedConfirmed
       {/* Card order: spending first, goals progress second (if goals exist) */}
       {spendingCard}
       {startedNoIncomeSections}
-      {totalGoals > 0 && goalsCard}
+      {totalGoals > 0 ? goalsCard : noGoalsCard}
+      {debtReminderCard}
 
       {/* Insight card — only shown when there is a real actionable signal */}
       {insights.length > 0 && insightCard}

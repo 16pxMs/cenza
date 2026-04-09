@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { IconBack } from '@/components/ui/Icons'
 
 const T = {
   brand: '#EADFF4',
@@ -269,10 +269,21 @@ export default function TargetsPageView({ goals, currency, totalIncome, onDone, 
           <div style={{ flex: 1 }}>
             <button
               onClick={handleBack}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.text2, padding: 4, display: 'flex', alignItems: 'center' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--grey-900)',
+                width: 44,
+                height: 44,
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
               aria-label="Go back"
             >
-              <ArrowLeft size={16} />
+              <IconBack size={18} />
             </button>
           </div>
           <span style={{ fontSize: 13, color: T.text3 }}>{step + 1} of {goals.length}</span>

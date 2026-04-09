@@ -124,7 +124,7 @@ export default function IncomePageClient({
             </p>
             <PrimaryBtn
               size="lg"
-              onClick={() => router.push('/income/new?returnTo=/income')}
+              onClick={() => router.push('/income/new?returnTo=/app')}
             >
               Add your income to get started
             </PrimaryBtn>
@@ -207,7 +207,7 @@ export default function IncomePageClient({
                 <p style={{ margin: '0 0 1px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Income</p>
                 <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text1 }}>{fmt(incomeTotal, data.currency)}</p>
               </div>
-              <button onClick={() => router.push('/income/new?returnTo=/income')} style={editBtnStyle}>Edit</button>
+              <button onClick={() => router.push('/income/new?returnTo=/app')} style={editBtnStyle}>Edit</button>
             </div>
             <div style={itemRow(extras.length > 0)}>
               <span style={{ fontSize: 14, color: T.text2 }}>Salary</span>
@@ -233,7 +233,7 @@ export default function IncomePageClient({
                       {fixedPct > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: T.textMuted, marginLeft: 6 }}>{fixedPct}% of income</span>}
                     </p>
                   </div>
-                  <button onClick={() => router.push('/income/fixed?returnTo=/income')} style={editBtnStyle}>Edit</button>
+                  <button onClick={() => router.push('/income/fixed?returnTo=/app')} style={editBtnStyle}>Edit</button>
                 </div>
                 {entries.map((entry: any, index: number) => (
                   <div key={entry.key} style={itemRow(index < entries.length - 1)}>
@@ -256,7 +256,7 @@ export default function IncomePageClient({
               </div>
               <SecondaryBtn
                 size="sm"
-                onClick={() => router.push('/income/fixed?returnTo=/income')}
+                onClick={() => router.push('/income/fixed?returnTo=/app')}
                 style={{ width: 'auto', minWidth: 68, padding: '0 14px' }}
               >
                 Add
@@ -276,7 +276,7 @@ export default function IncomePageClient({
                       {budgetPct > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: T.textMuted, marginLeft: 6 }}>{budgetPct}% of income</span>}
                     </p>
                   </div>
-                  <button onClick={() => router.push('/income/budget?returnTo=/income')} style={editBtnStyle}>Edit</button>
+                  <button onClick={() => router.push('/income/budget?returnTo=/app')} style={editBtnStyle}>Edit</button>
                 </div>
                 {categories.map((category: any, index: number) => (
                   <div key={category.key} style={itemRow(index < categories.length - 1)}>
@@ -300,7 +300,7 @@ export default function IncomePageClient({
               </div>
               <SecondaryBtn
                 size="sm"
-                onClick={() => router.push('/income/budget?returnTo=/income')}
+                onClick={() => router.push('/income/budget?returnTo=/app')}
                 style={{ width: 'auto', minWidth: 68, padding: '0 14px' }}
               >
                 Add

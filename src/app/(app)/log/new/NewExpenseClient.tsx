@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { IconBack, IconPlus } from '@/components/ui/Icons'
 import { saveExpenseBatch } from './actions'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
@@ -491,13 +491,16 @@ export function NewExpenseClient() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            padding: 'var(--space-xs)',
-            color: T.text2,
+            width: 44,
+            height: 44,
+            padding: 0,
+            color: 'var(--grey-900)',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          <ArrowLeft size={20} />
+          <IconBack size={20} />
         </button>
       </div>
 
@@ -805,7 +808,7 @@ function QueueStep({
                 transition: 'all 0.15s ease',
               }}
             >
-              <Plus size={18} />
+              <IconPlus size={18} />
             </button>
           </div>
           <div style={{ marginTop: 'var(--space-xs)' }}>

@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { signInWithGoogle } from '@/app/auth/actions'
+import { IconBack } from '@/components/ui/Icons'
 import styles from './login.module.css'
 
 function GoogleIcon() {
@@ -48,7 +48,7 @@ export default function LoginClient({
         className={styles.backButton}
         aria-label="Go back"
       >
-        <ArrowLeft size={16} />
+        <IconBack size={18} />
       </button>
 
       <div className={styles.authCard}>

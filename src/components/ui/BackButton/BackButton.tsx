@@ -1,4 +1,5 @@
 'use client'
+import { IconBack } from '@/components/ui/Icons'
 import styles from './BackButton.module.css'
 
 interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
@@ -10,9 +11,7 @@ export function BackButton({ className, children, ...props }: Props) {
       className={`${styles.backBtn} ${className ?? ''}`}
       {...props}
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
+      <IconBack size={18} />
       {children ? <span>{children}</span> : null}
     </button>
   )

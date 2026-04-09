@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
+import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
 
 interface AddGoalContributionInput {
@@ -36,4 +37,36 @@ export async function addGoalContribution(input: AddGoalContributionInput): Prom
   revalidatePath('/app')
   revalidatePath('/goals')
   revalidatePath('/history')
+}
+
+export async function confirmReceivedIncome(received: number): Promise<void> {
+  const { user, profile } = await getAppSession()
+  if (!user || !profile) throw new Error('Not authenticated')
+
+  const value = Number(received)
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error('Received income must be greater than zero')
+  }
+
+  const supabase = await createClient()
+  const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
+  const timestamp = new Date().toISOString()
+
+  const { error } = await (supabase.from('income_entries') as any).upsert({
+    user_id: user.id,
+    cycle_id: cycleId,
+    salary: 0,
+    extra_income: [],
+    total: 0,
+    received: value,
+    received_confirmed_at: timestamp,
+  }, { onConflict: 'user_id,cycle_id' })
+
+  if (error) {
+    throw new Error(`Failed to confirm received income: ${error.message}`)
+  }
+
+  revalidatePath('/app')
+  revalidatePath('/income')
+  revalidatePath('/plan')
 }

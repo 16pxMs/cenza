@@ -332,9 +332,20 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 16px' }}>
         <button
           onClick={() => router.push('/app')}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center' }}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            width: 44,
+            height: 44,
+            padding: 0,
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <IconBack size={18} color={T.text3} />
+          <IconBack size={18} color="var(--grey-900)" />
         </button>
         <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: T.textMuted }}>
           {data.cycleLabel}

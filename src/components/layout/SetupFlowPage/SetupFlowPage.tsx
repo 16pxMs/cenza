@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { IconBack } from '@/components/ui/Icons'
 import { SETUP_PAGE_COPY, type SetupPageCopyKey } from './setup-flow-copy'
 
 const T = {
@@ -44,14 +44,18 @@ export function SetupFlowPage({
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            padding: '0 0 18px',
+            width: 44,
+            height: 44,
+            padding: 0,
+            marginBottom: 18,
             display: 'flex',
             alignItems: 'center',
-            color: T.text3,
+            justifyContent: 'center',
+            color: 'var(--grey-900)',
           }}
           aria-label="Go back"
         >
-          <ArrowLeft size={16} />
+          <IconBack size={18} />
         </button>
 
         <section

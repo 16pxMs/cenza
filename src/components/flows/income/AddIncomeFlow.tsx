@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import './AddIncomeSheet.css'
 import { Input } from '@/components/ui/Input/Input'
 import { PrimaryBtn } from '@/components/ui/Button/Button'
-import { IconPlus, IconTrash } from '@/components/ui/Icons'
+import { IconBack, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { sumAmounts, safeNum } from '@/lib/math/finance'
 
 type IncomeType = 'salaried' | 'variable'
@@ -155,17 +154,18 @@ export function AddIncomeFlow({
               }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                padding: '0 0 16px', color: 'var(--text-3)',
+                width: 44, height: 44, padding: 0, marginBottom: 16, color: 'var(--grey-900)',
                 display: 'flex', alignItems: 'center',
+                justifyContent: 'center',
               }}
               aria-label="Go back"
             >
-              <ArrowLeft size={16} />
+              <IconBack size={18} />
             </button>
           )}
 
           <Input
-            label={activeType === 'variable' ? 'Income received this month' : 'Monthly salary / main income'}
+            label={activeType === 'variable' ? 'Expected income this month' : 'Monthly salary / main income'}
             value={salary}
             onChange={v => { setSalary(v); if (error) setError(null) }}
             prefix={currency}
@@ -174,7 +174,7 @@ export function AddIncomeFlow({
             autoFocus
             hint={
               activeType === 'variable'
-                ? 'Enter what came in this month across all sources.'
+                ? 'A realistic estimate. You can log actual money received as the month goes.'
                 : 'Your regular take-home pay this month.'
             }
             error={error ?? undefined}

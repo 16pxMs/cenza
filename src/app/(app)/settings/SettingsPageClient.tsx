@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { useToast } from '@/lib/context/ToastContext'
@@ -14,9 +13,9 @@ import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
-import { CURATED_CURRENCIES, ALL_CURRENCIES } from '@/lib/locale'
+import { ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
-import { deleteAccountPermanently, saveCurrency, savePaySchedule } from './actions'
+import { deleteAccountPermanently, savePaySchedule } from './actions'
 
 const T = {
   pageBg: '#F8F9FA',
@@ -46,14 +45,10 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   const { isDesktop } = useBreakpoint()
   const { refreshProfile } = useUser()
 
-  const [currency, setCurrency] = useState(data.currency)
+  const currency = data.currency
   const [changePinOpen, setChangePinOpen] = useState(false)
   const hasPinCookie = typeof document !== 'undefined' &&
     document.cookie.split(';').some(cookie => cookie.trim().startsWith('cenza-has-pin=1'))
-
-  const [showCurrency, setShowCurrency] = useState(false)
-  const [currencyQuery, setCurrencyQuery] = useState('')
-  const [savingCurrency, setSavingCurrency] = useState(false)
 
   const [showPaySchedule, setShowPaySchedule] = useState(false)
   const [scheduleType, setScheduleType] = useState<'monthly' | 'twice_monthly'>(data.payScheduleType ?? 'monthly')
@@ -71,29 +66,6 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
   const currencyMeta = ALL_CURRENCIES.find(item => item.code === currency)
   const initial = (data.name || '?')[0].toUpperCase()
-  const isSearching = currencyQuery.trim().length > 0
-  const currencyList = isSearching
-    ? ALL_CURRENCIES.filter(item =>
-        item.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
-        item.name.toLowerCase().includes(currencyQuery.toLowerCase())
-      )
-    : CURATED_CURRENCIES
-
-  const persistCurrency = async (code: string) => {
-    try {
-      setSavingCurrency(true)
-      await saveCurrency(code)
-      await refreshProfile()
-      setCurrency(code)
-      setShowCurrency(false)
-      setCurrencyQuery('')
-      toast('Currency updated')
-    } catch {
-      toast('Failed to update currency. Please try again.')
-    } finally {
-      setSavingCurrency(false)
-    }
-  }
 
   const persistPaySchedule = async () => {
     try {
@@ -174,9 +146,20 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       <div style={{ marginBottom: 28 }}>
         <button
           onClick={() => router.back()}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center' }}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            width: 44,
+            height: 44,
+            padding: 0,
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <IconBack size={18} color={T.text3} />
+          <IconBack size={18} color="var(--grey-900)" />
         </button>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: T.text1, letterSpacing: -0.4 }}>
           Settings
@@ -210,62 +193,11 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
         {row(
           'Currency',
           currencyMeta ? `${currencyMeta.flag}  ${currency}` : currency,
-          () => setShowCurrency(value => !value),
+          undefined,
         )}
-        {showCurrency && (
-          <div style={{ padding: '0 16px 16px', borderBottom: `1px solid ${T.border}` }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              background: T.pageBg, border: `1px solid ${T.border}`,
-              borderRadius: 12, padding: '0 12px', height: 44, marginBottom: 12,
-            }}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                <circle cx="7" cy="7" r="5" stroke={T.textMuted} strokeWidth="1.5"/>
-                <path d="M11 11l2.5 2.5" stroke={T.textMuted} strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              <input
-                value={currencyQuery}
-                onChange={event => setCurrencyQuery(event.target.value)}
-                placeholder="Search currencies…"
-                style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 14, color: T.text1, outline: 'none' }}
-              />
-            </div>
-            {!isSearching && (
-              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                Common currencies
-              </p>
-            )}
-            <div style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
-              {currencyList.length === 0 ? (
-                <p style={{ padding: '16px', fontSize: 14, color: T.textMuted, margin: 0 }}>No results for "{currencyQuery}"</p>
-              ) : currencyList.map((item, index) => {
-                const selected = currency === item.code
-                return (
-                  <button
-                    key={item.code}
-                    onClick={() => !savingCurrency && persistCurrency(item.code)}
-                    style={{
-                      width: '100%', textAlign: 'left', cursor: 'pointer',
-                      background: selected ? '#F3EDFB' : 'transparent',
-                      border: 'none',
-                      borderBottom: index === currencyList.length - 1 ? 'none' : `1px solid #F2F4F7`,
-                      padding: '11px 14px',
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    <span style={{ fontSize: 18 }}>{item.flag}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{item.code}</div>
-                      <div style={{ fontSize: 12, color: T.text3 }}>{item.name}</div>
-                    </div>
-                    {selected && <CheckCircle2 size={20} color={T.brandDark} fill={T.brandDark} strokeWidth={2} />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        <p style={{ margin: 0, padding: '0 16px 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+          Currency is locked after onboarding to keep your totals consistent.
+        </p>
         {row(
           'Pay schedule',
           scheduleConfigured
@@ -274,10 +206,10 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                 : `${ordinal(scheduleDays[0] ?? 1)} & ${ordinal(scheduleDays[1] ?? scheduleDays[0] ?? 1)}`)
             : 'Not set',
           () => setShowPaySchedule(value => !value),
-          !showPaySchedule,
+          true,
         )}
         {showPaySchedule && (
-          <div style={{ padding: '12px 16px 16px' }}>
+          <div style={{ padding: '12px 16px 16px', borderTop: `1px solid ${T.border}` }}>
             <div style={{
               display: 'flex', gap: 8, marginBottom: 16,
               background: T.pageBg, border: `1px solid ${T.border}`,

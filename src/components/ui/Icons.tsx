@@ -23,7 +23,7 @@ export {
   Coins            as IconCurrency,
   Calendar         as IconCalendar,
   CircleDotDashed  as IconTarget,
-  ArrowLeft        as IconBack,
+  MoveLeft         as IconBack,
   Check            as IconCheck,
   Settings         as IconSettings,
   User             as IconUser,

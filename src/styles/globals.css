@@ -17,6 +17,7 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
 }
 
 p {
@@ -29,6 +30,16 @@ input, textarea, select, button {
   font-family: inherit;
   font-size: inherit;
   font-weight: inherit;
+}
+
+/* Remove browser default blue tap flash; we use custom interaction styles */
+a,
+button,
+input,
+textarea,
+select,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
 }
 
 h1 {
