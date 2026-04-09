@@ -255,67 +255,6 @@ const reference = receivedConfirmed
     </div>
   )
 
-  const stateStartedCard = (spent: number) => (
-    (() => {
-      const incomeStepDone = totalIncome > 0 || receivedConfirmed
-      const setupStepsDone = (hasLogged ? 1 : 0) + (incomeStepDone ? 1 : 0)
-      const setupProgressPct = Math.round((setupStepsDone / 2) * 100)
-
-      return (
-    <div style={{
-      background: '#fff', borderRadius: 20, padding: '24px',
-      marginTop: 16, boxShadow: '0 1px 10px rgba(0,0,0,0.07)',
-      ...fade(0.08),
-    }}>
-      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-        Spending so far
-      </p>
-      <p style={{ margin: '0 0 10px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
-        {formatAmount(spent, { currency, variant: 'full' })}
-      </p>
-
-      <div style={{ height: 5, background: 'var(--grey-100)', borderRadius: 99, marginBottom: 10 }}>
-        <div style={{ height: '100%', width: `${setupProgressPct}%`, background: 'var(--brand-dark)', borderRadius: 99 }} />
-      </div>
-      <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-muted)' }}>
-        Setup progress: {setupStepsDone} of 2 complete
-      </p>
-
-      <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65 }}>
-        {isVariableIncome
-          ? 'Your dashboard is live now. Add expected income next, then log what actually came in.'
-          : 'Your dashboard is live now. Add your income next to see what is left after spending.'}
-      </p>
-
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 10,
-        padding: '10px 12px',
-        borderRadius: 12,
-        background: 'var(--grey-50)',
-        border: '1px solid var(--border-subtle)',
-        marginBottom: 14,
-      }}>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
-          Next step: add your monthly income.
-        </p>
-      </div>
-
-      <div style={{ display: 'grid', gap: 10 }}>
-        <PrimaryBtn
-          size="lg"
-          onClick={() => router.push('/income/new?returnTo=/app')}
-        >
-          Add income
-        </PrimaryBtn>
-      </div>
-    </div>
-      )
-    })()
-  )
-
   // State C: live spend — hero is what remains, bar depletes as spend grows
   const stateCCard = (spent: number, ref: number) => {
     const remaining   = calculateRemaining(ref, spent)
@@ -350,6 +289,31 @@ const reference = receivedConfirmed
               {fmt(spent, currency)} spent of {fmt(ref, currency)}
             </p>
           </>
+        )}
+
+        {totalIncome <= 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: 'var(--grey-50)',
+            border: '1px solid var(--border-subtle)',
+            marginBottom: 12,
+          }}>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45, flex: 1 }}>
+              Add monthly income to unlock your true remaining balance.
+            </p>
+            <SecondaryBtn
+              size="sm"
+              onClick={() => router.push('/income/new?returnTo=/app')}
+              style={{ width: 'auto', minWidth: 92, padding: '0 10px', whiteSpace: 'nowrap' }}
+            >
+              Add income
+            </SecondaryBtn>
+          </div>
         )}
 
         {/* Income confirmation nudge — contained strip, clearly separated from buttons */}
@@ -394,153 +358,10 @@ const reference = receivedConfirmed
   }
 
   const spendingCard = hasLogged && totalIncome > 0
-    // ── State C: live data ─────────────────────────────────────
     ? stateCCard(totalSpent, reference)
     : hasLogged
-    // ── Started, but income not added yet ─────────────────────
-    ? stateStartedCard(totalSpent)
-    : receivedConfirmed
-    // ── State B: received confirmed, nothing logged yet ─────────
-    ? stateBCard(reference)
+    ? stateCCard(totalSpent, Math.max(totalSpent, 1))
     : stateBCard(reference)
-
-  const isStartedNoIncomeState = hasLogged && totalIncome <= 0 && !receivedConfirmed
-
-  const formatRecentDateLabel = (isoDate: string) => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const [year, month, day] = isoDate.split('-').map(Number)
-    const txnDate = new Date(year, (month ?? 1) - 1, day ?? 1)
-    txnDate.setHours(0, 0, 0, 0)
-
-    const diffDays = Math.round((today.getTime() - txnDate.getTime()) / (1000 * 60 * 60 * 24))
-    if (diffDays <= 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    return txnDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  }
-
-  const startedNoIncomeSections = isStartedNoIncomeState ? (
-    <>
-      <div style={{ marginTop: 14, ...fade(0.12) }}>
-        <div style={{
-          background: 'var(--white)',
-          border: '1px solid var(--border)',
-          borderRadius: 16,
-          padding: '14px',
-        }}>
-          <p style={{
-            margin: '0 0 10px',
-            fontSize: 11,
-            color: 'var(--text-muted)',
-            fontWeight: 600,
-            letterSpacing: '0.07em',
-            textTransform: 'uppercase',
-          }}>
-            Quick actions
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <SecondaryBtn
-              size="md"
-              onClick={onLogExpense}
-              style={{ flex: 1 }}
-            >
-              Log expense
-            </SecondaryBtn>
-            <TertiaryBtn
-              size="md"
-              onClick={() => router.push('/log')}
-              style={{ width: 'auto', padding: '0 14px', whiteSpace: 'nowrap' }}
-            >
-              View log
-            </TertiaryBtn>
-          </div>
-        </div>
-      </div>
-
-      {recentActivity.length > 0 && (
-        <div style={{ marginTop: 14, ...fade(0.16) }}>
-          <div style={{
-            background: 'var(--white)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            padding: '14px 16px',
-          }}>
-            <p style={{
-              margin: '0 0 8px',
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-              letterSpacing: '0.07em',
-              textTransform: 'uppercase',
-            }}>
-              Recent activity
-            </p>
-            {recentActivity.map((item, index) => (
-              <div
-                key={item.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  padding: '11px 0',
-                  borderBottom: index < recentActivity.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: '0 0 3px', fontSize: 15, color: 'var(--text-1)', fontWeight: 600 }}>
-                    {item.label}
-                  </p>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                    {formatRecentDateLabel(item.date)}
-                  </p>
-                </div>
-                <p style={{ margin: 0, fontSize: 15, color: 'var(--text-1)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {formatAmount(item.amount, { currency, variant: 'full' })}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {totalGoals === 0 && (
-        <div style={{ marginTop: 14, ...fade(0.2) }}>
-          <div style={{
-            background: 'var(--white)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            padding: '16px',
-          }}>
-            <p style={{
-              margin: '0 0 8px',
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-              letterSpacing: '0.07em',
-              textTransform: 'uppercase',
-            }}>
-              Goals
-            </p>
-            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
-              Give your money a purpose.
-            </p>
-            <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
-              Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
-            </p>
-            <SecondaryBtn
-              size="lg"
-              onClick={() => router.push('/goals/new?from=overview')}
-              style={{ color: 'var(--text-1)' }}
-            >
-              Add your first goal
-            </SecondaryBtn>
-          </div>
-        </div>
-      )}
-    </>
-  ) : null
 
   // ── Goals progress card (has goals) ─────────────────────────
   const goalsCard = (
@@ -870,7 +691,6 @@ const reference = receivedConfirmed
         <>
       {/* Card order: spending first, goals progress second (if goals exist) */}
       {spendingCard}
-      {startedNoIncomeSections}
       {totalGoals > 0 ? goalsCard : noGoalsCard}
       {debtReminderCard}
 

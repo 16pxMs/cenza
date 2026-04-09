@@ -59,7 +59,6 @@ describe('income actions', () => {
       cycle_id: '2026-04-01',
       salary: 1000,
       extra_income: [{ id: 'bonus', label: 'Bonus', amount: 200 }],
-      total: 1200,
     }, { onConflict: 'user_id,cycle_id' })
     expect(update).toHaveBeenCalledWith({ income_type: 'variable' })
     expect(revalidatePath).toHaveBeenCalledWith('/settings')

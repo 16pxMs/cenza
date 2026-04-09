@@ -52,15 +52,33 @@ export async function confirmReceivedIncome(received: number): Promise<void> {
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const timestamp = new Date().toISOString()
 
-  const { error } = await (supabase.from('income_entries') as any).upsert({
-    user_id: user.id,
-    cycle_id: cycleId,
-    salary: 0,
-    extra_income: [],
-    total: 0,
-    received: value,
-    received_confirmed_at: timestamp,
-  }, { onConflict: 'user_id,cycle_id' })
+  const incomeTable = supabase.from('income_entries') as any
+  const { data: existingRow, error: readError } = await incomeTable
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('cycle_id', cycleId)
+    .maybeSingle()
+
+  if (readError) {
+    throw new Error(`Failed to read income before confirmation: ${readError.message}`)
+  }
+
+  const { error } = existingRow
+    ? await incomeTable
+        .update({
+          received: value,
+          received_confirmed_at: timestamp,
+        })
+        .eq('user_id', user.id)
+        .eq('cycle_id', cycleId)
+    : await incomeTable.upsert({
+        user_id: user.id,
+        cycle_id: cycleId,
+        salary: 0,
+        extra_income: [],
+        received: value,
+        received_confirmed_at: timestamp,
+      }, { onConflict: 'user_id,cycle_id' })
 
   if (error) {
     throw new Error(`Failed to confirm received income: ${error.message}`)

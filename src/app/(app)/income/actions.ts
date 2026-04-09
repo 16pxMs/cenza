@@ -21,12 +21,24 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
   const supabase = await createClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
 
+  const salary = Number(input.income)
+  if (!Number.isFinite(salary) || salary <= 0) {
+    throw new Error('Income must be greater than zero')
+  }
+
+  const extraIncome = (input.extraIncome ?? [])
+    .filter((item) => item.label.trim() && Number(item.amount) > 0)
+    .map((item) => ({
+      id: String(item.id),
+      label: item.label.trim(),
+      amount: Number(item.amount),
+    }))
+
   const { error: incomeError } = await (supabase.from('income_entries') as any).upsert({
     user_id: user.id,
     cycle_id: cycleId,
-    salary: input.income,
-    extra_income: input.extraIncome,
-    total: input.total,
+    salary,
+    extra_income: extraIncome,
   }, { onConflict: 'user_id,cycle_id' })
 
   if (incomeError) {

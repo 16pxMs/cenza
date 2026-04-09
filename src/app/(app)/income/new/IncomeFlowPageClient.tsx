@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AddIncomeFlow, type IncomeData } from '@/components/flows/income/AddIncomeFlow'
 import { SetupFlowPage } from '@/components/layout/SetupFlowPage/SetupFlowPage'
 import { useToast } from '@/lib/context/ToastContext'
-import { useUser } from '@/lib/context/UserContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { saveIncome } from '../actions'
 
@@ -31,9 +30,7 @@ function resolveReturnPath(returnTo: string): string {
 export default function IncomeFlowPageClient({ currency, incomeType, returnTo }: Props) {
   const router = useRouter()
   const { toast } = useToast()
-  const { refreshProfile } = useUser()
   const { isDesktop } = useBreakpoint()
-  const [isPending, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [flowStep, setFlowStep] = useState<'type' | 'amount'>(incomeType == null ? 'type' : 'amount')
   const nextPath = resolveReturnPath(returnTo)
@@ -52,23 +49,8 @@ export default function IncomeFlowPageClient({ currency, incomeType, returnTo }:
     setSaving(true)
     try {
       await saveIncome(input)
-      try {
-        await refreshProfile()
-      } catch {
-        // Do not block navigation if profile refresh is temporarily unavailable.
-      }
       toast('Income updated')
-      startTransition(() => {
-        router.replace(nextPath)
-        router.refresh()
-      })
-
-      // Hard-navigation fallback: if router transition stalls, force exit from income setup.
-      window.setTimeout(() => {
-        if (window.location.pathname.startsWith('/income/new')) {
-          window.location.assign(nextPath)
-        }
-      }, 300)
+      window.location.assign(nextPath)
     } catch {
       toast('Failed to update income. Please try again.')
       setSaving(false)
@@ -80,7 +62,7 @@ export default function IncomeFlowPageClient({ currency, incomeType, returnTo }:
       pageKey={incomeType == null ? 'income_new' : 'income_edit'}
       onBack={handleBack}
       isDesktop={isDesktop}
-      isSaving={isPending}
+      isSaving={saving}
     >
       <AddIncomeFlow
         incomeType={incomeType}
