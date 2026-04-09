@@ -68,8 +68,10 @@ export async function loadPlanPageData(userId: string, profile: UserProfile): Pr
 
   const goalTotal = targetRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
 
+  const displayFirstName = profile.name?.trim().split(/\s+/)[0] || ''
+
   return {
-    name: profile.name ?? '',
+    name: displayFirstName,
     currency: profile.currency ?? 'KES',
     income,
     goalTotal,

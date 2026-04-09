@@ -201,8 +201,10 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     fixedTotal > 0 ||
     budgetTotal > 0
 
+  const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
+
   return {
-    name: profile.name ?? 'there',
+    name: displayFirstName,
     currency: profile.currency ?? 'KES',
     goals: (profile.goals ?? []) as GoalId[],
     hasStartedCycleData,

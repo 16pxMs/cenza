@@ -43,13 +43,30 @@ export default async function OnboardingNamePage({
     redirect(redirectPath)
   }
 
-  const initialName =
-    profile?.name ||
-    (typeof user.user_metadata?.full_name === 'string'
-      ? user.user_metadata.full_name.split(' ')[0]
-      : null) ||
+  const metadataFirstName =
+    typeof user.user_metadata?.first_name === 'string'
+      ? user.user_metadata.first_name.trim()
+      : ''
+  const metadataLastName =
+    typeof user.user_metadata?.last_name === 'string'
+      ? user.user_metadata.last_name.trim()
+      : ''
+  const metadataFullName =
+    typeof user.user_metadata?.full_name === 'string'
+      ? user.user_metadata.full_name.trim()
+      : ''
+  const metadataParts = metadataFullName ? metadataFullName.split(/\s+/).filter(Boolean) : []
+
+  const initialFirstName =
+    profile?.name?.trim() ||
+    metadataFirstName ||
+    metadataParts[0] ||
     user.email?.split('@')[0] ||
     ''
+
+  const initialLastName =
+    metadataLastName ||
+    (metadataParts.length > 1 ? metadataParts.slice(1).join(' ') : '')
   const hasSaveError = params.error === 'name_save_failed'
 
   return (
@@ -82,7 +99,7 @@ export default async function OnboardingNamePage({
             margin: '0 0 var(--space-xl)',
             lineHeight: 1.6,
           }}>
-            We'll use this throughout the app.
+            We'll use your first name throughout the app.
           </p>
 
           {/* If a prior save failed, show a clear inline message instead of silently looping */}
@@ -92,27 +109,52 @@ export default async function OnboardingNamePage({
             </p>
           )}
 
-          <input
-            name="name"
-            defaultValue={initialName}
-            placeholder="Your first name"
-            autoFocus
-            required
-            style={{
-              width: '100%',
-              height: 56,
-              border: '1.5px solid var(--border-strong)',
-              borderRadius: 'var(--radius-md)',
-              padding: '0 var(--space-md)',
-              fontSize: 'var(--text-md)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-1)',
-              background: 'var(--white)',
-              outline: 'none',
-              boxSizing: 'border-box',
-              fontFamily: 'inherit',
-            }}
-          />
+          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+            <input
+              name="firstName"
+              defaultValue={initialFirstName}
+              placeholder="First name"
+              autoFocus
+              required
+              autoCapitalize="words"
+              autoComplete="given-name"
+              style={{
+                width: '100%',
+                height: 56,
+                border: '1.5px solid var(--border-strong)',
+                borderRadius: 'var(--radius-md)',
+                padding: '0 var(--space-md)',
+                fontSize: 'var(--text-md)',
+                fontWeight: 'var(--weight-medium)',
+                color: 'var(--text-1)',
+                background: 'var(--white)',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+              }}
+            />
+            <input
+              name="lastName"
+              defaultValue={initialLastName}
+              placeholder="Last name (optional)"
+              autoCapitalize="words"
+              autoComplete="family-name"
+              style={{
+                width: '100%',
+                height: 56,
+                border: '1.5px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '0 var(--space-md)',
+                fontSize: 'var(--text-md)',
+                fontWeight: 'var(--weight-medium)',
+                color: 'var(--text-1)',
+                background: 'var(--white)',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
         </div>
 
         <div className={styles.ctaArea}>

@@ -22,5 +22,7 @@ export default async function PinPage() {
 
   const isFreshSession = jar.get('cenza-fresh-auth')?.value === '1'
 
-  return <PinEntryClient isFreshSession={isFreshSession} name={profile.name ?? ''} />
+  const displayFirstName = profile.name?.trim().split(/\s+/)[0] || ''
+
+  return <PinEntryClient isFreshSession={isFreshSession} name={displayFirstName} />
 }
