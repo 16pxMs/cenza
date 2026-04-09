@@ -24,13 +24,34 @@ interface Props {
   declaredTotal: number
   currency:      string
   incomeType?:   'salaried' | 'variable' | null
-  onConfirm:     (received: number) => Promise<void>
+  paydayDay?:    number | null
+  onConfirm:     (received: number, receivedDate: string) => Promise<void>
 }
 
-export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, incomeType, onConfirm }: Props) {
+function getTodayIsoDate() {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function getCurrentMonthPaydayIsoDate(paydayDay: number) {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const maxDay = new Date(year, month + 1, 0).getDate()
+  const clamped = Math.min(Math.max(paydayDay, 1), maxDay)
+  const d = String(clamped).padStart(2, '0')
+  const m = String(month + 1).padStart(2, '0')
+  return `${year}-${m}-${d}`
+}
+
+export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, incomeType, paydayDay = null, onConfirm }: Props) {
   const [amount, setAmount] = useState('')
   const [saving, setSaving] = useState(false)
   const [showCustomAmount, setShowCustomAmount] = useState(false)
+  const [receivedDate, setReceivedDate] = useState(getTodayIsoDate())
   const isVariable = incomeType === 'variable'
   const isSalaried = incomeType === 'salaried'
 
@@ -58,13 +79,24 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
     if (!open) {
       setShowCustomAmount(false)
       setAmount('')
+      setReceivedDate(getTodayIsoDate())
     }
   }, [open])
 
+  useEffect(() => {
+    if (!open) return
+    if (isSalaried && paydayDay && paydayDay > 0) {
+      setReceivedDate(getCurrentMonthPaydayIsoDate(paydayDay))
+      return
+    }
+    setReceivedDate(getTodayIsoDate())
+  }, [open, isSalaried, paydayDay])
+
   const handleConfirm = async (value: number) => {
     if (value <= 0) return
+    if (!receivedDate) return
     setSaving(true)
-    await onConfirm(value)
+    await onConfirm(value, receivedDate)
     setSaving(false)
     setAmount('')
     setShowCustomAmount(false)
@@ -73,6 +105,7 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
   const handleClose = () => {
     setShowCustomAmount(false)
     setAmount('')
+    setReceivedDate(getTodayIsoDate())
     onClose()
   }
 
@@ -93,6 +126,28 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
         <span style={{ fontSize: 13, color: T.text1, fontWeight: 600 }}>{currency} {Number(declaredTotal).toLocaleString()}</span>
       </div>
 
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ margin: '0 0 8px', fontSize: 12, color: T.text3, fontWeight: 600 }}>
+          Date received
+        </p>
+        <input
+          type="date"
+          value={receivedDate}
+          onChange={(e) => setReceivedDate(e.target.value)}
+          style={{
+            width: '100%',
+            height: 48,
+            borderRadius: 12,
+            border: `1px solid ${T.border}`,
+            background: T.white,
+            color: T.text1,
+            padding: '0 12px',
+            fontSize: 15,
+            fontWeight: 500,
+          }}
+        />
+      </div>
+
       {isVariable && (
         <button
           onClick={handleAllIn}
@@ -111,7 +166,7 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
         <>
           <button
             onClick={() => handleConfirm(Number(declaredTotal))}
-            disabled={saving || declaredTotal <= 0}
+            disabled={saving || declaredTotal <= 0 || !receivedDate}
             style={{
               width: '100%', height: 52, borderRadius: 14,
               background: declaredTotal > 0 ? T.brandDark : T.border,
@@ -176,7 +231,7 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
 
           <button
             onClick={() => handleConfirm(parsedAmount)}
-            disabled={parsedAmount <= 0 || saving}
+            disabled={parsedAmount <= 0 || saving || !receivedDate}
             style={{
               width: '100%', height: 52, borderRadius: 14,
               background: parsedAmount > 0 ? T.brandDark : T.border,

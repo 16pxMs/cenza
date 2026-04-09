@@ -39,7 +39,7 @@ export async function addGoalContribution(input: AddGoalContributionInput): Prom
   revalidatePath('/history')
 }
 
-export async function confirmReceivedIncome(received: number): Promise<void> {
+export async function confirmReceivedIncome(received: number, receivedDate?: string): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
@@ -50,7 +50,12 @@ export async function confirmReceivedIncome(received: number): Promise<void> {
 
   const supabase = await createClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const timestamp = new Date().toISOString()
+  const timestamp = (() => {
+    if (!receivedDate) return new Date().toISOString()
+    const parsed = new Date(`${receivedDate}T12:00:00`)
+    if (Number.isNaN(parsed.getTime())) return new Date().toISOString()
+    return parsed.toISOString()
+  })()
 
   const incomeTable = supabase.from('income_entries') as any
   const { data: existingRow, error: readError } = await incomeTable

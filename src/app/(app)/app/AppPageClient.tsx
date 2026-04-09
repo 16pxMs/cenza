@@ -51,8 +51,9 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         declaredTotal={overview.incomeData.total}
         currency={overview.currency}
         incomeType={overview.incomeType}
-        onConfirm={async (received) => {
-          await confirmReceivedIncome(received)
+        paydayDay={overview.paydayDay}
+        onConfirm={async (received, receivedDate) => {
+          await confirmReceivedIncome(received, receivedDate)
           setReceivedSheetOpen(false)
           router.refresh()
         }}

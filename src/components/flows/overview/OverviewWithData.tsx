@@ -121,6 +121,7 @@ export function OverviewWithData({
 const reference = receivedConfirmed
   ? Number(incomeData?.received ?? 0)
   : totalIncome
+  const hasLogged = totalSpent > 0
 
   const getDaysSinceRecentPayday = (dayOfMonth: number) => {
     const now = new Date()
@@ -166,6 +167,9 @@ const reference = receivedConfirmed
     return cadenceTrigger || contextualTrigger
   })()
 
+  const shouldPrioritizeIncomeCta =
+    hasLogged && (totalIncome <= 0 || !receivedConfirmed)
+
   const incomeConfirmPromptText = (() => {
     if (isVariableIncome) {
       return totalSpent > 0
@@ -184,7 +188,6 @@ const reference = receivedConfirmed
   })()
 
   const spentPct  = calculatePct(totalSpent, reference)
-  const hasLogged = totalSpent > 0
   const isCanonicalEmpty = totalIncome <= 0 && !hasLogged && !receivedConfirmed
 
   // State B: received confirmed, nothing logged — hero is full available amount
@@ -338,21 +341,36 @@ const reference = receivedConfirmed
           </button>
         )}
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <PrimaryBtn size="lg" onClick={onLogExpense}>
-            Add an expense
-          </PrimaryBtn>
-        </div>
-        <SecondaryBtn
-          size="lg"
-          onClick={() => router.push('/log')}
-          style={{
-            marginTop: 10,
-            color: 'var(--text-2)',
-          }}
-        >
-          View expense log
-        </SecondaryBtn>
+        {shouldPrioritizeIncomeCta ? (
+          <>
+            <PrimaryBtn
+              size="lg"
+              onClick={() => router.push('/income/new?returnTo=/app')}
+            >
+              Add income
+            </PrimaryBtn>
+            <SecondaryBtn
+              size="lg"
+              onClick={onLogExpense}
+              style={{ marginTop: 10, color: 'var(--text-2)' }}
+            >
+              Add an expense
+            </SecondaryBtn>
+          </>
+        ) : (
+          <>
+            <PrimaryBtn size="lg" onClick={onLogExpense}>
+              Add an expense
+            </PrimaryBtn>
+            <SecondaryBtn
+              size="lg"
+              onClick={() => router.push('/log')}
+              style={{ marginTop: 10, color: 'var(--text-2)' }}
+            >
+              View expense log
+            </SecondaryBtn>
+          </>
+        )}
       </div>
     )
   }
