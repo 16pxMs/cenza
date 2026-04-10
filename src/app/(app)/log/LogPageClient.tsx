@@ -350,7 +350,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: T.textMuted }}>
           {data.cycleLabel}
         </p>
-        <h1 style={{ fontSize: isDesktop ? 28 : 26, fontWeight: 700, color: T.text1, margin: 0, letterSpacing: -0.5 }}>
+        <h1 style={{ fontSize: isDesktop ? 24 : 22, fontWeight: 650, color: T.text1, margin: 0, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
           Expense log
         </h1>
       </div>
@@ -358,20 +358,20 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       <div style={{ margin: isDesktop ? '0 32px 20px' : '0 16px 16px' }}>
         <div style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'baseline',
           justifyContent: 'space-between',
           gap: 16,
-          padding: isDesktop ? '0 0 20px' : '0 0 16px',
+          padding: isDesktop ? '0 0 16px' : '0 0 12px',
         }}>
           <div>
-            <p style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Logged total
             </p>
-            <p style={{ margin: 0, fontSize: 15, color: T.text3, lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: 14, color: T.text3, lineHeight: 1.35 }}>
               {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'} logged
             </p>
           </div>
-          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.text1, letterSpacing: '-0.03em', whiteSpace: 'nowrap' }}>
+          <p style={{ margin: 0, fontSize: isDesktop ? 22 : 20, fontWeight: 650, color: T.text1, letterSpacing: '-0.02em', whiteSpace: 'nowrap', lineHeight: 1 }}>
             {fmt(totalLogged, data.currency)}
           </p>
         </div>

@@ -13,6 +13,8 @@ interface IncomeData {
   income: number
   extraIncome: ExtraIncomeItem[]
   total: number
+  cycleStartMode: 'full_month' | 'mid_month'
+  openingBalance: number | null
   received: number | null
   receivedConfirmedAt: string | null
 }
@@ -41,6 +43,8 @@ interface OverviewIncomeRow {
   salary: number | string | null
   extra_income: Array<{ id?: string | number; label?: string; amount?: number | string }> | null
   total: number | string | null
+  cycle_start_mode: 'full_month' | 'mid_month' | null
+  opening_balance: number | string | null
   received: number | string | null
   received_confirmed_at: string | null
 }
@@ -105,7 +109,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     (supabase.from('income_entries') as any)
-      .select('salary, extra_income, total, received, received_confirmed_at')
+      .select('salary, extra_income, total, cycle_start_mode, opening_balance, received, received_confirmed_at')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
@@ -203,10 +207,13 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     : null
 
   const incomeTotal = Number(incomeRow?.total ?? 0)
+  const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
+  const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
   const fixedTotal = Number(fixedExpenses?.total_monthly ?? 0)
   const budgetTotal = Number(spendingBudgetData?.total_budget ?? 0)
   const hasStartedCycleData =
     incomeTotal > 0 ||
+    (cycleStartMode === 'mid_month' && (openingBalance ?? 0) > 0) ||
     totalSpent > 0 ||
     fixedTotal > 0 ||
     budgetTotal > 0
@@ -218,8 +225,11 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     currency: profile.currency ?? 'KES',
     incomeType: profile.income_type ?? null,
     paydayDay:
-      profile.income_type === 'salaried'
-        ? Number(profile.pay_schedule_days?.[0] ?? 1)
+      profile.income_type === 'salaried' &&
+      Array.isArray(profile.pay_schedule_days) &&
+      profile.pay_schedule_days.length > 0 &&
+      Number.isFinite(Number(profile.pay_schedule_days[0]))
+        ? Number(profile.pay_schedule_days[0])
         : null,
     goals: (profile.goals ?? []) as GoalId[],
     hasStartedCycleData,
@@ -227,6 +237,8 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       income: Number(incomeRow?.salary ?? 0),
       extraIncome,
       total: incomeTotal,
+      cycleStartMode,
+      openingBalance,
       received: incomeRow?.received != null ? Number(incomeRow.received) : null,
       receivedConfirmedAt: incomeRow?.received_confirmed_at ?? null,
     },

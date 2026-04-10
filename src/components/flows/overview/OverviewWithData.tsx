@@ -38,6 +38,8 @@ interface IncomeData {
   income: number
   extraIncome: { id: string; label: string; amount: number }[]
   total: number
+  cycleStartMode?: 'full_month' | 'mid_month'
+  openingBalance?: number | null
   received?: number | null  // confirmed received this month (null = not yet confirmed)
   receivedConfirmedAt?: string | null
 }
@@ -88,6 +90,14 @@ export function OverviewWithData({
   }, [])
 
   useEffect(() => {
+    // Warm likely next routes so taps feel immediate.
+    router.prefetch('/log/new')
+    router.prefetch('/log')
+    router.prefetch('/income/new')
+    router.prefetch('/goals/new')
+  }, [router])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     const dismissedCycle = window.localStorage.getItem(debtNudgeCycleStorageKey)
     const currentCycle = getCurrentCycleKey()
@@ -122,6 +132,10 @@ const reference = receivedConfirmed
   ? Number(incomeData?.received ?? 0)
   : totalIncome
   const hasLogged = totalSpent > 0
+  const isMidMonthStart = incomeData?.cycleStartMode === 'mid_month' && Number(incomeData?.openingBalance ?? 0) > 0
+  const referenceBase = isMidMonthStart
+    ? Number(incomeData?.openingBalance ?? 0)
+    : reference
 
   const getDaysSinceRecentPayday = (dayOfMonth: number) => {
     const now = new Date()
@@ -150,7 +164,9 @@ const reference = receivedConfirmed
   }
 
   const shouldShowIncomeConfirmPrompt = (() => {
+    if (isMidMonthStart) return false
     if (receivedConfirmed || !onConfirmIncome) return false
+    if (totalIncome <= 0) return false
 
     if (isVariableIncome) {
       return true
@@ -160,7 +176,8 @@ const reference = receivedConfirmed
       return totalSpent > 0
     }
 
-    const daysSincePayday = getDaysSinceRecentPayday(paydayDay ?? 1)
+    if (!paydayDay || paydayDay <= 0) return false
+    const daysSincePayday = getDaysSinceRecentPayday(paydayDay)
     const cadenceTrigger = daysSincePayday === 0 || daysSincePayday === 2
     const contextualTrigger = totalSpent > 0
 
@@ -168,7 +185,7 @@ const reference = receivedConfirmed
   })()
 
   const shouldPrioritizeIncomeCta =
-    hasLogged && (totalIncome <= 0 || !receivedConfirmed)
+    hasLogged && totalIncome <= 0 && !isMidMonthStart
 
   const incomeConfirmPromptText = (() => {
     if (isVariableIncome) {
@@ -178,7 +195,8 @@ const reference = receivedConfirmed
     }
 
     if (isSalariedIncome) {
-      const daysSincePayday = getDaysSinceRecentPayday(paydayDay ?? 1)
+      if (!paydayDay || paydayDay <= 0) return "Set your pay day in Settings to enable monthly check-ins."
+      const daysSincePayday = getDaysSinceRecentPayday(paydayDay)
       if (daysSincePayday === 0) return "It's payday. Confirm income to start this cycle clean."
       if (daysSincePayday === 2) return "Quick reminder: confirm this month's income."
       return 'You have spending logged. Confirm income so your remaining amount stays accurate.'
@@ -187,8 +205,8 @@ const reference = receivedConfirmed
     return "Confirm this month's income."
   })()
 
-  const spentPct  = calculatePct(totalSpent, reference)
-  const isCanonicalEmpty = totalIncome <= 0 && !hasLogged && !receivedConfirmed
+  const spentPct  = calculatePct(totalSpent, referenceBase)
+  const isCanonicalEmpty = totalIncome <= 0 && !hasLogged && !receivedConfirmed && !isMidMonthStart
 
   // State B: received confirmed, nothing logged — hero is full available amount
   const stateBCard = (ref: number) => (
@@ -294,7 +312,7 @@ const reference = receivedConfirmed
           </>
         )}
 
-        {totalIncome <= 0 && (
+        {totalIncome <= 0 && !isMidMonthStart && (
           <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
             Add monthly income to unlock your true remaining balance.
           </p>
@@ -332,11 +350,18 @@ const reference = receivedConfirmed
             </PrimaryBtn>
             <SecondaryBtn
               size="lg"
-              onClick={onLogExpense}
+              onClick={() => router.push('/log')}
               style={{ marginTop: 10, color: 'var(--text-2)' }}
             >
-              Add an expense
+              View expense log
             </SecondaryBtn>
+            <TertiaryBtn
+              size="md"
+              onClick={onLogExpense}
+              style={{ marginTop: 8, color: 'var(--text-3)' }}
+            >
+              Add an expense
+            </TertiaryBtn>
           </>
         ) : (
           <>
@@ -356,11 +381,11 @@ const reference = receivedConfirmed
     )
   }
 
-  const spendingCard = hasLogged && totalIncome > 0
-    ? stateCCard(totalSpent, reference)
+  const spendingCard = hasLogged && (totalIncome > 0 || isMidMonthStart)
+    ? stateCCard(totalSpent, referenceBase)
     : hasLogged
     ? stateCCard(totalSpent, Math.max(totalSpent, 1))
-    : stateBCard(reference)
+    : stateBCard(referenceBase)
 
   // ── Goals progress card (has goals) ─────────────────────────
   const goalsCard = (

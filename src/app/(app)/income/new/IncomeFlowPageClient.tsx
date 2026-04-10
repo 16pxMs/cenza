@@ -11,6 +11,7 @@ import { saveIncome } from '../actions'
 interface Props {
   currency: string
   incomeType: 'salaried' | 'variable' | null
+  paydayDay: number | null
   returnTo: string
 }
 
@@ -27,7 +28,7 @@ function resolveReturnPath(returnTo: string): string {
   return trimmed
 }
 
-export default function IncomeFlowPageClient({ currency, incomeType, returnTo }: Props) {
+export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, returnTo }: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const { isDesktop } = useBreakpoint()
@@ -50,7 +51,8 @@ export default function IncomeFlowPageClient({ currency, incomeType, returnTo }:
     try {
       await saveIncome(input)
       toast('Income updated')
-      window.location.assign(nextPath)
+      router.replace(nextPath)
+      router.refresh()
     } catch {
       toast('Failed to update income. Please try again.')
       setSaving(false)
@@ -66,6 +68,7 @@ export default function IncomeFlowPageClient({ currency, incomeType, returnTo }:
     >
       <AddIncomeFlow
         incomeType={incomeType}
+        paydayDay={paydayDay}
         currency={currency}
         onSave={handleSave}
         onBack={incomeType == null ? undefined : () => router.push(nextPath)}

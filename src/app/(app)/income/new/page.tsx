@@ -32,6 +32,7 @@ export default async function IncomeFlowPage({ searchParams }: IncomeFlowPagePro
     <IncomeFlowPageClient
       currency={data.currency}
       incomeType={data.incomeType}
+      paydayDay={data.paydayDay}
       returnTo={returnTo}
     />
   )

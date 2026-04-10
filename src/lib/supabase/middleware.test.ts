@@ -11,6 +11,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: false,
       hasPin: false,
       pinVerified: false,
+      hasAuthErrorQuery: false,
     })).toBe('/')
   })
 
@@ -23,6 +24,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: true,
       hasPin: false,
       pinVerified: false,
+      hasAuthErrorQuery: false,
     })).toBe('/')
   })
 
@@ -35,6 +37,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: false,
       hasPin: true,
       pinVerified: false,
+      hasAuthErrorQuery: false,
     })).toBe('/pin')
   })
 
@@ -47,6 +50,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: false,
       hasPin: true,
       pinVerified: true,
+      hasAuthErrorQuery: false,
     })).toBe('/app')
   })
 
@@ -59,6 +63,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: false,
       hasPin: true,
       pinVerified: false,
+      hasAuthErrorQuery: false,
     })).toBe('/pin')
   })
 
@@ -71,6 +76,7 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: false,
       hasPin: true,
       pinVerified: true,
+      hasAuthErrorQuery: false,
     })).toBe('/app')
   })
 
@@ -83,6 +89,20 @@ describe('getMiddlewareRedirectPath', () => {
       hasReturningDevice: false,
       hasPin: true,
       pinVerified: false,
+      hasAuthErrorQuery: false,
+    })).toBeNull()
+  })
+
+  it('does not redirect authenticated users away from public entry when auth error query is present', () => {
+    expect(getMiddlewareRedirectPath({
+      pathname: '/',
+      hasUser: true,
+      isPublic: true,
+      isPinPage: false,
+      hasReturningDevice: false,
+      hasPin: true,
+      pinVerified: true,
+      hasAuthErrorQuery: true,
     })).toBeNull()
   })
 })

@@ -35,6 +35,7 @@ export interface IncomePageData {
 export interface IncomeSetupPageData {
   currency: string
   incomeType: 'salaried' | 'variable' | null
+  paydayDay: number | null
 }
 
 export interface FixedExpensesSetupPageData {
@@ -52,6 +53,13 @@ export async function loadIncomeSetupPageData(profile: UserProfile): Promise<Inc
   return {
     currency: profile.currency ?? 'KES',
     incomeType: profile.income_type ?? null,
+    paydayDay:
+      profile.income_type === 'salaried' &&
+      Array.isArray(profile.pay_schedule_days) &&
+      profile.pay_schedule_days.length > 0 &&
+      Number.isFinite(Number(profile.pay_schedule_days[0]))
+        ? Number(profile.pay_schedule_days[0])
+        : null,
   }
 }
 

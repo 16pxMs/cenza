@@ -434,7 +434,7 @@ export function NewExpenseClient() {
   }
 
   const handleNext = () => {
-    if (!activeItem || !activeItem.categoryType || parsedAmount <= 0) return
+    if (!activeItem || !activeItem.categoryType || parsedAmount <= 0 || !activeItem.label.trim()) return
     if (activeIndex < queue.length - 1) {
       setActiveIndex((current) => current + 1)
     }
@@ -449,6 +449,9 @@ export function NewExpenseClient() {
     try {
       if (queue.some((item) => !item.categoryType)) {
         throw new Error('Choose a category for each expense before saving.')
+      }
+      if (queue.some((item) => !item.label.trim())) {
+        throw new Error('Add a name for each expense before saving.')
       }
 
       await saveExpenseBatch(queue.map((item, index) => ({
@@ -473,7 +476,7 @@ export function NewExpenseClient() {
 
   const isLastItem = activeIndex === queue.length - 1
   const canReviewContinue = queue.length > 0
-  const canAdvance = !!activeItem?.categoryType && parsedAmount > 0
+  const canAdvance = !!activeItem?.categoryType && parsedAmount > 0 && !!activeItem?.label.trim()
   const recentMatch = activeItem ? recentByLabel[normalizeLabel(activeItem.label)] ?? null : null
 
   return (
@@ -544,6 +547,7 @@ export function NewExpenseClient() {
               savedCount={savedCount}
               items={queue}
               currency={currency}
+              returnTo={returnTo}
               onLogMore={() => {
                 setQueue([])
                 setActiveIndex(0)
@@ -553,6 +557,7 @@ export function NewExpenseClient() {
                 setStep('queue')
               }}
               onGoToRecap={() => router.push('/log')}
+              onGoToOverview={() => router.push('/app')}
             />
           ) : activeItem ? (
             <ReviewStep
@@ -567,6 +572,10 @@ export function NewExpenseClient() {
               saving={saving}
               saveError={saveError}
               onAmountChange={(value) => updateActiveItem({ amount: value })}
+              onLabelChange={(value) => updateActiveItem({
+                label: value,
+                categoryKey: normalizeLabel(value).replace(/\s+/g, '_'),
+              })}
               onTypeSelect={(type) => updateActiveItem({ categoryType: type, categorySource: 'manual' })}
               onNoteChange={(value) => updateActiveItem({ note: value })}
               onNext={handleNext}
@@ -585,15 +594,21 @@ function DoneStep({
   savedCount,
   items,
   currency,
+  returnTo,
   onLogMore,
   onGoToRecap,
+  onGoToOverview,
 }: {
   savedCount: number
   items: PendingExpenseItem[]
   currency: string
+  returnTo: string
   onLogMore: () => void
   onGoToRecap: () => void
+  onGoToOverview: () => void
 }) {
+  const cameFromOverview = returnTo.startsWith('/app')
+
   const formatSummaryAmount = (value: string) => {
     const amount = parseFloat(value.replace(/,/g, '')) || 0
     return `${currency} ${amount.toLocaleString()}`
@@ -645,13 +660,13 @@ function DoneStep({
         </PrimaryBtn>
         <SecondaryBtn
           size="lg"
-          onClick={onGoToRecap}
+          onClick={cameFromOverview ? onGoToOverview : onGoToRecap}
           style={{
             borderColor: T.border,
             color: T.text1,
           }}
         >
-          View expense log
+          {cameFromOverview ? 'Back to overview' : 'View expense log'}
         </SecondaryBtn>
       </div>
     </div>
@@ -869,6 +884,7 @@ function ReviewStep({
   saving,
   saveError,
   onAmountChange,
+  onLabelChange,
   onTypeSelect,
   onNoteChange,
   onNext,
@@ -887,6 +903,7 @@ function ReviewStep({
   saving: boolean
   saveError: string | null
   onAmountChange: (value: string) => void
+  onLabelChange: (value: string) => void
   onTypeSelect: (type: CategoryType | null) => void
   onNoteChange: (value: string) => void
   onNext: () => void
@@ -948,6 +965,33 @@ function ReviewStep({
           </p>
         )}
       </div>
+
+      {item.categoryType === 'debt' && (
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Debt name
+          </p>
+          <input
+            type="text"
+            placeholder="e.g. Credit card"
+            value={item.label}
+            onChange={(event) => onLabelChange(event.target.value)}
+            style={{
+              width: '100%',
+              height: '48px',
+              borderRadius: 'var(--radius-sm)',
+              border: `${T.borderWidth} solid ${T.border}`,
+              padding: '0 var(--space-md)',
+              fontSize: 'var(--text-base)',
+              color: T.text1,
+              background: T.white,
+              outline: 'none',
+              boxSizing: 'border-box',
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
+      )}
 
       {priorEntry && totalItems === 1 && (
         <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>

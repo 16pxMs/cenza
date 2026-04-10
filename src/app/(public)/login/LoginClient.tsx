@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { signInWithGoogle } from '@/app/auth/actions'
 import { IconBack } from '@/components/ui/Icons'
@@ -9,7 +9,10 @@ import styles from './login.module.css'
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-      {/* keep your SVG exactly as is */}
+      <path fill="#4285F4" d="M17.64 9.2045c0-.6382-.0573-1.2518-.1636-1.8409H9v3.4818h4.8436c-.2087 1.125-.8428 2.0782-1.7959 2.715v2.2582h2.9086c1.7023-1.5673 2.6837-3.8773 2.6837-6.6141z" />
+      <path fill="#34A853" d="M9 18c2.43 0 4.4673-.8068 5.9564-2.1818l-2.9086-2.2582c-.8068.5409-1.8409.8618-3.0478.8618-2.3441 0-4.3282-1.5823-5.0373-3.7091H.9573v2.3318C2.4382 15.9845 5.4818 18 9 18z" />
+      <path fill="#FBBC05" d="M3.9627 10.7136C3.7827 10.1727 3.6818 9.5959 3.6818 9s.1009-1.1727.2809-1.7136V4.9545H.9573C.3477 6.1677 0 7.5368 0 9s.3477 2.8323.9573 4.0455l3.0054-2.3319z" />
+      <path fill="#EA4335" d="M9 3.5795c1.3214 0 2.5077.4541 3.4391 1.3455l2.5791-2.5791C13.4632.8918 11.4259 0 9 0 5.4818 0 2.4382 2.0155.9573 4.9545l3.0054 2.3319C4.6718 5.1618 6.6559 3.5795 9 3.5795z" />
     </svg>
   )
 }
@@ -24,18 +27,6 @@ export default function LoginClient({
   entryIntent: 'start' | 'login'
 }) {
   const [reconnecting, setReconnecting] = useState(false)
-  const formRef = useRef<HTMLFormElement | null>(null)
-  const didAutoSubmit = useRef(false)
-
-  useEffect(() => {
-    if (!knownDevice || authError || didAutoSubmit.current) return
-    didAutoSubmit.current = true
-    setReconnecting(true)
-    const timeout = window.setTimeout(() => {
-      formRef.current?.requestSubmit()
-    }, 120)
-    return () => window.clearTimeout(timeout)
-  }, [authError, knownDevice])
 
   return (
     <div className={styles.authWrapper}>
@@ -79,7 +70,6 @@ export default function LoginClient({
         )}
 
         <form
-          ref={formRef}
           action={signInWithGoogle}
           onSubmit={() => setReconnecting(true)}
         >

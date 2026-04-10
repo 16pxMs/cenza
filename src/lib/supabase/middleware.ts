@@ -11,11 +11,18 @@ interface RedirectDecisionInput {
   hasReturningDevice: boolean
   hasPin: boolean
   pinVerified: boolean
+  hasAuthErrorQuery: boolean
 }
 
 export function getMiddlewareRedirectPath(input: RedirectDecisionInput): string | null {
   if (input.pathname === '/start') {
     return '/'
+  }
+
+  // If OAuth just failed/cancelled, always allow the user to stay on public entry
+  // pages so we don't bounce them straight back into authenticated routes.
+  if (input.hasAuthErrorQuery && (input.pathname === '/' || input.pathname === '/login')) {
+    return null
   }
 
   if (!input.hasUser && !input.isPublic) {
@@ -62,6 +69,26 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  const authError = request.nextUrl.searchParams.get('error')
+
+  // Hard stop for cancelled OAuth flows that accidentally return to /app
+  // with an existing session cookie. Explicitly clear session and bounce
+  // to a public entry path.
+  if (authError === 'access_denied') {
+    await supabase.auth.signOut()
+
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    url.search = ''
+    url.searchParams.set('error', 'oauth_cancelled')
+
+    const response = NextResponse.redirect(url)
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      response.cookies.set(cookie)
+    }
+    return response
+  }
+
   // Refresh session — do not write logic between createServerClient and getUser
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -83,6 +110,7 @@ export async function updateSession(request: NextRequest) {
     hasReturningDevice,
     hasPin,
     pinVerified,
+    hasAuthErrorQuery: !!authError,
   })
 
   if (redirectPath) {

@@ -52,6 +52,8 @@ export interface IncomeEntry {
   salary:                number
   extra_income:          ExtraIncomeItem[]
   total:                 number
+  cycle_start_mode:      'full_month' | 'mid_month'
+  opening_balance:       number | null
   received:              number | null
   received_confirmed_at: string | null
   created_at:            string

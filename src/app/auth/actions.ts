@@ -6,6 +6,9 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function signInWithGoogle(formData?: FormData) {
   const supabase = await createClient()
+  // Start OAuth from a clean auth state so cancelled/retried attempts
+  // cannot inherit a stale existing session.
+  await supabase.auth.signOut()
   const rawSource = formData?.get('source')
   const source = rawSource === 'start' ? 'start' : 'login'
   const fallbackPath = source === 'start' ? '/' : '/login'

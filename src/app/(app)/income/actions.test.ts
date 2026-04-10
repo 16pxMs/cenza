@@ -59,9 +59,62 @@ describe('income actions', () => {
       cycle_id: '2026-04-01',
       salary: 1000,
       extra_income: [{ id: 'bonus', label: 'Bonus', amount: 200 }],
+      cycle_start_mode: 'full_month',
+      opening_balance: null,
     }, { onConflict: 'user_id,cycle_id' })
-    expect(update).toHaveBeenCalledWith({ income_type: 'variable' })
+    expect(update).toHaveBeenCalledWith({
+      income_type: 'variable',
+      pay_schedule_type: null,
+      pay_schedule_days: null,
+    })
     expect(revalidatePath).toHaveBeenCalledWith('/settings')
+  })
+
+  it('saveIncome persists payday for salaried users', async () => {
+    const { supabase, update } = makeSupabase()
+    createClient.mockResolvedValue(supabase)
+
+    const { saveIncome } = await import('./actions')
+
+    await saveIncome({
+      income: 3000,
+      extraIncome: [],
+      total: 3000,
+      incomeType: 'salaried',
+      paydayDay: 23,
+    })
+
+    expect(update).toHaveBeenCalledWith({
+      income_type: 'salaried',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [23],
+    })
+  })
+
+  it('saveIncome supports mid-month start with opening balance', async () => {
+    const { supabase, incomeUpsert } = makeSupabase()
+    createClient.mockResolvedValue(supabase)
+
+    const { saveIncome } = await import('./actions')
+
+    await saveIncome({
+      income: 0,
+      extraIncome: [],
+      total: 1200,
+      incomeType: 'salaried',
+      paydayDay: 23,
+      cycleStartMode: 'mid_month',
+      openingBalance: 1200,
+    })
+
+    expect(incomeUpsert).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      cycle_id: '2026-04-01',
+      salary: 0,
+      extra_income: [],
+      cycle_start_mode: 'mid_month',
+      opening_balance: 1200,
+    }, { onConflict: 'user_id,cycle_id' })
   })
 
   it('saveFixedExpenses writes monthly totals for the current cycle', async () => {
