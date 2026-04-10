@@ -21,6 +21,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { formatDate, getConfidenceLevel, CONFIDENCE_LABEL, CONFIDENCE_COLOR } from '@/lib/finance'
+import { TertiaryBtn } from '@/components/ui/Button/Button'
 
 const T = {
   brand:        'var(--brand)',
@@ -417,12 +418,13 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                     Just this once
                   </button>
                 </div>
-                <button
+                <TertiaryBtn
+                  size="sm"
                   onClick={() => { setPendingCat(null); setOtherName('') }}
-                  style={{ marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.textMuted }}
+                  style={{ marginTop: 12, fontSize: 13 }}
                 >
                   Back
-                </button>
+                </TertiaryBtn>
               </div>
             )}
 
@@ -430,12 +432,13 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
             {isFirstTime && !isDebtFlow && firstTimeCat && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{firstTimeCat.label}</span>
-                <button
+                <TertiaryBtn
+                  size="sm"
                   onClick={() => { setFirstTimeCat(null); setOtherName(''); setAmount('') }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: T.text3 }}
+                  style={{ fontSize: 13 }}
                 >
                   Change
-                </button>
+                </TertiaryBtn>
               </div>
             )}
 
@@ -495,16 +498,16 @@ export function AddExpenseSheet({ open, onClose, item, priorEntry, dictionary, q
                     {GROUP_LABEL[dictMatch.groupType] ?? dictMatch.groupType}
                   </p>
                 </div>
-                <button
+                <TertiaryBtn
+                  size="sm"
                   onClick={() => { setOverrideDict(true); setDictMatch(null) }}
                   style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 12, color: T.text3,
+                    fontSize: 12,
                     padding: '4px 6px',
                   }}
                 >
                   That's wrong
-                </button>
+                </TertiaryBtn>
               </div>
               )
             })()}

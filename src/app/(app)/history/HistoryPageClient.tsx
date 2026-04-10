@@ -91,6 +91,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
   const canGoPrev   = activeIndex > 0
   const canGoNext   = activeIndex >= 0 && activeIndex < data.availableMonths.length - 1
   const pad         = isDesktop ? '0 var(--space-page-desktop)' : '0 var(--space-page-mobile)'
+  const currentMonthRoute = activeYM === currentYM() ? '/history' : `/history?month=${activeYM}`
 
   function navToMonth(ym: string) {
     router.push(ym === currentYM() ? '/history' : `/history?month=${ym}`)
@@ -242,6 +243,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
                     const isLast    = index === data.rows.length - 1
                     const hasLogged = row.spent > 0
                     const showBar   = hasLogged && row.planned > 0
+                    const isDebtRow = row.type === 'debt'
 
                     const inner = (
                       <div style={{ padding: `${showBar ? 'var(--radius-md)' : 'var(--radius-md)'} var(--space-card-sm) ${showBar ? 'var(--space-sm)' : 'var(--radius-md)'}` }}>
@@ -264,7 +266,14 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
                     )
 
                     return (
-                      <div key={row.key} style={{ borderBottom: isLast ? 'none' : 'var(--border-width) solid var(--border-subtle)' }}>
+                      <div
+                        key={row.key}
+                        onClick={isDebtRow ? () => router.push(`/history/debt?label=Debt&type=debt&returnTo=${encodeURIComponent(currentMonthRoute)}`) : undefined}
+                        style={{
+                          borderBottom: isLast ? 'none' : 'var(--border-width) solid var(--border-subtle)',
+                          cursor: isDebtRow ? 'pointer' : 'default',
+                        }}
+                      >
                         {inner}
                       </div>
                     )

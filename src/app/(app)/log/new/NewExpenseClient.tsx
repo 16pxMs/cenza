@@ -72,7 +72,7 @@ const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: 
     helper: 'Must-pay home and living costs like rent or water.',
   },
   debt: {
-    title: 'Borrowed money',
+    title: 'Debt',
     helper: 'Money you borrowed and are paying back.',
   },
 }
@@ -87,8 +87,9 @@ const DEFAULT_COMMON_ITEMS: Array<{ label: string; categoryType: Exclude<Categor
   { label: 'Electricity', categoryType: 'fixed' },
   { label: 'Water', categoryType: 'fixed' },
   { label: 'Netflix', categoryType: 'fixed' },
-  { label: 'Borrowed money', categoryType: 'debt' },
+  { label: 'Debt', categoryType: 'debt' },
 ]
+const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
 
 function buildDefaultCommonItems(): DictEntry[] {
   return DEFAULT_COMMON_ITEMS.map((item) => ({
@@ -119,18 +120,30 @@ function suggestType(label: string): CategoryType | null {
   return 'everyday'
 }
 
-function buildPendingItem(label: string, source: QueueSource, dictEntry?: DictEntry | null): PendingExpenseItem {
+function getDefaultTypeForCommonLabel(label: string): Exclude<CategoryType, 'goal'> | null {
+  const normalized = normalizeLabel(label)
+  const match = DEFAULT_COMMON_ITEMS.find((item) => normalizeLabel(item.label) === normalized)
+  return match?.categoryType ?? null
+}
+
+function buildPendingItem(
+  label: string,
+  source: QueueSource,
+  dictEntry?: DictEntry | null,
+  preferredType?: CategoryType | null,
+): PendingExpenseItem {
   const cleanLabel = label.trim()
   const normalized = normalizeLabel(cleanLabel)
   const rememberedCategoryType = dictEntry && (dictEntry.usageCount > 0 || Boolean(dictEntry.lastUsed))
     ? dictEntry.categoryType
     : null
+  const fallbackCategoryType = preferredType ?? suggestType(cleanLabel)
 
   return {
     id: normalized || `${source}-${Date.now()}`,
     label: cleanLabel,
-    categoryType: rememberedCategoryType,
-    categorySource: rememberedCategoryType ? 'remembered' : null,
+    categoryType: rememberedCategoryType ?? fallbackCategoryType,
+    categorySource: rememberedCategoryType ? 'remembered' : fallbackCategoryType ? 'manual' : null,
     categoryKey: dictEntry?.key ?? normalized.replace(/\s+/g, '_'),
     amount: '',
     note: '',
@@ -215,6 +228,15 @@ export function NewExpenseClient() {
   const [dictionary, setDictionary] = useState<Record<string, DictEntry>>({})
   const [commonItems, setCommonItems] = useState<DictEntry[]>(() => buildDefaultCommonItems())
   const [recentByLabel, setRecentByLabel] = useState<Record<string, RecentLoggedEntry>>({})
+  const [quickEntryStatus, setQuickEntryStatus] = useState<{
+    loaded: boolean
+    hasIncome: boolean
+    existingExpenseCount: number
+  }>({
+    loaded: false,
+    hasIncome: true,
+    existingExpenseCount: 0,
+  })
 
   const currency = profile?.currency || 'USD'
   const activeItem = queue[activeIndex] ?? null
@@ -359,6 +381,40 @@ export function NewExpenseClient() {
   }, [user, profile])
 
   useEffect(() => {
+    if (!user?.id || !cycleId) return
+
+    ;(async () => {
+      const [{ data: incomeRow }, { data: txRows }] = await Promise.all([
+        (supabase.from('income_entries') as any)
+          .select('total, opening_balance, received')
+          .eq('user_id', user.id)
+          .eq('cycle_id', cycleId)
+          .maybeSingle(),
+        (supabase.from('transactions') as any)
+          .select('id, category_type')
+          .eq('user_id', user.id)
+          .eq('cycle_id', cycleId),
+      ])
+
+      const hasIncomeForCycle =
+        Number(incomeRow?.total ?? 0) > 0 ||
+        Number(incomeRow?.opening_balance ?? 0) > 0 ||
+        Number(incomeRow?.received ?? 0) > 0
+      const existingExpenseCount = (txRows ?? []).filter((txn: any) => txn.category_type !== 'goal').length
+
+      setQuickEntryStatus({
+        loaded: true,
+        hasIncome: hasIncomeForCycle,
+        existingExpenseCount,
+      })
+    })()
+  }, [supabase, user?.id, cycleId])
+
+  const remainingQuickEntries = quickEntryStatus.hasIncome
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, QUICK_ENTRY_LIMIT_WITHOUT_INCOME - quickEntryStatus.existingExpenseCount)
+
+  useEffect(() => {
     if (isOther || !paramKey || !user || !cycleId) { setPriorEntry(null); return }
     ;(supabase.from('transactions') as any)
       .select('id, amount')
@@ -387,8 +443,14 @@ export function NewExpenseClient() {
       return
     }
 
+    if (!quickEntryStatus.hasIncome && queue.length >= remainingQuickEntries) {
+      setQueueNotice('Add income to continue logging more expenses.')
+      return
+    }
+
     const dictEntry = dictionary[normalized] ?? null
-    setQueue((current) => [...current, buildPendingItem(label, 'common', dictEntry)])
+    const preferredType = getDefaultTypeForCommonLabel(label)
+    setQueue((current) => [...current, buildPendingItem(label, 'common', dictEntry, preferredType)])
     setQueueNotice(null)
   }
 
@@ -400,6 +462,11 @@ export function NewExpenseClient() {
     if (exists) {
       setQueueNotice(`"${newItemName.trim()}" is already in your list.`)
       setNewItemName('')
+      return false
+    }
+
+    if (!quickEntryStatus.hasIncome && queue.length >= remainingQuickEntries) {
+      setQueueNotice('Add income to continue logging more expenses.')
       return false
     }
 
@@ -431,6 +498,10 @@ export function NewExpenseClient() {
 
   const handleContinueToReview = () => {
     if (queue.length === 0) return
+    if (!quickEntryStatus.hasIncome && queue.length > remainingQuickEntries) {
+      setQueueNotice('Add income to continue logging more expenses.')
+      return
+    }
     setActiveIndex(0)
     setStep('review')
   }
@@ -444,6 +515,10 @@ export function NewExpenseClient() {
 
   const handleSaveAll = async () => {
     if (!user || queue.length === 0) return
+    if (!quickEntryStatus.hasIncome && queue.length > remainingQuickEntries) {
+      setSaveError('Add your income first so Cenza can calculate what is left accurately.')
+      return
+    }
 
     setSaving(true)
     setSaveError(null)
@@ -482,6 +557,7 @@ export function NewExpenseClient() {
   const isLastItem = activeIndex === queue.length - 1
   const canReviewContinue = queue.length > 0
   const canAdvance = !!activeItem?.categoryType && parsedAmount > 0 && !!activeItem?.label.trim()
+  const requiresIncomeRecovery = !quickEntryStatus.hasIncome && queue.length > remainingQuickEntries
   const recentMatch = activeItem ? recentByLabel[normalizeLabel(activeItem.label)] ?? null : null
 
   return (
@@ -542,6 +618,8 @@ export function NewExpenseClient() {
               queue={queue}
               commonItems={rankedCommonItems}
               queueNotice={queueNotice}
+              quickEntryStatus={quickEntryStatus}
+              quickEntryLimit={QUICK_ENTRY_LIMIT_WITHOUT_INCOME}
               onToggleCommon={toggleCommonItem}
               onAddTypedItem={addTypedItem}
               onImportFromSms={() => router.push(`/log/import?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
@@ -564,6 +642,7 @@ export function NewExpenseClient() {
               }}
               onGoToRecap={() => router.push('/log')}
               onGoToOverview={() => router.push('/app')}
+              onGoToDebtReview={() => router.push(`/history/debt?label=Debt&type=debt&returnTo=${encodeURIComponent(returnTo)}`)}
             />
           ) : activeItem ? (
             <ReviewStep
@@ -586,6 +665,8 @@ export function NewExpenseClient() {
               onNoteChange={(value) => updateActiveItem({ note: value })}
               onNext={handleNext}
               onSaveAll={handleSaveAll}
+              onRecoverIncome={() => router.push(`/income/new?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
+              requiresIncomeRecovery={requiresIncomeRecovery}
               canAdvance={canAdvance}
               isLastItem={isLastItem}
             />
@@ -604,6 +685,7 @@ function DoneStep({
   onLogMore,
   onGoToRecap,
   onGoToOverview,
+  onGoToDebtReview,
 }: {
   savedCount: number
   items: PendingExpenseItem[]
@@ -612,8 +694,10 @@ function DoneStep({
   onLogMore: () => void
   onGoToRecap: () => void
   onGoToOverview: () => void
+  onGoToDebtReview: () => void
 }) {
   const cameFromOverview = returnTo.startsWith('/app')
+  const hasDebtItems = items.some((item) => item.categoryType === 'debt')
 
   const formatSummaryAmount = (value: string) => {
     const amount = parseFloat(value.replace(/,/g, '')) || 0
@@ -664,6 +748,18 @@ function DoneStep({
         >
           Log more
         </PrimaryBtn>
+        {hasDebtItems && (
+          <SecondaryBtn
+            size="lg"
+            onClick={onGoToDebtReview}
+            style={{
+              borderColor: T.border,
+              color: T.text1,
+            }}
+          >
+            View debt progress
+          </SecondaryBtn>
+        )}
         <SecondaryBtn
           size="lg"
           onClick={cameFromOverview ? onGoToOverview : onGoToRecap}
@@ -685,6 +781,8 @@ function QueueStep({
   queue,
   commonItems,
   queueNotice,
+  quickEntryStatus,
+  quickEntryLimit,
   onToggleCommon,
   onAddTypedItem,
   onImportFromSms,
@@ -696,6 +794,8 @@ function QueueStep({
   queue: PendingExpenseItem[]
   commonItems: DictEntry[]
   queueNotice: string | null
+  quickEntryStatus: { loaded: boolean; hasIncome: boolean; existingExpenseCount: number }
+  quickEntryLimit: number
   onToggleCommon: (label: string) => void
   onAddTypedItem: () => boolean
   onImportFromSms: () => void
@@ -706,6 +806,9 @@ function QueueStep({
   const addInputRef = useRef<HTMLInputElement | null>(null)
   const selectedSet = new Set(queue.map((item) => normalizeLabel(item.label)))
   const canAddTypedItem = newItemName.trim().length > 0
+  const entriesLeftWithoutIncome = quickEntryStatus.hasIncome
+    ? null
+    : Math.max(0, quickEntryLimit - quickEntryStatus.existingExpenseCount)
 
   useEffect(() => {
     if (newItemName.trim()) {
@@ -838,7 +941,7 @@ function QueueStep({
             <TertiaryBtn
               size="sm"
               onClick={collapseAddInput}
-              style={{ paddingInline: 0, color: T.text3 }}
+              style={{ paddingInline: 0 }}
             >
               Cancel
             </TertiaryBtn>
@@ -849,7 +952,7 @@ function QueueStep({
           <TertiaryBtn
             size="md"
             onClick={() => setShowAddInput(true)}
-            style={{ paddingInline: 0, color: T.text2 }}
+            style={{ paddingInline: 0 }}
           >
             Add something else
           </TertiaryBtn>
@@ -857,6 +960,13 @@ function QueueStep({
       )}
 
       {/* Queue notice */}
+      {quickEntryStatus.loaded && entriesLeftWithoutIncome !== null && (
+        <p style={{ margin: '0 0 8px', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+          {entriesLeftWithoutIncome > 0
+            ? `${entriesLeftWithoutIncome} of ${quickEntryLimit} quick ${entriesLeftWithoutIncome === 1 ? 'entry' : 'entries'} left before income setup.`
+            : 'Quick entry limit reached. Add income to continue logging expenses.'}
+        </p>
+      )}
       {queueNotice && (
         <p style={{ margin: '0 0 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
           {queueNotice}
@@ -904,6 +1014,8 @@ function ReviewStep({
   onNoteChange,
   onNext,
   onSaveAll,
+  onRecoverIncome,
+  requiresIncomeRecovery,
   canAdvance,
   isLastItem,
 }: {
@@ -923,6 +1035,8 @@ function ReviewStep({
   onNoteChange: (value: string) => void
   onNext: () => void
   onSaveAll: () => void
+  onRecoverIncome: () => void
+  requiresIncomeRecovery: boolean
   canAdvance: boolean
   isLastItem: boolean
 }) {
@@ -937,6 +1051,14 @@ function ReviewStep({
     )).join('.')
     : ''
   const updateCandidate = priorEntry ?? (recentMatch ? { id: recentMatch.id, amount: recentMatch.amount } : null)
+  const incomeBlocked = isLastItem && requiresIncomeRecovery
+  const primaryActionLabel = saving
+    ? 'Saving…'
+    : incomeBlocked
+      ? 'Add income to continue'
+      : isLastItem
+        ? 'Save'
+        : 'Next'
 
   return (
     <div>
@@ -1149,31 +1271,42 @@ function ReviewStep({
       </div>
 
       {saveError && (
-        <p style={{
-          margin: '0 0 var(--space-md)',
-          padding: '10px 14px',
-          borderRadius: 'var(--radius-sm)',
-          background: T.redLight,
-          border: `${T.borderWidth} solid ${T.redBorder}`,
-          fontSize: 'var(--text-sm)',
-          color: T.redDark,
-          lineHeight: 1.5,
-        }}>
-          {saveError}
-        </p>
+        <div style={{ margin: '0 0 var(--space-md)' }}>
+          <p style={{
+            margin: '0 0 var(--space-sm)',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-sm)',
+            background: T.redLight,
+            border: `${T.borderWidth} solid ${T.redBorder}`,
+            fontSize: 'var(--text-sm)',
+            color: T.redDark,
+            lineHeight: 1.5,
+          }}>
+            {saveError}
+          </p>
+          {saveError.toLowerCase().includes('add your income first') && (
+            <SecondaryBtn
+              size="md"
+              onClick={onRecoverIncome}
+              style={{ borderColor: T.border, color: T.text1 }}
+            >
+              Add income
+            </SecondaryBtn>
+          )}
+        </div>
       )}
 
       <PrimaryBtn
         size="lg"
-        onClick={isLastItem ? onSaveAll : onNext}
-        disabled={!canAdvance || saving}
+        onClick={incomeBlocked ? onRecoverIncome : (isLastItem ? onSaveAll : onNext)}
+        disabled={saving || (!incomeBlocked && !canAdvance)}
         style={{
-          background: canAdvance ? T.brandDark : T.grey200,
-          color: canAdvance ? T.textInverse : T.textMuted,
+          background: (incomeBlocked || canAdvance) ? T.brandDark : T.grey200,
+          color: (incomeBlocked || canAdvance) ? T.textInverse : T.textMuted,
           opacity: saving ? 0.7 : 1,
         }}
       >
-        {saving ? 'Saving…' : isLastItem ? 'Save' : 'Next'}
+        {primaryActionLabel}
       </PrimaryBtn>
     </div>
   )

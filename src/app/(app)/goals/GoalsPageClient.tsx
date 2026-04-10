@@ -689,7 +689,6 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
                 style={{
                   marginTop: 10,
                   padding: '12px',
-                  color: T.text3,
                 }}
               >
                 Go back

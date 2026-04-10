@@ -33,10 +33,55 @@ export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, 
   const { toast } = useToast()
   const { isDesktop } = useBreakpoint()
   const [saving, setSaving] = useState(false)
-  const [flowStep, setFlowStep] = useState<'type' | 'amount'>(incomeType == null ? 'type' : 'amount')
+  const [flowStep, setFlowStep] = useState<'type' | 'amount' | 'cycle' | 'payday'>(incomeType == null ? 'type' : 'amount')
   const nextPath = resolveReturnPath(returnTo)
+  const isFirstTime = incomeType == null
+
+  const copyOverride = (() => {
+    if (!isFirstTime) return undefined
+
+    if (flowStep === 'amount') {
+      return {
+        eyebrow: 'Step 1 of 3',
+        title: 'Set your income',
+        subtitle: 'Enter your regular take-home pay.',
+      }
+    }
+
+    if (flowStep === 'cycle') {
+      return {
+        eyebrow: 'Step 2 of 3',
+        title: '',
+        subtitle: '',
+      }
+    }
+
+    if (flowStep === 'payday') {
+      return {
+        eyebrow: 'Step 3 of 3',
+        title: '',
+        subtitle: '',
+      }
+    }
+
+    return undefined
+  })()
 
   const handleBack = () => {
+    if (flowStep === 'payday') {
+      if (incomeType == null) {
+        setFlowStep('cycle')
+        return
+      }
+      setFlowStep('amount')
+      return
+    }
+
+    if (flowStep === 'cycle') {
+      setFlowStep('amount')
+      return
+    }
+
     if (incomeType == null && flowStep === 'amount') {
       setFlowStep('type')
       return
@@ -65,6 +110,7 @@ export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, 
       onBack={handleBack}
       isDesktop={isDesktop}
       isSaving={saving}
+      copyOverride={copyOverride}
     >
       <AddIncomeFlow
         incomeType={incomeType}

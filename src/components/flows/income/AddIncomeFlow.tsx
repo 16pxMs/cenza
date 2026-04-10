@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import './AddIncomeSheet.css'
 import { Input } from '@/components/ui/Input/Input'
-import { PrimaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { sumAmounts, safeNum } from '@/lib/math/finance'
 
@@ -31,8 +31,8 @@ interface Props {
   currency: string
   onSave: (data: IncomeData) => void
   onBack?: () => void
-  step?: 'type' | 'amount'
-  onStepChange?: (step: 'type' | 'amount') => void
+  step?: 'type' | 'amount' | 'cycle' | 'payday'
+  onStepChange?: (step: 'type' | 'amount' | 'cycle' | 'payday') => void
   showInnerBack?: boolean
 }
 
@@ -66,16 +66,16 @@ export function AddIncomeFlow({
 }: Props) {
   const isFirstTime = incomeType == null
 
-  const [step, setStep] = useState<'type' | 'amount'>(isFirstTime ? 'type' : 'amount')
+  const [step, setStep] = useState<'type' | 'amount' | 'cycle' | 'payday'>(isFirstTime ? 'type' : 'amount')
   const [selectedType, setSelectedType] = useState<IncomeType | null>(incomeType ?? null)
   const [selectedPayday, setSelectedPayday] = useState<number | null>(incomeType === 'salaried' ? paydayDay : null)
-  const [cycleStartMode, setCycleStartMode] = useState<'full_month' | 'mid_month'>('full_month')
+  const [cycleStartMode, setCycleStartMode] = useState<'full_month' | 'mid_month' | null>(null)
   const [salary, setSalary] = useState('')
   const [extras, setExtras] = useState<ExtraIncome[]>([])
   const [error, setError] = useState<string | null>(null)
   const activeStep = controlledStep ?? step
 
-  const setActiveStep = (nextStep: 'type' | 'amount') => {
+  const setActiveStep = (nextStep: 'type' | 'amount' | 'cycle' | 'payday') => {
     if (controlledStep === undefined) {
       setStep(nextStep)
     }
@@ -88,13 +88,13 @@ export function AddIncomeFlow({
     }
     setSelectedType(incomeType ?? null)
     setSelectedPayday(incomeType === 'salaried' ? paydayDay : null)
-    setCycleStartMode('full_month')
+    setCycleStartMode(null)
     setSalary('')
     setExtras([])
     setError(null)
   }, [incomeType, paydayDay, isFirstTime])
 
-  const activeType = selectedType ?? incomeType
+  const activeType: IncomeType = selectedType ?? incomeType ?? 'salaried'
 
   const addExtra = () => setExtras(e => [...e, { id: Date.now(), label: '', amount: '' }])
   const updateExtra = (id: number, field: keyof ExtraIncome, val: string) =>
@@ -104,7 +104,8 @@ export function AddIncomeFlow({
   const salaryNum = safeNum(salary)
   const needsPayday = activeType === 'salaried'
   const isMidMonth = cycleStartMode === 'mid_month'
-  const canSave = salary !== '' && salaryNum > 0 && (!needsPayday || !!selectedPayday)
+  const canProceedFromAmount = salary !== '' && salaryNum > 0
+  const canSave = canProceedFromAmount && (!needsPayday || !!selectedPayday)
   const validExtras = extras.filter(x => x.label && safeNum(x.amount) > 0)
   const extrasTotal = activeType === 'variable' || isMidMonth ? 0 : sumAmounts(validExtras)
   const total = canSave
@@ -121,6 +122,8 @@ export function AddIncomeFlow({
       return
     }
     setError(null)
+    const resolvedIncomeType: IncomeType | undefined = isFirstTime ? activeType : undefined
+
     onSave({
       income: isMidMonth ? 0 : salaryNum,
       extraIncome: activeType === 'variable' || isMidMonth
@@ -129,11 +132,24 @@ export function AddIncomeFlow({
             id: String(x.id), label: x.label, amount: Number(x.amount),
           })),
       total,
-      cycleStartMode,
+      cycleStartMode: cycleStartMode ?? 'full_month',
       openingBalance: isMidMonth ? salaryNum : null,
       ...(activeType === 'salaried' ? { paydayDay: selectedPayday } : { paydayDay: null }),
-      ...(isFirstTime && selectedType ? { incomeType: selectedType } : {}),
+      ...(resolvedIncomeType ? { incomeType: resolvedIncomeType } : {}),
     })
+  }
+
+  const handleContinueFromAmount = () => {
+    if (!salary || isNaN(salaryNum) || salaryNum <= 0) {
+      setError(isMidMonth ? 'Please enter what you currently have left' : 'Please enter your monthly income')
+      return
+    }
+    setError(null)
+    if (isFirstTime) {
+      setActiveStep('cycle')
+      return
+    }
+    setActiveStep('payday')
   }
 
   return (
@@ -148,14 +164,14 @@ export function AddIncomeFlow({
                 display: 'flex', alignItems: 'center',
                 width: '100%', padding: '16px 18px', textAlign: 'left',
                 background: 'var(--white)', border: '1px solid var(--border)',
-                borderRadius: 14, cursor: 'pointer',
+                borderRadius: 'var(--radius-md)', cursor: 'pointer',
               }}
             >
               <div>
-                <p style={{ margin: '0 0 2px', fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>
+                <p style={{ margin: '0 0 2px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
                   {opt.title}
                 </p>
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
                   {opt.subtitle}
                 </p>
               </div>
@@ -190,7 +206,7 @@ export function AddIncomeFlow({
                 ? 'Money left right now'
                 : activeType === 'variable'
                   ? 'Expected income this month'
-                  : 'Monthly salary / main income'
+                  : 'Monthly income'
             }
             value={salary}
             onChange={v => { setSalary(v); if (error) setError(null) }}
@@ -200,87 +216,13 @@ export function AddIncomeFlow({
             autoFocus
             hint={
               isMidMonth
-                ? 'Use your current balance so the app starts from your real position this cycle.'
+                ? 'Use what you currently have so your starting balance is accurate.'
                 : activeType === 'variable'
-                ? 'A realistic estimate. You can log actual money received as the month goes.'
-                : 'Your regular take-home pay this month.'
+                ? 'Use your best estimate. You can adjust with actual money received later.'
+                : 'Your regular take-home amount.'
             }
             error={error ?? undefined}
           />
-
-          {isFirstTime && (
-            <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => setCycleStartMode('full_month')}
-                style={{
-                  height: 36,
-                  padding: '0 14px',
-                  borderRadius: 999,
-                  border: `1px solid ${cycleStartMode === 'full_month' ? 'var(--brand-mid)' : 'var(--border)'}`,
-                  background: cycleStartMode === 'full_month' ? 'var(--brand)' : 'var(--grey-50)',
-                  color: cycleStartMode === 'full_month' ? 'var(--brand-dark)' : 'var(--text-2)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Starting from payday
-              </button>
-              <button
-                type="button"
-                onClick={() => setCycleStartMode('mid_month')}
-                style={{
-                  height: 36,
-                  padding: '0 14px',
-                  borderRadius: 999,
-                  border: `1px solid ${cycleStartMode === 'mid_month' ? 'var(--brand-mid)' : 'var(--border)'}`,
-                  background: cycleStartMode === 'mid_month' ? 'var(--brand)' : 'var(--grey-50)',
-                  color: cycleStartMode === 'mid_month' ? 'var(--brand-dark)' : 'var(--text-2)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Starting mid-month
-              </button>
-            </div>
-          )}
-
-          {activeType === 'salaried' && (
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>
-                What day do you usually get paid?
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
-                {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => {
-                  const isSelected = selectedPayday === day
-                  return (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => { setSelectedPayday(day); if (error) setError(null) }}
-                      style={{
-                        height: 36,
-                        borderRadius: 10,
-                        border: `1px solid ${isSelected ? 'var(--brand-dark)' : 'var(--border)'}`,
-                        background: isSelected ? 'var(--brand-dark)' : 'var(--white)',
-                        color: isSelected ? 'var(--white)' : 'var(--text-2)',
-                        fontSize: 13,
-                        fontWeight: isSelected ? 600 : 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {day}
-                    </button>
-                  )
-                })}
-              </div>
-              <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-3)' }}>
-                We’ll use this for your monthly income confirmation reminder.
-              </p>
-            </div>
-          )}
 
           {activeType !== 'variable' && !isMidMonth && extras.map((x, i) => (
             <div key={x.id} className="income-extra-row">
@@ -309,10 +251,43 @@ export function AddIncomeFlow({
           ))}
 
           {activeType !== 'variable' && !isMidMonth && (
-            <button className="income-add-extra" onClick={addExtra}>
-              <IconPlus color="var(--text-3)" size={13} />
-              Add extra income source
-            </button>
+            extras.length === 0 ? (
+              <TertiaryBtn
+                size="sm"
+                onClick={addExtra}
+                style={{
+                  margin: '4px 0 16px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 'var(--text-sm)',
+                }}
+              >
+                <IconPlus color="var(--text-brand)" size={13} />
+                Add extra income source (optional)
+              </TertiaryBtn>
+            ) : (
+              <TertiaryBtn
+                size="sm"
+                onClick={addExtra}
+                style={{
+                  width: '100%',
+                  height: 42,
+                  borderRadius: 10,
+                  border: '1.5px dashed var(--border-strong)',
+                  background: 'transparent',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  marginBottom: 20,
+                  fontSize: 13,
+                }}
+              >
+                <IconPlus color="var(--text-brand)" size={13} />
+                Add another income source
+              </TertiaryBtn>
+            )
           )}
 
           {total > 0 && (
@@ -322,7 +297,150 @@ export function AddIncomeFlow({
             </div>
           )}
 
-          <PrimaryBtn size="lg" onClick={handleSave} disabled={!canSave}>Save income</PrimaryBtn>
+          {activeType === 'salaried' ? (
+            <PrimaryBtn size="lg" onClick={handleContinueFromAmount} disabled={!canProceedFromAmount}>
+              Continue
+            </PrimaryBtn>
+          ) : (
+            <PrimaryBtn
+              size="lg"
+              onClick={isFirstTime ? () => setActiveStep('cycle') : handleSave}
+              disabled={!canProceedFromAmount}
+            >
+              {isFirstTime ? 'Continue' : 'Save income'}
+            </PrimaryBtn>
+          )}
+        </>
+      )}
+
+      {activeStep === 'cycle' && (
+        <div>
+          <p
+            style={{
+              margin: '0 0 6px',
+              fontSize: 'var(--text-xl)',
+              fontWeight: 'var(--weight-semibold)',
+              color: 'var(--text-1)',
+              letterSpacing: '-0.01em',
+              lineHeight: 1.2,
+            }}
+          >
+            Have you received your salary this month?
+          </p>
+          <p
+            style={{
+              margin: '0 0 14px',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-3)',
+              lineHeight: 1.45,
+            }}
+          >
+            This helps us start your month from the right balance.
+          </p>
+          <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setCycleStartMode('full_month')
+                if (activeType === 'salaried') setActiveStep('payday')
+                else handleSave()
+              }}
+              style={{
+                borderRadius: 'var(--radius-md)',
+                border: `1px solid ${cycleStartMode === 'full_month' ? 'var(--brand-mid)' : 'var(--border)'}`,
+                background: cycleStartMode === 'full_month' ? 'var(--brand)' : 'var(--grey-50)',
+                color: 'var(--text-1)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                padding: '12px 14px',
+              }}
+            >
+              <p style={{ margin: '0 0 2px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: cycleStartMode === 'full_month' ? 'var(--brand-dark)' : 'var(--text-1)' }}>
+                Yes, I&apos;ve been paid
+              </p>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: cycleStartMode === 'full_month' ? 'var(--brand-dark)' : 'var(--text-3)', lineHeight: 1.4 }}>
+                Start from full monthly income.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCycleStartMode('mid_month')
+                if (activeType === 'salaried') setActiveStep('payday')
+                else handleSave()
+              }}
+              style={{
+                borderRadius: 'var(--radius-md)',
+                border: `1px solid ${cycleStartMode === 'mid_month' ? 'var(--brand-mid)' : 'var(--border)'}`,
+                background: cycleStartMode === 'mid_month' ? 'var(--brand)' : 'var(--grey-50)',
+                color: 'var(--text-1)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                padding: '12px 14px',
+              }}
+            >
+              <p style={{ margin: '0 0 2px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: cycleStartMode === 'mid_month' ? 'var(--brand-dark)' : 'var(--text-1)' }}>
+                No, I&apos;m joining mid-month
+              </p>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: cycleStartMode === 'mid_month' ? 'var(--brand-dark)' : 'var(--text-3)', lineHeight: 1.4 }}>
+                Start from money available today.
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeStep === 'payday' && activeType === 'salaried' && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>
+              What day do you usually get paid?
+            </p>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
+              Pick the day your salary normally comes in.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+              {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => {
+                const isSelected = selectedPayday === day
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => { setSelectedPayday(day); if (error) setError(null) }}
+                    style={{
+                      height: 'var(--button-height-sm)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `var(--border-width) solid ${isSelected ? 'var(--brand-dark)' : 'var(--border)'}`,
+                      background: isSelected ? 'var(--brand-dark)' : 'var(--white)',
+                      color: isSelected ? 'var(--white)' : 'var(--text-2)',
+                      fontSize: 'var(--text-base)',
+                      fontWeight: isSelected ? 'var(--weight-semibold)' : 'var(--weight-medium)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {day}
+                  </button>
+                )
+              })}
+            </div>
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-3)' }}>
+              We’ll use this for your monthly income confirmation reminder.
+            </p>
+            {error && (
+              <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--red-dark)' }}>
+                {error}
+              </p>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gap: 8 }}>
+            <PrimaryBtn size="lg" onClick={handleSave} disabled={!canSave}>
+              Save income
+            </PrimaryBtn>
+            <SecondaryBtn size="lg" onClick={() => setActiveStep('amount')}>
+              Back to amount
+            </SecondaryBtn>
+          </div>
         </>
       )}
     </>

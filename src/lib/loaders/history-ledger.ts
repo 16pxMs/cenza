@@ -1,12 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
-import type { UserProfile } from '@/types/database'
+import type { CategoryType, UserProfile } from '@/types/database'
 
 export interface LedgerTransaction {
   id: string
   date: string
   amount: number
   note: string | null
+  categoryLabel: string | null
+  categoryType: CategoryType | null
 }
 
 export interface HistoryLedgerPageData {
@@ -19,21 +21,32 @@ export interface HistoryLedgerPageData {
 export async function loadHistoryLedgerPageData(
   userId: string,
   profile: UserProfile,
-  categoryKey: string
+  categoryKey: string,
+  categoryType?: CategoryType
 ): Promise<HistoryLedgerPageData> {
   const supabase = await createClient()
   const cycleId = deriveCurrentCycleId(profile)
 
-  const { data } = await (supabase.from('transactions') as any)
-    .select('id, date, amount, note')
+  const baseQuery = (supabase.from('transactions') as any)
+    .select('id, date, amount, note, category_label, category_type')
     .eq('user_id', userId)
     .eq('cycle_id', cycleId)
-    .eq('category_key', categoryKey)
+
+  const scopedQuery =
+    categoryType === 'debt' && categoryKey === 'debt'
+      ? baseQuery.eq('category_type', 'debt')
+      : baseQuery.eq('category_key', categoryKey)
+
+  const { data } = await scopedQuery
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
   const txns: LedgerTransaction[] = (data ?? []).map((row: any) => ({
-    ...row,
+    id: row.id,
+    date: row.date,
+    note: row.note ?? null,
+    categoryLabel: row.category_label ?? null,
+    categoryType: row.category_type ?? null,
     amount: Number(row.amount),
   }))
 

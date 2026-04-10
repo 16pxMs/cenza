@@ -7,6 +7,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { TertiaryBtn } from '@/components/ui/Button/Button'
 
 const T = {
   brandDark: '#5C3489',
@@ -151,17 +152,17 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
       )}
 
       {isVariable && (
-        <button
+        <TertiaryBtn
+          size="sm"
           onClick={handleAllIn}
           style={{
             marginBottom: 20,
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: 13, color: T.brandDark, fontWeight: 600,
-            padding: 0, display: 'block',
+            fontSize: 13,
+            display: 'block',
           }}
         >
           Use expected amount
-        </button>
+        </TertiaryBtn>
       )}
 
       {isSalaried && !showCustomAmount && (
@@ -182,13 +183,11 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
           >
             {saving ? 'Saving…' : 'I received full income'}
           </button>
-          <button
+          <TertiaryBtn
+            size="sm"
             onClick={() => setShowCustomAmount(true)}
             style={{
               width: '100%',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
               fontSize: 14,
               color: T.text3,
               fontWeight: 600,
@@ -196,7 +195,7 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
             }}
           >
             Enter a different amount
-          </button>
+          </TertiaryBtn>
         </>
       )}
 

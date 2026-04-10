@@ -59,7 +59,7 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
     throw new Error(`Failed to save income: ${incomeError.message}`)
   }
 
-  const nextIncomeType = input.incomeType ?? profile.income_type ?? null
+  const nextIncomeType = input.incomeType ?? profile.income_type ?? (input.paydayDay != null ? 'salaried' : null)
   const nextPaydayDay = (() => {
     if (nextIncomeType !== 'salaried') return null
     if (input.paydayDay != null && Number.isFinite(Number(input.paydayDay))) {
@@ -77,8 +77,8 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
   }
 
   const profilePatch: Record<string, unknown> = {}
-  if (input.incomeType && input.incomeType !== profile.income_type) {
-    profilePatch.income_type = input.incomeType
+  if (nextIncomeType && nextIncomeType !== profile.income_type) {
+    profilePatch.income_type = nextIncomeType
   }
   if (nextIncomeType === 'salaried' && nextPaydayDay) {
     profilePatch.pay_schedule_type = 'monthly'

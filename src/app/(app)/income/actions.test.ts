@@ -91,6 +91,26 @@ describe('income actions', () => {
     })
   })
 
+  it('saveIncome infers salaried when payday is provided without income type', async () => {
+    const { supabase, update } = makeSupabase()
+    createClient.mockResolvedValue(supabase)
+
+    const { saveIncome } = await import('./actions')
+
+    await saveIncome({
+      income: 3000,
+      extraIncome: [],
+      total: 3000,
+      paydayDay: 19,
+    })
+
+    expect(update).toHaveBeenCalledWith({
+      income_type: 'salaried',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [19],
+    })
+  })
+
   it('saveIncome supports mid-month start with opening balance', async () => {
     const { supabase, incomeUpsert } = makeSupabase()
     createClient.mockResolvedValue(supabase)

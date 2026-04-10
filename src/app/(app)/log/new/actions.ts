@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
@@ -19,6 +20,7 @@ interface SaveExpenseInput {
 }
 
 interface SaveExpenseBatchItem extends SaveExpenseInput {}
+const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
 
 async function rememberDictionaryItem(
   supabase: any,
@@ -84,6 +86,46 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<v
   if (!user || !profile) throw new Error('Not authenticated')
 
   const supabase = await createClient()
+  const cycleId = deriveCurrentCycleId(profile)
+
+  const [{ data: incomeRow, error: incomeError }, { data: cycleTxns, error: txnError }] = await Promise.all([
+    (supabase.from('income_entries') as any)
+      .select('total, opening_balance, received')
+      .eq('user_id', user.id)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    (supabase.from('transactions') as any)
+      .select('id, category_type')
+      .eq('user_id', user.id)
+      .eq('cycle_id', cycleId),
+  ])
+
+  if (incomeError) {
+    throw new Error(`Failed to verify income status: ${incomeError.message}`)
+  }
+  if (txnError) {
+    throw new Error(`Failed to verify current entries: ${txnError.message}`)
+  }
+
+  const hasIncomeForCycle =
+    Number(incomeRow?.total ?? 0) > 0 ||
+    Number(incomeRow?.opening_balance ?? 0) > 0 ||
+    Number(incomeRow?.received ?? 0) > 0
+
+  const existingExpenseCount = (cycleTxns ?? []).filter((txn: any) => txn.category_type !== 'goal').length
+  const netNewEntries = items.reduce((sum, input) => {
+    const isReplacement = input.mode === 'update' && Boolean(input.priorEntryId)
+    return sum + (isReplacement ? 0 : 1)
+  }, 0)
+
+  if (!hasIncomeForCycle && existingExpenseCount + netNewEntries > QUICK_ENTRY_LIMIT_WITHOUT_INCOME) {
+    const entriesLeft = Math.max(0, QUICK_ENTRY_LIMIT_WITHOUT_INCOME - existingExpenseCount)
+    throw new Error(
+      entriesLeft > 0
+        ? `You have ${entriesLeft} quick ${entriesLeft === 1 ? 'entry' : 'entries'} left. Add income to continue logging more expenses.`
+        : 'Add your income first so Cenza can calculate what is left accurately.'
+    )
+  }
 
   for (const input of items) {
     if (input.mode === 'update' && input.priorEntryId) {

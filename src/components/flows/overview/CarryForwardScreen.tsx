@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 'use client'
 import { useState } from 'react'
+import { TertiaryBtn } from '@/components/ui/Button/Button'
 
 const T = {
   brandDark:    '#5C3489',
@@ -177,16 +178,17 @@ export function CarryForwardScreen({ data, currency, currentCycleLabel, isDeskto
             {saving ? 'Setting up…' : `Start ${currentLabel} with this plan`}
           </button>
 
-          <button
+          <TertiaryBtn
+            size="sm"
             onClick={onFresh}
             style={{
-              height: 44, background: 'none', border: 'none',
-              fontSize: 13, color: T.text3,
-              cursor: 'pointer',
+              height: 44,
+              fontSize: 13,
+              color: T.text3,
             }}
           >
             Start fresh instead
-          </button>
+          </TertiaryBtn>
         </div>
 
       </div>

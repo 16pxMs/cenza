@@ -18,7 +18,6 @@ interface ParsedRowInput {
   categoryKey: string
   amount: number
   date: string
-  include: boolean
 }
 
 function normalize(value: string) {
@@ -154,14 +153,12 @@ export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<Sav
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
-  const selectedRows = rows
-    .filter((row) => row.include)
-    .map((row) => ({
-      ...row,
-      label: row.label.trim(),
-      categoryKey: row.categoryKey.trim(),
-      amount: Number(row.amount),
-    }))
+  const selectedRows = rows.map((row) => ({
+    ...row,
+    label: row.label.trim(),
+    categoryKey: row.categoryKey.trim(),
+    amount: Number(row.amount),
+  }))
 
   if (selectedRows.length === 0) {
     return {

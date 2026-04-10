@@ -174,6 +174,12 @@ export default function CategoryLedgerPageClient({
     return acc
   }, {})
   const sortedDates = Object.keys(dateGroups).sort((a, b) => b.localeCompare(a))
+  const getEntryTitle = (txn: LedgerTransaction) => {
+    const label = txn.categoryLabel?.trim()
+    if (label) return label
+    if (txn.amount < 0) return categoryType === 'debt' ? 'Debt payback' : 'Refund'
+    return categoryType === 'debt' ? 'Debt payment' : categoryLabel
+  }
 
   const content = (
     <div style={{ paddingBottom: isDesktop ? 80 : 100 }}>
@@ -268,7 +274,6 @@ export default function CategoryLedgerPageClient({
                   size="sm"
                   onClick={() => { setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) }}
                   style={{
-                    color: T.text3,
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -404,6 +409,7 @@ export default function CategoryLedgerPageClient({
                     const isEditing = editId === txn.id
                     const isRefund = txn.amount < 0
                     const hasNote = !!(txn.note && txn.note !== 'Refund')
+                    const entryTitle = getEntryTitle(txn)
 
                     return (
                       <div
@@ -419,6 +425,9 @@ export default function CategoryLedgerPageClient({
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: isRefund ? T.greenDark : T.text1, marginBottom: hasNote ? 4 : 0, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
                               {isRefund ? `−${fmt(Math.abs(txn.amount), data.currency)}` : fmt(txn.amount, data.currency)}
+                            </div>
+                            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: isRefund ? T.greenDark : T.text2, lineHeight: 1.35, marginBottom: hasNote ? 2 : 0 }}>
+                              {entryTitle}
                             </div>
                             {isRefund && !hasNote && (
                               <span style={{
@@ -450,7 +459,6 @@ export default function CategoryLedgerPageClient({
                                   onClick={() => setEditId(null)}
                                   style={{
                                     padding: 0,
-                                    color: T.textMuted,
                                     lineHeight: 1,
                                   }}
                                 >
@@ -475,7 +483,6 @@ export default function CategoryLedgerPageClient({
                                   onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
                                   style={{
                                   padding: 0,
-                                  color: T.textMuted,
                                   lineHeight: 1,
                                 }}
                               >
@@ -591,7 +598,7 @@ export default function CategoryLedgerPageClient({
           {deleteStep === 'reason' && (
             <div>
               <p style={{ fontSize: 'var(--text-base)', color: T.text3, margin: '0 0 20px', lineHeight: 1.55 }}>
-                {categoryLabel} · {fmt(pendingDelete.amount, data.currency)} · {formatDate(pendingDelete.date)}
+                {getEntryTitle(pendingDelete)} · {fmt(pendingDelete.amount, data.currency)} · {formatDate(pendingDelete.date)}
               </p>
               <div style={{
                 background: T.white,
@@ -669,7 +676,6 @@ export default function CategoryLedgerPageClient({
                 style={{
                   marginTop: 10,
                   padding: '12px',
-                  color: T.text3,
                 }}
               >
                 Go back

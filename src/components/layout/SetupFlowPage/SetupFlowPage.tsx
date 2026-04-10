@@ -34,6 +34,7 @@ export function SetupFlowPage({
     ...SETUP_PAGE_COPY[pageKey],
     ...copyOverride,
   }
+  const hasHeader = Boolean(copy.eyebrow || copy.title || copy.subtitle)
 
   return (
     <div style={{ minHeight: '100vh', background: T.pageBg }}>
@@ -66,21 +67,25 @@ export function SetupFlowPage({
             padding: isDesktop ? '28px 28px 24px' : '24px 18px 20px',
           }}
         >
+          {hasHeader && (
           <div style={{ marginBottom: 24 }}>
             {copy.eyebrow ? (
               <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 {copy.eyebrow}
               </p>
             ) : null}
-            <h1 style={{ margin: '0 0 8px', fontSize: isDesktop ? 34 : 28, fontWeight: 700, color: T.text1, letterSpacing: '-0.7px', lineHeight: 1.05 }}>
-              {copy.title}
-            </h1>
+            {copy.title ? (
+              <h1 style={{ margin: '0 0 8px', fontSize: isDesktop ? 34 : 28, fontWeight: 700, color: T.text1, letterSpacing: '-0.7px', lineHeight: 1.05 }}>
+                {copy.title}
+              </h1>
+            ) : null}
             {copy.subtitle ? (
               <p style={{ margin: 0, fontSize: 14, color: T.text3, lineHeight: 1.6, maxWidth: 520 }}>
                 {copy.subtitle}
               </p>
             ) : null}
           </div>
+          )}
 
           {children}
         </section>

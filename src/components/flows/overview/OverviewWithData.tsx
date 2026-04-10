@@ -56,6 +56,7 @@ interface Props {
   goalSaved?: Record<string, number>
   goalLabels?: Record<string, string>
   onAddDebts?: () => void
+  onReviewDebts?: () => void
   onLogExpense?: () => void
   onConfirmIncome?: () => void
   onContribGoal?: (goalId: string, goalLabel: string, amount: number, note: string) => Promise<void>
@@ -70,20 +71,13 @@ interface Props {
 
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, incomeData,
-  goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onLogExpense, onConfirmIncome, onContribGoal,
+  goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], isDesktop,
 }: Props) {
   const router = useRouter()
-  const debtNudgeCycleStorageKey = 'cenza-overview-debt-nudge-dismissed-cycle'
-  const getCurrentCycleKey = () => {
-    const now = new Date()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    return `${now.getFullYear()}-${month}`
-  }
   const [mounted, setMounted] = useState(false)
   const [goalsExpanded, setGoalsExpanded] = useState(false)
   const [activeGoalContrib, setActiveGoalContrib] = useState<string | null>(null)
-  const [debtNudgeDismissed, setDebtNudgeDismissed] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
@@ -97,13 +91,6 @@ export function OverviewWithData({
     router.prefetch('/income/new')
     router.prefetch('/goals/new')
   }, [router])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const dismissedCycle = window.localStorage.getItem(debtNudgeCycleStorageKey)
-    const currentCycle = getCurrentCycleKey()
-    setDebtNudgeDismissed(dismissedCycle === currentCycle)
-  }, [])
 
   // ── Income ──────────────────────────────────────────────────
   const totalIncome = incomeData
@@ -314,9 +301,19 @@ const reference = receivedConfirmed
         )}
 
         {totalIncome <= 0 && !isMidMonthStart && (
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
-            Add monthly income to unlock your true remaining balance.
-          </p>
+          <div
+            style={{
+              margin: '0 0 12px',
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: '1px solid var(--border)',
+              background: 'var(--grey-50)',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
+              Income setup needed next. Add your monthly income so remaining balance is accurate.
+            </p>
+          </div>
         )}
 
         {/* Income confirmation nudge — contained strip, clearly separated from buttons */}
@@ -356,13 +353,6 @@ const reference = receivedConfirmed
             >
               View expense log
             </SecondaryBtn>
-            <TertiaryBtn
-              size="md"
-              onClick={onLogExpense}
-              style={{ marginTop: 8, color: 'var(--text-3)' }}
-            >
-              Add an expense
-            </TertiaryBtn>
           </>
         ) : (
           <>
@@ -482,16 +472,19 @@ const reference = receivedConfirmed
                 })}
               </div>
               {hiddenCount > 0 && (
-                <button
+                <TertiaryBtn
+                  size="sm"
                   onClick={(e) => { e.stopPropagation(); setGoalsExpanded(ex => !ex) }}
                   style={{
-                    marginTop: 14, width: '100%', background: 'none', border: 'none',
-                    cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                    color: 'var(--brand-dark)', textAlign: 'left', padding: 0,
+                    marginTop: 14,
+                    width: '100%',
+                    textAlign: 'left',
+                    justifyContent: 'flex-start',
+                    fontSize: 13,
                   }}
                 >
                   {goalsExpanded ? 'Show less' : `View ${hiddenCount} more goal${hiddenCount > 1 ? 's' : ''}`}
-                </button>
+                </TertiaryBtn>
               )}
             </>
           )
@@ -535,8 +528,7 @@ const reference = receivedConfirmed
     </div>
   )
 
-  const showDebtReminder = debtTotal > 0 || !debtNudgeDismissed
-  const debtReminderCard = showDebtReminder ? (
+  const debtReminderCard = (
     <div style={{ marginTop: 16, ...fade(0.18) }}>
       <div style={{
         background: 'var(--white)',
@@ -555,39 +547,34 @@ const reference = receivedConfirmed
           Debts
         </p>
         <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
-          {debtTotal > 0 ? 'Keep borrowed money visible.' : 'Did you borrow money this month?'}
+          {debtTotal > 0 ? 'Keep debt visible.' : 'Do you have debt this month?'}
         </p>
         <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
           {debtTotal > 0
-            ? `${fmt(debtTotal, currency)} logged as borrowed money this month. Keep tracking repayments so your picture stays complete.`
-            : 'Loans, credit cards, and money borrowed from people should be logged so your monthly picture stays accurate.'}
+            ? `${fmt(debtTotal, currency)} logged this month. Track repayment progress in one place.`
+            : 'Loans, credit cards, and debt payments should be logged so your monthly picture stays accurate.'}
         </p>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'grid', gap: 8 }}>
           <SecondaryBtn
             size="md"
-            onClick={() => onAddDebts?.()}
-            style={{ flex: 1 }}
+            onClick={() => (debtTotal > 0 ? onReviewDebts?.() : onAddDebts?.())}
+            style={{ width: '100%' }}
           >
-            {debtTotal > 0 ? 'Review borrowed money' : 'Log borrowed money'}
+            {debtTotal > 0 ? 'Review debt' : 'Add debt payment'}
           </SecondaryBtn>
-          {debtTotal <= 0 && (
+          {debtTotal > 0 && (
             <TertiaryBtn
-              size="md"
-              onClick={() => {
-                setDebtNudgeDismissed(true)
-                if (typeof window !== 'undefined') {
-                  window.localStorage.setItem(debtNudgeCycleStorageKey, getCurrentCycleKey())
-                }
-              }}
-              style={{ width: 'auto', padding: '0 12px', color: 'var(--text-3)' }}
+              size="sm"
+              onClick={() => onAddDebts?.()}
+              style={{ justifyContent: 'center' }}
             >
-              No debts
+              Log another debt payment
             </TertiaryBtn>
           )}
         </div>
       </div>
     </div>
-  ) : null
+  )
 
   // ── Pulse insight card (single highest-priority signal) ─────
   const remaining   = reference - totalSpent

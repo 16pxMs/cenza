@@ -206,7 +206,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                 : `${ordinal(scheduleDays[0] ?? 1)} & ${ordinal(scheduleDays[1] ?? scheduleDays[0] ?? 1)}`)
             : 'Not set',
           () => setShowPaySchedule(value => !value),
-          true,
+          false,
         )}
         {showPaySchedule && (
           <div style={{ padding: '12px 16px 16px', borderTop: `1px solid ${T.border}` }}>
@@ -328,6 +328,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             </button>
           </div>
         )}
+        {row(
+          'Monthly income',
+          data.monthlyTotal ? fmt(data.monthlyTotal, currency) : 'Not set',
+          () => router.push('/income/new?returnTo=/settings'),
+          true,
+        )}
       </>)}
 
       {sectionLabel('Security')}
@@ -342,16 +348,6 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           PIN unlocks Cenza on this device. Google is still used to reconnect or recover your account.
         </p>
         {row('PIN', hasPinCookie ? 'Change' : 'Set up', () => setChangePinOpen(true), true)}
-      </>)}
-
-      {sectionLabel('This month')}
-      {sectionCard(<>
-        {row(
-          'Monthly income',
-          data.monthlyTotal ? fmt(data.monthlyTotal, currency) : 'Not set',
-          () => router.push('/income/new?returnTo=/settings'),
-          true,
-        )}
       </>)}
 
       {sectionLabel('Account')}

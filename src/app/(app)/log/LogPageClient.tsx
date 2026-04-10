@@ -610,7 +610,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                 style={{
                   marginTop: 10,
                   padding: '12px',
-                  color: T.text3,
                 }}
               >
                 Go back
@@ -702,7 +701,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                 style={{
                   marginTop: 10,
                   padding: '12px',
-                  color: T.text3,
                 }}
               >
                 Go back

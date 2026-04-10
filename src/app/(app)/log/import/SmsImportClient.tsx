@@ -18,7 +18,6 @@ interface EditableRow {
   amount: number
   currency: string
   date: string
-  include: boolean
   confidence: 'high' | 'medium' | 'low'
 }
 
@@ -67,7 +66,6 @@ function isGenericDebtLabel(label: string) {
 
 function validateRow(row: EditableRow) {
   const errors: string[] = []
-  if (!row.include) return errors
 
   if (!row.label.trim()) {
     errors.push('Name is required.')
@@ -164,8 +162,8 @@ export function SmsImportClient() {
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
 
-  const selectedCount = useMemo(() => rows.filter((row) => row.include).length, [rows])
-  const savedRows = useMemo(() => rows.filter((row) => row.include), [rows])
+  const selectedCount = rows.length
+  const savedRows = rows
   const hasClientValidationErrors = useMemo(
     () => rows.some((row) => validateRow(row).length > 0),
     [rows]
@@ -236,7 +234,6 @@ export function SmsImportClient() {
         categoryKey: slugify(row.categoryKey || row.label) || `imported_${row.id}`,
         amount: Number(row.amount),
         date: row.date,
-        include: row.include,
       }))
 
       const result = await saveParsedSmsExpenses(payload)
@@ -427,56 +424,62 @@ export function SmsImportClient() {
                       border: `1px solid ${T.borderSubtle}`,
                       borderRadius: 12,
                       padding: 12,
-                      background: row.include ? 'var(--white)' : 'var(--grey-50)',
+                      background: 'var(--white)',
                     }}
                   >
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer', minWidth: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={row.include}
-                        onChange={(event) => updateRow(row.id, { include: event.target.checked })}
-                      />
-                      <span style={{ fontSize: 13, color: T.text3, minWidth: 0 }}>
-                        Include this expense
-                      </span>
-                    </label>
                     {row.confidence === 'low' && (
-                      <p style={{ margin: '-2px 0 8px', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                      <p style={{ margin: '0 0 8px', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
                         Needs review before save.
                       </p>
                     )}
 
                     <div style={{ display: 'grid', gap: 8 }}>
+                      {(() => {
+                        const issues = rowErrors[row.id] ?? validateRow(row)
+                        const hasIssues = issues.length > 0
+                        return (
+                          <>
                       <input
                         value={row.label}
                         onChange={(event) => updateRow(row.id, { label: event.target.value })}
                         placeholder={row.categoryType === 'debt' ? 'Debt name (e.g. KCB loan)' : 'Expense name'}
+                        disabled={!hasIssues}
                         style={{
                           width: '100%',
                           height: 42,
                           borderRadius: 10,
-                          border: `1px solid ${T.border}`,
+                          border: `1px solid ${hasIssues ? T.brandMid : T.border}`,
                           padding: '0 10px',
                           fontSize: 14,
-                          color: T.text1,
+                          color: hasIssues ? T.text1 : T.text2,
+                          background: hasIssues ? 'var(--white)' : 'var(--grey-50)',
+                          cursor: hasIssues ? 'text' : 'default',
                           boxSizing: 'border-box',
                           fontFamily: 'inherit',
                         }}
                       />
+                      {!hasIssues && (
+                        <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                          Name locked. It becomes editable only when there is an error.
+                        </p>
+                      )}
                       {row.categoryType === 'debt' && (
-                      <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                        <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
                           Use the specific debt name so it is clear in your log.
                         </p>
                       )}
-                      {(rowErrors[row.id]?.length ?? 0) > 0 && (
+                      {hasIssues && (
                         <div style={{ display: 'grid', gap: 4 }}>
-                          {rowErrors[row.id].map((issue, index) => (
+                          {issues.map((issue, index) => (
                             <p key={`${row.id}-issue-${index}`} style={{ margin: 0, fontSize: 11, color: T.redDark, lineHeight: 1.4 }}>
                               {issue}
                             </p>
                           ))}
                         </div>
                       )}
+                          </>
+                        )
+                      })()}
 
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <span
@@ -585,7 +588,7 @@ export function SmsImportClient() {
 
         {!showReview && (
           <div style={{ marginTop: 8 }}>
-            <TertiaryBtn size="md" onClick={() => router.push('/log/new?returnTo=/log')} style={{ color: T.text3 }}>
+            <TertiaryBtn size="md" onClick={() => router.push('/log/new?returnTo=/log')}>
               Enter manually instead
             </TertiaryBtn>
           </div>
