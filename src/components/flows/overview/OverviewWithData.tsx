@@ -8,7 +8,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, TrendingUp, Target, ChevronRight } from 'lucide-react'
+import { AlertTriangle, Target, ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
@@ -16,6 +16,7 @@ import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemain
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
+import { loadOverviewPulseSignal } from '@/lib/pulse/loaders'
 
 const GOAL_META: Record<string, {
   label: string
@@ -588,70 +589,83 @@ const reference = receivedConfirmed
     </div>
   ) : null
 
-  // ── Insight card ─────────────────────────────────────────────
+  // ── Pulse insight card (single highest-priority signal) ─────
   const remaining   = reference - totalSpent
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
   const daysLeft    = daysInMonth - new Date().getDate()
 
   const neglectedGoal = goals.find(g => goalTargets?.[g] && !(goalSaved[g] > 0))
-  const neglectedMeta = neglectedGoal ? GOAL_META[neglectedGoal] : null
+  const neglectedGoalLabel = neglectedGoal
+    ? (goalLabels[neglectedGoal] ?? GOAL_META[neglectedGoal]?.label ?? null)
+    : null
 
-  type InsightIcon = typeof AlertTriangle
-  type Insight = { Icon: InsightIcon; text: string; color: string; href?: string; onTap?: () => void }
-  const insights: Insight[] = []
+  const pulseSignal = loadOverviewPulseSignal({
+    remaining,
+    currency,
+    spentPct,
+    daysLeft,
+    neglectedGoalId: neglectedGoal ?? null,
+    neglectedGoalLabel,
+  })
 
-  if (totalSpent > 0 && reference > 0 && remaining < 0) {
-    insights.push({
-      Icon: AlertTriangle,
-      text: `You've spent ${fmt(Math.abs(remaining), currency)} more than your income this month.`,
-      color: '#D93025',
-      href: '/log?open=true',
-    })
+  const pulseIcon = pulseSignal?.type === 'missing_essential' ? Target : AlertTriangle
+  const pulseColor = pulseSignal?.type === 'missing_essential' ? 'var(--brand-dark)' : '#C2410C'
+  const pulseAction = pulseSignal?.actions[0] ?? null
+  const runPulseAction = () => {
+    if (!pulseAction) return
+    if (pulseAction.key === 'open_log') {
+      router.push('/log')
+      return
+    }
+    if (pulseAction.key.startsWith('goal:')) {
+      const goalId = pulseAction.key.slice('goal:'.length)
+      if (goalId) setActiveGoalContrib(goalId)
+    }
   }
-  if (spentPct > 75 && daysLeft > 7) {
-    insights.push({
-      Icon: TrendingUp,
-      text: `${Math.round(spentPct)}% of your income spent with ${daysLeft} days still to go.`,
-      color: '#D97706',
-      href: '/log?open=true',
-    })
-  }
-  if (neglectedMeta) {
-    const neglectedLabel = neglectedGoal ? (goalLabels[neglectedGoal] ?? neglectedMeta.label) : neglectedMeta.label
-    insights.push({
-      Icon: Target,
-      text: `You haven't added anything to ${neglectedLabel} yet this month.`,
-      color: '#4A3B66',
-      onTap: () => setActiveGoalContrib(neglectedGoal!),
-    })
-  }
-  const insightCard = (
+
+  const pulseCard = (
     <div style={{
       marginTop: 16,
       background: 'var(--white)', border: '1px solid var(--border)',
       borderRadius: 16, padding: '4px 20px',
       ...fade(0.22),
     }}>
-      {insights.map((insight, i) => (
-        <div
-          key={i}
-          onClick={insight.onTap ?? (insight.href ? () => router.push(insight.href!) : undefined)}
-          style={{
-            display: 'flex', alignItems: 'flex-start', gap: 12,
-            padding: '16px 0',
-            borderBottom: i < insights.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-            cursor: insight.onTap || insight.href ? 'pointer' : 'default',
-          }}
-        >
-          <insight.Icon size={17} color={insight.color} style={{ flexShrink: 0, marginTop: 2 }} />
-          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: insight.color, flex: 1 }}>
-            {insight.text}
-          </p>
-          {(insight.href || insight.onTap) && (
-            <ChevronRight size={16} color={insight.color} strokeWidth={2} style={{ flexShrink: 0, alignSelf: 'center', opacity: 0.5 }} />
-          )}
-        </div>
-      ))}
+      <button
+        onClick={runPulseAction}
+        style={{
+          width: '100%',
+          background: 'none',
+          border: 'none',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          padding: '16px 0',
+          cursor: pulseAction ? 'pointer' : 'default',
+          textAlign: 'left',
+        }}
+      >
+        {pulseSignal ? (
+          <>
+            <div style={{ marginTop: 1 }}>
+              {(() => {
+                const Icon = pulseIcon
+                return <Icon size={17} color={pulseColor} style={{ flexShrink: 0 }} />
+              })()}
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 13.5, lineHeight: 1.45, color: 'var(--text-1)', fontWeight: 600 }}>
+                {pulseSignal.title}
+              </p>
+              <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+                {pulseSignal.message}
+              </p>
+            </div>
+            {pulseAction && (
+              <ChevronRight size={16} color={pulseColor} strokeWidth={2} style={{ flexShrink: 0, alignSelf: 'center', opacity: 0.6 }} />
+            )}
+          </>
+        ) : null}
+      </button>
     </div>
   )
 
@@ -718,8 +732,8 @@ const reference = receivedConfirmed
       {totalGoals > 0 ? goalsCard : noGoalsCard}
       {debtReminderCard}
 
-      {/* Insight card — only shown when there is a real actionable signal */}
-      {insights.length > 0 && insightCard}
+      {/* Pulse insight card — one prioritized actionable signal */}
+      {pulseSignal && pulseCard}
         </>
       )}
 

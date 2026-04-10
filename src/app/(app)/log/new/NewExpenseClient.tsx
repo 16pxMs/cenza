@@ -33,6 +33,7 @@ interface PendingExpenseItem {
 }
 
 interface RecentLoggedEntry {
+  id: string
   label: string
   amount: number
   date: string
@@ -266,7 +267,7 @@ export function NewExpenseClient() {
         }
 
         const { data: recentRows } = await (supabase.from('transactions') as any)
-          .select('category_label, category_type, category_key, amount, date')
+          .select('id, category_label, category_type, category_key, amount, date')
           .eq('user_id', user.id)
           .order('date', { ascending: false })
           .limit(60)
@@ -295,6 +296,7 @@ export function NewExpenseClient() {
           }
 
           recentMap[normalized] = {
+            id: String(row.id),
             label: row.category_label,
             amount: Math.abs(Number(row.amount ?? 0)),
             date: row.date,
@@ -454,9 +456,12 @@ export function NewExpenseClient() {
         throw new Error('Add a name for each expense before saving.')
       }
 
+      const duplicateUpdateId = recentMatch?.id ?? null
+      const shouldUseUpdateMode = queue.length === 1 && mode === 'update' && Boolean(priorEntry?.id ?? duplicateUpdateId)
+
       await saveExpenseBatch(queue.map((item, index) => ({
-        mode: !isOther && index === 0 ? mode : 'add',
-        priorEntryId: !isOther && index === 0 ? priorEntry?.id ?? null : null,
+        mode: shouldUseUpdateMode && index === 0 ? 'update' : 'add',
+        priorEntryId: shouldUseUpdateMode && index === 0 ? (priorEntry?.id ?? duplicateUpdateId) : null,
         categoryType: item.categoryType as CategoryType,
         categoryKey: item.categoryKey ?? normalizeLabel(item.label).replace(/\s+/g, '_'),
         categoryLabel: item.label,
@@ -921,6 +926,7 @@ function ReviewStep({
       index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
     )).join('.')
     : ''
+  const updateCandidate = priorEntry ?? (recentMatch ? { id: recentMatch.id, amount: recentMatch.amount } : null)
 
   return (
     <div>
@@ -993,14 +999,14 @@ function ReviewStep({
         </div>
       )}
 
-      {priorEntry && totalItems === 1 && (
+      {updateCandidate && totalItems === 1 && (
         <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
           {(['update', 'add'] as const).map((value) => (
             <button
               key={value}
               onClick={() => {
                 setMode(value)
-                if (value === 'update') onAmountChange(String(priorEntry.amount))
+                if (value === 'update') onAmountChange(String(updateCandidate.amount))
               }}
               style={{
                 flex: 1,
@@ -1015,7 +1021,7 @@ function ReviewStep({
                 transition: 'all 0.15s',
               }}
             >
-              {value === 'update' ? 'Update entry' : 'Add another'}
+              {value === 'update' ? 'Update last' : 'New entry'}
             </button>
           ))}
         </div>
