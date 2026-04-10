@@ -31,7 +31,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         goalSaved={overview.goalSaved}
         goalLabels={overview.goalLabels}
         debtTotal={overview.debtTotal}
-        onAddDebts={() => router.push('/log/new?label=Debt%20payment&type=debt&key=debt_payment&returnTo=/app')}
+        onAddDebts={() => router.push('/log/new?label=Borrowed%20money&type=debt&key=borrowed_money&returnTo=/app')}
         onLogExpense={() => router.push('/log/new?returnTo=/app')}
         onConfirmIncome={() => setReceivedSheetOpen(true)}
         onContribGoal={async (goalId, goalLabel, amount, note) => {

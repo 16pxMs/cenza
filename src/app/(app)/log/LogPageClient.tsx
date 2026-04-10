@@ -371,7 +371,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'} logged
             </p>
           </div>
-          <p style={{ margin: 0, fontSize: isDesktop ? 22 : 20, fontWeight: 650, color: T.text1, letterSpacing: '-0.02em', whiteSpace: 'nowrap', lineHeight: 1 }}>
+          <p style={{ margin: 0, fontSize: isDesktop ? 22 : 20, fontWeight: 650, color: T.text1, letterSpacing: '-0.02em', lineHeight: 1, textAlign: 'right', minWidth: 0 }}>
             {fmt(totalLogged, data.currency)}
           </p>
         </div>
@@ -401,13 +401,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
       {isDesktop && (
         <div style={{ padding: '0 32px' }}>
-          <SecondaryBtn
-            size="lg"
-            onClick={() => router.push('/log/import?returnTo=/log')}
-            style={{ marginBottom: 10 }}
-          >
-            Import from SMS
-          </SecondaryBtn>
           <PrimaryBtn
             size="lg"
             onClick={() => router.push('/log/new?returnTo=/log')}
@@ -743,13 +736,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         borderTop: '1px solid var(--border-subtle)',
         zIndex: 40,
       }}>
-        <SecondaryBtn
-          size="md"
-          onClick={() => router.push('/log/import?returnTo=/log')}
-          style={{ marginBottom: 8 }}
-        >
-          Import from SMS
-        </SecondaryBtn>
         <PrimaryBtn
           size="lg"
           onClick={() => router.push('/log/new?returnTo=/log')}

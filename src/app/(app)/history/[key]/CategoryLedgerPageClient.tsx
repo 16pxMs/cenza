@@ -144,7 +144,7 @@ export default function CategoryLedgerPageClient({
         amount,
         note: refundNote,
       })
-      toast('Refund recorded')
+      toast(categoryType === 'debt' ? 'Payback recorded' : 'Refund recorded')
       setShowRefundForm(false)
       setRefundAmount('')
       setRefundNote('')
@@ -272,7 +272,7 @@ export default function CategoryLedgerPageClient({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  Got money back
+                  {categoryType === 'debt' ? 'Record payback' : 'Got money back'}
                 </TertiaryBtn>
               )}
             </div>
@@ -298,7 +298,7 @@ export default function CategoryLedgerPageClient({
                     setRefundAmount(value)
                   }}
                   onKeyDown={event => { if (event.key === 'Enter') handleRefund() }}
-                  placeholder="Refund amount"
+                  placeholder={categoryType === 'debt' ? 'Amount paid back' : 'Refund amount'}
                   style={{
                     width: '100%',
                     height: 44,
@@ -363,7 +363,7 @@ export default function CategoryLedgerPageClient({
                     cursor: 'pointer',
                   }}
                 >
-                  {savingRefund ? 'Saving…' : 'Save refund'}
+                  {savingRefund ? 'Saving…' : categoryType === 'debt' ? 'Save payback' : 'Save refund'}
                 </button>
               </div>
             </>
@@ -606,8 +606,8 @@ export default function CategoryLedgerPageClient({
                     action: () => { setPendingDelete(null); openEdit(pendingDelete) },
                   },
                   {
-                    label: 'Refund',
-                    sub: 'Log money returned to you',
+                    label: categoryType === 'debt' ? 'Paid back' : 'Refund',
+                    sub: categoryType === 'debt' ? 'Log money paid back to you' : 'Log money returned to you',
                     action: () => { setPendingDelete(null); setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) },
                   },
                   {

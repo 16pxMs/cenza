@@ -72,8 +72,8 @@ const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: 
     helper: 'Must-pay home and living costs like rent or water.',
   },
   debt: {
-    title: 'Debt',
-    helper: 'Repayments like loans and credit cards.',
+    title: 'Borrowed money',
+    helper: 'Money you borrowed and are paying back.',
   },
 }
 
@@ -87,7 +87,7 @@ const DEFAULT_COMMON_ITEMS: Array<{ label: string; categoryType: Exclude<Categor
   { label: 'Electricity', categoryType: 'fixed' },
   { label: 'Water', categoryType: 'fixed' },
   { label: 'Netflix', categoryType: 'fixed' },
-  { label: 'Loan payment', categoryType: 'debt' },
+  { label: 'Borrowed money', categoryType: 'debt' },
 ]
 
 function buildDefaultCommonItems(): DictEntry[] {
@@ -115,7 +115,7 @@ function formatDisplayLabel(value: string) {
 function suggestType(label: string): CategoryType | null {
   const l = label.toLowerCase()
   if (['rent', 'netflix', 'subscription', 'internet', 'wifi', 'water', 'power', 'electricity'].some(k => l.includes(k))) return 'fixed'
-  if (['loan', 'debt', 'credit'].some(k => l.includes(k))) return 'debt'
+  if (['loan', 'debt', 'credit', 'borrow'].some(k => l.includes(k))) return 'debt'
   return 'everyday'
 }
 
@@ -650,7 +650,7 @@ function DoneStep({
                 {item.categoryType ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].title : 'Uncategorized'}
               </p>
             </div>
-            <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, whiteSpace: 'nowrap' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, textAlign: 'right', minWidth: 0 }}>
               {formatSummaryAmount(item.amount)}
             </p>
           </div>
@@ -985,11 +985,11 @@ function ReviewStep({
       {item.categoryType === 'debt' && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
           <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Debt name
+            What is this debt?
           </p>
           <input
             type="text"
-            placeholder="e.g. Credit card"
+            placeholder="e.g. Brian loan, KCB loan, Visa card"
             value={item.label}
             onChange={(event) => onLabelChange(event.target.value)}
             style={{
@@ -1006,6 +1006,9 @@ function ReviewStep({
               fontFamily: 'inherit',
             }}
           />
+          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+            Use a clear name. If money is paid back later, record it from this debt&apos;s log.
+          </p>
         </div>
       )}
 
@@ -1092,17 +1095,19 @@ function ReviewStep({
       </div>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-          Count this as
-        </p>
-        <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
-        <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
-          {item.categoryType
-            ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].helper
-            : 'Choose how Cenza should count this expense.'}
-        </p>
-      </div>
+      {item.categoryType !== 'debt' && (
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Count this as
+          </p>
+          <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
+          <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
+            {item.categoryType
+              ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].helper
+              : 'Choose how Cenza should count this expense.'}
+          </p>
+        </div>
+      )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
         {!showNote && !item.note ? (

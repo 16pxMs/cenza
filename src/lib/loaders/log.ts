@@ -239,7 +239,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     sections: [
       { key: 'fixed', label: 'Essentials', groupType: 'fixed', items: [...fixedItems, ...toSubItems(orphanFixedMap, 'fixed')] },
       { key: 'daily', label: 'Life', groupType: 'everyday', items: [...dailyItems, ...toSubItems(orphanDailyMap, 'everyday')] },
-      { key: 'debts', label: 'Debt', groupType: 'debt', items: debtItems },
+      { key: 'debts', label: 'Borrowed money', groupType: 'debt', items: debtItems },
       ...(otherItems.length > 0
         ? [{ key: 'other' as LogGroupKey, label: 'Other', groupType: 'everyday', items: otherItems }]
         : []),

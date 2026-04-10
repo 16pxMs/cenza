@@ -555,12 +555,12 @@ const reference = receivedConfirmed
           Debts
         </p>
         <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
-          {debtTotal > 0 ? 'Keep debt payments visible.' : 'Do you have any debt payments this month?'}
+          {debtTotal > 0 ? 'Keep borrowed money visible.' : 'Did you borrow money this month?'}
         </p>
         <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
           {debtTotal > 0
-            ? `${fmt(debtTotal, currency)} logged as debt this month. Keep tracking repayments so your picture stays complete.`
-            : 'Loans, credit cards, and repayments belong in your monthly view. Add one if it applies.'}
+            ? `${fmt(debtTotal, currency)} logged as borrowed money this month. Keep tracking repayments so your picture stays complete.`
+            : 'Loans, credit cards, and money borrowed from people should be logged so your monthly picture stays accurate.'}
         </p>
         <div style={{ display: 'flex', gap: 10 }}>
           <SecondaryBtn
@@ -568,7 +568,7 @@ const reference = receivedConfirmed
             onClick={() => onAddDebts?.()}
             style={{ flex: 1 }}
           >
-            {debtTotal > 0 ? 'Review debt entries' : 'Add debt payment'}
+            {debtTotal > 0 ? 'Review borrowed money' : 'Log borrowed money'}
           </SecondaryBtn>
           {debtTotal <= 0 && (
             <TertiaryBtn

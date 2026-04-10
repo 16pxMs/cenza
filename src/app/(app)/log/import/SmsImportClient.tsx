@@ -53,6 +53,102 @@ function categoryLabel(value: ImportCategoryType) {
   return 'Life'
 }
 
+function isGenericDebtLabel(label: string) {
+  const l = normalize(label)
+  return [
+    'loan payment',
+    'debt payment',
+    'credit card payment',
+    'repayment',
+    'loan',
+    'debt',
+  ].includes(l)
+}
+
+function validateRow(row: EditableRow) {
+  const errors: string[] = []
+  if (!row.include) return errors
+
+  if (!row.label.trim()) {
+    errors.push('Name is required.')
+  }
+  if (!Number.isFinite(Number(row.amount)) || Number(row.amount) <= 0) {
+    errors.push('Amount must be greater than zero.')
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+    errors.push('Date is invalid.')
+  }
+  if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
+    errors.push('Use a specific debt name (e.g. "KCB loan", "Visa card").')
+  }
+  return errors
+}
+
+function smsPlaceholderByCurrency(currency: string) {
+  const c = (currency || 'USD').toUpperCase()
+
+  if (c === 'KES') {
+    return [
+      'M-PESA: Confirmed. KES 2,100 paid to Naivas on 08/04/2026.',
+      'Bank: Your account was debited KES 700 at Uber on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'NGN') {
+    return [
+      'Bank alert: NGN 8,500 spent at Shoprite on 08/04/2026.',
+      'Your account was debited NGN 3,200 via transfer to Bolt on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'ZAR') {
+    return [
+      'Bank alert: ZAR 420 spent at Checkers on 08/04/2026.',
+      'Your account was debited ZAR 160 at Uber on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'UGX') {
+    return [
+      'Mobile money: UGX 25,000 paid to Carrefour on 08/04/2026.',
+      'Bank: Your account was debited UGX 12,000 at Fuel Station on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'TZS') {
+    return [
+      'Mobile money: TZS 18,000 paid to Vodacom on 08/04/2026.',
+      'Bank: Your account was debited TZS 45,000 at Shoppers on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'GHS') {
+    return [
+      'Bank alert: GHS 95 paid at Melcom on 08/04/2026.',
+      'Your account was debited GHS 34 at Bolt on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'GBP') {
+    return [
+      'Card spend: GBP 24.50 at Tesco on 08/04/2026.',
+      'Your account was debited GBP 13.20 at Uber on Apr 8.',
+    ].join('\n')
+  }
+
+  if (c === 'EUR') {
+    return [
+      'Card spend: EUR 18.40 at Carrefour on 08/04/2026.',
+      'Your account was debited EUR 11.00 at Bolt on Apr 8.',
+    ].join('\n')
+  }
+
+  return [
+    `${c} 75.00 spent at Grocery Store on 08/04/2026.`,
+    `Your account was debited ${c} 28.00 at Uber on Apr 8.`,
+  ].join('\n')
+}
+
 export function SmsImportClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -66,8 +162,18 @@ export function SmsImportClient() {
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
 
   const selectedCount = useMemo(() => rows.filter((row) => row.include).length, [rows])
+  const savedRows = useMemo(() => rows.filter((row) => row.include), [rows])
+  const hasClientValidationErrors = useMemo(
+    () => rows.some((row) => validateRow(row).length > 0),
+    [rows]
+  )
+  const smsPlaceholder = useMemo(
+    () => smsPlaceholderByCurrency(profile?.currency || 'USD'),
+    [profile?.currency]
+  )
 
   const updateRow = (id: string, patch: Partial<EditableRow>) => {
     setRows((current) =>
@@ -80,6 +186,12 @@ export function SmsImportClient() {
         return next
       })
     )
+    setRowErrors((current) => {
+      const existing = { ...current }
+      if (!existing[id]) return existing
+      delete existing[id]
+      return existing
+    })
   }
 
   const handleParse = async () => {
@@ -89,6 +201,7 @@ export function SmsImportClient() {
       const result = await parseSmsImport(rawText)
       setRows(result.rows)
       setParseMeta({ scanned: result.scanned, skippedCredits: result.skippedCredits })
+      setRowErrors({})
       if (result.rows.length === 0) {
         setError('No expense rows found. Paste a few bank debit messages and try again.')
       }
@@ -103,9 +216,22 @@ export function SmsImportClient() {
     setSaving(true)
     setError(null)
     try {
+      const nextRowErrors: Record<string, string[]> = {}
+      for (const row of rows) {
+        const issues = validateRow(row)
+        if (issues.length > 0) nextRowErrors[row.id] = issues
+      }
+
+      if (Object.keys(nextRowErrors).length > 0) {
+        setRowErrors(nextRowErrors)
+        setError('Review rows marked with issues before saving.')
+        setSaving(false)
+        return
+      }
+
       const payload = rows.map((row) => ({
         id: row.id,
-        label: row.label.trim() || 'Unknown item',
+        label: row.label.trim(),
         categoryType: row.categoryType,
         categoryKey: slugify(row.categoryKey || row.label) || `imported_${row.id}`,
         amount: Number(row.amount),
@@ -114,6 +240,16 @@ export function SmsImportClient() {
       }))
 
       const result = await saveParsedSmsExpenses(payload)
+      if (result.blocked) {
+        setRowErrors(result.rowErrors ?? {})
+        if (result.duplicates > 0) {
+          setError(`${result.duplicates} ${result.duplicates === 1 ? 'duplicate row was' : 'duplicate rows were'} already logged.`)
+        } else {
+          setError('Review rows marked with issues before saving.')
+        }
+        setSaving(false)
+        return
+      }
       setSavedCount(result.saved)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save imported expenses.')
@@ -150,8 +286,44 @@ export function SmsImportClient() {
               {savedCount} {savedCount === 1 ? 'expense added' : 'expenses added'}
             </p>
             <p style={{ margin: '0 0 16px', fontSize: 14, color: T.text2, lineHeight: 1.5 }}>
-              Your SMS import is complete and your expense log is updated.
+              Your expense log is up to date.
             </p>
+
+            {savedRows.length > 0 && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  borderTop: `1px solid ${T.borderSubtle}`,
+                  borderBottom: `1px solid ${T.borderSubtle}`,
+                }}
+              >
+                {savedRows.map((row, index) => (
+                  <div
+                    key={`saved-${row.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '12px 0',
+                      borderBottom: index < savedRows.length - 1 ? `1px solid ${T.borderSubtle}` : 'none',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>
+                        {row.label}
+                      </p>
+                      <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.4 }}>
+                        {categoryLabel(row.categoryType)} · {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text1, textAlign: 'right', minWidth: 0 }}>
+                      {row.currency} {row.amount.toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <PrimaryBtn size="lg" onClick={() => router.push('/log')}>
               View expense log
@@ -204,7 +376,7 @@ export function SmsImportClient() {
               <textarea
                 value={rawText}
                 onChange={(event) => setRawText(event.target.value)}
-                placeholder={'M-PESA: Confirmed. KES 2,100 paid to Naivas on 08/04/2026.\nBank: Your account was debited KES 700 at Uber on Apr 8.'}
+                placeholder={smsPlaceholder}
                 style={{
                   width: '100%',
                   minHeight: 200,
@@ -242,6 +414,9 @@ export function SmsImportClient() {
                 <p style={{ margin: '4px 0 0', fontSize: 13, color: T.text3, lineHeight: 1.45 }}>
                   Scanned {parseMeta.scanned} lines{parseMeta.skippedCredits > 0 ? ` · skipped ${parseMeta.skippedCredits} credits` : ''}.
                 </p>
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.45 }}>
+                  You can edit the expense name before saving.
+                </p>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -255,34 +430,27 @@ export function SmsImportClient() {
                       background: row.include ? 'var(--white)' : 'var(--grey-50)',
                     }}
                   >
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer', minWidth: 0 }}>
                       <input
                         type="checkbox"
                         checked={row.include}
                         onChange={(event) => updateRow(row.id, { include: event.target.checked })}
                       />
-                      <span style={{ fontSize: 13, color: T.text3 }}>
+                      <span style={{ fontSize: 13, color: T.text3, minWidth: 0 }}>
                         Include this expense
                       </span>
-                      <span style={{
-                        marginLeft: 'auto',
-                        fontSize: 11,
-                        color: row.confidence === 'low' ? T.textMuted : 'var(--brand-dark)',
-                        background: row.confidence === 'low' ? 'var(--grey-100)' : T.brand,
-                        borderRadius: 999,
-                        padding: '2px 8px',
-                        textTransform: 'capitalize',
-                        fontWeight: 600,
-                      }}>
-                        {row.confidence}
-                      </span>
                     </label>
+                    {row.confidence === 'low' && (
+                      <p style={{ margin: '-2px 0 8px', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                        Needs review before save.
+                      </p>
+                    )}
 
                     <div style={{ display: 'grid', gap: 8 }}>
                       <input
                         value={row.label}
                         onChange={(event) => updateRow(row.id, { label: event.target.value })}
-                        placeholder="Expense name"
+                        placeholder={row.categoryType === 'debt' ? 'Debt name (e.g. KCB loan)' : 'Expense name'}
                         style={{
                           width: '100%',
                           height: 42,
@@ -295,73 +463,92 @@ export function SmsImportClient() {
                           fontFamily: 'inherit',
                         }}
                       />
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <input
-                          value={Number.isFinite(row.amount) ? String(row.amount) : ''}
-                          inputMode="decimal"
-                          onChange={(event) => {
-                            const value = event.target.value.replace(/,/g, '')
-                            if (value !== '' && !/^\d*\.?\d*$/.test(value)) return
-                            updateRow(row.id, { amount: Number(value || 0) })
-                          }}
-                          placeholder="Amount"
-                          style={{
-                            height: 42,
-                            borderRadius: 10,
-                            border: `1px solid ${T.border}`,
-                            padding: '0 10px',
-                            fontSize: 14,
-                            color: T.text1,
-                            boxSizing: 'border-box',
-                            fontFamily: 'inherit',
-                          }}
-                        />
-                        <input
-                          type="date"
-                          value={row.date}
-                          onChange={(event) => updateRow(row.id, { date: event.target.value })}
-                          style={{
-                            height: 42,
-                            borderRadius: 10,
-                            border: `1px solid ${T.border}`,
-                            padding: '0 10px',
-                            fontSize: 14,
-                            color: T.text1,
-                            boxSizing: 'border-box',
-                            fontFamily: 'inherit',
-                          }}
-                        />
-                      </div>
+                      {row.categoryType === 'debt' && (
+                      <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                          Use the specific debt name so it is clear in your log.
+                        </p>
+                      )}
+                      {(rowErrors[row.id]?.length ?? 0) > 0 && (
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          {rowErrors[row.id].map((issue, index) => (
+                            <p key={`${row.id}-issue-${index}`} style={{ margin: 0, fontSize: 11, color: T.redDark, lineHeight: 1.4 }}>
+                              {issue}
+                            </p>
+                          ))}
+                        </div>
+                      )}
 
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {(['everyday', 'fixed', 'debt'] as ImportCategoryType[]).map((type) => {
-                          const isSelected = row.categoryType === type
-                          return (
-                            <button
-                              key={type}
-                              onClick={() => updateRow(row.id, { categoryType: type })}
-                              style={{
-                                height: 34,
-                                borderRadius: 999,
-                                border: isSelected ? `1px solid ${T.brandMid}` : `1px solid ${T.border}`,
-                                background: isSelected ? T.brand : 'var(--grey-50)',
-                                color: isSelected ? T.brandDark : T.text2,
-                                padding: '0 12px',
-                                fontSize: 13,
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {categoryLabel(type)}
-                            </button>
-                          )
-                        })}
+                        <span
+                          style={{
+                            height: 32,
+                            borderRadius: 999,
+                            border: `1px solid ${T.border}`,
+                            background: 'var(--grey-50)',
+                            color: T.text2,
+                            padding: '0 10px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
+                        </span>
+                        <span
+                          style={{
+                            height: 32,
+                            borderRadius: 999,
+                            border: `1px solid ${T.border}`,
+                            background: 'var(--grey-50)',
+                            color: T.text2,
+                            padding: '0 10px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                        <span
+                          style={{
+                            height: 32,
+                            borderRadius: 999,
+                            border: `1px solid ${T.brandMid}`,
+                            background: T.brand,
+                            color: T.brandDark,
+                            padding: '0 10px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {categoryLabel(row.categoryType)}
+                        </span>
                       </div>
 
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                        {row.raw}
+                      <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                        Amount, date, and type are locked to match the SMS.
                       </p>
+
+                      <div
+                        style={{
+                          borderRadius: 8,
+                          border: `1px solid ${T.borderSubtle}`,
+                          padding: '8px 10px',
+                          background: 'var(--grey-50)',
+                          minWidth: 0,
+                        }}
+                      >
+                        <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                          {row.raw}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -377,7 +564,7 @@ export function SmsImportClient() {
                 <PrimaryBtn
                   size="lg"
                   onClick={handleSave}
-                  disabled={saving || selectedCount === 0}
+                  disabled={saving || selectedCount === 0 || hasClientValidationErrors}
                 >
                   {saving ? 'Saving…' : `Save ${selectedCount} ${selectedCount === 1 ? 'expense' : 'expenses'}`}
                 </PrimaryBtn>
@@ -385,6 +572,7 @@ export function SmsImportClient() {
                   size="lg"
                   onClick={() => {
                     setRows([])
+                    setRowErrors({})
                     setError(null)
                   }}
                 >
