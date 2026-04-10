@@ -544,6 +544,7 @@ export function NewExpenseClient() {
               queueNotice={queueNotice}
               onToggleCommon={toggleCommonItem}
               onAddTypedItem={addTypedItem}
+              onImportFromSms={() => router.push(`/log/import?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
               onContinue={handleContinueToReview}
               canContinue={canReviewContinue}
             />
@@ -686,6 +687,7 @@ function QueueStep({
   queueNotice,
   onToggleCommon,
   onAddTypedItem,
+  onImportFromSms,
   onContinue,
   canContinue,
 }: {
@@ -696,6 +698,7 @@ function QueueStep({
   queueNotice: string | null
   onToggleCommon: (label: string) => void
   onAddTypedItem: () => boolean
+  onImportFromSms: () => void
   onContinue: () => void
   canContinue: boolean
 }) {
@@ -861,6 +864,13 @@ function QueueStep({
       )}
 
       {/* CTA */}
+      <SecondaryBtn
+        size="md"
+        onClick={onImportFromSms}
+        style={{ marginTop: 4, marginBottom: 10 }}
+      >
+        Import from SMS
+      </SecondaryBtn>
       <PrimaryBtn
         size="lg"
         onClick={onContinue}

@@ -401,6 +401,13 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
       {isDesktop && (
         <div style={{ padding: '0 32px' }}>
+          <SecondaryBtn
+            size="lg"
+            onClick={() => router.push('/log/import?returnTo=/log')}
+            style={{ marginBottom: 10 }}
+          >
+            Import from SMS
+          </SecondaryBtn>
           <PrimaryBtn
             size="lg"
             onClick={() => router.push('/log/new?returnTo=/log')}
@@ -736,6 +743,13 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         borderTop: '1px solid var(--border-subtle)',
         zIndex: 40,
       }}>
+        <SecondaryBtn
+          size="md"
+          onClick={() => router.push('/log/import?returnTo=/log')}
+          style={{ marginBottom: 8 }}
+        >
+          Import from SMS
+        </SecondaryBtn>
         <PrimaryBtn
           size="lg"
           onClick={() => router.push('/log/new?returnTo=/log')}
