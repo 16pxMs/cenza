@@ -87,6 +87,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     const params = new URLSearchParams({
       label: item.label,
       type: item.groupType,
+      scope: item.scope ?? ((item.entryCount ?? 0) > 1 ? 'label' : 'key'),
       returnTo: '/log',
       ...(item.plannedAmount ? { planned: String(item.plannedAmount) } : {}),
     })
@@ -238,28 +239,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             gap: 12,
           }}
         >
-          {isGroup && (
-            <div
-              aria-hidden
-              style={{
-                minWidth: 44,
-                height: 28,
-                padding: '0 10px',
-                borderRadius: 999,
-                background: 'var(--grey-100)',
-                color: T.textMuted,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                fontSize: 11,
-                fontWeight: 700,
-              }}
-            >
-              {item.entryCount}
-            </div>
-          )}
-
           {canManageInline && (
             <button
               onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}

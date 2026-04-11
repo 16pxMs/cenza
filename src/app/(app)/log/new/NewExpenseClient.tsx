@@ -106,6 +106,11 @@ function normalizeLabel(value: string) {
   return value.trim().toLowerCase()
 }
 
+function makePendingId(label: string, source: QueueSource) {
+  const normalized = normalizeLabel(label) || source
+  return `${normalized}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 function formatDisplayLabel(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return ''
@@ -141,7 +146,7 @@ function buildPendingItem(
   const fallbackCategoryType = preferredType ?? suggestType(cleanLabel)
 
   return {
-    id: normalized || `${source}-${Date.now()}`,
+    id: makePendingId(cleanLabel, source),
     label: cleanLabel,
     categoryType: rememberedCategoryType ?? fallbackCategoryType,
     categorySource: rememberedCategoryType ? 'remembered' : fallbackCategoryType ? 'manual' : null,
@@ -242,6 +247,16 @@ export function NewExpenseClient() {
   const currency = profile?.currency || 'USD'
   const activeItem = queue[activeIndex] ?? null
   const parsedAmount = parseFloat((activeItem?.amount ?? '').replace(/,/g, '')) || 0
+  const activeLabelNormalized = activeItem ? normalizeLabel(activeItem.label) : ''
+  const groupedEntriesForActiveItem = activeLabelNormalized
+    ? queue.filter((item) => normalizeLabel(item.label) === activeLabelNormalized)
+    : []
+  const activeGroupedIndex = activeItem
+    ? groupedEntriesForActiveItem.findIndex((item) => item.id === activeItem.id)
+    : -1
+  const groupedEntriesBeforeActive = activeGroupedIndex > 0
+    ? groupedEntriesForActiveItem.slice(0, activeGroupedIndex)
+    : []
 
   const rankedCommonItems = useMemo(() => {
     const visible = commonItems.slice(0, 10)
@@ -511,6 +526,39 @@ export function NewExpenseClient() {
     }
   }
 
+  const handlePrevious = () => {
+    if (activeIndex > 0) {
+      setActiveIndex((current) => current - 1)
+    }
+  }
+
+  const handleAddAnotherCurrentItem = () => {
+    if (!activeItem) return
+    if (!activeItem.label.trim() || !activeItem.categoryType || parsedAmount <= 0) {
+      setSaveError('Finish this entry before adding another.')
+      return
+    }
+    if (!quickEntryStatus.hasIncome && queue.length >= remainingQuickEntries) {
+      setSaveError('Add your income first so Cenza can calculate what is left accurately.')
+      return
+    }
+
+    const duplicate: PendingExpenseItem = {
+      ...activeItem,
+      id: makePendingId(activeItem.label, activeItem.source),
+      amount: '',
+      note: '',
+    }
+
+    setQueue((current) => {
+      const next = [...current]
+      next.splice(activeIndex + 1, 0, duplicate)
+      return next
+    })
+    setActiveIndex((current) => current + 1)
+    setSaveError(null)
+  }
+
   const handleSaveAll = async () => {
     if (!user || queue.length === 0) return
     if (!quickEntryStatus.hasIncome && queue.length > remainingQuickEntries) {
@@ -654,6 +702,9 @@ export function NewExpenseClient() {
               priorEntry={priorEntry ?? null}
               saving={saving}
               saveError={saveError}
+              groupIndex={Math.max(0, activeGroupedIndex)}
+              groupCount={groupedEntriesForActiveItem.length}
+              previousGroupEntries={groupedEntriesBeforeActive}
               onAmountChange={(value) => updateActiveItem({ amount: value })}
               onLabelChange={(value) => updateActiveItem({
                 label: value,
@@ -661,7 +712,9 @@ export function NewExpenseClient() {
               })}
               onTypeSelect={(type) => updateActiveItem({ categoryType: type, categorySource: 'manual' })}
               onNoteChange={(value) => updateActiveItem({ note: value })}
+              onPrevious={handlePrevious}
               onNext={handleNext}
+              onAddAnother={handleAddAnotherCurrentItem}
               onSaveAll={handleSaveAll}
               onRecoverIncome={() => router.push(`/income/new?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
               requiresIncomeRecovery={requiresIncomeRecovery}
@@ -1006,11 +1059,16 @@ function ReviewStep({
   priorEntry,
   saving,
   saveError,
+  groupIndex,
+  groupCount,
+  previousGroupEntries,
   onAmountChange,
   onLabelChange,
   onTypeSelect,
   onNoteChange,
+  onPrevious,
   onNext,
+  onAddAnother,
   onSaveAll,
   onRecoverIncome,
   requiresIncomeRecovery,
@@ -1027,11 +1085,16 @@ function ReviewStep({
   priorEntry: { id: string; amount: number } | null
   saving: boolean
   saveError: string | null
+  groupIndex: number
+  groupCount: number
+  previousGroupEntries: PendingExpenseItem[]
   onAmountChange: (value: string) => void
   onLabelChange: (value: string) => void
   onTypeSelect: (type: CategoryType | null) => void
   onNoteChange: (value: string) => void
+  onPrevious: () => void
   onNext: () => void
+  onAddAnother: () => void
   onSaveAll: () => void
   onRecoverIncome: () => void
   requiresIncomeRecovery: boolean
@@ -1056,7 +1119,7 @@ function ReviewStep({
       ? 'Add income to continue'
       : isLastItem
         ? 'Save'
-        : 'Next'
+        : 'Next item'
 
   return (
     <div>
@@ -1092,9 +1155,38 @@ function ReviewStep({
         }}>
           {formatDisplayLabel(item.label)}
         </span>
-        {recentMatch && (
+        {groupCount > 1 ? (
           <p style={{
             margin: '10px 0 0',
+            fontSize: 'var(--text-sm)',
+            color: T.text3,
+            lineHeight: 1.5,
+          }}>
+            Entry {groupIndex + 1} of {groupCount} for {formatDisplayLabel(item.label)}.
+          </p>
+        ) : (
+          <p style={{
+            margin: '10px 0 0',
+            fontSize: 'var(--text-sm)',
+            color: T.text3,
+            lineHeight: 1.5,
+          }}>
+            You can add this item more than once if you need to.
+          </p>
+        )}
+        {previousGroupEntries.length > 0 && (
+          <p style={{
+            margin: '6px 0 0',
+            fontSize: 'var(--text-sm)',
+            color: T.textMuted,
+            lineHeight: 1.5,
+          }}>
+            {previousGroupEntries.length} {previousGroupEntries.length === 1 ? 'entry' : 'entries'} added so far.
+          </p>
+        )}
+        {recentMatch && (
+          <p style={{
+            margin: '6px 0 0',
             fontSize: 'var(--text-sm)',
             color: T.text3,
             lineHeight: 1.5,
@@ -1103,6 +1195,50 @@ function ReviewStep({
           </p>
         )}
       </div>
+
+      {previousGroupEntries.length > 0 && (
+        <div style={{
+          marginBottom: 'var(--space-lg)',
+          padding: 'var(--space-md)',
+          borderRadius: 'var(--radius-sm)',
+          background: T.grey50,
+          border: `${T.borderWidth} solid ${T.borderSubtle}`,
+        }}>
+          <p style={{
+            margin: '0 0 var(--space-xs)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.07em',
+          }}>
+            Added so far
+          </p>
+          <div style={{ display: 'grid', gap: '6px' }}>
+            {previousGroupEntries.map((entry) => {
+              const previewAmount = parseFloat((entry.amount || '0').replace(/,/g, '')) || 0
+              return (
+                <div
+                  key={entry.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-md)',
+                  }}
+                >
+                  <span style={{ fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5, minWidth: 0 }}>
+                    {entry.note.trim() || 'No note'}
+                  </span>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1, whiteSpace: 'nowrap' }}>
+                    {currency} {previewAmount.toLocaleString()}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {item.categoryType === 'debt' && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
@@ -1233,40 +1369,70 @@ function ReviewStep({
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
         {!showNote && !item.note ? (
-          <button
-            onClick={() => setShowNote(true)}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              color: T.text3,
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              cursor: 'pointer',
-            }}
-          >
-            Add a note (optional)
-          </button>
+          <div>
+            <button
+              onClick={() => setShowNote(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                color: T.text3,
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-medium)',
+                cursor: 'pointer',
+              }}
+            >
+              Add a note (optional)
+            </button>
+            <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.5 }}>
+              Use the note to describe this specific expense if you need to.
+            </p>
+          </div>
         ) : (
-          <input
-            type="text"
-            placeholder="Add a note (optional)"
-            value={item.note}
-            onChange={(event) => onNoteChange(event.target.value)}
-            style={{
-              width: '100%',
-              height: '48px',
-              borderRadius: 'var(--radius-sm)',
-              border: `${T.borderWidth} solid ${T.border}`,
-              padding: '0 var(--space-md)',
-              fontSize: 'var(--text-base)',
-              color: T.text1,
-              background: T.white,
-              outline: 'none',
-              boxSizing: 'border-box',
-              fontFamily: 'inherit',
-            }}
-          />
+          <div>
+            <input
+              type="text"
+              placeholder="Add a note (optional)"
+              value={item.note}
+              onChange={(event) => onNoteChange(event.target.value)}
+              style={{
+                width: '100%',
+                height: '48px',
+                borderRadius: 'var(--radius-sm)',
+                border: `${T.borderWidth} solid ${T.border}`,
+                padding: '0 var(--space-md)',
+                fontSize: 'var(--text-base)',
+                color: T.text1,
+                background: T.white,
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+              }}
+            />
+            <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.5 }}>
+              Use the note to describe this specific expense if you need to.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gap: 'var(--space-sm)', marginBottom: saveError ? 'var(--space-md)' : 'var(--space-lg)' }}>
+        <SecondaryBtn
+          size="md"
+          onClick={onAddAnother}
+          disabled={saving || !canAdvance || incomeBlocked}
+          style={{ borderColor: T.border, color: T.text1 }}
+        >
+          Save and add another
+        </SecondaryBtn>
+        {currentIndex > 0 && (
+          <TertiaryBtn
+            size="sm"
+            onClick={onPrevious}
+            style={{ justifyContent: 'flex-start', paddingInline: 0 }}
+          >
+            Back to previous entry
+          </TertiaryBtn>
         )}
       </div>
 

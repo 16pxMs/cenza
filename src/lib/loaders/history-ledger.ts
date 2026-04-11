@@ -22,7 +22,9 @@ export async function loadHistoryLedgerPageData(
   userId: string,
   profile: UserProfile,
   categoryKey: string,
-  categoryType?: CategoryType
+  categoryType?: CategoryType,
+  scope: 'key' | 'label' = 'key',
+  categoryLabel?: string,
 ): Promise<HistoryLedgerPageData> {
   const supabase = await createClient()
   const cycleId = deriveCurrentCycleId(profile)
@@ -32,10 +34,17 @@ export async function loadHistoryLedgerPageData(
     .eq('user_id', userId)
     .eq('cycle_id', cycleId)
 
-  const scopedQuery =
-    categoryType === 'debt' && categoryKey === 'debt'
-      ? baseQuery.eq('category_type', 'debt')
-      : baseQuery.eq('category_key', categoryKey)
+  let scopedQuery = baseQuery
+
+  if (scope === 'label' && categoryLabel) {
+    scopedQuery = scopedQuery
+      .eq('category_type', categoryType ?? 'everyday')
+      .eq('category_label', categoryLabel)
+  } else if (categoryType === 'debt' && categoryKey === 'debt') {
+    scopedQuery = scopedQuery.eq('category_type', 'debt')
+  } else {
+    scopedQuery = scopedQuery.eq('category_key', categoryKey)
+  }
 
   const { data } = await scopedQuery
     .order('date', { ascending: false })

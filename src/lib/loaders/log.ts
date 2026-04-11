@@ -18,6 +18,7 @@ export interface LogSubItem {
   singleEntryId?: string | null
   singleEntryDate?: string | null
   singleEntryNote?: string | null
+  scope?: 'key' | 'label'
 }
 
 export interface LogSection {
@@ -54,6 +55,14 @@ function titleCase(value: string) {
   return value.replace(/\b\w/g, c => c.toUpperCase())
 }
 
+function normalizeLabel(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+}
+
 function toSubItems(
   map: Record<string, { label: string; amount: number; latestDate?: string | null; entryCount?: number; singleEntryId?: string | null; singleEntryDate?: string | null; singleEntryNote?: string | null }>,
   groupType: string
@@ -69,6 +78,46 @@ function toSubItems(
     singleEntryId: map[key].singleEntryId ?? null,
     singleEntryDate: map[key].singleEntryDate ?? null,
     singleEntryNote: map[key].singleEntryNote ?? null,
+    scope: 'key',
+  }))
+}
+
+function mergeItemsByLabel(items: LogSubItem[]): LogSubItem[] {
+  const merged = new Map<string, LogSubItem>()
+
+  for (const item of items) {
+    const normalized = normalizeLabel(item.label || item.key)
+    const existing = merged.get(normalized)
+
+    if (!existing) {
+      merged.set(normalized, { ...item })
+      continue
+    }
+
+    existing.loggedAmount += item.loggedAmount
+    existing.plannedAmount = (existing.plannedAmount ?? 0) + (item.plannedAmount ?? 0)
+    existing.entryCount = (existing.entryCount ?? 0) + (item.entryCount ?? 0)
+
+    if (!existing.latestLoggedDate || (item.latestLoggedDate && item.latestLoggedDate > existing.latestLoggedDate)) {
+      existing.latestLoggedDate = item.latestLoggedDate
+    }
+
+    if ((existing.entryCount ?? 0) > 1) {
+      existing.singleEntryId = null
+      existing.singleEntryDate = null
+      existing.singleEntryNote = null
+      existing.scope = 'label'
+    }
+
+    if (!existing.sublabel && item.sublabel) {
+      existing.sublabel = item.sublabel
+    }
+  }
+
+  return Array.from(merged.values()).map((item) => ({
+    ...item,
+    plannedAmount: item.plannedAmount && item.plannedAmount > 0 ? item.plannedAmount : undefined,
+    scope: (item.entryCount ?? 0) > 1 ? 'label' : 'key',
   }))
 }
 
@@ -237,11 +286,11 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     cycleLabel: formatCycleLabel(getCycleByDate(new Date(), schedule)),
     currency,
     sections: [
-      { key: 'fixed', label: 'Essentials', groupType: 'fixed', items: [...fixedItems, ...toSubItems(orphanFixedMap, 'fixed')] },
-      { key: 'daily', label: 'Life', groupType: 'everyday', items: [...dailyItems, ...toSubItems(orphanDailyMap, 'everyday')] },
-      { key: 'debts', label: 'Debt', groupType: 'debt', items: debtItems },
+      { key: 'fixed', label: 'Essentials', groupType: 'fixed', items: mergeItemsByLabel([...fixedItems, ...toSubItems(orphanFixedMap, 'fixed')]) },
+      { key: 'daily', label: 'Life', groupType: 'everyday', items: mergeItemsByLabel([...dailyItems, ...toSubItems(orphanDailyMap, 'everyday')]) },
+      { key: 'debts', label: 'Debt', groupType: 'debt', items: mergeItemsByLabel(debtItems) },
       ...(otherItems.length > 0
-        ? [{ key: 'other' as LogGroupKey, label: 'Other', groupType: 'everyday', items: otherItems }]
+        ? [{ key: 'other' as LogGroupKey, label: 'Other', groupType: 'everyday', items: mergeItemsByLabel(otherItems) }]
         : []),
     ],
     isFirstTime: txRows.filter(txn => txn.category_type !== 'goal').length === 0,
