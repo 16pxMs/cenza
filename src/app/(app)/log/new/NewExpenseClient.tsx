@@ -257,6 +257,22 @@ export function NewExpenseClient() {
   const groupedEntriesBeforeActive = activeGroupedIndex > 0
     ? groupedEntriesForActiveItem.slice(0, activeGroupedIndex)
     : []
+  const groupedLabelsInOrder = useMemo(() => {
+    const seen = new Set<string>()
+    const labels: string[] = []
+
+    for (const queuedItem of queue) {
+      const normalized = normalizeLabel(queuedItem.label)
+      if (!normalized || seen.has(normalized)) continue
+      seen.add(normalized)
+      labels.push(normalized)
+    }
+
+    return labels
+  }, [queue])
+  const activeGroupFlowIndex = activeLabelNormalized
+    ? groupedLabelsInOrder.findIndex((label) => label === activeLabelNormalized)
+    : -1
 
   const rankedCommonItems = useMemo(() => {
     const visible = commonItems.slice(0, 10)
@@ -697,6 +713,8 @@ export function NewExpenseClient() {
               recentMatch={recentMatch}
               currentIndex={activeIndex}
               totalItems={queue.length}
+              currentGroupIndex={Math.max(0, activeGroupFlowIndex)}
+              totalGroups={groupedLabelsInOrder.length}
               isPreviousInSameGroup={activeIndex > 0 && normalizeLabel(queue[activeIndex - 1]?.label ?? '') === normalizeLabel(activeItem.label)}
               isNextInSameGroup={activeIndex < queue.length - 1 && normalizeLabel(queue[activeIndex + 1]?.label ?? '') === normalizeLabel(activeItem.label)}
               mode={mode}
@@ -1056,6 +1074,8 @@ function ReviewStep({
   recentMatch,
   currentIndex,
   totalItems,
+  currentGroupIndex,
+  totalGroups,
   isPreviousInSameGroup,
   isNextInSameGroup,
   mode,
@@ -1084,6 +1104,8 @@ function ReviewStep({
   recentMatch: RecentLoggedEntry | null
   currentIndex: number
   totalItems: number
+  currentGroupIndex: number
+  totalGroups: number
   isPreviousInSameGroup: boolean
   isNextInSameGroup: boolean
   mode: 'add' | 'update'
@@ -1133,15 +1155,15 @@ function ReviewStep({
 
   return (
     <div>
-      {totalItems > 1 && (
+      {totalGroups > 1 && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
           <span style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 'var(--space-xs)' }}>
-            {currentIndex + 1} of {totalItems}
+            {currentGroupIndex + 1} of {totalGroups}
           </span>
           <div style={{ height: 'var(--size-bar-sm)', background: T.grey100, borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
             <div style={{
               height: '100%',
-              width: `${((currentIndex + 1) / totalItems) * 100}%`,
+              width: `${((currentGroupIndex + 1) / totalGroups) * 100}%`,
               background: T.brandDark,
               borderRadius: 'var(--radius-full)',
               transition: 'width 0.3s ease',
