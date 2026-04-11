@@ -194,7 +194,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
     const isAccordion = section.items.length >= 4
     const isOpen = expanded.has(section.key)
-    const sortedItems = [...section.items].sort((a, b) => {
+    const sortByAmountThenLabel = (a: LogSubItem, b: LogSubItem) => {
       const aHasLogged = a.loggedAmount > 0 ? 1 : 0
       const bHasLogged = b.loggedAmount > 0 ? 1 : 0
 
@@ -202,10 +202,19 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       if (a.loggedAmount !== b.loggedAmount) return b.loggedAmount - a.loggedAmount
 
       return a.label.localeCompare(b.label)
-    })
-    const visibleItems = isAccordion && !isOpen ? sortedItems.slice(0, 3) : sortedItems
-    const hiddenCount = isAccordion ? sortedItems.length - 3 : 0
+    }
+
+    const groupedItems = section.items
+      .filter((item) => (item.entryCount ?? 0) > 1)
+      .sort(sortByAmountThenLabel)
+    const singleItems = section.items
+      .filter((item) => (item.entryCount ?? 0) <= 1)
+      .sort(sortByAmountThenLabel)
+    const orderedItems = [...groupedItems, ...singleItems]
+    const visibleItems = isAccordion && !isOpen ? orderedItems.slice(0, 3) : orderedItems
     const totalLogged = section.items.reduce((sum, item) => sum + item.loggedAmount, 0)
+    const visibleGroupedKeys = new Set(groupedItems.map((item) => item.key))
+    const visibleSingleKeys = new Set(singleItems.map((item) => item.key))
 
     return (
       <section
@@ -241,78 +250,101 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             const isLogged = item.loggedAmount > 0
             const isDeleting = deletingKey === item.key
             const canManageInline = isLogged && (item.entryCount ?? 0) <= 1
+            const isGroup = (item.entryCount ?? 0) > 1
+            const isFirstSingle = singleItems.length > 0 && item.key === singleItems[0]?.key
+            const secondaryText = isGroup
+              ? `${item.entryCount} logged ${item.entryCount === 1 ? 'item' : 'items'}`
+              : item.sublabel && !isLogged
+                ? item.sublabel
+                : null
             return (
-              <div
-                key={item.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: T.white,
-                  minHeight: 60,
-                  gap: 12,
-                }}
-              >
-                {canManageInline && (
-                  <button
-                    onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
-                    disabled={isDeleting}
+              <div key={item.key}>
+                {isFirstSingle && groupedItems.length > 0 && (
+                  <div
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 999,
-                      background: 'var(--grey-100)',
-                      border: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      opacity: isDeleting ? 0.4 : 1,
-                      padding: 0,
-                      flexShrink: 0,
-                      marginLeft: 0,
+                      padding: '18px 0 8px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: T.textMuted,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
                     }}
                   >
-                    <IconMinus size={14} color={T.textMuted} />
-                  </button>
+                    Single entries
+                  </div>
                 )}
 
-                <button
-                  onClick={() => isLogged ? reviewItemEntries(item) : logItem(item)}
+                <div
                   style={{
-                    flex: 1,
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 12,
-                    border: 'none',
-                    background: 'transparent',
-                    padding: '12px 0',
+                    background: T.white,
                     minHeight: 60,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    boxSizing: 'border-box',
+                    gap: 12,
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 500, color: T.text1, lineHeight: 1.3 }}>
-                      {item.label}
-                    </div>
-                    {item.sublabel && !isLogged && (
-                      <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>
-                        {item.sublabel}
-                      </div>
-                    )}
-                  </div>
-
-                  {isLogged ? (
-                    <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
-                      {fmt(item.loggedAmount, data.currency)}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 20, color: T.textMuted, flexShrink: 0, lineHeight: 1, marginLeft: 8, opacity: 0.4 }}>
-                      ›
-                    </span>
+                  {canManageInline && (
+                    <button
+                      onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
+                      disabled={isDeleting}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        background: 'var(--grey-100)',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        opacity: isDeleting ? 0.4 : 1,
+                        padding: 0,
+                        flexShrink: 0,
+                        marginLeft: 0,
+                      }}
+                    >
+                      <IconMinus size={14} color={T.textMuted} />
+                    </button>
                   )}
-                </button>
+
+                  <button
+                    onClick={() => isLogged ? reviewItemEntries(item) : logItem(item)}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      border: 'none',
+                      background: 'transparent',
+                      padding: '12px 0',
+                      minHeight: 60,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 500, color: T.text1, lineHeight: 1.3 }}>
+                        {item.label}
+                      </div>
+                      {secondaryText && (
+                        <div style={{ fontSize: 12, color: T.textMuted, marginTop: 1 }}>
+                          {secondaryText}
+                        </div>
+                      )}
+                    </div>
+
+                    {isLogged ? (
+                      <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
+                        {fmt(item.loggedAmount, data.currency)}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 20, color: T.textMuted, flexShrink: 0, lineHeight: 1, marginLeft: 8, opacity: 0.4 }}>
+                        ›
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -332,7 +364,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               textAlign: 'left',
             }}
           >
-            {isOpen ? 'Show less' : `Show all ${section.items.length}`}
+            {isOpen ? 'Show less' : `Show all ${orderedItems.length}`}
           </TertiaryBtn>
         )}
 
