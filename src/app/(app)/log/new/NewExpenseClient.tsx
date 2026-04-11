@@ -697,6 +697,8 @@ export function NewExpenseClient() {
               recentMatch={recentMatch}
               currentIndex={activeIndex}
               totalItems={queue.length}
+              isPreviousInSameGroup={activeIndex > 0 && normalizeLabel(queue[activeIndex - 1]?.label ?? '') === normalizeLabel(activeItem.label)}
+              isNextInSameGroup={activeIndex < queue.length - 1 && normalizeLabel(queue[activeIndex + 1]?.label ?? '') === normalizeLabel(activeItem.label)}
               mode={mode}
               setMode={setMode}
               priorEntry={priorEntry ?? null}
@@ -1054,6 +1056,8 @@ function ReviewStep({
   recentMatch,
   currentIndex,
   totalItems,
+  isPreviousInSameGroup,
+  isNextInSameGroup,
   mode,
   setMode,
   priorEntry,
@@ -1080,6 +1084,8 @@ function ReviewStep({
   recentMatch: RecentLoggedEntry | null
   currentIndex: number
   totalItems: number
+  isPreviousInSameGroup: boolean
+  isNextInSameGroup: boolean
   mode: 'add' | 'update'
   setMode: (mode: 'add' | 'update') => void
   priorEntry: { id: string; amount: number } | null
@@ -1113,13 +1119,17 @@ function ReviewStep({
     : ''
   const updateCandidate = priorEntry ?? (recentMatch ? { id: recentMatch.id, amount: recentMatch.amount } : null)
   const incomeBlocked = isLastItem && requiresIncomeRecovery
+  const displayLabel = formatDisplayLabel(item.label)
+  const previousEntriesLabel = `${previousGroupEntries.length} ${previousGroupEntries.length === 1 ? 'entry is' : 'entries are'} already saved for this item.`
   const primaryActionLabel = saving
     ? 'Saving…'
     : incomeBlocked
       ? 'Add income to continue'
       : isLastItem
         ? 'Save'
-        : 'Next item'
+        : isNextInSameGroup
+          ? 'Next entry'
+          : 'Next item'
 
   return (
     <div>
@@ -1153,7 +1163,7 @@ function ReviewStep({
           fontWeight: 'var(--weight-semibold)',
           lineHeight: 1,
         }}>
-          {formatDisplayLabel(item.label)}
+          {displayLabel}
         </span>
         {groupCount > 1 ? (
           <p style={{
@@ -1162,7 +1172,7 @@ function ReviewStep({
             color: T.text3,
             lineHeight: 1.5,
           }}>
-            Entry {groupIndex + 1} of {groupCount} for {formatDisplayLabel(item.label)}.
+            You&apos;re on entry {groupIndex + 1} of {groupCount} for {displayLabel}.
           </p>
         ) : (
           <p style={{
@@ -1171,7 +1181,7 @@ function ReviewStep({
             color: T.text3,
             lineHeight: 1.5,
           }}>
-            You can add this item more than once if you need to.
+            Add the amount for this expense. If it came up more than once, you can add another entry before moving on.
           </p>
         )}
         {previousGroupEntries.length > 0 && (
@@ -1181,7 +1191,7 @@ function ReviewStep({
             color: T.textMuted,
             lineHeight: 1.5,
           }}>
-            {previousGroupEntries.length} {previousGroupEntries.length === 1 ? 'entry' : 'entries'} added so far.
+            {previousEntriesLabel}
           </p>
         )}
         {recentMatch && (
@@ -1228,7 +1238,7 @@ function ReviewStep({
                   }}
                 >
                   <span style={{ fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5, minWidth: 0 }}>
-                    {entry.note.trim() || 'No note'}
+                    {entry.note.trim() || 'No description'}
                   </span>
                   <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1, whiteSpace: 'nowrap' }}>
                     {currency} {previewAmount.toLocaleString()}
@@ -1299,6 +1309,9 @@ function ReviewStep({
       )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+          Current entry
+        </p>
         <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
           Amount
         </p>
@@ -1358,7 +1371,7 @@ function ReviewStep({
           Need to log this again?
         </p>
         <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-          Save this entry, then add another {formatDisplayLabel(item.label).toLowerCase()} if you spent on it more than once.
+          Save this entry and stay in {displayLabel.toLowerCase()} if you need to log another one.
         </p>
         <SecondaryBtn
           size="md"
@@ -1440,7 +1453,7 @@ function ReviewStep({
             onClick={onPrevious}
             style={{ justifyContent: 'flex-start', paddingInline: 0 }}
           >
-            Back to previous entry
+            {isPreviousInSameGroup ? 'Back to previous entry' : 'Back'}
           </TertiaryBtn>
         )}
       </div>
