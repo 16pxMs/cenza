@@ -13,7 +13,7 @@ interface EditableRow {
   id: string
   raw: string
   label: string
-  categoryType: ImportCategoryType
+  categoryType: ImportCategoryType | null
   categoryKey: string
   amount: number
   currency: string
@@ -46,7 +46,8 @@ function slugify(value: string) {
     .replace(/^_+|_+$/g, '')
 }
 
-function categoryLabel(value: ImportCategoryType) {
+function categoryLabel(value: ImportCategoryType | null) {
+  if (!value) return 'Not set'
   if (value === 'fixed') return 'Essentials'
   if (value === 'debt') return 'Debt'
   return 'Life'
@@ -75,6 +76,9 @@ function validateRow(row: EditableRow) {
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
     errors.push('Date is invalid.')
+  }
+  if (!row.categoryType) {
+    errors.push('Select a category.')
   }
   if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
     errors.push('Use a specific debt name (e.g. "KCB loan", "Visa card").')
@@ -197,7 +201,12 @@ export function SmsImportClient() {
     setError(null)
     try {
       const result = await parseSmsImport(rawText)
-      setRows(result.rows)
+      setRows(
+        result.rows.map((row) => ({
+          ...row,
+          categoryType: row.confidence === 'high' ? row.categoryType : null,
+        }))
+      )
       setParseMeta({ scanned: result.scanned, skippedCredits: result.skippedCredits })
       setRowErrors({})
       if (result.rows.length === 0) {
@@ -230,7 +239,7 @@ export function SmsImportClient() {
       const payload = rows.map((row) => ({
         id: row.id,
         label: row.label.trim(),
-        categoryType: row.categoryType,
+        categoryType: row.categoryType as ImportCategoryType,
         categoryKey: slugify(row.categoryKey || row.label) || `imported_${row.id}`,
         amount: Number(row.amount),
         date: row.date,
@@ -259,26 +268,12 @@ export function SmsImportClient() {
     return (
       <div style={{ minHeight: '100vh', background: T.pageBg }}>
         <div style={{ maxWidth: 560, margin: '0 auto', padding: '24px 16px' }}>
-          <button
-            onClick={() => router.push(returnTo)}
-            style={{
-              width: 44, height: 44, border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-              color: 'var(--grey-900)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <IconBack size={20} />
-          </button>
-
           <div style={{
-            marginTop: 8,
             background: T.white,
             border: `1px solid ${T.border}`,
             borderRadius: 20,
             padding: 20,
           }}>
-            <p style={{ margin: '0 0 8px', fontSize: 13, color: T.textMuted, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              Imported
-            </p>
             <p style={{ margin: '0 0 8px', fontSize: 30, color: T.text1, fontWeight: 700, letterSpacing: '-0.02em' }}>
               {savedCount} {savedCount === 1 ? 'expense added' : 'expenses added'}
             </p>
@@ -322,10 +317,10 @@ export function SmsImportClient() {
               </div>
             )}
 
-            <PrimaryBtn size="lg" onClick={() => router.push('/log')}>
-              View expense log
+            <PrimaryBtn size="lg" onClick={() => router.push('/app')}>
+              Back to overview
             </PrimaryBtn>
-            <SecondaryBtn size="lg" onClick={() => router.push('/log/new?returnTo=/log')} style={{ marginTop: 10 }}>
+            <SecondaryBtn size="lg" onClick={() => router.push('/log/new?returnTo=/app')} style={{ marginTop: 10 }}>
               Add another expense
             </SecondaryBtn>
           </div>
@@ -408,12 +403,6 @@ export function SmsImportClient() {
                 <p style={{ margin: 0, fontSize: 17, color: T.text1, fontWeight: 600 }}>
                   We found {rows.length} {rows.length === 1 ? 'expense' : 'expenses'}
                 </p>
-                <p style={{ margin: '4px 0 0', fontSize: 13, color: T.text3, lineHeight: 1.45 }}>
-                  Scanned {parseMeta.scanned} lines{parseMeta.skippedCredits > 0 ? ` · skipped ${parseMeta.skippedCredits} credits` : ''}.
-                </p>
-                <p style={{ margin: '6px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.45 }}>
-                  You can edit the expense name before saving.
-                </p>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -439,44 +428,72 @@ export function SmsImportClient() {
                         const hasIssues = issues.length > 0
                         return (
                           <>
-                      <input
-                        value={row.label}
-                        onChange={(event) => updateRow(row.id, { label: event.target.value })}
-                        placeholder={row.categoryType === 'debt' ? 'Debt name (e.g. KCB loan)' : 'Expense name'}
-                        disabled={!hasIssues}
-                        style={{
-                          width: '100%',
-                          height: 42,
-                          borderRadius: 10,
-                          border: `1px solid ${hasIssues ? T.brandMid : T.border}`,
-                          padding: '0 10px',
-                          fontSize: 14,
-                          color: hasIssues ? T.text1 : T.text2,
-                          background: hasIssues ? 'var(--white)' : 'var(--grey-50)',
-                          cursor: hasIssues ? 'text' : 'default',
-                          boxSizing: 'border-box',
-                          fontFamily: 'inherit',
-                        }}
-                      />
-                      {!hasIssues && (
-                        <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                          Name locked. It becomes editable only when there is an error.
-                        </p>
-                      )}
-                      {row.categoryType === 'debt' && (
-                        <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                          Use the specific debt name so it is clear in your log.
-                        </p>
-                      )}
-                      {hasIssues && (
-                        <div style={{ display: 'grid', gap: 4 }}>
-                          {issues.map((issue, index) => (
-                            <p key={`${row.id}-issue-${index}`} style={{ margin: 0, fontSize: 11, color: T.redDark, lineHeight: 1.4 }}>
-                              {issue}
+                            <input
+                              value={row.label}
+                              onChange={(event) => updateRow(row.id, { label: event.target.value })}
+                              placeholder={row.categoryType === 'debt' ? 'Debt name (e.g. KCB loan)' : 'Expense name'}
+                              style={{
+                                width: '100%',
+                                height: 42,
+                                borderRadius: 10,
+                                border: `1px solid ${hasIssues ? T.brandMid : T.border}`,
+                                padding: '0 10px',
+                                fontSize: 14,
+                                color: T.text1,
+                                background: 'var(--white)',
+                                boxSizing: 'border-box',
+                                fontFamily: 'inherit',
+                              }}
+                            />
+                            <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                              You can edit this name before saving.
                             </p>
-                          ))}
-                        </div>
-                      )}
+                            {row.categoryType === 'debt' && (
+                              <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                                Use the specific debt name so it is clear in your log.
+                              </p>
+                            )}
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {([
+                                { value: 'everyday', label: 'Life' },
+                                { value: 'fixed', label: 'Essentials' },
+                                { value: 'debt', label: 'Debt' },
+                              ] as const).map((option) => {
+                                const selected = row.categoryType === option.value
+                                return (
+                                  <button
+                                    key={`${row.id}-${option.value}`}
+                                    type="button"
+                                    onClick={() => updateRow(row.id, { categoryType: option.value })}
+                                    style={{
+                                      height: 32,
+                                      borderRadius: 999,
+                                      border: `1px solid ${selected ? T.brandMid : T.border}`,
+                                      background: selected ? T.brand : 'var(--grey-50)',
+                                      color: selected ? T.brandDark : T.text2,
+                                      padding: '0 10px',
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      whiteSpace: 'nowrap',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {option.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            {hasIssues && (
+                              <div style={{ display: 'grid', gap: 4 }}>
+                                {issues.map((issue, index) => (
+                                  <p key={`${row.id}-issue-${index}`} style={{ margin: 0, fontSize: 11, color: T.redDark, lineHeight: 1.4 }}>
+                                    {issue}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
                           </>
                         )
                       })()}
@@ -516,27 +533,10 @@ export function SmsImportClient() {
                         >
                           {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </span>
-                        <span
-                          style={{
-                            height: 32,
-                            borderRadius: 999,
-                            border: `1px solid ${T.brandMid}`,
-                            background: T.brand,
-                            color: T.brandDark,
-                            padding: '0 10px',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {categoryLabel(row.categoryType)}
-                        </span>
                       </div>
 
                       <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                        Amount, date, and type are locked to match the SMS.
+                        Amount and date are locked to match the SMS.
                       </p>
 
                       <div
