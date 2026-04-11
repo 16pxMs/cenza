@@ -184,6 +184,7 @@ export default function CategoryLedgerPageClient({
         : pct > 75 ? T.amber : 'var(--green)'
   const spendCount = data.txns.filter(txn => txn.amount > 0).length
   const pad = isDesktop ? '0 32px' : '0 16px'
+  const normalizedCategoryLabel = categoryLabel.trim().toLowerCase()
 
   const openEntryMenu = (txn: LedgerTransaction) => {
     setActiveEntry(txn)
@@ -228,7 +229,7 @@ export default function CategoryLedgerPageClient({
         <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {data.monthLabel}
         </p>
-        <h1 style={{ margin: 0, fontSize: isDesktop ? 'var(--text-3xl)' : 'var(--text-3xl)', fontWeight: 'var(--weight-bold)', lineHeight: 1.04, letterSpacing: '-0.04em', color: T.text1 }}>
+        <h1 style={{ margin: 0, fontSize: isDesktop ? 'var(--text-2xl)' : 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', lineHeight: 1.08, letterSpacing: '-0.035em', color: T.text1 }}>
           {categoryLabel}
         </h1>
       </div>
@@ -332,6 +333,9 @@ export default function CategoryLedgerPageClient({
                     const isRefund = txn.amount < 0
                     const hasNote = !!(txn.note && txn.note !== 'Refund')
                     const entryTitle = getEntryTitle(txn)
+                    const showEntryTitle = entryTitle.trim().toLowerCase() !== normalizedCategoryLabel
+                    const entryDateLabel = formatDate(txn.date)
+                    const fallbackDetail = `No description · ${entryDateLabel}`
 
                     return (
                       <div
@@ -348,9 +352,11 @@ export default function CategoryLedgerPageClient({
                             <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: isRefund ? T.greenDark : T.text1, marginBottom: hasNote ? 4 : 0, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
                               {isRefund ? `−${fmt(Math.abs(txn.amount), data.currency)}` : fmt(txn.amount, data.currency)}
                             </div>
-                            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: isRefund ? T.greenDark : T.text2, lineHeight: 1.35, marginBottom: hasNote ? 2 : 0 }}>
-                              {entryTitle}
-                            </div>
+                            {showEntryTitle && (
+                              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: isRefund ? T.greenDark : T.text2, lineHeight: 1.35, marginBottom: hasNote ? 2 : 0 }}>
+                                {entryTitle}
+                              </div>
+                            )}
                             {isRefund && !hasNote && (
                               <span style={{
                                 fontSize: 'var(--text-xs)',
@@ -366,9 +372,13 @@ export default function CategoryLedgerPageClient({
                                 Refund
                               </span>
                             )}
-                            {hasNote && (
+                            {hasNote ? (
                               <div style={{ fontSize: 'var(--text-sm)', color: isRefund ? T.greenDark : T.text3, lineHeight: 1.45 }}>
                                 {txn.note}
+                              </div>
+                            ) : showEntryTitle ? null : (
+                              <div style={{ fontSize: 'var(--text-sm)', color: isRefund ? T.greenDark : T.text3, lineHeight: 1.45 }}>
+                                {fallbackDetail}
                               </div>
                             )}
                           </div>

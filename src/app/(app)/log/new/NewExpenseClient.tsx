@@ -1353,6 +1353,23 @@ function ReviewStep({
       </div>
       </div>
 
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+          Need to log this again?
+        </p>
+        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+          Save this entry, then add another {formatDisplayLabel(item.label).toLowerCase()} if you spent on it more than once.
+        </p>
+        <SecondaryBtn
+          size="md"
+          onClick={onAddAnother}
+          disabled={saving || !canAdvance || incomeBlocked}
+          style={{ width: '100%', borderColor: T.border, color: T.text1 }}
+        >
+          Save and add another
+        </SecondaryBtn>
+      </div>
+
       {item.categoryType !== 'debt' && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
           <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
@@ -1417,14 +1434,6 @@ function ReviewStep({
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-sm)', marginBottom: saveError ? 'var(--space-md)' : 'var(--space-lg)' }}>
-        <SecondaryBtn
-          size="md"
-          onClick={onAddAnother}
-          disabled={saving || !canAdvance || incomeBlocked}
-          style={{ borderColor: T.border, color: T.text1 }}
-        >
-          Save and add another
-        </SecondaryBtn>
         {currentIndex > 0 && (
           <TertiaryBtn
             size="sm"
