@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import { formatAmount } from '@/lib/formatting/amount'
 import type { HistoryCategoryRow, HistoryPageData } from '@/lib/loaders/history'
 
@@ -286,21 +287,79 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
 
         {/* ── 4. Empty state ── */}
         {data.rows.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 'var(--space-xl) 0' }}>
-            <p style={{ fontSize: 'var(--text-base)', color: T.textMuted, marginBottom: 'var(--space-card-md)' }}>
-              Nothing logged yet this cycle.
+          <div style={{
+            background: T.white,
+            border: 'var(--border-width) solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-card-sm)',
+            marginBottom: 'var(--space-card-md)',
+          }}>
+            <p style={{
+              margin: '0 0 var(--space-xs)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}>
+              Recap preview
             </p>
-            <button
-              onClick={() => router.push('/log')}
-              style={{
-                height: 'var(--button-height-sm)', borderRadius: 'var(--radius-sm)',
-                background: 'var(--brand-dark)', color: 'var(--text-inverse)',
-                border: 'none', padding: '0 var(--space-xl)',
-                fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-base)', cursor: 'pointer',
-              }}
+            <p style={{
+              margin: '0 0 var(--space-2xs)',
+              fontSize: 'var(--text-lg)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.text1,
+              letterSpacing: '-0.01em',
+            }}>
+              Nothing logged yet.
+            </p>
+            <p style={{
+              margin: '0 0 var(--space-card-sm)',
+              fontSize: 'var(--text-sm)',
+              color: T.text2,
+              lineHeight: 1.55,
+            }}>
+              Once you log expenses, this page will show where your money went across Essentials, Life, and Debt.
+            </p>
+
+            <div style={{
+              border: 'var(--border-width) solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              overflow: 'hidden',
+              marginBottom: 'var(--space-card-sm)',
+            }}>
+              {['Essentials', 'Life', 'Debt'].map((label, index) => (
+                <div
+                  key={label}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: 'var(--space-sm) var(--space-card-sm)',
+                    borderBottom: index === 2 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
+                  }}
+                >
+                  <span style={{ fontSize: 'var(--text-base)', color: T.text2 }}>{label}</span>
+                  <span style={{ fontSize: 'var(--text-sm)', color: T.textMuted }}>
+                    {formatAmount(0, { currency: data.currency, variant: 'compact' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <PrimaryBtn
+              size="md"
+              onClick={() => router.push('/log/new?returnTo=/history')}
             >
-              Log a payment
-            </button>
+              Log first expense
+            </PrimaryBtn>
+            <SecondaryBtn
+              size="md"
+              onClick={() => router.push('/app')}
+              style={{ marginTop: 'var(--space-xs)' }}
+            >
+              Go to overview
+            </SecondaryBtn>
           </div>
         )}
 
