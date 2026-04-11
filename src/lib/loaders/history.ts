@@ -1,3 +1,4 @@
+import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
@@ -36,6 +37,14 @@ export interface HistoryPageData {
   totalIncome: number
   breakdown: HistoryBreakdownItem[]
   availableMonths: string[]
+}
+
+interface HistoryIncomeRow {
+  salary: number | string | null
+  extra_income: Array<{ amount?: number | string | null }> | null
+  total: number | string | null
+  cycle_start_mode?: 'full_month' | 'mid_month' | null
+  opening_balance?: number | string | null
 }
 
 function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
@@ -104,7 +113,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .eq('cycle_id', cycleId)
       .maybeSingle(),
     (supabase.from('income_entries') as any)
-      .select('total')
+      .select('salary, extra_income, total, cycle_start_mode, opening_balance')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
@@ -160,7 +169,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     rows: categoryRows,
     totalBudget: Number(expenses?.total_monthly ?? 0) + Number(budgets?.total_budget ?? 0),
     totalSpent,
-    totalIncome: Number(income?.total ?? 0),
+    totalIncome: deriveIncomeTotal((income ?? null) as HistoryIncomeRow | null),
     breakdown,
     availableMonths,
   }

@@ -14,6 +14,7 @@ export {
   CreditCard       as IconSpend,
   Target           as IconGoals,
   TrendingUp       as IconFinance,
+  MoreHorizontal   as IconMore,
   Plus             as IconPlus,
   Minus            as IconMinus,
   Trash2           as IconTrash,

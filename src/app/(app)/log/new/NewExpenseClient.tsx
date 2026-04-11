@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconPlus } from '@/components/ui/Icons'
 import { saveExpenseBatch } from './actions'
@@ -396,15 +397,12 @@ export function NewExpenseClient() {
           .eq('cycle_id', cycleId),
       ])
 
-      const hasIncomeForCycle =
-        Number(incomeRow?.total ?? 0) > 0 ||
-        Number(incomeRow?.opening_balance ?? 0) > 0 ||
-        Number(incomeRow?.received ?? 0) > 0
+      const hasIncomeForCurrentCycle = hasIncomeForCycle(incomeRow)
       const existingExpenseCount = (txRows ?? []).filter((txn: any) => txn.category_type !== 'goal').length
 
       setQuickEntryStatus({
         loaded: true,
-        hasIncome: hasIncomeForCycle,
+        hasIncome: hasIncomeForCurrentCycle,
         existingExpenseCount,
       })
     })()
@@ -1062,20 +1060,22 @@ function ReviewStep({
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <span style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 'var(--space-xs)' }}>
-          {currentIndex + 1} of {totalItems}
-        </span>
-        <div style={{ height: 'var(--size-bar-sm)', background: T.grey100, borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: `${((currentIndex + 1) / totalItems) * 100}%`,
-            background: T.brandDark,
-            borderRadius: 'var(--radius-full)',
-            transition: 'width 0.3s ease',
-          }} />
+      {totalItems > 1 && (
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 'var(--space-xs)' }}>
+            {currentIndex + 1} of {totalItems}
+          </span>
+          <div style={{ height: 'var(--size-bar-sm)', background: T.grey100, borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${((currentIndex + 1) / totalItems) * 100}%`,
+              background: T.brandDark,
+              borderRadius: 'var(--radius-full)',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
         <span style={{

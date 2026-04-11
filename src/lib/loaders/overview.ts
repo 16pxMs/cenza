@@ -1,4 +1,5 @@
 import { GOAL_META } from '@/constants/goals'
+import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import type { GoalId, UserProfile } from '@/types/database'
@@ -228,7 +229,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       }
     : null
 
-  const incomeTotal = Number(incomeRow?.total ?? 0)
+  const incomeTotal = deriveIncomeTotal(incomeRow)
   const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
   const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
   const fixedTotal = Number(fixedExpenses?.total_monthly ?? 0)

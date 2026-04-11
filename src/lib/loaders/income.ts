@@ -36,6 +36,7 @@ export interface IncomeSetupPageData {
   currency: string
   incomeType: 'salaried' | 'variable' | null
   paydayDay: number | null
+  incomeData: IncomeEntryRow | null
 }
 
 export interface FixedExpensesSetupPageData {
@@ -49,7 +50,29 @@ export interface SpendingBudgetSetupPageData {
   spendingHistory: Record<string, number>
 }
 
-export async function loadIncomeSetupPageData(profile: UserProfile): Promise<IncomeSetupPageData> {
+export async function loadIncomeSetupPageData(userId: string, profile: UserProfile): Promise<IncomeSetupPageData> {
+  const supabase = await createClient()
+  const cycleId = deriveCurrentCycleId(profile)
+
+  const { data: currentIncome } = await (supabase.from('income_entries') as any)
+    .select('salary, extra_income, total, cycle_start_mode, opening_balance')
+    .eq('user_id', userId)
+    .eq('cycle_id', cycleId)
+    .maybeSingle()
+
+  let incomeData = (currentIncome ?? null) as IncomeEntryRow | null
+
+  if (!incomeData) {
+    const { data: fallbackIncome } = await (supabase.from('income_entries') as any)
+      .select('salary, extra_income, total, cycle_start_mode, opening_balance')
+      .eq('user_id', userId)
+      .order('cycle_id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    incomeData = (fallbackIncome ?? null) as IncomeEntryRow | null
+  }
+
   return {
     currency: profile.currency ?? 'KES',
     incomeType: profile.income_type ?? null,
@@ -60,6 +83,7 @@ export async function loadIncomeSetupPageData(profile: UserProfile): Promise<Inc
       Number.isFinite(Number(profile.pay_schedule_days[0]))
         ? Number(profile.pay_schedule_days[0])
         : null,
+    incomeData,
   }
 }
 

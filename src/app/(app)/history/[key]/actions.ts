@@ -11,7 +11,17 @@ interface UpdateHistoryEntryInput {
   amount: number
   date: string
   note?: string
+  label?: string
   categoryKey: string
+}
+
+function slugifyCategoryKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
 }
 
 interface RefundHistoryEntryInput {
@@ -40,8 +50,22 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
   const supabase = await createClient()
+  const nextLabel = input.label?.trim()
+  const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : null
+
+  const patch: Record<string, unknown> = {
+    amount,
+    date: input.date,
+    note: input.note?.trim() || null,
+  }
+
+  if (nextLabel) {
+    patch.category_label = nextLabel
+    patch.category_key = nextCategoryKey || input.categoryKey
+  }
+
   const { error } = await (supabase.from('transactions') as any)
-    .update({ amount, date: input.date, note: input.note?.trim() || null })
+    .update(patch)
     .eq('id', input.id)
     .eq('user_id', user.id)
 

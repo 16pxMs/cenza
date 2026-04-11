@@ -85,6 +85,9 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
     cycle_id: cycleId,
     salary: cycleStartMode === 'mid_month' ? 0 : salary,
     extra_income: extraIncome,
+    total: cycleStartMode === 'mid_month'
+      ? Number(openingBalance ?? 0)
+      : salary + extraIncome.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
     cycle_start_mode: cycleStartMode,
     opening_balance: cycleStartMode === 'mid_month' ? openingBalance : null,
   }, { onConflict: 'user_id,cycle_id' })

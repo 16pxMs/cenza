@@ -1,3 +1,4 @@
+import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { GoalId, UserProfile } from '@/types/database'
@@ -44,7 +45,7 @@ export async function loadNewGoalPageData(
   return {
     cycleId,
     currency: profile.currency ?? '',
-    totalIncome: Number(incomeRes.data?.total ?? 0),
+    totalIncome: deriveIncomeTotal(incomeRes.data ?? null),
     fixedMonthly: Number(expensesRes.data?.total_monthly ?? 0),
     existingGoals: (profile.goals ?? []) as GoalId[],
     alreadySaved: (savedRes.data ?? []).reduce((sum: number, txn: any) => sum + Number(txn.amount), 0),

@@ -12,6 +12,13 @@ interface Props {
   currency: string
   incomeType: 'salaried' | 'variable' | null
   paydayDay: number | null
+  incomeData: {
+    salary: number | string | null
+    extra_income: Array<{ id?: string | number; label?: string; amount?: number | string }> | null
+    total: number | string | null
+    cycle_start_mode?: 'full_month' | 'mid_month' | null
+    opening_balance?: number | string | null
+  } | null
   returnTo: string
 }
 
@@ -28,7 +35,7 @@ function resolveReturnPath(returnTo: string): string {
   return trimmed
 }
 
-export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, returnTo }: Props) {
+export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, incomeData, returnTo }: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const { isDesktop } = useBreakpoint()
@@ -115,6 +122,7 @@ export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, 
       <AddIncomeFlow
         incomeType={incomeType}
         paydayDay={paydayDay}
+        initialIncomeData={incomeData}
         currency={currency}
         onSave={handleSave}
         onBack={incomeType == null ? undefined : () => router.push(nextPath)}

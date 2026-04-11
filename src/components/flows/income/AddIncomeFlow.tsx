@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './AddIncomeSheet.css'
 import { Input } from '@/components/ui/Input/Input'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
@@ -28,6 +28,13 @@ export interface IncomeData {
 interface Props {
   incomeType?: IncomeType | null
   paydayDay?: number | null
+  initialIncomeData?: {
+    salary: number | string | null
+    extra_income: Array<{ id?: string | number; label?: string; amount?: number | string }> | null
+    total: number | string | null
+    cycle_start_mode?: 'full_month' | 'mid_month' | null
+    opening_balance?: number | string | null
+  } | null
   currency: string
   onSave: (data: IncomeData) => void
   onBack?: () => void
@@ -57,6 +64,7 @@ function fmt(n: number, cur = 'KES') {
 export function AddIncomeFlow({
   incomeType,
   paydayDay = null,
+  initialIncomeData = null,
   currency,
   onSave,
   onBack,
@@ -65,13 +73,34 @@ export function AddIncomeFlow({
   showInnerBack = true,
 }: Props) {
   const isFirstTime = incomeType == null
+  const initialCycleStartMode = initialIncomeData?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month'
+  const initialSalaryValue = (() => {
+    if (!initialIncomeData) return ''
+    if (initialCycleStartMode === 'mid_month') {
+      const openingBalance = Number(initialIncomeData.opening_balance ?? 0)
+      return openingBalance > 0 ? String(openingBalance) : ''
+    }
+    const salary = Number(initialIncomeData.salary ?? 0)
+    return salary > 0 ? String(salary) : ''
+  })()
+  const initialExtrasValue: ExtraIncome[] = useMemo(() => (
+    Array.isArray(initialIncomeData?.extra_income)
+      ? initialIncomeData.extra_income
+          .map((item, index) => ({
+            id: Number(item?.id ?? index + 1),
+            label: String(item?.label ?? ''),
+            amount: Number(item?.amount ?? 0) > 0 ? String(Number(item?.amount ?? 0)) : '',
+          }))
+          .filter((item) => item.label || item.amount)
+      : []
+  ), [initialIncomeData])
 
   const [step, setStep] = useState<'type' | 'amount' | 'cycle' | 'payday'>(isFirstTime ? 'type' : 'amount')
   const [selectedType, setSelectedType] = useState<IncomeType | null>(incomeType ?? null)
   const [selectedPayday, setSelectedPayday] = useState<number | null>(incomeType === 'salaried' ? paydayDay : null)
-  const [cycleStartMode, setCycleStartMode] = useState<'full_month' | 'mid_month' | null>(null)
-  const [salary, setSalary] = useState('')
-  const [extras, setExtras] = useState<ExtraIncome[]>([])
+  const [cycleStartMode, setCycleStartMode] = useState<'full_month' | 'mid_month' | null>(initialIncomeData ? initialCycleStartMode : null)
+  const [salary, setSalary] = useState(initialSalaryValue)
+  const [extras, setExtras] = useState<ExtraIncome[]>(initialExtrasValue)
   const [error, setError] = useState<string | null>(null)
   const activeStep = controlledStep ?? step
 
@@ -88,11 +117,11 @@ export function AddIncomeFlow({
     }
     setSelectedType(incomeType ?? null)
     setSelectedPayday(incomeType === 'salaried' ? paydayDay : null)
-    setCycleStartMode(null)
-    setSalary('')
-    setExtras([])
+    setCycleStartMode(initialIncomeData ? initialCycleStartMode : null)
+    setSalary(initialSalaryValue)
+    setExtras(initialExtrasValue)
     setError(null)
-  }, [incomeType, paydayDay, isFirstTime])
+  }, [incomeType, paydayDay, isFirstTime, initialIncomeData, initialCycleStartMode, initialSalaryValue, initialExtrasValue])
 
   const activeType: IncomeType = selectedType ?? incomeType ?? 'salaried'
 

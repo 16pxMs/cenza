@@ -2,6 +2,7 @@
 
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { deriveIncomeTotal } from '@/lib/income/derived'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -58,7 +59,7 @@ export default function IncomePageClient({
   const currentMonth = new Date().toISOString().slice(0, 7)
   const [isPending] = useTransition()
 
-  const incomeTotal = data.incomeData ? Number(data.incomeData.total ?? 0) : 0
+  const incomeTotal = data.incomeData ? deriveIncomeTotal(data.incomeData) : 0
   const fixedTotal = data.fixedExpenses ? Number(data.fixedExpenses.total_monthly ?? 0) : 0
   const budgetTotal = data.spendingBudget ? Number(data.spendingBudget.total_budget ?? 0) : 0
   const available = incomeTotal - fixedTotal

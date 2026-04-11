@@ -1,4 +1,5 @@
 import type { User } from '@supabase/supabase-js'
+import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
@@ -41,13 +42,7 @@ export async function loadSettingsPageData(user: User, profile: UserProfile): Pr
     incomeRow = (fallbackIncome ?? null) as IncomeRow | null
   }
 
-  const salary = Number(incomeRow?.salary ?? 0)
-  const openingBalance = Number(incomeRow?.opening_balance ?? 0)
-  const extras = Array.isArray(incomeRow?.extra_income) ? incomeRow!.extra_income : []
-  const extrasTotal = extras.reduce((sum, item) => sum + Number(item?.amount ?? 0), 0)
-  const monthlyTotal = incomeRow
-    ? (incomeRow.cycle_start_mode === 'mid_month' ? openingBalance : salary + extrasTotal)
-    : null
+  const monthlyTotal = incomeRow ? deriveIncomeTotal(incomeRow) : null
 
   return {
     name: profile.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',

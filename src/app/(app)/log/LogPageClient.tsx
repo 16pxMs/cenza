@@ -61,6 +61,8 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
+  const [editLabel, setEditLabel] = useState('')
+  const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
 
   const visibleSections = data.sections.filter((section) => !(section.items.length === 0 && (section.key === 'daily' || section.key === 'debts')))
@@ -99,6 +101,8 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     setEditAmount(String(item.loggedAmount))
     setEditDate(item.singleEntryDate)
     setEditNote(item.singleEntryNote ?? '')
+    setEditLabel(item.label)
+    setEditIsSmsMeta((item.singleEntryNote ?? '').trim().toLowerCase() === 'imported from sms')
     setDeleteStep('edit')
   }
 
@@ -153,12 +157,16 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         amount,
         date: editDate,
         note: editNote,
+        label: editLabel,
+        categoryKey: pendingDelete.key,
       })
       toast('Entry updated')
       setPendingDelete(null)
       setEditAmount('')
       setEditDate('')
       setEditNote('')
+      setEditLabel('')
+      setEditIsSmsMeta(false)
       router.refresh()
     } catch {
       toast('Could not update entry')
@@ -495,6 +503,24 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input
                   type="text"
+                  value={editLabel}
+                  onChange={event => setEditLabel(event.target.value)}
+                  placeholder="Expense name"
+                  style={{
+                    height: 40,
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    padding: '0 12px',
+                    fontSize: 13,
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <input
+                  type="text"
                   inputMode="decimal"
                   value={(() => {
                     if (!editAmount) return ''
@@ -540,28 +566,50 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                     boxSizing: 'border-box',
                   }}
                 />
-                <input
-                  type="text"
-                  value={editNote}
-                  onChange={event => setEditNote(event.target.value)}
-                  placeholder="Note (optional)"
-                  style={{
-                    height: 40,
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    padding: '0 12px',
-                    fontSize: 13,
-                    color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                  }}
-                />
+                {editIsSmsMeta ? (
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span
+                      style={{
+                        height: 28,
+                        borderRadius: 999,
+                        border: `1px solid ${T.border}`,
+                        background: 'var(--grey-100)',
+                        color: T.text3,
+                        padding: '0 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Imported from SMS
+                    </span>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={editNote}
+                    onChange={event => setEditNote(event.target.value)}
+                    placeholder="Note (optional)"
+                    style={{
+                      height: 40,
+                      borderRadius: 10,
+                      border: '1px solid var(--border)',
+                      padding: '0 12px',
+                      fontSize: 13,
+                      color: T.text1,
+                      background: T.white,
+                      outline: 'none',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                )}
               </div>
               <button
                 onClick={handleSaveEdit}
-                disabled={savingEdit || parseFloat(editAmount) <= 0 || !editDate}
+                disabled={savingEdit || parseFloat(editAmount) <= 0 || !editDate || editLabel.trim().length === 0}
                 style={{
                   width: '100%',
                   marginTop: 14,

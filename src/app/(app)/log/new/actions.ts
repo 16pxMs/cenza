@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
+import { hasIncomeForCycle } from '@/lib/income/derived'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
@@ -107,10 +108,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<v
     throw new Error(`Failed to verify current entries: ${txnError.message}`)
   }
 
-  const hasIncomeForCycle =
-    Number(incomeRow?.total ?? 0) > 0 ||
-    Number(incomeRow?.opening_balance ?? 0) > 0 ||
-    Number(incomeRow?.received ?? 0) > 0
+  const hasIncomeForCurrentCycle = hasIncomeForCycle(incomeRow)
 
   const existingExpenseCount = (cycleTxns ?? []).filter((txn: any) => txn.category_type !== 'goal').length
   const netNewEntries = items.reduce((sum, input) => {
@@ -118,7 +116,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<v
     return sum + (isReplacement ? 0 : 1)
   }, 0)
 
-  if (!hasIncomeForCycle && existingExpenseCount + netNewEntries > QUICK_ENTRY_LIMIT_WITHOUT_INCOME) {
+  if (!hasIncomeForCurrentCycle && existingExpenseCount + netNewEntries > QUICK_ENTRY_LIMIT_WITHOUT_INCOME) {
     const entriesLeft = Math.max(0, QUICK_ENTRY_LIMIT_WITHOUT_INCOME - existingExpenseCount)
     throw new Error(
       entriesLeft > 0

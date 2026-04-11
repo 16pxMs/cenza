@@ -590,7 +590,7 @@ const reference = receivedConfirmed
             ? `${fmt(debtTotal, currency)} logged this month. Track repayment progress in one place.`
             : 'Loans, credit cards, and debt payments should be logged so your monthly picture stays accurate.'}
         </p>
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: 'grid', gap: 16 }}>
           <SecondaryBtn
             size="md"
             onClick={() => (debtTotal > 0 ? onReviewDebts?.() : onAddDebts?.())}

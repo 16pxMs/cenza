@@ -428,6 +428,9 @@ export function SmsImportClient() {
                         const hasIssues = issues.length > 0
                         return (
                           <>
+                            <p style={{ margin: 0, fontSize: 12, color: T.text3, fontWeight: 600, letterSpacing: '0.01em' }}>
+                              {row.categoryType === 'debt' ? 'Debt name' : 'Expense name'}
+                            </p>
                             <input
                               value={row.label}
                               onChange={(event) => updateRow(row.id, { label: event.target.value })}
@@ -498,41 +501,43 @@ export function SmsImportClient() {
                         )
                       })()}
 
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <span
+                      <div
+                        style={{
+                          borderRadius: 10,
+                          border: `1px solid ${T.borderSubtle}`,
+                          background: 'var(--grey-50)',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
                           style={{
-                            height: 32,
-                            borderRadius: 999,
-                            border: `1px solid ${T.border}`,
-                            background: 'var(--grey-50)',
-                            color: T.text2,
-                            padding: '0 10px',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
-                            whiteSpace: 'nowrap',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            padding: '9px 10px',
+                            borderBottom: `1px solid ${T.borderSubtle}`,
                           }}
                         >
-                          {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
-                        </span>
-                        <span
+                          <span style={{ fontSize: 12, color: T.text3, fontWeight: 600 }}>Amount</span>
+                          <span style={{ fontSize: 13, color: T.text1, fontWeight: 600, textAlign: 'right', minWidth: 0 }}>
+                            {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
+                          </span>
+                        </div>
+                        <div
                           style={{
-                            height: 32,
-                            borderRadius: 999,
-                            border: `1px solid ${T.border}`,
-                            background: 'var(--grey-50)',
-                            color: T.text2,
-                            padding: '0 10px',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
-                            whiteSpace: 'nowrap',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            padding: '9px 10px',
                           }}
                         >
-                          {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
+                          <span style={{ fontSize: 12, color: T.text3, fontWeight: 600 }}>Date</span>
+                          <span style={{ fontSize: 13, color: T.text1, fontWeight: 600, textAlign: 'right', minWidth: 0 }}>
+                            {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
                       </div>
 
                       <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>

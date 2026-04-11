@@ -8,7 +8,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { IconBack } from '@/components/ui/Icons'
+import { IconBack, IconMore } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
 import type { CategoryType } from '@/types/database'
 import type { HistoryLedgerPageData, LedgerTransaction } from '@/lib/loaders/history-ledger'
@@ -60,11 +60,12 @@ export default function CategoryLedgerPageClient({
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
+  const [editLabel, setEditLabel] = useState('')
+  const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<LedgerTransaction | null>(null)
-  const [deleteStep, setDeleteStep] = useState<'reason' | 'confirm'>('reason')
+  const [activeEntry, setActiveEntry] = useState<LedgerTransaction | null>(null)
+  const [entrySheetStep, setEntrySheetStep] = useState<'menu' | 'confirm' | 'refund'>('menu')
   const [deleting, setDeleting] = useState(false)
-  const [showRefundForm, setShowRefundForm] = useState(false)
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
@@ -77,6 +78,8 @@ export default function CategoryLedgerPageClient({
     setEditAmount(String(txn.amount))
     setEditDate(txn.date)
     setEditNote(txn.note ?? '')
+    setEditLabel(getEntryTitle(txn))
+    setEditIsSmsMeta((txn.note ?? '').trim().toLowerCase() === 'imported from sms')
     setTimeout(() => amountRef.current?.focus(), 80)
   }
 
@@ -103,6 +106,7 @@ export default function CategoryLedgerPageClient({
         amount,
         date: editDate,
         note: editNote,
+        label: editLabel,
         categoryKey,
       })
       toast('Entry updated')
@@ -116,13 +120,13 @@ export default function CategoryLedgerPageClient({
   }
 
   const handleDelete = async () => {
-    if (!pendingDelete) return
+    if (!activeEntry) return
 
     setDeleting(true)
     try {
-      await deleteHistoryEntry(pendingDelete.id, categoryKey)
+      await deleteHistoryEntry(activeEntry.id, categoryKey)
       toast('Entry deleted')
-      setPendingDelete(null)
+      setActiveEntry(null)
       refreshPage()
     } catch {
       toast('Could not delete entry')
@@ -133,19 +137,19 @@ export default function CategoryLedgerPageClient({
 
   const handleRefund = async () => {
     const amount = parseFloat(refundAmount) || 0
-    if (amount <= 0) return
+    if (!activeEntry || amount <= 0) return
 
     setSavingRefund(true)
     try {
       await refundHistoryCategory({
         categoryType,
         categoryKey,
-        categoryLabel,
+        categoryLabel: getEntryTitle(activeEntry),
         amount,
         note: refundNote,
       })
       toast(categoryType === 'debt' ? 'Payback recorded' : 'Refund recorded')
-      setShowRefundForm(false)
+      setActiveEntry(null)
       setRefundAmount('')
       setRefundNote('')
       refreshPage()
@@ -167,6 +171,13 @@ export default function CategoryLedgerPageClient({
         : pct > 75 ? T.amber : 'var(--green)'
   const spendCount = data.txns.filter(txn => txn.amount > 0).length
   const pad = isDesktop ? '0 32px' : '0 16px'
+
+  const openEntryMenu = (txn: LedgerTransaction) => {
+    setActiveEntry(txn)
+    setEntrySheetStep('menu')
+    setRefundAmount('')
+    setRefundNote('')
+  }
 
   const dateGroups = data.txns.reduce<Record<string, LedgerTransaction[]>>((acc, txn) => {
     if (!acc[txn.date]) acc[txn.date] = []
@@ -269,110 +280,8 @@ export default function CategoryLedgerPageClient({
                       : `${spendCount} ${spendCount === 1 ? 'entry' : 'entries'} this month`}
               </p>
 
-              {!showRefundForm && spendCount > 0 && (
-                <TertiaryBtn
-                  size="sm"
-                  onClick={() => { setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) }}
-                  style={{
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {categoryType === 'debt' ? 'Record payback' : 'Got money back'}
-                </TertiaryBtn>
-              )}
             </div>
           </div>
-
-          {showRefundForm && (
-            <>
-              <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <input
-                  ref={refundRef}
-                  type="text"
-                  inputMode="decimal"
-                  value={(() => {
-                    if (!refundAmount) return ''
-                    const parts = refundAmount.split('.')
-                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-                    return parts.join('.')
-                  })()}
-                  onChange={event => {
-                    const value = event.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
-                    const parts = value.split('.')
-                    if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
-                    setRefundAmount(value)
-                  }}
-                  onKeyDown={event => { if (event.key === 'Enter') handleRefund() }}
-                  placeholder={categoryType === 'debt' ? 'Amount paid back' : 'Refund amount'}
-                  style={{
-                    width: '100%',
-                    height: 44,
-                    borderRadius: 10,
-                    border: '1px solid var(--border-strong)',
-                    padding: '0 12px',
-                    fontSize: 'var(--text-md)',
-                    fontWeight: 'var(--weight-semibold)',
-                    color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <input
-                  type="text"
-                  value={refundNote}
-                  onChange={event => setRefundNote(event.target.value)}
-                  placeholder="Note (optional)"
-                  style={{
-                    width: '100%',
-                    height: 40,
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    padding: '0 12px',
-                    fontSize: 'var(--text-sm)',
-                    color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', borderTop: '1px solid var(--border-subtle)' }}>
-                <button
-                  onClick={() => { setShowRefundForm(false); setRefundAmount(''); setRefundNote('') }}
-                  style={{
-                    flex: 1,
-                    height: 44,
-                    background: 'transparent',
-                    border: 'none',
-                    borderRight: '1px solid var(--border-subtle)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-medium)',
-                    color: T.text3,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleRefund}
-                  disabled={savingRefund || parseFloat(refundAmount) <= 0}
-                  style={{
-                    flex: 1,
-                    height: 44,
-                    background: 'transparent',
-                    border: 'none',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-semibold)',
-                    color: parseFloat(refundAmount) > 0 ? T.greenDark : T.textMuted,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {savingRefund ? 'Saving…' : categoryType === 'debt' ? 'Save payback' : 'Save refund'}
-                </button>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
@@ -478,16 +387,25 @@ export default function CategoryLedgerPageClient({
                                 </SecondaryBtn>
                               )}
                               {!isEditing && (
-                                <TertiaryBtn
-                                  size="sm"
-                                  onClick={() => { setDeleteStep('reason'); setPendingDelete(txn) }}
+                                <button
+                                  onClick={() => openEntryMenu(txn)}
                                   style={{
-                                  padding: 0,
-                                  lineHeight: 1,
-                                }}
-                              >
-                                Delete
-                                </TertiaryBtn>
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 999,
+                                    border: `1px solid ${T.border}`,
+                                    background: T.grey100,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: T.text2,
+                                    cursor: 'pointer',
+                                    flexShrink: 0,
+                                  }}
+                                  aria-label="More actions"
+                                >
+                                  <IconMore size={18} color="var(--text-2)" />
+                                </button>
                               )}
                             </div>
                           )}
@@ -495,6 +413,24 @@ export default function CategoryLedgerPageClient({
 
                         {isEditing && (
                           <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--grey-25)' }}>
+                            <input
+                              type="text"
+                              value={editLabel}
+                              onChange={event => setEditLabel(event.target.value)}
+                              placeholder="Expense name"
+                              style={{
+                                height: 40,
+                                borderRadius: 10,
+                                border: '1px solid var(--border)',
+                                padding: '0 12px',
+                                fontSize: 'var(--text-sm)',
+                                color: T.text1,
+                                background: T.white,
+                                outline: 'none',
+                                width: '100%',
+                                boxSizing: 'border-box',
+                              }}
+                            />
                             <input
                               ref={amountRef}
                               type="text"
@@ -543,27 +479,49 @@ export default function CategoryLedgerPageClient({
                                 boxSizing: 'border-box',
                               }}
                             />
-                            <input
-                              type="text"
-                              value={editNote}
-                              onChange={event => setEditNote(event.target.value)}
-                              placeholder="Note (optional)"
-                              style={{
-                                height: 40,
-                                borderRadius: 10,
-                                border: '1px solid var(--border)',
-                                padding: '0 12px',
-                                fontSize: 'var(--text-sm)',
-                                color: T.text1,
-                                background: T.white,
-                                outline: 'none',
-                                width: '100%',
-                                boxSizing: 'border-box',
-                              }}
-                            />
+                            {editIsSmsMeta ? (
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span
+                                  style={{
+                                    height: 28,
+                                    borderRadius: 999,
+                                    border: `1px solid ${T.border}`,
+                                    background: 'var(--grey-100)',
+                                    color: T.text3,
+                                    padding: '0 10px',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  Imported from SMS
+                                </span>
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={editNote}
+                                onChange={event => setEditNote(event.target.value)}
+                                placeholder="Note (optional)"
+                                style={{
+                                  height: 40,
+                                  borderRadius: 10,
+                                  border: '1px solid var(--border)',
+                                  padding: '0 12px',
+                                  fontSize: 'var(--text-sm)',
+                                  color: T.text1,
+                                  background: T.white,
+                                  outline: 'none',
+                                  width: '100%',
+                                  boxSizing: 'border-box',
+                                }}
+                              />
+                            )}
                             <button
                               onClick={handleSave}
-                              disabled={saving || parseFloat(editAmount) <= 0 || !editDate}
+                              disabled={saving || parseFloat(editAmount) <= 0 || !editDate || editLabel.trim().length === 0}
                               style={{
                                 height: 'var(--button-height-md)',
                                 borderRadius: 10,
@@ -589,16 +547,22 @@ export default function CategoryLedgerPageClient({
         )}
       </div>
 
-      {pendingDelete && (
+      {activeEntry && (
         <Sheet
           open={true}
-          onClose={() => setPendingDelete(null)}
-          title={deleteStep === 'reason' ? 'What happened?' : 'Are you sure?'}
+          onClose={() => setActiveEntry(null)}
+          title={
+            entrySheetStep === 'menu'
+              ? 'Actions'
+              : entrySheetStep === 'refund'
+                ? categoryType === 'debt' ? 'Record payback' : 'Record refund'
+                : 'Are you sure?'
+          }
         >
-          {deleteStep === 'reason' && (
+          {entrySheetStep === 'menu' && (
             <div>
               <p style={{ fontSize: 'var(--text-base)', color: T.text3, margin: '0 0 20px', lineHeight: 1.55 }}>
-                {getEntryTitle(pendingDelete)} · {fmt(pendingDelete.amount, data.currency)} · {formatDate(pendingDelete.date)}
+                {getEntryTitle(activeEntry)} · {fmt(activeEntry.amount, data.currency)} · {formatDate(activeEntry.date)}
               </p>
               <div style={{
                 background: T.white,
@@ -608,19 +572,19 @@ export default function CategoryLedgerPageClient({
               }}>
                 {[
                   {
-                    label: 'Wrong amount',
-                    sub: 'Edit this expense',
-                    action: () => { setPendingDelete(null); openEdit(pendingDelete) },
+                    label: 'Edit entry',
+                    sub: 'Change label, amount, date, or note',
+                    action: () => { setActiveEntry(null); openEdit(activeEntry) },
                   },
                   {
                     label: categoryType === 'debt' ? 'Paid back' : 'Refund',
-                    sub: categoryType === 'debt' ? 'Log money paid back to you' : 'Log money returned to you',
-                    action: () => { setPendingDelete(null); setShowRefundForm(true); setTimeout(() => refundRef.current?.focus(), 80) },
+                    sub: categoryType === 'debt' ? 'Log money returned for this debt' : 'Log money returned for this entry',
+                    action: () => { setEntrySheetStep('refund'); setTimeout(() => refundRef.current?.focus(), 80) },
                   },
                   {
                     label: "Didn't happen",
                     sub: 'Remove this expense',
-                    action: () => setDeleteStep('confirm'),
+                    action: () => setEntrySheetStep('confirm'),
                   },
                 ].map((option, index, options) => (
                   <button
@@ -646,11 +610,94 @@ export default function CategoryLedgerPageClient({
             </div>
           )}
 
-          {deleteStep === 'confirm' && (
+          {entrySheetStep === 'refund' && (
+            <div>
+              <p style={{ fontSize: 'var(--text-base)', color: T.text3, margin: '0 0 20px', lineHeight: 1.55 }}>
+                {getEntryTitle(activeEntry)} · {fmt(activeEntry.amount, data.currency)} · {formatDate(activeEntry.date)}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input
+                  ref={refundRef}
+                  type="text"
+                  inputMode="decimal"
+                  value={(() => {
+                    if (!refundAmount) return ''
+                    const parts = refundAmount.split('.')
+                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                    return parts.join('.')
+                  })()}
+                  onChange={event => {
+                    const value = event.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
+                    const parts = value.split('.')
+                    if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
+                    setRefundAmount(value)
+                  }}
+                  onKeyDown={event => { if (event.key === 'Enter') handleRefund() }}
+                  placeholder={categoryType === 'debt' ? 'Amount paid back' : 'Refund amount'}
+                  style={{
+                    width: '100%',
+                    height: 44,
+                    borderRadius: 10,
+                    border: '1px solid var(--border-strong)',
+                    padding: '0 12px',
+                    fontSize: 'var(--text-md)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={refundNote}
+                  onChange={event => setRefundNote(event.target.value)}
+                  placeholder="Note (optional)"
+                  style={{
+                    width: '100%',
+                    height: 40,
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    padding: '0 12px',
+                    fontSize: 'var(--text-sm)',
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  onClick={handleRefund}
+                  disabled={savingRefund || parseFloat(refundAmount) <= 0}
+                  style={{
+                    height: 'var(--button-height-md)',
+                    borderRadius: 14,
+                    background: parseFloat(refundAmount) > 0 ? T.brandDark : T.border,
+                    border: 'none',
+                    fontSize: 'var(--text-base)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: parseFloat(refundAmount) > 0 ? T.textInverse : T.textMuted,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {savingRefund ? 'Saving…' : categoryType === 'debt' ? 'Save payback' : 'Save refund'}
+                </button>
+                <TertiaryBtn
+                  size="md"
+                  onClick={() => setEntrySheetStep('menu')}
+                  style={{ padding: '12px' }}
+                >
+                  Go back
+                </TertiaryBtn>
+              </div>
+            </div>
+          )}
+
+          {entrySheetStep === 'confirm' && (
             <div>
               <p style={{ fontSize: 'var(--text-base)', color: T.text2, margin: '0 0 24px', lineHeight: 1.55 }}>
-                This will permanently remove the <strong>{fmt(pendingDelete.amount, data.currency)}</strong> entry
-                from <strong>{formatDate(pendingDelete.date)}</strong>.
+                This will permanently remove the <strong>{fmt(activeEntry.amount, data.currency)}</strong> entry
+                from <strong>{formatDate(activeEntry.date)}</strong>.
               </p>
               <button
                 onClick={handleDelete}
@@ -672,7 +719,7 @@ export default function CategoryLedgerPageClient({
               </button>
               <TertiaryBtn
                 size="md"
-                onClick={() => setDeleteStep('reason')}
+                onClick={() => setEntrySheetStep('menu')}
                 style={{
                   marginTop: 10,
                   padding: '12px',
