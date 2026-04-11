@@ -116,7 +116,7 @@ export function PinEntryClient({ isFreshSession, name }: Props) {
             margin: 0, fontWeight: 700,
             letterSpacing: '-0.3px',
           }}>
-            Unlock Cenza
+            Enter your PIN
           </h1>
           <p style={{
             fontSize: 'var(--text-sm)',
@@ -124,7 +124,7 @@ export function PinEntryClient({ isFreshSession, name }: Props) {
             margin: '10px 0 0',
             lineHeight: 1.5,
           }}>
-            This device is already linked to your account. Enter your PIN to continue.
+            Enter your PIN to continue.
           </p>
         </div>
 

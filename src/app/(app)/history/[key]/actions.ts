@@ -13,6 +13,8 @@ interface UpdateHistoryEntryInput {
   note?: string
   label?: string
   categoryKey: string
+  categoryType: CategoryType
+  currentCategoryKey: string
 }
 
 function slugifyCategoryKey(value: string) {
@@ -45,23 +47,24 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
 
   const amount = Number(input.amount)
   if (!input.id.trim()) throw new Error('Entry id is required')
-  if (!input.categoryKey.trim()) throw new Error('Category key is required')
+  if (!input.currentCategoryKey.trim()) throw new Error('Category key is required')
   if (!input.date.trim()) throw new Error('Entry date is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
   const supabase = await createClient()
   const nextLabel = input.label?.trim()
-  const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : null
+  const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : input.categoryKey
 
   const patch: Record<string, unknown> = {
     amount,
     date: input.date,
     note: input.note?.trim() || null,
+    category_type: input.categoryType,
+    category_key: nextCategoryKey,
   }
 
   if (nextLabel) {
     patch.category_label = nextLabel
-    patch.category_key = nextCategoryKey || input.categoryKey
   }
 
   const { error } = await (supabase.from('transactions') as any)
@@ -71,7 +74,10 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
 
   if (error) throw new Error(`Failed to update entry: ${error.message}`)
 
-  revalidateHistoryPaths(input.categoryKey)
+  revalidateHistoryPaths(input.currentCategoryKey)
+  if (nextCategoryKey && nextCategoryKey !== input.currentCategoryKey) {
+    revalidateHistoryPaths(nextCategoryKey)
+  }
 }
 
 export async function deleteHistoryEntry(id: string, categoryKey: string): Promise<void> {

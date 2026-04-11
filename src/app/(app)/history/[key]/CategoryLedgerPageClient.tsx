@@ -35,6 +35,12 @@ const T = {
   grey100: 'var(--grey-100)',
 }
 
+const EDIT_TYPE_OPTIONS: Array<{ value: Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>; label: string; helper: string }> = [
+  { value: 'everyday', label: 'Life', helper: 'Day-to-day and personal spending.' },
+  { value: 'fixed', label: 'Essentials', helper: 'Home and must-pay monthly costs.' },
+  { value: 'debt', label: 'Debt', helper: 'Money you borrowed and are paying back.' },
+]
+
 interface CategoryLedgerPageClientProps {
   data: HistoryLedgerPageData
   categoryKey: string
@@ -61,7 +67,9 @@ export default function CategoryLedgerPageClient({
   const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
   const [editLabel, setEditLabel] = useState('')
+  const [editCategoryType, setEditCategoryType] = useState<Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>>('everyday')
   const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
+  const [focusedField, setFocusedField] = useState<'label' | 'amount' | 'date' | 'note' | null>(null)
   const [saving, setSaving] = useState(false)
   const [activeEntry, setActiveEntry] = useState<LedgerTransaction | null>(null)
   const [entrySheetStep, setEntrySheetStep] = useState<'menu' | 'confirm' | 'refund'>('menu')
@@ -70,7 +78,7 @@ export default function CategoryLedgerPageClient({
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
 
-  const amountRef = useRef<HTMLInputElement>(null)
+  const labelRef = useRef<HTMLInputElement>(null)
   const refundRef = useRef<HTMLInputElement>(null)
 
   const openEdit = (txn: LedgerTransaction) => {
@@ -79,8 +87,10 @@ export default function CategoryLedgerPageClient({
     setEditDate(txn.date)
     setEditNote(txn.note ?? '')
     setEditLabel(getEntryTitle(txn))
+    setEditCategoryType((txn.categoryType === 'everyday' || txn.categoryType === 'fixed' || txn.categoryType === 'debt') ? txn.categoryType : 'everyday')
     setEditIsSmsMeta((txn.note ?? '').trim().toLowerCase() === 'imported from sms')
-    setTimeout(() => amountRef.current?.focus(), 80)
+    setFocusedField('label')
+    setTimeout(() => labelRef.current?.focus(), 80)
   }
 
   const goBack = () => {
@@ -107,10 +117,13 @@ export default function CategoryLedgerPageClient({
         date: editDate,
         note: editNote,
         label: editLabel,
-        categoryKey,
+        categoryKey: editLabel.trim().toLowerCase().replace(/\s+/g, '_'),
+        categoryType: editCategoryType,
+        currentCategoryKey: categoryKey,
       })
       toast('Entry updated')
       setEditId(null)
+      setFocusedField(null)
       refreshPage()
     } catch {
       toast('Could not update entry')
@@ -365,7 +378,10 @@ export default function CategoryLedgerPageClient({
                               {isEditing ? (
                                 <TertiaryBtn
                                   size="sm"
-                                  onClick={() => setEditId(null)}
+                                  onClick={() => {
+                                    setEditId(null)
+                                    setFocusedField(null)
+                                  }}
                                   style={{
                                     padding: 0,
                                     lineHeight: 1,
@@ -374,19 +390,6 @@ export default function CategoryLedgerPageClient({
                                   Cancel
                                 </TertiaryBtn>
                               ) : (
-                                <SecondaryBtn
-                                  size="sm"
-                                  onClick={() => openEdit(txn)}
-                                  style={{
-                                    width: 'auto',
-                                    minWidth: 72,
-                                    padding: '0 14px',
-                                  }}
-                                >
-                                  Edit
-                                </SecondaryBtn>
-                              )}
-                              {!isEditing && (
                                 <button
                                   onClick={() => openEntryMenu(txn)}
                                   style={{
@@ -413,15 +416,21 @@ export default function CategoryLedgerPageClient({
 
                         {isEditing && (
                           <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--grey-25)' }}>
+                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                              Name
+                            </div>
                             <input
+                              ref={labelRef}
                               type="text"
                               value={editLabel}
                               onChange={event => setEditLabel(event.target.value)}
+                              onFocus={() => setFocusedField('label')}
+                              onBlur={() => setFocusedField((current) => (current === 'label' ? null : current))}
                               placeholder="Expense name"
                               style={{
                                 height: 40,
                                 borderRadius: 10,
-                                border: '1px solid var(--border)',
+                                border: `2px solid ${focusedField === 'label' ? 'var(--border-focus)' : 'var(--border)'}`,
                                 padding: '0 12px',
                                 fontSize: 'var(--text-sm)',
                                 color: T.text1,
@@ -431,8 +440,10 @@ export default function CategoryLedgerPageClient({
                                 boxSizing: 'border-box',
                               }}
                             />
+                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
+                              Amount
+                            </div>
                             <input
-                              ref={amountRef}
                               type="text"
                               inputMode="decimal"
                               value={(() => {
@@ -447,11 +458,13 @@ export default function CategoryLedgerPageClient({
                                 if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
                                 setEditAmount(value)
                               }}
+                              onFocus={() => setFocusedField('amount')}
+                              onBlur={() => setFocusedField((current) => (current === 'amount' ? null : current))}
                               onKeyDown={event => { if (event.key === 'Enter') handleSave() }}
                               style={{
                                 height: 44,
                                 borderRadius: 10,
-                                border: '2px solid var(--border-focus)',
+                                border: `2px solid ${focusedField === 'amount' ? 'var(--border-focus)' : 'var(--border)'}`,
                                 padding: '0 12px',
                                 fontSize: 'var(--text-md)',
                                 fontWeight: 'var(--weight-semibold)',
@@ -462,14 +475,50 @@ export default function CategoryLedgerPageClient({
                                 boxSizing: 'border-box',
                               }}
                             />
+                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
+                              Count this as
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {EDIT_TYPE_OPTIONS.map((option) => {
+                                const active = editCategoryType === option.value
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setEditCategoryType(option.value)}
+                                    style={{
+                                      height: 36,
+                                      borderRadius: 999,
+                                      border: `1px solid ${active ? 'var(--brand-mid)' : 'var(--border)'}`,
+                                      background: active ? 'var(--brand)' : T.white,
+                                      color: active ? T.brandDark : T.text1,
+                                      padding: '0 16px',
+                                      fontSize: 'var(--text-sm)',
+                                      fontWeight: 'var(--weight-semibold)',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {option.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.45 }}>
+                              {EDIT_TYPE_OPTIONS.find((option) => option.value === editCategoryType)?.helper}
+                            </div>
+                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
+                              Date
+                            </div>
                             <input
                               type="date"
                               value={editDate}
                               onChange={event => setEditDate(event.target.value)}
+                              onFocus={() => setFocusedField('date')}
+                              onBlur={() => setFocusedField((current) => (current === 'date' ? null : current))}
                               style={{
                                 height: 40,
                                 borderRadius: 10,
-                                border: '1px solid var(--border)',
+                                border: `2px solid ${focusedField === 'date' ? 'var(--border-focus)' : 'var(--border)'}`,
                                 padding: '0 12px',
                                 fontSize: 'var(--text-sm)',
                                 color: T.text1,
@@ -500,24 +549,31 @@ export default function CategoryLedgerPageClient({
                                 </span>
                               </div>
                             ) : (
-                              <input
-                                type="text"
-                                value={editNote}
-                                onChange={event => setEditNote(event.target.value)}
-                                placeholder="Note (optional)"
-                                style={{
-                                  height: 40,
-                                  borderRadius: 10,
-                                  border: '1px solid var(--border)',
-                                  padding: '0 12px',
-                                  fontSize: 'var(--text-sm)',
-                                  color: T.text1,
-                                  background: T.white,
-                                  outline: 'none',
-                                  width: '100%',
-                                  boxSizing: 'border-box',
-                                }}
-                              />
+                              <>
+                                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
+                                  Note
+                                </div>
+                                <input
+                                  type="text"
+                                  value={editNote}
+                                  onChange={event => setEditNote(event.target.value)}
+                                  onFocus={() => setFocusedField('note')}
+                                  onBlur={() => setFocusedField((current) => (current === 'note' ? null : current))}
+                                  placeholder="Note (optional)"
+                                  style={{
+                                    height: 40,
+                                    borderRadius: 10,
+                                    border: `2px solid ${focusedField === 'note' ? 'var(--border-focus)' : 'var(--border)'}`,
+                                    padding: '0 12px',
+                                    fontSize: 'var(--text-sm)',
+                                    color: T.text1,
+                                    background: T.white,
+                                    outline: 'none',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                  }}
+                                />
+                              </>
                             )}
                             <button
                               onClick={handleSave}

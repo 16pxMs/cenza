@@ -414,6 +414,14 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
           {scheduleType === 'monthly' ? (
             <>
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: T.text1 }}>
+                  Choose your pay day
+                </p>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: T.text3 }}>
+                  Pick the day you usually get paid each month.
+                </p>
+              </div>
               <button
                 type="button"
                 style={{
@@ -458,7 +466,15 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             </>
           ) : (
             <>
-              <div style={{ display: 'grid', gap: 8 }}>
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: T.text1 }}>
+                  Choose your pay days
+                </p>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: T.text3 }}>
+                  Pick the first pay day, then the second one later in the month.
+                </p>
+              </div>
+              <div style={{ display: 'grid', gap: 10 }}>
                 {([
                   { id: 'first', label: 'First pay day', value: scheduleDays[0] ?? 1 },
                   { id: 'second', label: 'Second pay day', value: scheduleDays[1] ?? Math.max((scheduleDays[0] ?? 1) + 1, 15) },
@@ -471,19 +487,48 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                       width: '100%',
                       textAlign: 'left',
                       background: activePayDaySlot === item.id ? 'rgba(92, 52, 137, 0.06)' : T.white,
-                      border: `1px solid ${activePayDaySlot === item.id ? T.brandDark : T.border}`,
+                      border: `1px solid ${activePayDaySlot === item.id ? '#C7B3E6' : T.border}`,
                       borderRadius: 14,
-                      padding: '14px 16px',
+                      padding: '14px 16px 15px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       cursor: 'pointer',
                     }}
                   >
-                    <span style={{ fontSize: 14, color: T.text2 }}>{item.label}</span>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{ordinal(item.value)}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <span style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: activePayDaySlot === item.id ? T.text1 : T.text2,
+                      }}>
+                        {item.label}
+                      </span>
+                      <span style={{ fontSize: 13, color: T.text3 }}>
+                        {activePayDaySlot === item.id
+                          ? 'Now choose the day below.'
+                          : `Currently ${ordinal(item.value)}.`}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: activePayDaySlot === item.id ? T.brandDark : T.text1,
+                    }}>
+                      {ordinal(item.value)}
+                    </span>
                   </button>
                 ))}
+              </div>
+              <div>
+                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: T.text1 }}>
+                  {activePayDaySlot === 'first' ? 'Select first pay day' : 'Select second pay day'}
+                </p>
+                <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: T.textMuted }}>
+                  {activePayDaySlot === 'first'
+                    ? 'Your first pay day should come earlier in the month.'
+                    : 'Your second pay day should come after the first one.'}
+                </p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
                 {MONTHLY_DAYS.filter(day => activePayDaySlot === 'first' ? day < (scheduleDays[1] ?? 32) : day > (scheduleDays[0] ?? 0)).map(day => {

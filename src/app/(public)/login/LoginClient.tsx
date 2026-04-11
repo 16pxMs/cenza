@@ -47,8 +47,8 @@ export default function LoginClient({
         <h1 className={styles.authTitle}>
           {knownDevice
             ? entryIntent === 'start'
-              ? 'This Google account already has a Cenza account.'
-              : 'Unlock your account.'
+              ? 'Welcome back'
+              : 'Welcome back'
             : entryIntent === 'start'
               ? 'Create your account.'
               : 'Log in to Cenza.'}
@@ -56,8 +56,8 @@ export default function LoginClient({
         <p className={styles.authSubtitle}>
           {knownDevice
             ? entryIntent === 'start'
-              ? 'It looks like you are using a Google account that already exists in Cenza. Reconnect securely and we will take you to your PIN.'
-              : 'This is a known device. Reconnect securely with Google and we will take you straight to your PIN.'
+              ? 'This Google account is already linked to Cenza. Continue with Google to restore your session.'
+              : 'Continue with Google to restore your session on this device.'
             : entryIntent === 'start'
               ? 'Continue with Google to create your Cenza account and start onboarding.'
               : 'Use Google to reconnect your secure session and pick up where you left off.'}
@@ -65,7 +65,7 @@ export default function LoginClient({
 
         {knownDevice && !authError && (
           <div className={styles.returningNote}>
-            On this device, PIN is your normal re-entry step. Google is only used here to restore your secure session.
+            On this device, your PIN is your usual way back in. Google is only used to restore your session.
           </div>
         )}
 
@@ -79,7 +79,7 @@ export default function LoginClient({
             {reconnecting
               ? 'Reconnecting…'
               : knownDevice
-                ? 'Reconnect with Google'
+                ? 'Continue with Google'
                 : entryIntent === 'start'
                   ? 'Create account with Google'
                   : 'Continue with Google'}
