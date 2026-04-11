@@ -66,13 +66,14 @@ interface Props {
   spendingBudget?: { categories: any[] } | null
   categorySpend?: Record<string, number>
   recentActivity?: Array<{ id: string; label: string; amount: number; date: string }>
+  lastCycleRecurringTop?: { label: string; amount: number; total: number } | null
   isDesktop?: boolean
 }
 
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
-  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], isDesktop,
+  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -151,6 +152,32 @@ const reference = receivedConfirmed
     return Math.floor((today.getTime() - recentPayday.getTime()) / (1000 * 60 * 60 * 24))
   }
 
+  const getDaysUntilNextPayday = (dayOfMonth: number) => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    const clamp = (year: number, month: number, day: number) => {
+      const maxDay = new Date(year, month + 1, 0).getDate()
+      return Math.min(Math.max(day, 1), maxDay)
+    }
+
+    const thisMonthPayday = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      clamp(today.getFullYear(), today.getMonth(), dayOfMonth)
+    )
+
+    const nextPayday = today <= thisMonthPayday
+      ? thisMonthPayday
+      : new Date(
+          today.getFullYear(),
+          today.getMonth() + 1,
+          clamp(today.getFullYear(), today.getMonth() + 1, dayOfMonth)
+        )
+
+    return Math.floor((nextPayday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
   const shouldShowIncomeConfirmPrompt = (() => {
     if (isMidMonthStart) return false
     if (receivedConfirmed || !onConfirmIncome) return false
@@ -174,6 +201,15 @@ const reference = receivedConfirmed
 
   const shouldPrioritizeIncomeCta =
     hasLogged && totalIncome <= 0 && !isMidMonthStart
+
+  const daysUntilPayday = isSalariedIncome && paydayDay && paydayDay > 0
+    ? getDaysUntilNextPayday(paydayDay)
+    : null
+  const shouldShowPlanAheadReminder =
+    !!lastCycleRecurringTop &&
+    !!daysUntilPayday &&
+    daysUntilPayday >= 1 &&
+    daysUntilPayday <= 3
 
   const incomeConfirmPromptText = (() => {
     if (isVariableIncome) {
@@ -576,6 +612,34 @@ const reference = receivedConfirmed
     </div>
   )
 
+  const planAheadCard = shouldShowPlanAheadReminder ? (
+    <div style={{ marginTop: 16, ...fade(0.2) }}>
+      <div style={{
+        background: 'var(--white)',
+        border: '1px solid var(--border)',
+        borderRadius: 16,
+        padding: '16px',
+      }}>
+        <p style={{
+          margin: '0 0 8px',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          fontWeight: 600,
+          letterSpacing: '0.07em',
+          textTransform: 'uppercase',
+        }}>
+          Plan ahead
+        </p>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+          Payday is in {daysUntilPayday} {daysUntilPayday === 1 ? 'day' : 'days'}.
+        </p>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+          Last cycle, your biggest recurring expense was {lastCycleRecurringTop?.label} ({fmt(lastCycleRecurringTop?.amount ?? 0, currency)}).
+        </p>
+      </div>
+    </div>
+  ) : null
+
   // ── Pulse insight card (single highest-priority signal) ─────
   const remaining   = reference - totalSpent
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
@@ -716,6 +780,7 @@ const reference = receivedConfirmed
         <>
       {/* Card order: spending first, goals progress second (if goals exist) */}
       {spendingCard}
+      {planAheadCard}
       {totalGoals > 0 ? goalsCard : noGoalsCard}
       {debtReminderCard}
 

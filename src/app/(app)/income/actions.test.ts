@@ -67,6 +67,14 @@ describe('income actions', () => {
       pay_schedule_type: null,
       pay_schedule_days: null,
     })
+    expect(getCurrentCycleId).toHaveBeenCalledWith(
+      supabase,
+      'user-1',
+      {
+        pay_schedule_type: null,
+        pay_schedule_days: null,
+      }
+    )
     expect(revalidatePath).toHaveBeenCalledWith('/settings')
   })
 

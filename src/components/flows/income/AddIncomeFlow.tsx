@@ -400,7 +400,7 @@ export function AddIncomeFlow({
               Pick the day your salary normally comes in.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
-              {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => {
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
                 const isSelected = selectedPayday === day
                 return (
                   <button

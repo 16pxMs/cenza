@@ -44,6 +44,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         spendingBudget={overview.spendingBudget}
         categorySpend={overview.categorySpend}
         recentActivity={overview.recentActivity}
+        lastCycleRecurringTop={overview.lastCycleRecurringTop}
         isDesktop={isDesktop}
       />
       <ReceivedIncomeSheet

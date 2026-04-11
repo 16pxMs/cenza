@@ -11,7 +11,6 @@ import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
-import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import { ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
@@ -28,7 +27,7 @@ const T = {
   brandDark: '#5C3489',
 }
 
-const PAY_DAYS = Array.from({ length: 28 }, (_, i) => i + 1)
+const PAY_DAYS = Array.from({ length: 31 }, (_, i) => i + 1)
 const MONTHLY_DAYS = PAY_DAYS
 
 function ordinal(day: number): string {
@@ -144,23 +143,6 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   const content = (
     <div style={{ padding: isDesktop ? '40px 32px' : '24px 16px', maxWidth: 560 }}>
       <div style={{ marginBottom: 28 }}>
-        <button
-          onClick={() => router.back()}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            width: 44,
-            height: 44,
-            padding: 0,
-            marginBottom: 12,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <IconBack size={18} color="var(--grey-900)" />
-        </button>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: T.text1, letterSpacing: -0.4 }}>
           Settings
         </h1>

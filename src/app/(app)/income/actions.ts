@@ -22,7 +22,41 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
   if (!user || !profile) throw new Error('Not authenticated')
 
   const supabase = await createClient()
-  const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
+
+  const nextIncomeType = input.incomeType ?? profile.income_type ?? (input.paydayDay != null ? 'salaried' : null)
+  const nextPaydayDay = (() => {
+    if (nextIncomeType !== 'salaried') return null
+    if (input.paydayDay != null && Number.isFinite(Number(input.paydayDay))) {
+      return Number(input.paydayDay)
+    }
+    if (Array.isArray(profile.pay_schedule_days) && profile.pay_schedule_days.length > 0) {
+      const existing = Number(profile.pay_schedule_days[0])
+      return Number.isFinite(existing) ? existing : null
+    }
+    return null
+  })()
+
+  if (nextIncomeType === 'salaried' && (!nextPaydayDay || nextPaydayDay <= 0)) {
+    throw new Error('Pay day is required for salaried income')
+  }
+
+  // Use the intended next schedule to derive cycle_id before writing income.
+  // This keeps income + expenses + overview aligned in the same cycle after payday changes.
+  const scheduleProfileForCycle = {
+    pay_schedule_type:
+      nextIncomeType === 'salaried'
+        ? 'monthly'
+        : nextIncomeType === 'variable'
+        ? null
+        : profile.pay_schedule_type,
+    pay_schedule_days:
+      nextIncomeType === 'salaried'
+        ? [Math.min(Math.max(Math.round(nextPaydayDay ?? 1), 1), 31)]
+        : nextIncomeType === 'variable'
+        ? null
+        : profile.pay_schedule_days,
+  }
+  const cycleId = await getCurrentCycleId(supabase as any, user.id, scheduleProfileForCycle)
 
   const salary = Number(input.income)
   const cycleStartMode = input.cycleStartMode === 'mid_month' ? 'mid_month' : 'full_month'
@@ -59,30 +93,13 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
     throw new Error(`Failed to save income: ${incomeError.message}`)
   }
 
-  const nextIncomeType = input.incomeType ?? profile.income_type ?? (input.paydayDay != null ? 'salaried' : null)
-  const nextPaydayDay = (() => {
-    if (nextIncomeType !== 'salaried') return null
-    if (input.paydayDay != null && Number.isFinite(Number(input.paydayDay))) {
-      return Number(input.paydayDay)
-    }
-    if (Array.isArray(profile.pay_schedule_days) && profile.pay_schedule_days.length > 0) {
-      const existing = Number(profile.pay_schedule_days[0])
-      return Number.isFinite(existing) ? existing : null
-    }
-    return null
-  })()
-
-  if (nextIncomeType === 'salaried' && (!nextPaydayDay || nextPaydayDay <= 0)) {
-    throw new Error('Pay day is required for salaried income')
-  }
-
   const profilePatch: Record<string, unknown> = {}
   if (nextIncomeType && nextIncomeType !== profile.income_type) {
     profilePatch.income_type = nextIncomeType
   }
   if (nextIncomeType === 'salaried' && nextPaydayDay) {
     profilePatch.pay_schedule_type = 'monthly'
-    profilePatch.pay_schedule_days = [Math.min(Math.max(Math.round(nextPaydayDay), 1), 28)]
+    profilePatch.pay_schedule_days = [Math.min(Math.max(Math.round(nextPaydayDay), 1), 31)]
   }
   if (nextIncomeType === 'variable') {
     profilePatch.pay_schedule_type = null

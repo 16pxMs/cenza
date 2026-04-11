@@ -1,6 +1,6 @@
 import { GOAL_META } from '@/constants/goals'
 import { createClient } from '@/lib/supabase/server'
-import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import type { GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
@@ -56,6 +56,13 @@ interface OverviewGoalTargetRow {
   destination: string | null
 }
 
+interface OverviewPrevCycleTransactionRow {
+  amount: number | string
+  category_key: string
+  category_label: string | null
+  category_type: string
+}
+
 export interface OverviewPageData {
   name: string
   currency: string
@@ -78,6 +85,11 @@ export interface OverviewPageData {
   goalTargets: Record<string, number>
   goalSaved: Record<string, number>
   goalLabels: Record<string, string>
+  lastCycleRecurringTop: {
+    label: string
+    amount: number
+    total: number
+  } | null
 }
 
 function titleFromKey(key: string): string {
@@ -96,6 +108,14 @@ function toGoalLabel(goalId: GoalId, destination: string | null): string {
 export async function loadOverviewPageData(userId: string, profile: UserProfile): Promise<OverviewPageData> {
   const supabase = await createClient()
   const cycleId = deriveCurrentCycleId(profile)
+  const prevCycleId = derivePrevCycleId(profile)
+  const prevCycleRecurringPromise = prevCycleId
+    ? (supabase.from('transactions') as any)
+        .select('amount, category_key, category_label, category_type')
+        .eq('user_id', userId)
+        .eq('cycle_id', prevCycleId)
+        .in('category_type', ['fixed', 'subscription'])
+    : Promise.resolve({ data: [] as OverviewPrevCycleTransactionRow[] })
 
   const [
     { data: txns },
@@ -103,6 +123,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     { data: fixedExpenses },
     { data: spendingBudget },
     { data: goalTargets },
+    { data: prevCycleRecurringRows },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, amount, category_key, category_type, category_label, date')
@@ -126,6 +147,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     (supabase.from('goal_targets') as any)
       .select('goal_id, amount, added_at, destination')
       .eq('user_id', userId),
+    prevCycleRecurringPromise,
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
@@ -218,6 +240,35 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     fixedTotal > 0 ||
     budgetTotal > 0
 
+  const lastCycleRecurringTop = (() => {
+    const rows = (prevCycleRecurringRows ?? []) as OverviewPrevCycleTransactionRow[]
+    if (rows.length === 0) return null
+
+    const bucket = new Map<string, { label: string; amount: number }>()
+    for (const row of rows) {
+      const key = row.category_key || 'recurring'
+      const label = (row.category_label && row.category_label.trim()) || titleFromKey(key)
+      const amount = Number(row.amount ?? 0)
+      const current = bucket.get(key)
+      if (current) {
+        current.amount += amount
+      } else {
+        bucket.set(key, { label, amount })
+      }
+    }
+
+    const entries = [...bucket.values()].filter((row) => row.amount > 0)
+    if (entries.length === 0) return null
+    entries.sort((a, b) => b.amount - a.amount)
+    const top = entries[0]
+    const total = entries.reduce((sum, row) => sum + row.amount, 0)
+    return {
+      label: top.label,
+      amount: top.amount,
+      total,
+    }
+  })()
+
   const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
 
   return {
@@ -251,5 +302,6 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     goalTargets: goalTargetsMap,
     goalSaved: goalSavedMap,
     goalLabels,
+    lastCycleRecurringTop,
   }
 }
