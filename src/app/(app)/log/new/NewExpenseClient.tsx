@@ -1367,37 +1367,6 @@ function ReviewStep({
       </div>
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-          Need to log this again?
-        </p>
-        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-          Save this entry and stay in {displayLabel.toLowerCase()} if you need to log another one.
-        </p>
-        <SecondaryBtn
-          size="md"
-          onClick={onAddAnother}
-          disabled={saving || !canAdvance || incomeBlocked}
-          style={{ width: '100%', borderColor: T.border, color: T.text1 }}
-        >
-          Save and add another
-        </SecondaryBtn>
-      </div>
-
-      {item.categoryType !== 'debt' && (
-        <div style={{ marginBottom: 'var(--space-lg)' }}>
-          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Count this as
-          </p>
-          <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
-          <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
-            {item.categoryType
-              ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].helper
-              : 'Choose how Cenza should count this expense.'}
-          </p>
-        </div>
-      )}
-
-      <div style={{ marginBottom: 'var(--space-lg)' }}>
         {!showNote && !item.note ? (
           <div>
             <button
@@ -1444,6 +1413,37 @@ function ReviewStep({
             </p>
           </div>
         )}
+      </div>
+
+      {item.categoryType !== 'debt' && (
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Count this as
+          </p>
+          <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
+          <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
+            {item.categoryType
+              ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].helper
+              : 'Choose how Cenza should count this expense.'}
+          </p>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+          Need to log this again?
+        </p>
+        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+          Finish this entry first, then stay in {displayLabel.toLowerCase()} if you need to log another one.
+        </p>
+        <SecondaryBtn
+          size="md"
+          onClick={onAddAnother}
+          disabled={saving || !canAdvance || incomeBlocked}
+          style={{ width: '100%', borderColor: T.border, color: T.text1 }}
+        >
+          Save and add another
+        </SecondaryBtn>
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-sm)', marginBottom: saveError ? 'var(--space-md)' : 'var(--space-lg)' }}>
