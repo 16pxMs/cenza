@@ -5,7 +5,7 @@
 //
 // Shown when middleware redirects to /pin (has-pin but not verified).
 // Auto-submits on 4th digit. Locks for 30s after 5 wrong attempts.
-// Shows "Forgot PIN?" → sign-out. Shows "Reset PIN" link if fresh session.
+// The only recovery path here is reconnecting with Google.
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react'
@@ -18,11 +18,10 @@ const LOCK_AFTER = 5   // wrong attempts before lockout
 const LOCK_SECS  = 30  // lockout duration in seconds
 
 interface Props {
-  isFreshSession: boolean
   name: string
 }
 
-export function PinEntryClient({ isFreshSession, name }: Props) {
+export function PinEntryClient({ name }: Props) {
   const router   = useRouter()
 
   const [pin,           setPin]           = useState('')
@@ -118,14 +117,6 @@ export function PinEntryClient({ isFreshSession, name }: Props) {
           }}>
             Enter your PIN
           </h1>
-          <p style={{
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-3)',
-            margin: '10px 0 0',
-            lineHeight: 1.5,
-          }}>
-            Enter your PIN to continue.
-          </p>
         </div>
 
         {/* Error / lockout message */}
@@ -147,21 +138,6 @@ export function PinEntryClient({ isFreshSession, name }: Props) {
 
         {/* Footer links */}
         <div style={{ marginTop: 36, textAlign: 'center' }}>
-          {isFreshSession && (
-            <button
-              onClick={() => router.push('/pin/reset')}
-              style={{
-                display: 'block', width: '100%',
-                background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--brand-dark, #5C3489)',
-                fontWeight: 500, padding: '10px 0',
-                fontFamily: 'inherit',
-              }}
-            >
-              Just signed in? Reset your PIN
-            </button>
-          )}
           <button
             onClick={handleForgotPin}
             style={{

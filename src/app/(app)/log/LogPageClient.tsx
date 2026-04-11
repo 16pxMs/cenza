@@ -194,9 +194,15 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
     const isAccordion = section.items.length >= 4
     const isOpen = expanded.has(section.key)
-    const sortedItems = isAccordion
-      ? [...section.items].sort((a, b) => (b.loggedAmount > 0 ? 1 : 0) - (a.loggedAmount > 0 ? 1 : 0))
-      : section.items
+    const sortedItems = [...section.items].sort((a, b) => {
+      const aHasLogged = a.loggedAmount > 0 ? 1 : 0
+      const bHasLogged = b.loggedAmount > 0 ? 1 : 0
+
+      if (aHasLogged !== bHasLogged) return bHasLogged - aHasLogged
+      if (a.loggedAmount !== b.loggedAmount) return b.loggedAmount - a.loggedAmount
+
+      return a.label.localeCompare(b.label)
+    })
     const visibleItems = isAccordion && !isOpen ? sortedItems.slice(0, 3) : sortedItems
     const hiddenCount = isAccordion ? sortedItems.length - 3 : 0
     const totalLogged = section.items.reduce((sum, item) => sum + item.loggedAmount, 0)
