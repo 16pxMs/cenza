@@ -1,6 +1,12 @@
 import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
+import {
+  formatCycleLabel,
+  getCurrentCycle,
+  getCycleByDate,
+  profileToPaySchedule,
+} from '@/lib/cycles'
 import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
@@ -29,7 +35,7 @@ export interface HistoryBreakdownItem {
 }
 
 export interface HistoryPageData {
-  monthLabel: string
+  cycleLabel: string
   currency: string
   rows: HistoryCategoryRow[]
   totalBudget: number
@@ -163,8 +169,11 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .filter((month): month is string => !!month)
   )).sort()
 
+  const schedule = profileToPaySchedule(profile)
+  const cycle = targetDate ? getCycleByDate(targetDate, schedule) : getCurrentCycle(schedule)
+
   return {
-    monthLabel: (targetDate ?? new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    cycleLabel: formatCycleLabel(cycle),
     currency: profile.currency ?? 'KES',
     rows: categoryRows,
     totalBudget: Number(expenses?.total_monthly ?? 0) + Number(budgets?.total_budget ?? 0),

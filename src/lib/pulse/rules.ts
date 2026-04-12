@@ -48,8 +48,8 @@ export function buildOverBudgetSignal(input: {
     surface: 'overview',
     key: 'overview:over_budget',
     priority: 100,
-    title: 'You are over this month',
-    message: `You are ${input.currency} ${Math.abs(input.remaining).toLocaleString()} over. Review entries and adjust early.`,
+    title: 'You\'ve gone over',
+    message: `You're ${input.currency} ${Math.abs(input.remaining).toLocaleString()} over. Take a quick look at what added up.`,
     actions: [
       { key: 'open_log', label: 'Open expense log' },
     ],
@@ -85,7 +85,7 @@ export function buildNeglectedGoalSignal(input: {
     key: `overview:goal:${input.goalId}`,
     priority: 60,
     title: `${input.goalLabel} is waiting`,
-    message: `No money has been added to this goal this month yet.`,
+    message: `Add your first amount.`,
     actions: [
       { key: `goal:${input.goalId}`, label: 'Add to goal' },
     ],

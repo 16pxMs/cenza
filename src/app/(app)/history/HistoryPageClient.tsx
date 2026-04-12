@@ -47,11 +47,11 @@ function BarFill({ pct, type }: { pct: number; type: HistoryCategoryRow['type'] 
   )
 }
 
-// Verdict — single sentence that answers "how did this month go?"
+// Verdict: single sentence that sums up how it went
 function verdictLine(totalIncome: number, totalSpent: number): string {
   if (totalIncome === 0 || totalSpent === 0) return ''
   const pctKept = Math.round(((totalIncome - totalSpent) / totalIncome) * 100)
-  const tone = pctKept >= 50 ? 'Clean month.' : pctKept >= 20 ? 'Decent control.' : pctKept >= 0 ? 'Tight month.' : 'You went over budget.'
+  const tone = pctKept >= 50 ? 'Looking good' : pctKept >= 20 ? 'Decent control' : pctKept >= 0 ? 'A bit tight' : "You've gone over"
   if (pctKept < 0) return tone
   return `You kept ${pctKept}% of your income. ${tone}`
 }
@@ -119,7 +119,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
         </p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
-            {data.monthLabel}
+            {data.cycleLabel}
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
             <button

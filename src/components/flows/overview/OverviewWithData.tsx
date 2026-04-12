@@ -215,18 +215,18 @@ const reference = receivedConfirmed
     if (isVariableIncome) {
       return totalSpent > 0
         ? 'You have spending logged. Confirm money received so your balance stays accurate.'
-        : 'Log money received as it comes in so your monthly balance stays real.'
+        : 'Log money received as it comes in so your balance stays real.'
     }
 
     if (isSalariedIncome) {
-      if (!paydayDay || paydayDay <= 0) return "Set your pay day in Settings to enable monthly check-ins."
+      if (!paydayDay || paydayDay <= 0) return "Set your pay day in Settings to enable cycle check-ins."
       const daysSincePayday = getDaysSinceRecentPayday(paydayDay)
       if (daysSincePayday === 0) return "It's payday. Confirm income to start this cycle clean."
-      if (daysSincePayday === 2) return "Quick reminder: confirm this month's income."
+      if (daysSincePayday === 2) return "Quick reminder: confirm this cycle's income."
       return 'You have spending logged. Confirm income so your remaining amount stays accurate.'
     }
 
-    return "Confirm this month's income."
+    return "Confirm this cycle's income."
   })()
 
   const spentPct  = calculatePct(totalSpent, referenceBase)
@@ -240,7 +240,7 @@ const reference = receivedConfirmed
       ...fade(0.08),
     }}>
       <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-        {isVariableIncome && !receivedConfirmed ? 'Expected this month' : 'Available this month'}
+        {isVariableIncome && !receivedConfirmed ? 'Expected this cycle' : 'Available this cycle'}
       </p>
       <p style={{ margin: '0 0 20px', fontSize: 36, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
         {formatAmount(ref, { currency, variant: 'full' })}
@@ -347,7 +347,7 @@ const reference = receivedConfirmed
             }}
           >
             <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
-              Income setup needed next. Add your monthly income so remaining balance is accurate.
+              Income setup needed next. Add your income so your remaining balance is accurate.
             </p>
           </div>
         )}
@@ -583,12 +583,12 @@ const reference = receivedConfirmed
           Debts
         </p>
         <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', lineHeight: 1.3, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
-          {debtTotal > 0 ? 'Keep debt visible.' : 'Do you have debt this month?'}
+          {debtTotal > 0 ? 'Keep debt visible.' : 'Do you have debt this cycle?'}
         </p>
         <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
           {debtTotal > 0
-            ? `${fmt(debtTotal, currency)} logged this month. Track repayment progress in one place.`
-            : 'Loans, credit cards, and debt payments should be logged so your monthly picture stays accurate.'}
+            ? `You've logged ${fmt(debtTotal, currency)} in debt. Keep repayments here so nothing slips.`
+            : 'Log loans, credit cards, and repayments so you always know what you owe.'}
         </p>
         <div style={{ display: 'grid', gap: 16 }}>
           <SecondaryBtn

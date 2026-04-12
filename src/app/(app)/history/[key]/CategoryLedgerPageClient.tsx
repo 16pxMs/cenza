@@ -36,8 +36,8 @@ const T = {
 }
 
 const EDIT_TYPE_OPTIONS: Array<{ value: Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>; label: string; helper: string }> = [
-  { value: 'everyday', label: 'Life', helper: 'Day-to-day and personal spending.' },
-  { value: 'fixed', label: 'Essentials', helper: 'Home and must-pay monthly costs.' },
+  { value: 'everyday', label: 'Life', helper: 'Daily and personal spending.' },
+  { value: 'fixed', label: 'Essentials', helper: 'Home, bills, and recurring payments.' },
   { value: 'debt', label: 'Debt', helper: 'Money you borrowed and are paying back.' },
 ]
 
@@ -291,7 +291,7 @@ export default function CategoryLedgerPageClient({
                     ? `Exactly on budget · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
                     : planned > 0
                       ? `${fmt(planned - data.totalSpent, data.currency)} remaining · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
-                      : `${spendCount} ${spendCount === 1 ? 'entry' : 'entries'} this month`}
+                      : `${spendCount} entries`}
               </p>
 
             </div>
@@ -309,7 +309,7 @@ export default function CategoryLedgerPageClient({
             borderRadius: 16,
           }}>
             <div style={{ fontSize: 'var(--text-sm)', color: T.textMuted }}>
-              No entries logged yet this month.
+              Nothing logged here yet.
             </div>
           </div>
         ) : (

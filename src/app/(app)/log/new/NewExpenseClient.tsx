@@ -123,7 +123,7 @@ function suggestType(label: string): CategoryType | null {
   const l = label.toLowerCase()
   if (['rent', 'netflix', 'subscription', 'internet', 'wifi', 'water', 'power', 'electricity'].some(k => l.includes(k))) return 'fixed'
   if (['loan', 'debt', 'credit', 'borrow'].some(k => l.includes(k))) return 'debt'
-  return 'everyday'
+  return null
 }
 
 function getDefaultTypeForCommonLabel(label: string): Exclude<CategoryType, 'goal'> | null {
