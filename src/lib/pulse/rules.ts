@@ -1,42 +1,4 @@
-import type { DuplicateCandidate, PulseSignal } from './types'
-
-function parseLocalDate(iso: string) {
-  const [year, month, day] = iso.split('-').map(Number)
-  return new Date(year, (month ?? 1) - 1, day ?? 1)
-}
-
-export function buildDuplicateSuspectSignal(
-  candidate: DuplicateCandidate | null,
-  currency: string
-): PulseSignal | null {
-  if (!candidate) return null
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const entryDate = parseLocalDate(candidate.date)
-  entryDate.setHours(0, 0, 0, 0)
-
-  const diffDays = Math.round((today.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays < 0 || diffDays > 3) return null
-
-  const when =
-    diffDays === 0 ? 'today' :
-    diffDays === 1 ? 'yesterday' :
-    `${diffDays} days ago`
-
-  return {
-    type: 'duplicate_suspect',
-    surface: 'log_review',
-    key: `duplicate:${candidate.id}`,
-    priority: 100,
-    title: 'Possible duplicate',
-    message: `You logged this ${when} for ${currency} ${candidate.amount.toLocaleString()}.`,
-    actions: [
-      { key: 'new', label: 'New entry' },
-      { key: 'update', label: 'Update last' },
-    ],
-  }
-}
+import type { PulseSignal } from './types'
 
 export function buildOverBudgetSignal(input: {
   remaining: number

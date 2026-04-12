@@ -9,6 +9,8 @@ import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconPlus } from '@/components/ui/Icons'
 import { saveExpenseBatch } from './actions'
+import { GOAL_META } from '@/constants/goals'
+import type { GoalId } from '@/types/database'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 type Step = 'queue' | 'review' | 'done'
@@ -622,6 +624,20 @@ export function NewExpenseClient() {
   const requiresIncomeRecovery = !quickEntryStatus.hasIncome && queue.length > remainingQuickEntries
   const recentMatch = activeItem ? recentByLabel[normalizeLabel(activeItem.label)] ?? null : null
 
+  const goalMatchLabel = useMemo(() => {
+    const typed = normalizeLabel(newItemName)
+    if (!typed) return null
+    const userGoals = (profile?.goals ?? []) as GoalId[]
+    for (const id of userGoals) {
+      const meta = GOAL_META[id]
+      if (!meta) continue
+      if (normalizeLabel(meta.label) === typed || typed.includes(normalizeLabel(meta.label))) {
+        return meta.label
+      }
+    }
+    return null
+  }, [newItemName, profile?.goals])
+
   return (
     <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', flexDirection: 'column' }}>
       <div style={{
@@ -687,6 +703,8 @@ export function NewExpenseClient() {
               onImportFromSms={() => router.push(`/log/import?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
               onContinue={handleContinueToReview}
               canContinue={canReviewContinue}
+              goalMatchLabel={goalMatchLabel}
+              onGoToGoals={() => router.push('/goals')}
             />
           ) : step === 'done' ? (
             <DoneStep
@@ -802,7 +820,11 @@ function DoneStep({
                 {formatDisplayLabel(item.label)}
               </p>
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.4 }}>
-                {item.categoryType ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].title : 'Uncategorized'}
+                {item.categoryType === 'goal'
+                  ? 'Goal'
+                  : item.categoryType
+                    ? TYPE_COPY[item.categoryType]?.title ?? 'Uncategorized'
+                    : 'Uncategorized'}
               </p>
             </div>
             <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, textAlign: 'right', minWidth: 0 }}>
@@ -859,6 +881,8 @@ function QueueStep({
   onImportFromSms,
   onContinue,
   canContinue,
+  goalMatchLabel,
+  onGoToGoals,
 }: {
   newItemName: string
   setNewItemName: (value: string) => void
@@ -872,6 +896,8 @@ function QueueStep({
   onImportFromSms: () => void
   onContinue: () => void
   canContinue: boolean
+  goalMatchLabel: string | null
+  onGoToGoals: () => void
 }) {
   const [showAddInput, setShowAddInput] = useState(Boolean(newItemName))
   const addInputRef = useRef<HTMLInputElement | null>(null)
@@ -1041,6 +1067,28 @@ function QueueStep({
       {queueNotice && (
         <p style={{ margin: '0 0 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
           {queueNotice}
+        </p>
+      )}
+      {goalMatchLabel && (
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+          This looks like a goal. Add it from your{' '}
+          <button
+            type="button"
+            onClick={onGoToGoals}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: T.brandDark,
+              fontWeight: 'var(--weight-semibold)',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              fontSize: 'inherit',
+            }}
+          >
+            goals
+          </button>
+          .
         </p>
       )}
 
@@ -1444,8 +1492,8 @@ function ReviewStep({
           </p>
           <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
           <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
-            {item.categoryType
-              ? TYPE_COPY[item.categoryType as Exclude<CategoryType, 'goal'>].helper
+            {item.categoryType && item.categoryType !== 'goal'
+              ? TYPE_COPY[item.categoryType]?.helper ?? 'Choose how Cenza should count this expense.'
               : 'Choose how Cenza should count this expense.'}
           </p>
         </div>

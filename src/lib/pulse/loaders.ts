@@ -1,20 +1,10 @@
 import {
-  buildDuplicateSuspectSignal,
   buildHighBurnSignal,
   buildNeglectedGoalSignal,
   buildOverBudgetSignal,
 } from './rules'
 import { selectTopPulseSignal } from './select'
-import type { DuplicateCandidate, PulseSignal } from './types'
-
-export function loadLogPulseSignal(input: {
-  duplicateCandidate: DuplicateCandidate | null
-  currency: string
-}): PulseSignal | null {
-  return selectTopPulseSignal([
-    buildDuplicateSuspectSignal(input.duplicateCandidate, input.currency),
-  ])
-}
+import type { PulseSignal } from './types'
 
 export function loadOverviewPulseSignal(input: {
   remaining: number

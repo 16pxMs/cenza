@@ -42,7 +42,7 @@ export interface HistoryPageData {
   totalSpent: number
   totalIncome: number
   breakdown: HistoryBreakdownItem[]
-  availableMonths: string[]
+  availableCycleIds: string[]
 }
 
 interface HistoryIncomeRow {
@@ -158,15 +158,15 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     { label: 'Debts', amount: debtSpent, accent: debtSpent > 0 },
   ] as HistoryBreakdownItem[]).filter(item => item.amount > 0)
 
-  const availableMonths = Array.from(new Set(
+  const availableCycleIds = Array.from(new Set(
     [
       ...(txnCycles ?? []),
       ...(incomeCycles ?? []),
       ...(expenseCycles ?? []),
       ...(budgetCycles ?? []),
     ]
-      .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id.slice(0, 7) : null)
-      .filter((month): month is string => !!month)
+      .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id : null)
+      .filter((cycleId): cycleId is string => !!cycleId)
   )).sort()
 
   const schedule = profileToPaySchedule(profile)
@@ -180,6 +180,6 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     totalSpent,
     totalIncome: deriveIncomeTotal((income ?? null) as HistoryIncomeRow | null),
     breakdown,
-    availableMonths,
+    availableCycleIds,
   }
 }

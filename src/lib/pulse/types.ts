@@ -1,10 +1,8 @@
 export type PulseSignalType =
-  | 'duplicate_suspect'
   | 'missing_essential'
   | 'trend_shift'
-  | 'income_confidence'
 
-export type PulseSurface = 'log_review' | 'overview'
+export type PulseSurface = 'overview'
 
 export interface PulseAction {
   key: string
@@ -19,11 +17,4 @@ export interface PulseSignal {
   title: string
   message: string
   actions: PulseAction[]
-}
-
-export interface DuplicateCandidate {
-  id: string
-  label: string
-  amount: number
-  date: string
 }

@@ -3,51 +3,46 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
 import { loadHistoryPageData } from '@/lib/loaders/history'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import HistoryPageClient from './HistoryPageClient'
 
 interface HistoryPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-function currentYM() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+function isValidCycleParam(value: string | undefined): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
 
-function isValidMonthParam(value: string | undefined): value is string {
-  return !!value && /^\d{4}-\d{2}$/.test(value)
-}
-
-function resolveRequestedMonth(
+function resolveRequestedCycle(
   requested: string | undefined,
-  availableMonths: string[],
+  availableCycleIds: string[],
+  currentCycleId: string,
 ): string | undefined {
-  const currentMonth = currentYM()
-
-  if (availableMonths.length === 0) {
+  if (availableCycleIds.length === 0) {
     return undefined
   }
 
   if (!requested) {
-    return availableMonths.includes(currentMonth)
+    return availableCycleIds.includes(currentCycleId)
       ? undefined
-      : availableMonths[availableMonths.length - 1]
+      : availableCycleIds[availableCycleIds.length - 1]
   }
 
-  if (requested > currentMonth) {
-    return availableMonths.includes(currentMonth)
+  if (requested > currentCycleId) {
+    return availableCycleIds.includes(currentCycleId)
       ? undefined
-      : availableMonths[availableMonths.length - 1]
+      : availableCycleIds[availableCycleIds.length - 1]
   }
 
-  if (availableMonths.includes(requested)) {
-    return requested === currentMonth ? undefined : requested
+  if (availableCycleIds.includes(requested)) {
+    return requested === currentCycleId ? undefined : requested
   }
 
-  const nearestPast = [...availableMonths].reverse().find(month => month < requested)
-  if (nearestPast) return nearestPast === currentMonth ? undefined : nearestPast
+  const nearestPast = [...availableCycleIds].reverse().find(cycleId => cycleId < requested)
+  if (nearestPast) return nearestPast === currentCycleId ? undefined : nearestPast
 
-  return availableMonths[0] === currentMonth ? undefined : availableMonths[0]
+  return availableCycleIds[0] === currentCycleId ? undefined : availableCycleIds[0]
 }
 
 export default async function HistoryPage({ searchParams }: HistoryPageProps) {
@@ -58,23 +53,24 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   }
 
   const resolved = searchParams ? await searchParams : {}
-  const rawMonthParam = typeof resolved.month === 'string' ? resolved.month : undefined
-  const monthParam = isValidMonthParam(rawMonthParam) ? rawMonthParam : undefined
+  const rawCycleParam = typeof resolved.cycle === 'string' ? resolved.cycle : undefined
+  const cycleParam = isValidCycleParam(rawCycleParam) ? rawCycleParam : undefined
 
+  const currentCycleId = deriveCurrentCycleId(profile)
   const currentData = await loadHistoryPageData(user.id, profile)
-  const resolvedMonth = resolveRequestedMonth(monthParam, currentData.availableMonths)
+  const resolvedCycle = resolveRequestedCycle(cycleParam, currentData.availableCycleIds, currentCycleId)
 
-  if (rawMonthParam && monthParam !== rawMonthParam) {
+  if (rawCycleParam && cycleParam !== rawCycleParam) {
     redirect('/history')
   }
 
-  if (resolvedMonth !== monthParam) {
-    redirect(resolvedMonth ? `/history?month=${resolvedMonth}` : '/history')
+  if (resolvedCycle !== cycleParam) {
+    redirect(resolvedCycle ? `/history?cycle=${resolvedCycle}` : '/history')
   }
 
-  const targetDate = resolvedMonth ? new Date(`${resolvedMonth}-01T00:00:00`) : undefined
+  const targetDate = resolvedCycle ? new Date(`${resolvedCycle}T00:00:00`) : undefined
 
   const data = targetDate ? await loadHistoryPageData(user.id, profile, targetDate) : currentData
 
-  return <HistoryPageClient data={data} targetMonth={resolvedMonth} />
+  return <HistoryPageClient data={data} targetCycleId={resolvedCycle} currentCycleId={currentCycleId} />
 }
