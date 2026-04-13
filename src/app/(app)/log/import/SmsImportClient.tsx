@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { IconBack } from '@/components/ui/Icons'
+import { IconBack, IconCheck } from '@/components/ui/Icons'
 import { useUser } from '@/lib/context/UserContext'
 import { parseSmsImport, saveParsedSmsExpenses } from './actions'
 
@@ -165,6 +165,7 @@ export function SmsImportClient() {
   const [savedCount, setSavedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
+  const [expandedRaw, setExpandedRaw] = useState<Record<string, boolean>>({})
 
   const selectedCount = rows.length
   const savedRows = rows
@@ -400,8 +401,11 @@ export function SmsImportClient() {
           ) : (
             <>
               <div style={{ marginBottom: 12 }}>
-                <p style={{ margin: 0, fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                  We found {rows.length} {rows.length === 1 ? 'expense' : 'expenses'}
+                <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
+                  Review your expenses
+                </p>
+                <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
+                  Confirm each one before saving.
                 </p>
               </div>
 
@@ -416,11 +420,56 @@ export function SmsImportClient() {
                       background: 'var(--white)',
                     }}
                   >
-                    {row.confidence === 'low' && (
-                      <p style={{ margin: '0 0 8px', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                        Needs review before save.
-                      </p>
-                    )}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {row.confidence === 'low' ? (
+                        <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                          Needs review before save.
+                        </p>
+                      ) : (
+                        <span />
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Remove row"
+                        onClick={() => {
+                          setRows((current) => current.filter((r) => r.id !== row.id))
+                          setRowErrors((current) => {
+                            const next = { ...current }
+                            delete next[row.id]
+                            return next
+                          })
+                          setExpandedRaw((current) => {
+                            const next = { ...current }
+                            delete next[row.id]
+                            return next
+                          })
+                        }}
+                        style={{
+                          width: 24,
+                          height: 24,
+                          border: 'none',
+                          background: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          color: T.text3,
+                          fontSize: 18,
+                          lineHeight: 1,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
 
                     <div style={{ display: 'grid', gap: 8 }}>
                       {(() => {
@@ -428,9 +477,6 @@ export function SmsImportClient() {
                         const hasIssues = issues.length > 0
                         return (
                           <>
-                            <p style={{ margin: 0, fontSize: 12, color: T.text3, fontWeight: 600, letterSpacing: '0.01em' }}>
-                              {row.categoryType === 'debt' ? 'Debt name' : 'Expense name'}
-                            </p>
                             <input
                               value={row.label}
                               onChange={(event) => updateRow(row.id, { label: event.target.value })}
@@ -448,14 +494,6 @@ export function SmsImportClient() {
                                 fontFamily: 'inherit',
                               }}
                             />
-                            <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                              You can edit this name before saving.
-                            </p>
-                            {row.categoryType === 'debt' && (
-                              <p style={{ margin: '-2px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                                Use the specific debt name so it is clear in your log.
-                              </p>
-                            )}
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {([
                                 { value: 'everyday', label: 'Life' },
@@ -469,21 +507,23 @@ export function SmsImportClient() {
                                     type="button"
                                     onClick={() => updateRow(row.id, { categoryType: option.value })}
                                     style={{
-                                      height: 32,
+                                      height: 38,
                                       borderRadius: 999,
                                       border: `1px solid ${selected ? T.brandMid : T.border}`,
                                       background: selected ? T.brand : 'var(--grey-50)',
                                       color: selected ? T.brandDark : T.text2,
-                                      padding: '0 10px',
-                                      fontSize: 12,
-                                      fontWeight: 600,
+                                      padding: '0 12px',
+                                      fontSize: 14,
+                                      fontWeight: 500,
                                       display: 'inline-flex',
                                       alignItems: 'center',
+                                      gap: 6,
                                       whiteSpace: 'nowrap',
                                       cursor: 'pointer',
                                     }}
                                   >
-                                    {option.label}
+                                    {selected && <IconCheck size={14} color={T.brandDark} />}
+                                    <span>{option.label}</span>
                                   </button>
                                 )
                               })}
@@ -501,61 +541,47 @@ export function SmsImportClient() {
                         )
                       })()}
 
-                      <div
-                        style={{
-                          borderRadius: 10,
-                          border: `1px solid ${T.borderSubtle}`,
-                          background: 'var(--grey-50)',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                            padding: '9px 10px',
-                            borderBottom: `1px solid ${T.borderSubtle}`,
-                          }}
-                        >
-                          <span style={{ fontSize: 12, color: T.text3, fontWeight: 600 }}>Amount</span>
-                          <span style={{ fontSize: 13, color: T.text1, fontWeight: 600, textAlign: 'right', minWidth: 0 }}>
-                            {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                            padding: '9px 10px',
-                          }}
-                        >
-                          <span style={{ fontSize: 12, color: T.text3, fontWeight: 600 }}>Date</span>
-                          <span style={{ fontSize: 13, color: T.text1, fontWeight: 600, textAlign: 'right', minWidth: 0 }}>
-                            {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </div>
-                      </div>
-
-                      <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                        Amount and date are locked to match the SMS.
+                      <p style={{ margin: 0, fontSize: 13, color: T.text2, fontWeight: 600 }}>
+                        {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
+                        {' · '}
+                        {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </p>
 
-                      <div
-                        style={{
-                          borderRadius: 8,
-                          border: `1px solid ${T.borderSubtle}`,
-                          padding: '8px 10px',
-                          background: 'var(--grey-50)',
-                          minWidth: 0,
-                        }}
-                      >
-                        <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                          {row.raw}
-                        </p>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedRaw((current) => ({ ...current, [row.id]: !current[row.id] }))
+                          }
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            color: T.brandDark,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          {expandedRaw[row.id] ? 'Hide message' : 'View message'}
+                        </button>
+                        {expandedRaw[row.id] && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              borderRadius: 8,
+                              border: `1px solid ${T.borderSubtle}`,
+                              padding: '8px 10px',
+                              background: 'var(--grey-50)',
+                              minWidth: 0,
+                            }}
+                          >
+                            <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                              {row.raw}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
