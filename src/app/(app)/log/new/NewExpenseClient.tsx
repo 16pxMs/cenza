@@ -729,8 +729,8 @@ export function NewExpenseClient() {
                 setSavedCount(0)
                 setStep('queue')
               }}
-              onGoToRecap={() => router.push('/log')}
-              onGoToOverview={() => router.push('/app')}
+              onGoToRecap={() => { router.refresh(); router.push('/log') }}
+              onGoToOverview={() => { router.refresh(); router.push('/app') }}
               onGoToDebtReview={() => router.push(`/history/debt?label=Debt&type=debt&returnTo=${encodeURIComponent(returnTo)}`)}
             />
           ) : activeItem ? (
