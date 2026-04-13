@@ -784,9 +784,6 @@ function MethodStep({
 }) {
   return (
     <div>
-      <p style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: T.text1, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
-        Add an expense
-      </p>
       <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
         Choose how to add it.
       </p>
@@ -1102,13 +1099,6 @@ function QueueStep({
             goals
           </button>
           .
-        </p>
-      )}
-
-      {/* Selection feedback */}
-      {queue.length > 0 && (
-        <p style={{ margin: '0 0 8px', fontSize: 13, color: T.text3, lineHeight: 1.4, textAlign: 'center' }}>
-          {queue.length} {queue.length === 1 ? 'item' : 'items'} selected
         </p>
       )}
 
