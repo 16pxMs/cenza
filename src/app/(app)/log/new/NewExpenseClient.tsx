@@ -944,12 +944,8 @@ function QueueStep({
 
   return (
     <div>
-      {/* Title */}
-      <p style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: T.text1, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
-        What did you spend on?
-      </p>
       <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-        Tap what applies, or add something new.
+        Select one or more items.
       </p>
 
       {/* Common items */}
@@ -1035,7 +1031,7 @@ function QueueStep({
                 handleAddTypedItem()
               }
             }}
-            placeholder="Type an expense"
+            placeholder="Type something else"
             style={{
               flex: 1,
               height: 48,
@@ -1109,6 +1105,13 @@ function QueueStep({
         </p>
       )}
 
+      {/* Selection feedback */}
+      {queue.length > 0 && (
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: T.text3, lineHeight: 1.4, textAlign: 'center' }}>
+          {queue.length} {queue.length === 1 ? 'item' : 'items'} selected
+        </p>
+      )}
+
       {/* CTA */}
       <PrimaryBtn
         size="lg"
@@ -1120,7 +1123,9 @@ function QueueStep({
           marginTop: 4,
         }}
       >
-        Continue with {queue.length} {queue.length === 1 ? 'item' : 'items'}
+        {queue.length === 0
+          ? 'Continue'
+          : `Continue with ${queue.length} ${queue.length === 1 ? 'item' : 'items'}`}
       </PrimaryBtn>
     </div>
   )
