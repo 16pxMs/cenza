@@ -27,8 +27,13 @@ export async function getOrCreateCycle(
   schedule:  PaySchedule,
   date?:     Date,
 ): Promise<string> {
-  const cycleDates = date
-    ? getCycleByDate(date, schedule)
+  // Normalize to local midnight so cycle boundary comparisons match the read path
+  // (getCurrentCycle), which always uses a midnight-local Date.
+  const localDay = date
+    ? new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    : null
+  const cycleDates = localDay
+    ? getCycleByDate(localDay, schedule)
     : getCurrentCycle(schedule)
 
   const startStr = toLocalDateStr(cycleDates.startDate)
@@ -57,7 +62,12 @@ function deriveCycleStartDate(
   date?: Date,
 ): string {
   const schedule = profileToPaySchedule(profile)
-  const cycle = date ? getCycleByDate(date, schedule) : getCurrentCycle(schedule)
+  // Normalize to local midnight so read-side derivations for arbitrary dates
+  // use the same cycle-boundary math as getCurrentCycle.
+  const localDay = date
+    ? new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    : null
+  const cycle = localDay ? getCycleByDate(localDay, schedule) : getCurrentCycle(schedule)
   return toLocalDateStr(cycle.startDate)
 }
 
