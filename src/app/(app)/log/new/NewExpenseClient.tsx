@@ -510,13 +510,13 @@ export function NewExpenseClient() {
 
   const handleBack = () => {
     if (step === 'review') {
-      if (!isOther) {
-        router.push(returnTo)
+      if (activeIndex > 0) {
+        setActiveIndex((current) => current - 1)
         return
       }
 
-      if (activeIndex > 0) {
-        setActiveIndex((current) => current - 1)
+      if (hasInitialKnownItem) {
+        router.push(returnTo)
         return
       }
 
@@ -1182,11 +1182,6 @@ function ReviewStep({
   canAdvance: boolean
   isLastItem: boolean
 }) {
-  const [showNote, setShowNote] = useState(Boolean(item.note))
-  useEffect(() => {
-    setShowNote(Boolean(item.note))
-  }, [item.id, item.note])
-
   const displayAmount = item.amount
     ? item.amount.replace(/,/g, '').split('.').map((part, index) => (
       index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
@@ -1256,7 +1251,7 @@ function ReviewStep({
             color: T.text3,
             lineHeight: 1.5,
           }}>
-            Add the amount for this expense. If it came up more than once, you can add another entry before moving on.
+            Enter the amount
           </p>
         )}
         {previousGroupEntries.length > 0 && (
@@ -1384,12 +1379,6 @@ function ReviewStep({
       )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-          Current entry
-        </p>
-        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-          Amount
-        </p>
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -1442,82 +1431,58 @@ function ReviewStep({
       </div>
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-        {!showNote && !item.note ? (
-          <div>
-            <button
-              onClick={() => setShowNote(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                color: T.text3,
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-medium)',
-                cursor: 'pointer',
-              }}
-            >
-              Add a note (optional)
-            </button>
-            <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.5 }}>
-              Use the note to describe this specific expense if you need to.
-            </p>
-          </div>
-        ) : (
-          <div>
-            <input
-              type="text"
-              placeholder="Add a note (optional)"
-              value={item.note}
-              onChange={(event) => onNoteChange(event.target.value)}
-              style={{
-                width: '100%',
-                height: '48px',
-                borderRadius: 'var(--radius-sm)',
-                border: `${T.borderWidth} solid ${T.border}`,
-                padding: '0 var(--space-md)',
-                fontSize: 'var(--text-base)',
-                color: T.text1,
-                background: T.white,
-                outline: 'none',
-                boxSizing: 'border-box',
-                fontFamily: 'inherit',
-              }}
-            />
-            <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.5 }}>
-              Use the note to describe this specific expense if you need to.
-            </p>
-          </div>
-        )}
+        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Note (optional)
+        </p>
+        <input
+          type="text"
+          placeholder="Note (optional)"
+          value={item.note}
+          onChange={(event) => onNoteChange(event.target.value)}
+          style={{
+            width: '100%',
+            height: '48px',
+            borderRadius: 'var(--radius-sm)',
+            border: `${T.borderWidth} solid ${T.border}`,
+            padding: '0 var(--space-md)',
+            fontSize: 'var(--text-base)',
+            color: T.text1,
+            background: T.white,
+            outline: 'none',
+            boxSizing: 'border-box',
+            fontFamily: 'inherit',
+          }}
+        />
+        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.5 }}>
+          e.g. weekly shop, market, quick run
+        </p>
       </div>
 
       {item.categoryType !== 'debt' && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
           <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Count this as
+            Category
           </p>
-          <TypeChips selected={item.categoryType} onSelect={onTypeSelect} />
-          <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5, minHeight: '20px' }}>
-            {item.categoryType && item.categoryType !== 'goal'
-              ? TYPE_COPY[item.categoryType]?.helper ?? 'Choose how Cenza should count this expense.'
-              : 'Choose how Cenza should count this expense.'}
-          </p>
+          <TypeChips
+            selected={item.categoryType}
+            onSelect={onTypeSelect}
+            types={
+              suggestType(item.label) === 'debt'
+                ? ['everyday', 'fixed', 'debt']
+                : ['everyday', 'fixed']
+            }
+          />
         </div>
       )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-          Need to log this again?
-        </p>
-        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-          Finish this entry first, then stay in {displayLabel.toLowerCase()} if you need to log another one.
-        </p>
         <SecondaryBtn
           size="md"
           onClick={onAddAnother}
           disabled={saving || !canAdvance || incomeBlocked}
           style={{ width: '100%', borderColor: T.border, color: T.text1 }}
         >
-          Save and add another
+          Save and add another entry
         </SecondaryBtn>
       </div>
 
@@ -1575,14 +1540,16 @@ function ReviewStep({
   )
 }
 
-function TypeChips({ selected, onSelect }: {
+function TypeChips({ selected, onSelect, types }: {
   selected: CategoryType | null
   onSelect: (type: CategoryType | null) => void
+  types?: Array<Exclude<CategoryType, 'goal'>>
 }) {
+  const entries = (Object.entries(TYPE_COPY) as [Exclude<CategoryType, 'goal'>, { title: string }][])
+    .filter(([value]) => !types || types.includes(value))
   return (
     <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-      {(Object.entries(TYPE_COPY) as [Exclude<CategoryType, 'goal'>, { title: string }][])
-        .map(([value, copy]) => (
+      {entries.map(([value, copy]) => (
           <button
             key={value}
             onClick={() => onSelect(selected === value ? null : value)}
@@ -1605,7 +1572,7 @@ function TypeChips({ selected, onSelect }: {
               {copy.title}
             </div>
           </button>
-        ))}
+      ))}
     </div>
   )
 }
