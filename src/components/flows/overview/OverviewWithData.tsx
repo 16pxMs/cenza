@@ -8,7 +8,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Target, ChevronRight } from 'lucide-react'
+import { AlertTriangle, ChevronRight } from 'lucide-react'
+import { buildHighBurnSignal } from '@/lib/pulse/rules'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
@@ -16,7 +17,6 @@ import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemain
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
-import { loadOverviewPulseSignal } from '@/lib/pulse/loaders'
 
 const GOAL_META: Record<string, {
   label: string
@@ -640,41 +640,19 @@ const reference = receivedConfirmed
     </div>
   ) : null
 
-  // ── Pulse insight card (single highest-priority signal) ─────
-  const remaining   = reference - totalSpent
+  // ── Spending insight card (one prioritized actionable signal) ─
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
   const daysLeft    = daysInMonth - new Date().getDate()
 
-  const neglectedGoal = goals.find(g => goalTargets?.[g] && !(goalSaved[g] > 0))
-  const neglectedGoalLabel = neglectedGoal
-    ? (goalLabels[neglectedGoal] ?? GOAL_META[neglectedGoal]?.label ?? null)
-    : null
-
-  const pulseSignal = loadOverviewPulseSignal({
-    remaining,
-    currency,
+  const spendingInsight = selectSpendingInsight({
     spentPct,
     daysLeft,
-    neglectedGoalId: neglectedGoal ?? null,
-    neglectedGoalLabel,
+    totalSpent,
+    categorySpend,
+    router,
   })
 
-  const pulseIcon = pulseSignal?.type === 'missing_essential' ? Target : AlertTriangle
-  const pulseColor = pulseSignal?.type === 'missing_essential' ? 'var(--brand-dark)' : '#C2410C'
-  const pulseAction = pulseSignal?.actions[0] ?? null
-  const runPulseAction = () => {
-    if (!pulseAction) return
-    if (pulseAction.key === 'open_log') {
-      router.push('/log')
-      return
-    }
-    if (pulseAction.key.startsWith('goal:')) {
-      const goalId = pulseAction.key.slice('goal:'.length)
-      if (goalId) setActiveGoalContrib(goalId)
-    }
-  }
-
-  const pulseCard = (
+  const insightCard = spendingInsight ? (
     <div style={{
       marginTop: 16,
       background: 'var(--white)', border: '1px solid var(--border)',
@@ -682,7 +660,7 @@ const reference = receivedConfirmed
       ...fade(0.22),
     }}>
       <button
-        onClick={runPulseAction}
+        onClick={spendingInsight.onAction}
         style={{
           width: '100%',
           background: 'none',
@@ -691,34 +669,25 @@ const reference = receivedConfirmed
           alignItems: 'flex-start',
           gap: 12,
           padding: '16px 0',
-          cursor: pulseAction ? 'pointer' : 'default',
+          cursor: 'pointer',
           textAlign: 'left',
         }}
       >
-        {pulseSignal ? (
-          <>
-            <div style={{ marginTop: 1 }}>
-              {(() => {
-                const Icon = pulseIcon
-                return <Icon size={17} color={pulseColor} style={{ flexShrink: 0 }} />
-              })()}
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: '0 0 4px', fontSize: 13.5, lineHeight: 1.45, color: 'var(--text-1)', fontWeight: 600 }}>
-                {pulseSignal.title}
-              </p>
-              <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
-                {pulseSignal.message}
-              </p>
-            </div>
-            {pulseAction && (
-              <ChevronRight size={16} color={pulseColor} strokeWidth={2} style={{ flexShrink: 0, alignSelf: 'center', opacity: 0.6 }} />
-            )}
-          </>
-        ) : null}
+        <div style={{ marginTop: 1 }}>
+          <AlertTriangle size={17} color="#C2410C" style={{ flexShrink: 0 }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: '0 0 4px', fontSize: 13.5, lineHeight: 1.45, color: 'var(--text-1)', fontWeight: 600 }}>
+            {spendingInsight.title}
+          </p>
+          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+            {spendingInsight.text}
+          </p>
+        </div>
+        <ChevronRight size={16} color="#C2410C" strokeWidth={2} style={{ flexShrink: 0, alignSelf: 'center', opacity: 0.6 }} />
       </button>
     </div>
-  )
+  ) : null
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -778,14 +747,13 @@ const reference = receivedConfirmed
         />
       ) : (
         <>
-      {/* Card order: spending first, goals progress second (if goals exist) */}
+      {/* Card order: spending first, then insight, then goals progress */}
       {spendingCard}
+      {/* Spending insight card — one prioritized actionable signal */}
+      {insightCard}
       {planAheadCard}
       {totalGoals > 0 ? goalsCard : noGoalsCard}
       {debtReminderCard}
-
-      {/* Pulse insight card — one prioritized actionable signal */}
-      {pulseSignal && pulseCard}
         </>
       )}
 
@@ -810,4 +778,54 @@ const reference = receivedConfirmed
     </div>
   )
 
+}
+
+type SpendingInsight = {
+  title: string
+  text: string
+  onAction: () => void
+}
+
+function formatCategoryLabel(key: string): string {
+  return key.replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function selectSpendingInsight(args: {
+  spentPct: number
+  daysLeft: number
+  totalSpent: number
+  categorySpend: Record<string, number>
+  router: ReturnType<typeof useRouter>
+}): SpendingInsight | null {
+  const { spentPct, daysLeft, totalSpent, categorySpend, router } = args
+
+  // 1. Overspend risk — reuse Pulse high-burn signal
+  const highBurn = buildHighBurnSignal({ spentPct, daysLeft })
+  if (highBurn) {
+    return {
+      title: highBurn.title,
+      text: highBurn.message,
+      onAction: () => router.push('/log'),
+    }
+  }
+
+  // 2. Category dominance
+  const entries = Object.entries(categorySpend).filter(([, amount]) => amount > 0)
+  if (totalSpent > 0 && entries.length > 0) {
+    const [topKey, topAmount] = entries.reduce((best, curr) => (curr[1] > best[1] ? curr : best))
+    if (topAmount / totalSpent >= 0.35) {
+      const label = formatCategoryLabel(topKey)
+      return {
+        title: `${label} is your biggest spend`,
+        text: `${Math.round(topAmount).toLocaleString()} this cycle`,
+        onAction: () =>
+          router.push(`/history/${encodeURIComponent(topKey)}?label=${encodeURIComponent(label)}&type=everyday&returnTo=%2Fapp`),
+      }
+    }
+  }
+
+  // 3. Fast riser — skipped: no last-cycle category breakdown available.
+  // 4. High frequency — skipped: no per-cycle transaction count available.
+
+  return null
 }
