@@ -13,7 +13,7 @@ import { GOAL_META } from '@/constants/goals'
 import type { GoalId } from '@/types/database'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
-type Step = 'queue' | 'review' | 'done'
+type Step = 'method' | 'queue' | 'review' | 'done'
 type QueueSource = 'common' | 'typed' | 'known'
 
 interface DictEntry {
@@ -208,7 +208,7 @@ export function NewExpenseClient() {
     : null
 
   const hasInitialKnownItem = !isOther && Boolean(paramLabel)
-  const [step, setStep] = useState<Step>(hasInitialKnownItem ? 'review' : 'queue')
+  const [step, setStep] = useState<Step>(hasInitialKnownItem ? 'review' : 'method')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState(0)
@@ -524,6 +524,11 @@ export function NewExpenseClient() {
       return
     }
 
+    if (step === 'queue') {
+      setStep('method')
+      return
+    }
+
     router.push(returnTo)
   }
 
@@ -677,7 +682,7 @@ export function NewExpenseClient() {
         <p style={{ margin: step === 'review' ? '0 0 var(--space-sm)' : step === 'done' ? '0 0 var(--space-lg)' : '0 0 2px', fontSize: 'var(--text-xs)', color: T.text3 }}>
           {formatMonthLabel()}
         </p>
-        {step === 'queue' && (
+        {(step === 'queue' || step === 'method') && (
           <h1 style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
             Add an expense
           </h1>
@@ -689,7 +694,12 @@ export function NewExpenseClient() {
           boxShadow: step === 'done' ? 'none' : 'var(--shadow-sm)',
           padding: 'var(--space-lg) var(--space-card-sm)',
         }}>
-          {step === 'queue' ? (
+          {step === 'method' ? (
+            <MethodStep
+              onManual={() => setStep('queue')}
+              onImportFromSms={() => router.push(`/log/import?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
+            />
+          ) : step === 'queue' ? (
             <QueueStep
               newItemName={newItemName}
               setNewItemName={setNewItemName}
@@ -700,7 +710,6 @@ export function NewExpenseClient() {
               quickEntryLimit={QUICK_ENTRY_LIMIT_WITHOUT_INCOME}
               onToggleCommon={toggleCommonItem}
               onAddTypedItem={addTypedItem}
-              onImportFromSms={() => router.push(`/log/import?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
               onContinue={handleContinueToReview}
               canContinue={canReviewContinue}
               goalMatchLabel={goalMatchLabel}
@@ -762,6 +771,31 @@ export function NewExpenseClient() {
           ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+function MethodStep({
+  onManual,
+  onImportFromSms,
+}: {
+  onManual: () => void
+  onImportFromSms: () => void
+}) {
+  return (
+    <div>
+      <p style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: T.text1, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
+        Add an expense
+      </p>
+      <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
+        Choose how to add it.
+      </p>
+      <PrimaryBtn size="lg" onClick={onManual} style={{ marginBottom: 10 }}>
+        Type it in
+      </PrimaryBtn>
+      <SecondaryBtn size="md" onClick={onImportFromSms}>
+        Import from SMS
+      </SecondaryBtn>
     </div>
   )
 }
@@ -878,7 +912,6 @@ function QueueStep({
   quickEntryLimit,
   onToggleCommon,
   onAddTypedItem,
-  onImportFromSms,
   onContinue,
   canContinue,
   goalMatchLabel,
@@ -893,7 +926,6 @@ function QueueStep({
   quickEntryLimit: number
   onToggleCommon: (label: string) => void
   onAddTypedItem: () => boolean
-  onImportFromSms: () => void
   onContinue: () => void
   canContinue: boolean
   goalMatchLabel: string | null
@@ -1078,13 +1110,6 @@ function QueueStep({
       )}
 
       {/* CTA */}
-      <SecondaryBtn
-        size="md"
-        onClick={onImportFromSms}
-        style={{ marginTop: 4, marginBottom: 10 }}
-      >
-        Import from SMS
-      </SecondaryBtn>
       <PrimaryBtn
         size="lg"
         onClick={onContinue}
