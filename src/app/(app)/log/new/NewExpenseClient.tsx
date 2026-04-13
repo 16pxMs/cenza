@@ -7,7 +7,7 @@ import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { IconBack, IconPlus } from '@/components/ui/Icons'
+import { IconBack, IconCheck, IconPlus } from '@/components/ui/Icons'
 import { saveExpenseBatch } from './actions'
 import { GOAL_META } from '@/constants/goals'
 import type { GoalId } from '@/types/database'
@@ -899,7 +899,6 @@ function QueueStep({
   goalMatchLabel: string | null
   onGoToGoals: () => void
 }) {
-  const [showAddInput, setShowAddInput] = useState(Boolean(newItemName))
   const addInputRef = useRef<HTMLInputElement | null>(null)
   const selectedSet = new Set(queue.map((item) => normalizeLabel(item.label)))
   const canAddTypedItem = newItemName.trim().length > 0
@@ -907,28 +906,8 @@ function QueueStep({
     ? null
     : Math.max(0, quickEntryLimit - quickEntryStatus.existingExpenseCount)
 
-  useEffect(() => {
-    if (newItemName.trim()) {
-      setShowAddInput(true)
-    }
-  }, [newItemName])
-
-  useEffect(() => {
-    if (showAddInput) {
-      addInputRef.current?.focus()
-    }
-  }, [showAddInput])
-
-  const collapseAddInput = () => {
-    setNewItemName('')
-    setShowAddInput(false)
-  }
-
   const handleAddTypedItem = () => {
-    const didAdd = onAddTypedItem()
-    if (didAdd) {
-      setShowAddInput(false)
-    }
+    onAddTypedItem()
   }
 
   return (
@@ -969,10 +948,12 @@ function QueueStep({
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
+                    gap: 'var(--space-2xs)',
                     transition: 'all 0.15s',
                     whiteSpace: 'nowrap',
                   }}
                 >
+                  {isSelected && <IconCheck size={14} color={T.brandDark} />}
                   <span style={{ fontSize: 14, fontWeight: 500 }}>{displayLabel}</span>
                 </button>
               )
@@ -982,79 +963,55 @@ function QueueStep({
       )}
 
       {/* Add-new-item affordance */}
-      {showAddInput ? (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              ref={addInputRef}
-              value={newItemName}
-              onChange={(event) => setNewItemName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleAddTypedItem()
-                }
-                if (event.key === 'Escape') {
-                  collapseAddInput()
-                }
-              }}
-              placeholder="Add something else"
-              style={{
-                flex: 1,
-                height: 48,
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)',
-                padding: '0 14px',
-                fontSize: 'var(--text-base)',
-                color: T.text1,
-                background: T.white,
-                outline: 'none',
-                boxSizing: 'border-box',
-                fontFamily: 'inherit',
-              }}
-            />
-            <button
-              onClick={handleAddTypedItem}
-              disabled={!canAddTypedItem}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 'var(--radius-sm)',
-                border: `${T.borderWidth} solid ${T.border}`,
-                background: canAddTypedItem ? T.brandSoft : T.white,
-                color: canAddTypedItem ? T.brandDark : T.textMuted,
-                cursor: canAddTypedItem ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <IconPlus size={18} />
-            </button>
-          </div>
-          <div style={{ marginTop: 'var(--space-xs)' }}>
-            <TertiaryBtn
-              size="sm"
-              onClick={collapseAddInput}
-              style={{ paddingInline: 0 }}
-            >
-              Cancel
-            </TertiaryBtn>
-          </div>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 16 }}>
-          <TertiaryBtn
-            size="md"
-            onClick={() => setShowAddInput(true)}
-            style={{ paddingInline: 0 }}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            ref={addInputRef}
+            value={newItemName}
+            onChange={(event) => setNewItemName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                handleAddTypedItem()
+              }
+            }}
+            placeholder="Type an expense"
+            style={{
+              flex: 1,
+              height: 48,
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+              padding: '0 14px',
+              fontSize: 'var(--text-base)',
+              color: T.text1,
+              background: T.white,
+              outline: 'none',
+              boxSizing: 'border-box',
+              fontFamily: 'inherit',
+            }}
+          />
+          <button
+            onClick={handleAddTypedItem}
+            disabled={!canAddTypedItem}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 'var(--radius-sm)',
+              border: `${T.borderWidth} solid ${T.border}`,
+              background: canAddTypedItem ? T.brandSoft : T.white,
+              color: canAddTypedItem ? T.brandDark : T.textMuted,
+              cursor: canAddTypedItem ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'all 0.15s ease',
+            }}
           >
-            Add something else
-          </TertiaryBtn>
+            <IconPlus size={18} />
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Queue notice */}
       {quickEntryStatus.loaded && entriesLeftWithoutIncome !== null && (

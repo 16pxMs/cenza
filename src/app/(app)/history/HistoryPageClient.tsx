@@ -51,7 +51,7 @@ function BarFill({ pct, type }: { pct: number; type: HistoryCategoryRow['type'] 
 function verdictLine(totalIncome: number, totalSpent: number): string {
   if (totalIncome === 0 || totalSpent === 0) return ''
   const pctKept = Math.round(((totalIncome - totalSpent) / totalIncome) * 100)
-  const tone = pctKept >= 50 ? 'Looking good' : pctKept >= 20 ? 'Decent control' : pctKept >= 0 ? 'A bit tight' : "You've gone over"
+  const tone = pctKept >= 50 ? 'Looking good' : pctKept >= 20 ? 'Decent control' : pctKept >= 0 ? 'A bit tight' : 'You went over your income.'
   if (pctKept < 0) return tone
   return `You kept ${pctKept}% of your income. ${tone}`
 }
