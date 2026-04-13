@@ -58,12 +58,8 @@ function verdictLine(totalIncome: number, totalSpent: number): string {
 
 interface HistoryPageClientProps {
   data: HistoryPageData
-  targetMonth?: string  // 'YYYY-MM', undefined = current month
-}
-
-function currentYM(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  targetCycleId?: string  // 'YYYY-MM-DD', undefined = current cycle
+  currentCycleId: string
 }
 
 function formatHeroAmount(amount: number, currency: string): string {
@@ -83,19 +79,19 @@ function formatHeroAmount(amount: number, currency: string): string {
   return `${sign}${currency} ${compact}M`
 }
 
-export default function HistoryPageClient({ data, targetMonth }: HistoryPageClientProps) {
+export default function HistoryPageClient({ data, targetCycleId, currentCycleId }: HistoryPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
 
-  const activeYM    = targetMonth ?? currentYM()
-  const activeIndex = data.availableMonths.indexOf(activeYM)
-  const canGoPrev   = activeIndex > 0
-  const canGoNext   = activeIndex >= 0 && activeIndex < data.availableMonths.length - 1
-  const pad         = isDesktop ? '0 var(--space-page-desktop)' : '0 var(--space-page-mobile)'
-  const currentMonthRoute = activeYM === currentYM() ? '/history' : `/history?month=${activeYM}`
+  const activeCycleId = targetCycleId ?? currentCycleId
+  const activeIndex   = data.availableCycleIds.indexOf(activeCycleId)
+  const canGoPrev     = activeIndex > 0
+  const canGoNext     = activeIndex >= 0 && activeIndex < data.availableCycleIds.length - 1
+  const pad           = isDesktop ? '0 var(--space-page-desktop)' : '0 var(--space-page-mobile)'
+  const currentCycleRoute = activeCycleId === currentCycleId ? '/history' : `/history?cycle=${activeCycleId}`
 
-  function navToMonth(ym: string) {
-    router.push(ym === currentYM() ? '/history' : `/history?month=${ym}`)
+  function navToCycle(cycleId: string) {
+    router.push(cycleId === currentCycleId ? '/history' : `/history?cycle=${cycleId}`)
   }
 
   const unallocated = data.totalIncome - data.totalSpent
@@ -123,14 +119,14 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
             <button
-              onClick={() => canGoPrev && navToMonth(data.availableMonths[activeIndex - 1])}
+              onClick={() => canGoPrev && navToCycle(data.availableCycleIds[activeIndex - 1])}
               disabled={!canGoPrev}
               style={{ width: 'var(--control-sm)', height: 'var(--control-sm)', borderRadius: 'var(--radius-sm)', border: 'var(--border-width) solid var(--border)', background: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canGoPrev ? 'pointer' : 'default', opacity: canGoPrev ? 1 : 0.3 }}
             >
               <ChevronLeft size={15} color={T.text3} />
             </button>
             <button
-              onClick={() => canGoNext && navToMonth(data.availableMonths[activeIndex + 1])}
+              onClick={() => canGoNext && navToCycle(data.availableCycleIds[activeIndex + 1])}
               disabled={!canGoNext}
               style={{ width: 'var(--control-sm)', height: 'var(--control-sm)', borderRadius: 'var(--radius-sm)', border: 'var(--border-width) solid var(--border)', background: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canGoNext ? 'pointer' : 'default', opacity: canGoNext ? 1 : 0.3 }}
             >
@@ -269,7 +265,7 @@ export default function HistoryPageClient({ data, targetMonth }: HistoryPageClie
                     return (
                       <div
                         key={row.key}
-                        onClick={isDebtRow ? () => router.push(`/history/debt?label=Debt&type=debt&returnTo=${encodeURIComponent(currentMonthRoute)}`) : undefined}
+                        onClick={isDebtRow ? () => router.push(`/history/debt?label=Debt&type=debt${activeCycleId !== currentCycleId ? `&cycle=${activeCycleId}` : ''}&returnTo=${encodeURIComponent(currentCycleRoute)}`) : undefined}
                         style={{
                           borderBottom: isLast ? 'none' : 'var(--border-width) solid var(--border-subtle)',
                           cursor: isDebtRow ? 'pointer' : 'default',

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
+import { formatCycleLabel, getCurrentCycle, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
 import type { CategoryType, UserProfile } from '@/types/database'
 
 export interface LedgerTransaction {
@@ -25,9 +26,12 @@ export async function loadHistoryLedgerPageData(
   categoryType?: CategoryType,
   scope: 'key' | 'label' = 'key',
   categoryLabel?: string,
+  targetDate?: Date,
 ): Promise<HistoryLedgerPageData> {
   const supabase = await createClient()
-  const cycleId = deriveCurrentCycleId(profile)
+  const cycleId = targetDate
+    ? deriveCycleIdForDate(profile, targetDate)
+    : deriveCurrentCycleId(profile)
 
   const baseQuery = (supabase.from('transactions') as any)
     .select('id, date, amount, note, category_label, category_type')
@@ -59,8 +63,11 @@ export async function loadHistoryLedgerPageData(
     amount: Number(row.amount),
   }))
 
+  const schedule = profileToPaySchedule(profile)
+  const cycle = targetDate ? getCycleByDate(targetDate, schedule) : getCurrentCycle(schedule)
+
   return {
-    monthLabel: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    monthLabel: formatCycleLabel(cycle),
     currency: profile.currency ?? 'KES',
     txns,
     totalSpent: txns.reduce((sum, txn) => sum + txn.amount, 0),

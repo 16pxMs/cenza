@@ -36,6 +36,9 @@ export default async function CategoryLedgerPage({ params, searchParams }: PageP
   const categoryType = (readSearchParam(resolvedSearchParams, 'type') ?? 'everyday') as CategoryType
   const scope = readSearchParam(resolvedSearchParams, 'scope') === 'label' ? 'label' : 'key'
   const returnTo = readSearchParam(resolvedSearchParams, 'returnTo') ?? '/history'
+  const rawCycleParam = readSearchParam(resolvedSearchParams, 'cycle')
+  const cycleParam = rawCycleParam && /^\d{4}-\d{2}-\d{2}$/.test(rawCycleParam) ? rawCycleParam : undefined
+  const targetDate = cycleParam ? new Date(`${cycleParam}T00:00:00`) : undefined
   const data = await loadHistoryLedgerPageData(
     session.user.id,
     session.profile,
@@ -43,6 +46,7 @@ export default async function CategoryLedgerPage({ params, searchParams }: PageP
     categoryType,
     scope,
     categoryLabel,
+    targetDate,
   )
 
   return (
