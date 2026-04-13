@@ -958,6 +958,34 @@ function QueueStep({
                 </button>
               )
             })}
+            {queue
+              .filter((item) => !commonItems.some((c) => normalizeLabel(c.label) === normalizeLabel(item.label)))
+              .map((item) => {
+                const displayLabel = formatDisplayLabel(item.label)
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onToggleCommon(item.label)}
+                    style={{
+                      height: '38px',
+                      padding: '0 var(--space-md)',
+                      borderRadius: 'var(--radius-full)',
+                      border: `${T.borderWidth} solid ${T.brandMid}`,
+                      background: T.brandSoft,
+                      color: T.brandDark,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2xs)',
+                      transition: 'all 0.15s',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <IconCheck size={14} color={T.brandDark} />
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{displayLabel}</span>
+                  </button>
+                )
+              })}
           </div>
         </div>
       )}
