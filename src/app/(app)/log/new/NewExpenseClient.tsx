@@ -575,13 +575,17 @@ export function NewExpenseClient() {
 
     try {
       if (queue.some((item) => !item.categoryType)) {
-        throw new Error('Choose a category for each expense before saving.')
+        setSaveError('Choose a category for each expense before saving.')
+        setSaving(false)
+        return
       }
       if (queue.some((item) => !item.label.trim())) {
-        throw new Error('Add a name for each expense before saving.')
+        setSaveError('Add a name for each expense before saving.')
+        setSaving(false)
+        return
       }
 
-      await saveExpenseBatch(queue.map((item) => ({
+      const result = await saveExpenseBatch(queue.map((item) => ({
         mode: 'add',
         priorEntryId: null,
         categoryType: item.categoryType as CategoryType,
@@ -592,11 +596,17 @@ export function NewExpenseClient() {
         rememberItem: true,
       })))
 
+      if (!result.ok) {
+        setSaveError(result.error.message)
+        setSaving(false)
+        return
+      }
+
       setSavedCount(queue.length)
       setSaving(false)
       setStep('done')
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message.replace(/^.*?: /, '') : 'Failed to save expenses. Please try again.')
+    } catch {
+      setSaveError("We couldn't save right now. Please try again in a moment.")
       setSaving(false)
     }
   }
