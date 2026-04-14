@@ -9,7 +9,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, ChevronRight } from 'lucide-react'
-import { buildHighBurnSignal } from '@/lib/pulse/rules'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
@@ -648,6 +647,7 @@ const reference = receivedConfirmed
     spentPct,
     daysLeft,
     totalSpent,
+    currency,
     categorySpend,
     router,
   })
@@ -794,22 +794,24 @@ function selectSpendingInsight(args: {
   spentPct: number
   daysLeft: number
   totalSpent: number
+  currency: string
   categorySpend: Record<string, number>
   router: ReturnType<typeof useRouter>
 }): SpendingInsight | null {
-  const { spentPct, daysLeft, totalSpent, categorySpend, router } = args
+  const { spentPct, daysLeft, totalSpent, currency, categorySpend, router } = args
 
-  // 1. Overspend risk — reuse Pulse high-burn signal
-  const highBurn = buildHighBurnSignal({ spentPct, daysLeft })
-  if (highBurn) {
+  // 1. Overspend (highest priority)
+  if (spentPct >= 80) {
     return {
-      title: highBurn.title,
-      text: highBurn.message,
+      title: `Spending is high`,
+      text: `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left this month`,
       onAction: () => router.push('/log'),
     }
   }
 
-  // 2. Category dominance
+  // 2. Category dominance — pool is intentionally discretionary spend only
+  // (categorySpend is built from everyday + subscription transactions; fixed
+  // and debt are excluded upstream), so type=everyday is the correct route.
   const entries = Object.entries(categorySpend).filter(([, amount]) => amount > 0)
   if (totalSpent > 0 && entries.length > 0) {
     const [topKey, topAmount] = entries.reduce((best, curr) => (curr[1] > best[1] ? curr : best))
@@ -817,15 +819,12 @@ function selectSpendingInsight(args: {
       const label = formatCategoryLabel(topKey)
       return {
         title: `${label} is your biggest spend`,
-        text: `${Math.round(topAmount).toLocaleString()} this cycle`,
+        text: `${fmt(topAmount, currency)} this month`,
         onAction: () =>
           router.push(`/history/${encodeURIComponent(topKey)}?label=${encodeURIComponent(label)}&type=everyday&returnTo=%2Fapp`),
       }
     }
   }
-
-  // 3. Fast riser — skipped: no last-cycle category breakdown available.
-  // 4. High frequency — skipped: no per-cycle transaction count available.
 
   return null
 }
