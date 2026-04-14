@@ -19,6 +19,7 @@ interface EditableRow {
   currency: string
   date: string
   confidence: 'high' | 'medium' | 'low'
+  sourceHash: string
 }
 
 const T = {
@@ -165,6 +166,7 @@ export function SmsImportClient() {
   const [savedCount, setSavedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
+  const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
   const [expandedRaw, setExpandedRaw] = useState<Record<string, boolean>>({})
 
   const selectedCount = rows.length
@@ -177,6 +179,8 @@ export function SmsImportClient() {
     () => smsPlaceholderByCurrency(profile?.currency || 'USD'),
     [profile?.currency]
   )
+  const hasWarnings = Object.keys(rowWarnings).length > 0
+  const hasHardBlockedRows = Object.keys(rowErrors).length > 0
 
   const updateRow = (id: string, patch: Partial<EditableRow>) => {
     setRows((current) =>
@@ -190,8 +194,14 @@ export function SmsImportClient() {
       })
     )
     setRowErrors((current) => {
+      if (!current[id]) return current
       const existing = { ...current }
-      if (!existing[id]) return existing
+      delete existing[id]
+      return existing
+    })
+    setRowWarnings((current) => {
+      if (!current[id]) return current
+      const existing = { ...current }
       delete existing[id]
       return existing
     })
@@ -210,6 +220,7 @@ export function SmsImportClient() {
       )
       setParseMeta({ scanned: result.scanned, skippedCredits: result.skippedCredits })
       setRowErrors({})
+      setRowWarnings({})
       if (result.rows.length === 0) {
         setError('No expense rows found. Paste a few bank debit messages and try again.')
       }
@@ -220,7 +231,7 @@ export function SmsImportClient() {
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (confirmOverride = false) => {
     setSaving(true)
     setError(null)
     try {
@@ -232,6 +243,7 @@ export function SmsImportClient() {
 
       if (Object.keys(nextRowErrors).length > 0) {
         setRowErrors(nextRowErrors)
+        setRowWarnings({})
         setError('Review rows marked with issues before saving.')
         setSaving(false)
         return
@@ -244,13 +256,22 @@ export function SmsImportClient() {
         categoryKey: slugify(row.categoryKey || row.label) || `imported_${row.id}`,
         amount: Number(row.amount),
         date: row.date,
+        sourceHash: row.sourceHash,
       }))
 
-      const result = await saveParsedSmsExpenses(payload)
+      const result = await saveParsedSmsExpenses(payload, { confirmOverride })
       if (result.blocked) {
+        const hasHardErrors = Object.keys(result.rowErrors ?? {}).length > 0
         setRowErrors(result.rowErrors ?? {})
-        if (result.duplicates > 0) {
-          setError(`${result.duplicates} ${result.duplicates === 1 ? 'duplicate row was' : 'duplicate rows were'} already logged.`)
+        setRowWarnings(result.rowWarnings ?? {})
+        if (hasHardErrors) {
+          setError('Some messages were already imported. Remove them to continue.')
+        } else if (result.duplicates > 0) {
+          setError(
+            result.duplicates === 1
+              ? 'One row looks similar to something you already logged.'
+              : `${result.duplicates} rows look similar to something you already logged.`
+          )
         } else {
           setError('Review rows marked with issues before saving.')
         }
@@ -475,6 +496,7 @@ export function SmsImportClient() {
                       {(() => {
                         const issues = rowErrors[row.id] ?? validateRow(row)
                         const hasIssues = issues.length > 0
+                        const warnings = rowWarnings[row.id] ?? []
                         return (
                           <>
                             <input
@@ -537,6 +559,15 @@ export function SmsImportClient() {
                                 ))}
                               </div>
                             )}
+                            {!hasIssues && warnings.length > 0 && (
+                              <div style={{ display: 'grid', gap: 4 }}>
+                                {warnings.map((warning, index) => (
+                                  <p key={`${row.id}-warning-${index}`} style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
+                                    {warning}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
                           </>
                         )
                       })()}
@@ -595,18 +626,29 @@ export function SmsImportClient() {
               )}
 
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-                <PrimaryBtn
-                  size="lg"
-                  onClick={handleSave}
-                  disabled={saving || selectedCount === 0 || hasClientValidationErrors}
-                >
-                  {saving ? 'Saving…' : `Save ${selectedCount} ${selectedCount === 1 ? 'expense' : 'expenses'}`}
-                </PrimaryBtn>
+                {hasWarnings && !hasHardBlockedRows ? (
+                  <PrimaryBtn
+                    size="lg"
+                    onClick={() => handleSave(true)}
+                    disabled={saving || selectedCount === 0 || hasClientValidationErrors}
+                  >
+                    {saving ? 'Saving…' : 'Save anyway'}
+                  </PrimaryBtn>
+                ) : (
+                  <PrimaryBtn
+                    size="lg"
+                    onClick={() => handleSave(false)}
+                    disabled={saving || selectedCount === 0 || hasClientValidationErrors || hasHardBlockedRows}
+                  >
+                    {saving ? 'Saving…' : `Save ${selectedCount} ${selectedCount === 1 ? 'expense' : 'expenses'}`}
+                  </PrimaryBtn>
+                )}
                 <SecondaryBtn
                   size="lg"
                   onClick={() => {
                     setRows([])
                     setRowErrors({})
+                    setRowWarnings({})
                     setError(null)
                   }}
                 >

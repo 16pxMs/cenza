@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { CategoryType } from '@/types/database'
 
 export type ImportCategoryType = Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>
@@ -20,6 +21,12 @@ export interface ParsedSmsExpense {
   date: string
   include: boolean
   confidence: 'high' | 'medium' | 'low'
+  sourceHash: string
+}
+
+export function hashSmsLine(raw: string): string {
+  const normalized = raw.trim().toLowerCase().replace(/\s+/g, ' ')
+  return createHash('sha256').update(normalized).digest('hex')
 }
 
 export interface SmsParseResult {
@@ -294,6 +301,7 @@ export function parseSmsBlob(
       date: parseDate(line),
       include: true,
       confidence: dict ? 'high' : amountMatch.confidence,
+      sourceHash: hashSmsLine(line),
     })
   })
 

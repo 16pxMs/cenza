@@ -18,6 +18,7 @@ interface ParsedRowInput {
   categoryKey: string
   amount: number
   date: string
+  sourceHash: string
 }
 
 function normalize(value: string) {
@@ -113,6 +114,7 @@ export interface SaveParsedSmsExpensesResult {
   duplicates: number
   blocked: boolean
   rowErrors: Record<string, string[]>
+  rowWarnings: Record<string, string[]>
 }
 
 export async function parseSmsImport(rawText: string): Promise<{
@@ -149,15 +151,21 @@ export async function parseSmsImport(rawText: string): Promise<{
   })
 }
 
-export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<SaveParsedSmsExpensesResult> {
+export async function saveParsedSmsExpenses(
+  rows: ParsedRowInput[],
+  opts?: { confirmOverride?: boolean }
+): Promise<SaveParsedSmsExpensesResult> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
+
+  const confirmOverride = opts?.confirmOverride === true
 
   const selectedRows = rows.map((row) => ({
     ...row,
     label: row.label.trim(),
     categoryKey: row.categoryKey.trim(),
     amount: Number(row.amount),
+    sourceHash: (row.sourceHash ?? '').trim(),
   }))
 
   if (selectedRows.length === 0) {
@@ -166,10 +174,13 @@ export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<Sav
       duplicates: 0,
       blocked: false,
       rowErrors: {},
+      rowWarnings: {},
     }
   }
 
   const rowErrors: Record<string, string[]> = {}
+  const rowWarnings: Record<string, string[]> = {}
+
   const rowMeta = selectedRows.map((row) => {
     const entryDate = new Date(`${row.date}T12:00:00`)
     const cycleId = deriveCycleIdForDate(profile as any, entryDate)
@@ -194,27 +205,50 @@ export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<Sav
     }
   }
 
-  // Prevent duplicates in the same pasted batch.
-  const seenInBatch = new Set<string>()
-  for (const meta of rowMeta) {
-    if (seenInBatch.has(meta.fingerprint)) {
-      rowErrors[meta.row.id] = [...(rowErrors[meta.row.id] ?? []), 'Duplicate in this SMS batch.']
-      continue
+  const supabase = await createClient()
+
+  // ── HARD BLOCK: exact-same SMS already imported (in-batch or cross-batch)
+  const hashesToCheck = Array.from(
+    new Set(rowMeta.map((m) => m.row.sourceHash).filter((h) => h.length > 0))
+  )
+
+  const importedHashes = new Set<string>()
+  if (hashesToCheck.length > 0) {
+    const { data: importedRows, error: importedError } = await (supabase.from('sms_import_lines') as any)
+      .select('source_hash')
+      .eq('user_id', user.id)
+      .in('source_hash', hashesToCheck)
+
+    if (importedError) {
+      throw new Error(`Failed to check imported messages: ${importedError.message}`)
     }
-    seenInBatch.add(meta.fingerprint)
+    for (const r of importedRows ?? []) {
+      if (r?.source_hash) importedHashes.add(String(r.source_hash))
+    }
   }
 
-  const hasValidationErrors = Object.keys(rowErrors).length > 0
-  if (hasValidationErrors) {
+  const seenHashInBatch = new Set<string>()
+  for (const { row } of rowMeta) {
+    if (!row.sourceHash) continue
+    if (importedHashes.has(row.sourceHash) || seenHashInBatch.has(row.sourceHash)) {
+      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), 'This message was already imported']
+      continue
+    }
+    seenHashInBatch.add(row.sourceHash)
+  }
+
+  if (Object.keys(rowErrors).length > 0) {
     return {
       saved: 0,
       duplicates: 0,
       blocked: true,
       rowErrors,
+      rowWarnings: {},
     }
   }
 
-  const supabase = await createClient()
+  // ── SOFT WARNING: content fingerprint matches another row in this batch
+  //    or an existing transaction in the same cycle.
   const minDate = selectedRows.reduce((acc, row) => (row.date < acc ? row.date : acc), selectedRows[0].date)
   const maxDate = selectedRows.reduce((acc, row) => (row.date > acc ? row.date : acc), selectedRows[0].date)
   const { data: existingRows, error: existingError } = await (supabase.from('transactions') as any)
@@ -241,24 +275,32 @@ export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<Sav
     )
   }
 
+  const seenFingerprintInBatch = new Set<string>()
   let duplicates = 0
   for (const meta of rowMeta) {
-    if (!existingFingerprints.has(meta.fingerprint)) continue
-    rowErrors[meta.row.id] = [...(rowErrors[meta.row.id] ?? []), 'Already logged for this cycle.']
-    duplicates += 1
+    const matchesExisting = existingFingerprints.has(meta.fingerprint)
+    const matchesInBatch = seenFingerprintInBatch.has(meta.fingerprint)
+    if (matchesExisting || matchesInBatch) {
+      rowWarnings[meta.row.id] = [
+        ...(rowWarnings[meta.row.id] ?? []),
+        'This looks similar to something you already logged',
+      ]
+      duplicates += 1
+    }
+    seenFingerprintInBatch.add(meta.fingerprint)
   }
 
-  if (Object.keys(rowErrors).length > 0) {
+  if (Object.keys(rowWarnings).length > 0 && !confirmOverride) {
     return {
       saved: 0,
       duplicates,
       blocked: true,
-      rowErrors,
+      rowErrors: {},
+      rowWarnings,
     }
   }
 
   for (const { row, entryDate } of rowMeta) {
-
     await createCycleTransaction(supabase as any, user.id, profile as any, {
       categoryType: row.categoryType,
       categoryKey: row.categoryKey,
@@ -273,6 +315,16 @@ export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<Sav
       categoryKey: row.categoryKey,
       categoryType: row.categoryType,
     })
+
+    if (row.sourceHash) {
+      const { error: importInsertError } = await (supabase.from('sms_import_lines') as any)
+        .insert({ user_id: user.id, source_hash: row.sourceHash })
+      // Ignore unique-violation races; the transaction is already saved and
+      // a future re-import will still be caught by the pre-save query above.
+      if (importInsertError && importInsertError.code !== '23505') {
+        throw new Error(`Failed to record imported message: ${importInsertError.message}`)
+      }
+    }
   }
 
   revalidatePath('/log')
@@ -281,8 +333,9 @@ export async function saveParsedSmsExpenses(rows: ParsedRowInput[]): Promise<Sav
 
   return {
     saved: rowMeta.length,
-    duplicates: 0,
+    duplicates,
     blocked: false,
     rowErrors: {},
+    rowWarnings: {},
   }
 }
