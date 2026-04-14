@@ -36,7 +36,19 @@ export async function setupPin(pin: string, opts?: { onboarding?: boolean }): Pr
   const pinHash = await bcrypt.hash(pin, 10)
 
   const update: Record<string, unknown> = { pin_hash: pinHash }
-  if (opts?.onboarding) update.onboarding_complete = true
+  if (opts?.onboarding) {
+    const { data: existing } = await (supabase as any)
+      .from('user_profiles')
+      .select('name, currency')
+      .eq('id', user.id)
+      .single()
+
+    if (!existing?.name?.trim() || !existing?.currency?.trim()) {
+      throw new Error('Complete your name and currency before finishing onboarding')
+    }
+
+    update.onboarding_complete = true
+  }
 
   const { error } = await (supabase as any)
     .from('user_profiles')

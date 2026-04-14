@@ -75,15 +75,15 @@ export function getOnboardingDestination(input: {
   currency?: string | null
   hasPin: boolean
 }): string {
-  if (input.hasPin) return '/pin'
+  const step = getNextOnboardingStep({
+    name: input.name,
+    currency: input.currency,
+    hasPin: input.hasPin,
+  })
 
-  return getOnboardingRoute(
-    getNextOnboardingStep({
-      name: input.name,
-      currency: input.currency,
-      hasPin: input.hasPin,
-    })
-  )
+  if (step === 'pin' && input.hasPin) return '/pin'
+
+  return getOnboardingRoute(step)
 }
 
 export function getPostAuthDestination(input: {
