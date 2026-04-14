@@ -2,10 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
-import {
-  createCycleRefundTransaction,
-  deleteTransactionsForCycleDateByCategory,
-} from '@/lib/supabase/transactions-db'
+import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
 import { createClient } from '@/lib/supabase/server'
 import type { CategoryType } from '@/types/database'
 
@@ -100,21 +97,21 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   revalidatePath('/app')
 }
 
-export async function deleteCurrentCycleCategoryEntries(categoryKey: string): Promise<void> {
-  const { user, profile } = await getAppSession()
-
-  if (!user || !profile) {
-    throw new Error('Not authenticated')
-  }
-
-  if (!categoryKey.trim()) {
-    throw new Error('Category key is required')
-  }
+export async function deleteLogEntry(id: string): Promise<void> {
+  const { user } = await getAppSession()
+  if (!user) throw new Error('Not authenticated')
+  if (!id.trim()) throw new Error('Entry id is required')
 
   const supabase = await createClient()
-  await deleteTransactionsForCycleDateByCategory(supabase as any, user.id, profile, categoryKey)
+  const { error } = await (supabase.from('transactions') as any)
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) throw new Error(`Failed to delete entry: ${error.message}`)
 
   revalidatePath('/log')
   revalidatePath('/history')
   revalidatePath('/app')
 }
+

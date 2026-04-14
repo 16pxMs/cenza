@@ -8,11 +8,33 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconMinus } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
-import type { LogPageData, LogSection, LogSubItem } from '@/lib/loaders/log'
-import { deleteCurrentCycleCategoryEntries, recordRefund, updateLogEntry } from './actions'
+import type { LogEntry, LogPageData, LogSubItem } from '@/lib/loaders/log'
+import { deleteLogEntry, recordRefund, updateLogEntry } from './actions'
+
+const CATEGORY_LABEL: Record<string, string> = {
+  everyday: 'Life',
+  fixed: 'Essentials',
+  debt: 'Debt',
+}
+
+function entryToSubItem(entry: LogEntry): LogSubItem {
+  return {
+    key: entry.categoryKey,
+    label: entry.name,
+    sublabel: null,
+    groupType: entry.categoryType,
+    loggedAmount: entry.amount,
+    latestLoggedDate: entry.date,
+    entryCount: 1,
+    singleEntryId: entry.id,
+    singleEntryDate: entry.date,
+    singleEntryNote: entry.note,
+    scope: 'key',
+  }
+}
 
 const T = {
   brandDark: 'var(--brand-dark)',
@@ -33,13 +55,6 @@ function formatEntryDate(iso: string | null | undefined) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-const SECTION_EMPTY: Record<string, string> = {
-  fixed: 'No essential expenses logged this month.',
-  daily: 'No life expenses logged this month.',
-  debts: 'No debt payments logged this month.',
-  other: '',
-}
-
 interface LogPageClientProps {
   data: LogPageData
 }
@@ -51,7 +66,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const { toast } = useToast()
 
   const autoOpened = useRef(false)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<LogSubItem | null>(null)
   const [deleteStep, setDeleteStep] = useState<'reason' | 'confirm' | 'refund' | 'edit'>('reason')
@@ -64,24 +78,28 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [editLabel, setEditLabel] = useState('')
   const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'everyday' | 'fixed' | 'debt'>('all')
 
-  const visibleSections = data.sections.filter((section) => !(section.items.length === 0 && (section.key === 'daily' || section.key === 'debts')))
-  const totalLogged = visibleSections.reduce(
-    (sum, section) => sum + section.items.reduce((sectionSum, item) => sectionSum + item.loggedAmount, 0),
-    0,
-  )
-  const totalEntries = visibleSections.reduce((sum, section) => sum + section.items.filter((item) => item.loggedAmount > 0).length, 0)
+  const entries = data.entries
+  const totalLogged = entries.reduce((sum, entry) => sum + entry.amount, 0)
+  const totalEntries = entries.length
+  const visibleEntries = filter === 'all'
+    ? entries
+    : entries.filter(entry => entry.categoryType === filter)
 
-  const logItem = (item: LogSubItem) => {
-    const params = new URLSearchParams({
-      key: item.key,
-      label: item.label,
-      type: item.groupType,
-      returnTo: '/log',
-      ...(item.plannedAmount ? { amount: String(item.plannedAmount) } : {}),
-    })
-    router.push(`/log/new?${params.toString()}`)
+  const filterEmptyMessage: Record<typeof filter, string> = {
+    all: 'No expenses logged yet for this cycle.',
+    everyday: 'No life entries yet',
+    fixed: 'No essentials logged yet',
+    debt: 'No debt entries yet',
   }
+
+  const FILTER_OPTIONS: Array<{ value: typeof filter; label: string }> = [
+    { value: 'all', label: 'All' },
+    { value: 'everyday', label: 'Life' },
+    { value: 'fixed', label: 'Essentials' },
+    { value: 'debt', label: 'Debt' },
+  ]
 
   const reviewItemEntries = (item: LogSubItem) => {
     const params = new URLSearchParams({
@@ -176,10 +194,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     }
   }
 
-  const handleDeleteCategory = async (key: string) => {
-    setDeletingKey(key)
+  const handleDeleteEntry = async (id: string) => {
+    setDeletingKey(id)
     try {
-      await deleteCurrentCycleCategoryEntries(key)
+      await deleteLogEntry(id)
       toast('Entry removed')
       setPendingDelete(null)
       router.refresh()
@@ -190,211 +208,86 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     }
   }
 
-  const renderSection = (section: LogSection) => {
-    if (section.items.length === 0 && (section.key === 'daily' || section.key === 'debts')) return null
+  const formatSavedAt = (iso: string | null | undefined) => {
+    if (!iso) return null
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
 
-    const isAccordion = section.items.length >= 4
-    const isOpen = expanded.has(section.key)
-    const sortByAmountThenLabel = (a: LogSubItem, b: LogSubItem) => {
-      const aHasLogged = a.loggedAmount > 0 ? 1 : 0
-      const bHasLogged = b.loggedAmount > 0 ? 1 : 0
-
-      if (aHasLogged !== bHasLogged) return bHasLogged - aHasLogged
-      if (a.loggedAmount !== b.loggedAmount) return b.loggedAmount - a.loggedAmount
-
-      return a.label.localeCompare(b.label)
-    }
-
-    const groupedItems = section.items
-      .filter((item) => (item.entryCount ?? 0) > 1)
-      .sort(sortByAmountThenLabel)
-    const singleItems = section.items
-      .filter((item) => (item.entryCount ?? 0) <= 1)
-      .sort(sortByAmountThenLabel)
-    const orderedItems = [...groupedItems, ...singleItems]
-    const visibleItems = isAccordion && !isOpen ? orderedItems.slice(0, 3) : orderedItems
-    const visibleGroupedItems = visibleItems.filter((item) => (item.entryCount ?? 0) > 1)
-    const visibleSingleItems = visibleItems.filter((item) => (item.entryCount ?? 0) <= 1)
-    const totalLogged = section.items.reduce((sum, item) => sum + item.loggedAmount, 0)
-
-    const renderRow = (item: LogSubItem) => {
-      const isLogged = item.loggedAmount > 0
-      const isDeleting = deletingKey === item.key
-      const isGroup = (item.entryCount ?? 0) > 1
-      const canManageInline = isLogged && !isGroup
-      const secondaryText = isGroup
-        ? `${item.entryCount} entries`
-        : item.sublabel && !isLogged
-          ? item.sublabel
-          : null
-
-      return (
-        <div
-          key={item.key}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            background: T.white,
-            minHeight: 60,
-            gap: 12,
-          }}
-        >
-          {canManageInline && (
-            <button
-              onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
-              disabled={isDeleting}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 999,
-                background: 'var(--grey-100)',
-                border: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                opacity: isDeleting ? 0.4 : 1,
-                padding: 0,
-                flexShrink: 0,
-                marginLeft: 0,
-              }}
-            >
-              <IconMinus size={14} color={T.textMuted} />
-            </button>
-          )}
-
-          <button
-            onClick={() => isLogged ? reviewItemEntries(item) : logItem(item)}
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              border: 'none',
-              background: 'transparent',
-              padding: '12px 0',
-              minHeight: 60,
-              cursor: 'pointer',
-              textAlign: 'left',
-              boxSizing: 'border-box',
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 500, color: T.text1, lineHeight: 1.3 }}>
-                {item.label}
-              </div>
-              {secondaryText && (
-                <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
-                  {secondaryText}
-                </div>
-              )}
-            </div>
-
-            {isLogged ? (
-              <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
-                {fmt(item.loggedAmount, data.currency)}
-              </span>
-            ) : (
-              <span style={{ fontSize: 20, color: T.textMuted, flexShrink: 0, lineHeight: 1, marginLeft: 8, opacity: 0.4 }}>
-                ›
-              </span>
-            )}
-          </button>
-        </div>
-      )
-    }
+  const renderEntryRow = (entry: LogEntry) => {
+    const item = entryToSubItem(entry)
+    const isDeleting = deletingKey === entry.id
+    const categoryLabel = CATEGORY_LABEL[entry.categoryType] ?? 'Other'
+    const savedAt = formatSavedAt(entry.createdAt)
 
     return (
-      <section
-        key={section.key}
+      <div
+        key={entry.id}
         style={{
-          padding: isDesktop ? '20px 24px 0' : '18px 16px 0',
+          display: 'flex',
+          alignItems: 'center',
+          background: T.white,
+          minHeight: 60,
+          gap: 12,
+          padding: isDesktop ? '0 24px' : '0 16px',
+          borderTop: `1px solid ${T.borderSubtle}`,
         }}
       >
-        <div style={{
-          padding: 0,
-          paddingBottom: section.items.length > 0 ? 10 : 0,
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-            <span style={{ margin: 0, fontSize: 16, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>
-              {section.label}
-            </span>
-            {totalLogged > 0 && (
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: T.text3, lineHeight: 1.4 }}>
-                {fmt(totalLogged, data.currency)} total
-              </p>
-            )}
+        <button
+          onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
+          disabled={isDeleting}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 999,
+            background: 'var(--grey-100)',
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            opacity: isDeleting ? 0.4 : 1,
+            padding: 0,
+            flexShrink: 0,
+          }}
+        >
+          <IconMinus size={14} color={T.textMuted} />
+        </button>
+
+        <button
+          onClick={() => { setPendingDelete(item); openDirectEdit(item) }}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            border: 'none',
+            background: 'transparent',
+            padding: '12px 0',
+            minHeight: 60,
+            cursor: 'pointer',
+            textAlign: 'left',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 500, color: T.text1, lineHeight: 1.3 }}>
+              {entry.name}
+            </div>
+            <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
+              {categoryLabel}{savedAt ? ` · ${savedAt}` : ''}
+            </div>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {section.items.length === 0 && SECTION_EMPTY[section.key] && (
-            <p style={{ fontSize: 13, color: T.textMuted, margin: '12px 0 16px' }}>
-              {SECTION_EMPTY[section.key]}
-            </p>
-          )}
-
-          {visibleGroupedItems.length > 0 && (
-            <div>
-              <div
-                style={{
-                  padding: '6px 0 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: T.textMuted,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                Grouped entries
-              </div>
-              {visibleGroupedItems.map(renderRow)}
-            </div>
-          )}
-
-          {visibleSingleItems.length > 0 && (
-            <div>
-              {visibleGroupedItems.length > 0 && (
-                <div
-                  style={{
-                    padding: '18px 0 8px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: T.textMuted,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                  }}
-                >
-                  Single entries
-                </div>
-              )}
-              {visibleSingleItems.map(renderRow)}
-            </div>
-          )}
-        </div>
-
-        {isAccordion && (
-          <TertiaryBtn
-            size="sm"
-            onClick={() => setExpanded(prev => {
-              const next = new Set(prev)
-              next.has(section.key) ? next.delete(section.key) : next.add(section.key)
-              return next
-            })}
-            style={{
-              padding: '18px 0 18px',
-              color: T.brandDark,
-              textAlign: 'left',
-            }}
-          >
-            {isOpen ? 'Show less' : `Show all ${orderedItems.length}`}
-          </TertiaryBtn>
-        )}
-
-        {!isAccordion && section.items.length > 0 && <div style={{ height: 2 }} />}
-      </section>
+          <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
+            {fmt(entry.amount, data.currency)}
+          </span>
+        </button>
+      </div>
     )
   }
+
 
   const content = (
     <div style={{ paddingBottom: isDesktop ? 80 : 144, paddingTop: 4 }}>
@@ -446,25 +339,48 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         </div>
 
         <div style={{
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          marginBottom: 12,
+        }}>
+          {FILTER_OPTIONS.map(option => {
+            const selected = filter === option.value
+            return (
+              <button
+                key={option.value}
+                onClick={() => setFilter(option.value)}
+                style={{
+                  height: 32,
+                  padding: '0 14px',
+                  borderRadius: 999,
+                  border: selected ? `1px solid ${T.brandDark}` : `1px solid ${T.border}`,
+                  background: selected ? T.brandDark : T.white,
+                  color: selected ? T.textInverse : T.text1,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  lineHeight: 1,
+                }}
+              >
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={{
           background: T.white,
           borderRadius: 20,
           overflow: 'hidden',
         }}>
-          {visibleSections.map((section, index) => {
-            const sectionNode = renderSection(section)
-            if (!sectionNode) return null
-
-            return (
-              <div
-                key={section.key}
-                style={{
-                  borderTop: index === 0 ? 'none' : `1px solid ${T.borderSubtle}`,
-                }}
-              >
-                {sectionNode}
-              </div>
-            )
-          })}
+          {visibleEntries.length === 0 ? (
+            <p style={{ fontSize: 13, color: T.textMuted, margin: 0, padding: isDesktop ? '20px 24px' : '18px 16px' }}>
+              {filterEmptyMessage[filter]}
+            </p>
+          ) : (
+            visibleEntries.map(renderEntryRow)
+          )}
         </div>
       </div>
 
@@ -696,8 +612,8 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                 <strong>{fmt(pendingDelete.loggedAmount, data.currency)}</strong> for this month.
               </p>
               <button
-                onClick={() => handleDeleteCategory(pendingDelete.key)}
-                disabled={deletingKey === pendingDelete.key}
+                onClick={() => pendingDelete.singleEntryId && handleDeleteEntry(pendingDelete.singleEntryId)}
+                disabled={deletingKey === pendingDelete.singleEntryId}
                 style={{
                   width: '100%',
                   padding: '14px',
@@ -708,10 +624,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   fontSize: 15,
                   fontWeight: 600,
                   color: T.textInverse,
-                  opacity: deletingKey === pendingDelete.key ? 0.6 : 1,
+                  opacity: deletingKey === pendingDelete.singleEntryId ? 0.6 : 1,
                 }}
               >
-                {deletingKey === pendingDelete.key ? 'Removing…' : 'Yes, remove it'}
+                {deletingKey === pendingDelete.singleEntryId ? 'Removing…' : 'Yes, remove it'}
               </button>
               <TertiaryBtn
                 size="md"

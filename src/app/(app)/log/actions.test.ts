@@ -4,14 +4,12 @@ const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
 const createClient = vi.fn()
 const createCycleRefundTransaction = vi.fn()
-const deleteTransactionsForCycleDateByCategory = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createClient }))
 vi.mock('@/lib/supabase/transactions-db', () => ({
   createCycleRefundTransaction,
-  deleteTransactionsForCycleDateByCategory,
 }))
 
 describe('log actions', () => {
@@ -49,16 +47,4 @@ describe('log actions', () => {
     )
   })
 
-  it('deleteCurrentCycleCategoryEntries delegates to the cycle-scoped delete helper', async () => {
-    const { deleteCurrentCycleCategoryEntries } = await import('./actions')
-
-    await deleteCurrentCycleCategoryEntries('groceries')
-
-    expect(deleteTransactionsForCycleDateByCategory).toHaveBeenCalledWith(
-      {},
-      'user-1',
-      { pay_schedule_type: 'monthly', pay_schedule_days: [25] },
-      'groceries'
-    )
-  })
 })

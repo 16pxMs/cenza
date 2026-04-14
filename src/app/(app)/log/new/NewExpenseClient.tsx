@@ -1221,21 +1221,34 @@ function ReviewStep({
       )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          minHeight: '40px',
-          padding: '0 var(--space-md)',
-          borderRadius: 'var(--radius-full)',
-          background: T.grey50,
-          color: T.text1,
-          fontSize: 'var(--text-lg)',
-          fontWeight: 'var(--weight-semibold)',
-          lineHeight: 1,
-        }}>
-          {displayLabel}
-        </span>
-        {groupCount > 1 ? (
+        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Name
+        </p>
+        <input
+          type="text"
+          value={item.label}
+          onChange={(event) => onLabelChange(event.target.value)}
+          placeholder="What is this expense?"
+          style={{
+            width: '100%',
+            height: '48px',
+            borderRadius: 'var(--radius-sm)',
+            border: `${T.borderWidth} solid ${T.border}`,
+            padding: '0 var(--space-md)',
+            fontSize: 'var(--text-base)',
+            color: T.text1,
+            background: T.white,
+            outline: 'none',
+            boxSizing: 'border-box',
+            fontFamily: 'inherit',
+          }}
+        />
+        {item.categoryType === 'debt' && (
+          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+            Use a clear name. If money is paid back later, record it from this debt&apos;s log.
+          </p>
+        )}
+        {groupCount > 1 && (
           <p style={{
             margin: '10px 0 0',
             fontSize: 'var(--text-sm)',
@@ -1243,15 +1256,6 @@ function ReviewStep({
             lineHeight: 1.5,
           }}>
             You&apos;re on entry {groupIndex + 1} of {groupCount} for {displayLabel}.
-          </p>
-        ) : (
-          <p style={{
-            margin: '10px 0 0',
-            fontSize: 'var(--text-sm)',
-            color: T.text3,
-            lineHeight: 1.5,
-          }}>
-            Enter the amount
           </p>
         )}
         {previousGroupEntries.length > 0 && (
@@ -1317,36 +1321,6 @@ function ReviewStep({
               )
             })}
           </div>
-        </div>
-      )}
-
-      {item.categoryType === 'debt' && (
-        <div style={{ marginBottom: 'var(--space-lg)' }}>
-          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            What is this debt?
-          </p>
-          <input
-            type="text"
-            placeholder="e.g. Brian loan, KCB loan, Visa card"
-            value={item.label}
-            onChange={(event) => onLabelChange(event.target.value)}
-            style={{
-              width: '100%',
-              height: '48px',
-              borderRadius: 'var(--radius-sm)',
-              border: `${T.borderWidth} solid ${T.border}`,
-              padding: '0 var(--space-md)',
-              fontSize: 'var(--text-base)',
-              color: T.text1,
-              background: T.white,
-              outline: 'none',
-              boxSizing: 'border-box',
-              fontFamily: 'inherit',
-            }}
-          />
-          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-            Use a clear name. If money is paid back later, record it from this debt&apos;s log.
-          </p>
         </div>
       )}
 
@@ -1430,34 +1404,6 @@ function ReviewStep({
       </div>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-          Note (optional)
-        </p>
-        <input
-          type="text"
-          placeholder="Note (optional)"
-          value={item.note}
-          onChange={(event) => onNoteChange(event.target.value)}
-          style={{
-            width: '100%',
-            height: '48px',
-            borderRadius: 'var(--radius-sm)',
-            border: `${T.borderWidth} solid ${T.border}`,
-            padding: '0 var(--space-md)',
-            fontSize: 'var(--text-base)',
-            color: T.text1,
-            background: T.white,
-            outline: 'none',
-            boxSizing: 'border-box',
-            fontFamily: 'inherit',
-          }}
-        />
-        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.5 }}>
-          e.g. weekly shop, market, quick run
-        </p>
-      </div>
-
       {item.categoryType !== 'debt' && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
           <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
@@ -1474,6 +1420,28 @@ function ReviewStep({
           />
         </div>
       )}
+
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <input
+          type="text"
+          placeholder="Add a note (optional)"
+          value={item.note}
+          onChange={(event) => onNoteChange(event.target.value)}
+          style={{
+            width: '100%',
+            height: '48px',
+            borderRadius: 'var(--radius-sm)',
+            border: `${T.borderWidth} solid ${T.border}`,
+            padding: '0 var(--space-md)',
+            fontSize: 'var(--text-base)',
+            color: T.text1,
+            background: T.white,
+            outline: 'none',
+            boxSizing: 'border-box',
+            fontFamily: 'inherit',
+          }}
+        />
+      </div>
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
         <SecondaryBtn
