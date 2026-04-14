@@ -672,7 +672,7 @@ export function NewExpenseClient() {
         </p>
         {(step === 'queue' || step === 'method') && (
           <h1 style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
-            Add an expense
+            {step === 'method' ? 'Add your expenses in seconds' : 'Add an expense'}
           </h1>
         )}
 
@@ -769,13 +769,13 @@ function MethodStep({
   return (
     <div>
       <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-        Choose how to add it.
+        Paste a few bank messages to get started
       </p>
-      <PrimaryBtn size="lg" onClick={onManual} style={{ marginBottom: 10 }}>
-        Type it in
+      <PrimaryBtn size="lg" onClick={onImportFromSms} style={{ marginBottom: 10 }}>
+        Paste bank messages
       </PrimaryBtn>
-      <SecondaryBtn size="md" onClick={onImportFromSms}>
-        Import from SMS
+      <SecondaryBtn size="md" onClick={onManual}>
+        Add manually
       </SecondaryBtn>
     </div>
   )
