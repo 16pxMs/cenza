@@ -168,7 +168,7 @@ function parseLocalDate(iso: string) {
   return new Date(year, (month ?? 1) - 1, day ?? 1)
 }
 
-function formatRecentEntryHint(entry: RecentLoggedEntry, currency: string) {
+function formatRecentEntryHint(entry: RecentLoggedEntry, currency: string, name: string) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const entryDate = parseLocalDate(entry.date)
@@ -176,19 +176,15 @@ function formatRecentEntryHint(entry: RecentLoggedEntry, currency: string) {
 
   const diffDays = Math.round((today.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24))
   const amount = `${currency} ${entry.amount.toLocaleString()}`
+  const displayName = name.trim().toLowerCase() || 'entry'
 
-  if (diffDays <= 0) {
-    return `You logged this today for ${amount}.`
-  }
-  if (diffDays === 1) {
-    return `You logged this yesterday for ${amount}.`
-  }
-  if (diffDays === 2) {
-    return `You logged this 2 days ago for ${amount}.`
-  }
+  let timeAgo: string
+  if (diffDays <= 0) timeAgo = 'today'
+  else if (diffDays === 1) timeAgo = 'yesterday'
+  else if (diffDays < 7) timeAgo = `${diffDays} days ago`
+  else timeAgo = entryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
-  const dateLabel = entryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `You last logged this on ${dateLabel} for ${amount}.`
+  return `Last ${displayName} entry: ${amount} · ${timeAgo}`
 }
 
 export function NewExpenseClient() {
@@ -231,8 +227,6 @@ export function NewExpenseClient() {
     return []
   })
   const [activeIndex, setActiveIndex] = useState(0)
-  const [mode, setMode] = useState<'add' | 'update'>('add')
-  const [priorEntry, setPriorEntry] = useState<{ id: string; amount: number } | null | undefined>(undefined)
   const [dictionary, setDictionary] = useState<Record<string, DictEntry>>({})
   const [commonItems, setCommonItems] = useState<DictEntry[]>(() => buildDefaultCommonItems())
   const [recentByLabel, setRecentByLabel] = useState<Record<string, RecentLoggedEntry>>({})
@@ -445,19 +439,6 @@ export function NewExpenseClient() {
     ? Number.POSITIVE_INFINITY
     : Math.max(0, QUICK_ENTRY_LIMIT_WITHOUT_INCOME - quickEntryStatus.existingExpenseCount)
 
-  useEffect(() => {
-    if (isOther || !paramKey || !user || !cycleId) { setPriorEntry(null); return }
-    ;(supabase.from('transactions') as any)
-      .select('id, amount')
-      .eq('user_id', user.id)
-      .eq('category_key', paramKey)
-      .eq('cycle_id', cycleId)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }: any) => setPriorEntry(data ?? null))
-  }, [cycleId, isOther, paramKey, supabase, user])
-
   const updateActiveItem = (patch: Partial<PendingExpenseItem>) => {
     setQueue((current) => current.map((item, index) => (
       index === activeIndex ? { ...item, ...patch } : item
@@ -600,12 +581,9 @@ export function NewExpenseClient() {
         throw new Error('Add a name for each expense before saving.')
       }
 
-      const duplicateUpdateId = recentMatch?.id ?? null
-      const shouldUseUpdateMode = queue.length === 1 && mode === 'update' && Boolean(priorEntry?.id ?? duplicateUpdateId)
-
-      await saveExpenseBatch(queue.map((item, index) => ({
-        mode: shouldUseUpdateMode && index === 0 ? 'update' : 'add',
-        priorEntryId: shouldUseUpdateMode && index === 0 ? (priorEntry?.id ?? duplicateUpdateId) : null,
+      await saveExpenseBatch(queue.map((item) => ({
+        mode: 'add',
+        priorEntryId: null,
         categoryType: item.categoryType as CategoryType,
         categoryKey: item.categoryKey ?? normalizeLabel(item.label).replace(/\s+/g, '_'),
         categoryLabel: item.label,
@@ -739,14 +717,10 @@ export function NewExpenseClient() {
               currency={currency}
               recentMatch={recentMatch}
               currentIndex={activeIndex}
-              totalItems={queue.length}
               currentGroupIndex={Math.max(0, activeGroupFlowIndex)}
               totalGroups={groupedLabelsInOrder.length}
               isPreviousInSameGroup={activeIndex > 0 && normalizeLabel(queue[activeIndex - 1]?.label ?? '') === normalizeLabel(activeItem.label)}
               isNextInSameGroup={activeIndex < queue.length - 1 && normalizeLabel(queue[activeIndex + 1]?.label ?? '') === normalizeLabel(activeItem.label)}
-              mode={mode}
-              setMode={setMode}
-              priorEntry={priorEntry ?? null}
               saving={saving}
               saveError={saveError}
               groupIndex={Math.max(0, activeGroupedIndex)}
@@ -1126,14 +1100,10 @@ function ReviewStep({
   currency,
   recentMatch,
   currentIndex,
-  totalItems,
   currentGroupIndex,
   totalGroups,
   isPreviousInSameGroup,
   isNextInSameGroup,
-  mode,
-  setMode,
-  priorEntry,
   saving,
   saveError,
   groupIndex,
@@ -1156,14 +1126,10 @@ function ReviewStep({
   currency: string
   recentMatch: RecentLoggedEntry | null
   currentIndex: number
-  totalItems: number
   currentGroupIndex: number
   totalGroups: number
   isPreviousInSameGroup: boolean
   isNextInSameGroup: boolean
-  mode: 'add' | 'update'
-  setMode: (mode: 'add' | 'update') => void
-  priorEntry: { id: string; amount: number } | null
   saving: boolean
   saveError: string | null
   groupIndex: number
@@ -1187,7 +1153,6 @@ function ReviewStep({
       index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
     )).join('.')
     : ''
-  const updateCandidate = priorEntry ?? (recentMatch ? { id: recentMatch.id, amount: recentMatch.amount } : null)
   const incomeBlocked = isLastItem && requiresIncomeRecovery
   const displayLabel = formatDisplayLabel(item.label)
   const previousEntriesLabel = `${previousGroupEntries.length} ${previousGroupEntries.length === 1 ? 'entry is' : 'entries are'} already saved for this item.`
@@ -1221,7 +1186,7 @@ function ReviewStep({
       )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
           Name
         </p>
         <input
@@ -1270,12 +1235,12 @@ function ReviewStep({
         )}
         {recentMatch && (
           <p style={{
-            margin: '6px 0 0',
+            margin: 'var(--space-sm) 0 0',
             fontSize: 'var(--text-sm)',
             color: T.text3,
             lineHeight: 1.5,
           }}>
-            {formatRecentEntryHint(recentMatch, currency)}
+            {formatRecentEntryHint(recentMatch, currency, item.label)}
           </p>
         )}
       </div>
@@ -1321,34 +1286,6 @@ function ReviewStep({
               )
             })}
           </div>
-        </div>
-      )}
-
-      {updateCandidate && totalItems === 1 && (
-        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
-          {(['update', 'add'] as const).map((value) => (
-            <button
-              key={value}
-              onClick={() => {
-                setMode(value)
-                if (value === 'update') onAmountChange(String(updateCandidate.amount))
-              }}
-              style={{
-                flex: 1,
-                height: '40px',
-                borderRadius: 'var(--radius-full)',
-                border: mode === value ? `2px solid ${T.brandDark}` : `${T.borderWidth} solid ${T.grey200}`,
-                background: mode === value ? T.brandDark : T.grey100,
-                color: mode === value ? T.textInverse : T.text2,
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-medium)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              {value === 'update' ? 'Update last' : 'New entry'}
-            </button>
-          ))}
         </div>
       )}
 

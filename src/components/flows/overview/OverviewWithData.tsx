@@ -805,7 +805,7 @@ function selectSpendingInsight(args: {
     return {
       title: `Spending is high`,
       text: `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left this month`,
-      onAction: () => router.push('/log'),
+      onAction: () => router.push('/log?source=pulse'),
     }
   }
 

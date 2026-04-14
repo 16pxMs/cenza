@@ -9,7 +9,7 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { IconBack, IconMinus } from '@/components/ui/Icons'
+import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData, LogSubItem } from '@/lib/loaders/log'
 import { deleteLogEntry, recordRefund, updateLogEntry } from './actions'
@@ -43,6 +43,7 @@ const T = {
   border: 'var(--border)',
   borderSubtle: 'var(--border-subtle)',
   text1: 'var(--text-1)',
+  text2: 'var(--text-2)',
   text3: 'var(--text-3)',
   textMuted: 'var(--text-muted)',
   textInverse: 'var(--text-inverse)',
@@ -100,6 +101,26 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     { value: 'fixed', label: 'Essentials' },
     { value: 'debt', label: 'Debt' },
   ]
+
+  const pageX = isDesktop ? 'var(--space-page-desktop)' : 'var(--space-page-mobile)'
+
+  const categoryDisplayName = (key: string, fallback: string) => {
+    const cleaned = key.replace(/[_-]+/g, ' ').trim()
+    if (!cleaned) return fallback
+    return cleaned.replace(/\b\w/g, c => c.toUpperCase())
+  }
+  const topCategories = (() => {
+    const sums = new Map<string, { name: string; amount: number }>()
+    for (const entry of entries) {
+      const existing = sums.get(entry.categoryKey)
+      if (existing) existing.amount += entry.amount
+      else sums.set(entry.categoryKey, {
+        name: categoryDisplayName(entry.categoryKey, entry.name),
+        amount: entry.amount,
+      })
+    }
+    return Array.from(sums.values()).sort((a, b) => b.amount - a.amount).slice(0, 3)
+  })()
 
   const reviewItemEntries = (item: LogSubItem) => {
     const params = new URLSearchParams({
@@ -217,7 +238,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
   const renderEntryRow = (entry: LogEntry) => {
     const item = entryToSubItem(entry)
-    const isDeleting = deletingKey === entry.id
     const categoryLabel = CATEGORY_LABEL[entry.categoryType] ?? 'Other'
     const savedAt = formatSavedAt(entry.createdAt)
 
@@ -228,59 +248,60 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           display: 'flex',
           alignItems: 'center',
           background: T.white,
-          minHeight: 60,
-          gap: 12,
-          padding: isDesktop ? '0 24px' : '0 16px',
-          borderTop: `1px solid ${T.borderSubtle}`,
+          minHeight: 72,
+          padding: `0 ${pageX}`,
+          borderTop: `var(--border-width) solid ${T.borderSubtle}`,
         }}
       >
         <button
           onClick={() => { setPendingDelete(item); setDeleteStep('reason') }}
-          disabled={isDeleting}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 999,
-            background: 'var(--grey-100)',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            opacity: isDeleting ? 0.4 : 1,
-            padding: 0,
-            flexShrink: 0,
-          }}
-        >
-          <IconMinus size={14} color={T.textMuted} />
-        </button>
-
-        <button
-          onClick={() => { setPendingDelete(item); openDirectEdit(item) }}
           style={{
             flex: 1,
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            gap: 'var(--space-md)',
             border: 'none',
             background: 'transparent',
-            padding: '12px 0',
-            minHeight: 60,
+            padding: 'var(--space-md) 0',
+            minHeight: 72,
             cursor: 'pointer',
             textAlign: 'left',
             boxSizing: 'border-box',
           }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 500, color: T.text1, lineHeight: 1.3 }}>
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-base)',
+              fontWeight: 'var(--weight-regular)',
+              color: T.text2,
+              lineHeight: 1.3,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
               {entry.name}
             </div>
-            <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
+            <div style={{
+              fontSize: 'var(--text-sm)',
+              fontWeight: 'var(--weight-regular)',
+              color: T.text3,
+              marginTop: 'var(--space-sm)',
+              lineHeight: 1.3,
+            }}>
               {categoryLabel}{savedAt ? ` · ${savedAt}` : ''}
             </div>
           </div>
 
-          <span style={{ fontSize: 15, fontWeight: 600, color: T.text1, flexShrink: 0, marginLeft: 8 }}>
+          <span style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-base)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.text1,
+            flexShrink: 0,
+            marginLeft: 'var(--space-sm)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
             {fmt(entry.amount, data.currency)}
           </span>
         </button>
@@ -290,8 +311,13 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
 
   const content = (
-    <div style={{ paddingBottom: isDesktop ? 80 : 144, paddingTop: 4 }}>
-      <div style={{ padding: isDesktop ? '32px 32px 20px' : '20px 16px 16px' }}>
+    <div style={{ paddingBottom: isDesktop ? 'var(--space-xxl)' : 144, paddingTop: 'var(--space-xs)' }}>
+      {/* Header */}
+      <div style={{
+        padding: isDesktop
+          ? `var(--space-xl) var(--space-page-desktop) var(--space-md)`
+          : `var(--space-lg) var(--space-page-mobile) var(--space-md)`,
+      }}>
         <button
           onClick={() => router.push('/app')}
           style={{
@@ -301,7 +327,8 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             width: 44,
             height: 44,
             padding: 0,
-            marginBottom: 12,
+            marginBottom: 'var(--space-sm)',
+            marginLeft: -10,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -309,73 +336,176 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         >
           <IconBack size={18} color="var(--grey-900)" />
         </button>
-        <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: T.textMuted }}>
+        <p style={{
+          margin: '0 0 var(--space-xs)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-semibold)',
+          color: T.textMuted,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}>
           {data.cycleLabel}
         </p>
-        <h1 style={{ fontSize: isDesktop ? 24 : 22, fontWeight: 650, color: T.text1, margin: 0, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+        <h1 style={{
+          fontSize: 'var(--text-lg)',
+          fontWeight: 'var(--weight-semibold)',
+          color: T.text2,
+          margin: 0,
+          letterSpacing: '-0.01em',
+          lineHeight: 1.2,
+        }}>
           Expense log
         </h1>
       </div>
 
-      <div style={{ margin: isDesktop ? '0 32px 20px' : '0 16px 16px' }}>
+      {/* Summary */}
+      <div style={{
+        padding: `0 ${pageX}`,
+        marginBottom: 'var(--space-lg)',
+      }}>
         <div style={{
           display: 'flex',
           alignItems: 'baseline',
           justifyContent: 'space-between',
-          gap: 16,
-          padding: isDesktop ? '0 0 16px' : '0 0 12px',
+          gap: 'var(--space-md)',
         }}>
           <div>
-            <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <p style={{
+              margin: '0 0 var(--space-xs)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}>
               Logged total
             </p>
-            <p style={{ margin: 0, fontSize: 14, color: T.text3, lineHeight: 1.35 }}>
+            <p style={{
+              margin: 0,
+              fontSize: 'var(--text-sm)',
+              color: T.text3,
+              lineHeight: 1.4,
+            }}>
               {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'} logged
             </p>
           </div>
-          <p style={{ margin: 0, fontSize: isDesktop ? 22 : 20, fontWeight: 650, color: T.text1, letterSpacing: '-0.02em', lineHeight: 1, textAlign: 'right', minWidth: 0 }}>
+          <p style={{
+            margin: 0,
+            fontSize: 'var(--text-xl)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.text1,
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
+            textAlign: 'right',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
             {fmt(totalLogged, data.currency)}
           </p>
         </div>
+      </div>
 
+      {/* Insight — permanent, contained surface */}
+      {topCategories.length > 0 && (
         <div style={{
-          display: 'flex',
-          gap: 8,
-          flexWrap: 'wrap',
-          marginBottom: 12,
+          padding: `0 ${pageX}`,
+          marginBottom: 'var(--space-lg)',
         }}>
-          {FILTER_OPTIONS.map(option => {
-            const selected = filter === option.value
-            return (
-              <button
-                key={option.value}
-                onClick={() => setFilter(option.value)}
-                style={{
-                  height: 32,
-                  padding: '0 14px',
-                  borderRadius: 999,
-                  border: selected ? `1px solid ${T.brandDark}` : `1px solid ${T.border}`,
-                  background: selected ? T.brandDark : T.white,
-                  color: selected ? T.textInverse : T.text1,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  lineHeight: 1,
-                }}
-              >
-                {option.label}
-              </button>
-            )
-          })}
+          <div style={{
+            background: T.white,
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-md)',
+            border: `var(--border-width) solid ${T.borderSubtle}`,
+          }}>
+            <p style={{
+              margin: '0 0 var(--space-sm)',
+              fontSize: 'var(--text-base)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.text1,
+              lineHeight: 1.3,
+            }}>
+              Top expenses this month
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
+              {topCategories.map(cat => (
+                <div key={cat.name} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  gap: 'var(--space-md)',
+                }}>
+                  <span style={{
+                    fontSize: 'var(--text-sm)',
+                    color: T.text2,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {cat.name}
+                  </span>
+                  <span style={{
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.text1,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
+                    {fmt(cat.amount, data.currency)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      )}
 
+      {/* Filter controls */}
+      <div style={{
+        padding: `0 ${pageX}`,
+        marginBottom: 'var(--space-md)',
+        display: 'flex',
+        gap: 'var(--space-sm)',
+        flexWrap: 'wrap',
+      }}>
+        {FILTER_OPTIONS.map(option => {
+          const selected = filter === option.value
+          return (
+            <button
+              key={option.value}
+              onClick={() => setFilter(option.value)}
+              style={{
+                height: 'var(--control-sm)',
+                padding: '0 var(--space-md)',
+                borderRadius: 'var(--radius-full)',
+                border: selected
+                  ? `var(--border-width-thick) solid ${T.brandDark}`
+                  : `var(--border-width) solid ${T.border}`,
+                background: selected ? T.brandDark : T.white,
+                color: selected ? T.textInverse : T.text2,
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-medium)',
+                cursor: 'pointer',
+                lineHeight: 1,
+              }}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* List */}
+      <div style={{ padding: `0 ${pageX}` }}>
         <div style={{
           background: T.white,
-          borderRadius: 20,
+          borderRadius: 'var(--radius-xl)',
           overflow: 'hidden',
         }}>
           {visibleEntries.length === 0 ? (
-            <p style={{ fontSize: 13, color: T.textMuted, margin: 0, padding: isDesktop ? '20px 24px' : '18px 16px' }}>
+            <p style={{
+              fontSize: 'var(--text-sm)',
+              color: T.textMuted,
+              margin: 0,
+              padding: `var(--space-lg) ${pageX}`,
+            }}>
               {filterEmptyMessage[filter]}
             </p>
           ) : (
@@ -385,7 +515,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       </div>
 
       {isDesktop && (
-        <div style={{ padding: '0 32px' }}>
+        <div style={{ padding: `var(--space-lg) var(--space-page-desktop) 0` }}>
           <PrimaryBtn
             size="lg"
             onClick={() => router.push('/log/new?returnTo=/log')}
@@ -402,7 +532,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           onClose={() => setPendingDelete(null)}
           title={
             deleteStep === 'reason'
-              ? 'What happened?'
+              ? ''
               : deleteStep === 'refund'
                 ? 'Log a refund'
                 : deleteStep === 'edit'
@@ -412,10 +542,38 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         >
           {deleteStep === 'reason' && (
             <div>
-              <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
-                {pendingDelete.label} · {fmt(pendingDelete.loggedAmount, data.currency)} · {data.cycleLabel}
-                {pendingDelete.latestLoggedDate ? ` · logged ${formatEntryDate(pendingDelete.latestLoggedDate)}` : ''}
-              </p>
+              <div style={{ margin: '0 0 var(--space-lg)' }}>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-xl)',
+                  fontWeight: 'var(--weight-semibold)',
+                  color: T.text1,
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.01em',
+                }}>
+                  {pendingDelete.label}
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-lg)',
+                  fontWeight: 'var(--weight-semibold)',
+                  color: T.text1,
+                  marginTop: 'var(--space-2xs)',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.2,
+                }}>
+                  {fmt(pendingDelete.loggedAmount, data.currency)}
+                </div>
+                <div style={{
+                  fontSize: 'var(--text-sm)',
+                  color: T.text3,
+                  marginTop: 'var(--space-sm)',
+                  lineHeight: 1.3,
+                }}>
+                  {CATEGORY_LABEL[pendingDelete.groupType] ?? 'Other'}
+                  {pendingDelete.latestLoggedDate ? ` · ${formatEntryDate(pendingDelete.latestLoggedDate)}` : ''}
+                </div>
+              </div>
 
               <div style={{
                 background: T.white,
