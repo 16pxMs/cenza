@@ -212,20 +212,29 @@ export function SmsImportClient() {
     setError(null)
     try {
       const result = await parseSmsImport(rawText)
+      if (!result.ok) {
+        setError(
+          result.error.kind === 'unauthorized'
+            ? result.error.message
+            : "We couldn't read those messages right now. Please try again in a moment."
+        )
+        return
+      }
+      const data = result.data
       setRows(
-        result.rows.map((row) => ({
+        data.rows.map((row) => ({
           ...row,
           categoryType: row.confidence === 'high' ? row.categoryType : null,
         }))
       )
-      setParseMeta({ scanned: result.scanned, skippedCredits: result.skippedCredits })
+      setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
       setRowErrors({})
       setRowWarnings({})
-      if (result.rows.length === 0) {
-        setError('No expense rows found. Paste a few bank debit messages and try again.')
+      if (data.rows.length === 0) {
+        setError('No expenses found. Paste a few bank debit messages and try again.')
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not parse SMS messages right now.')
+    } catch {
+      setError("We couldn't read those messages right now. Please try again in a moment.")
     } finally {
       setParsing(false)
     }
@@ -260,17 +269,27 @@ export function SmsImportClient() {
       }))
 
       const result = await saveParsedSmsExpenses(payload, { confirmOverride })
-      if (result.blocked) {
-        const hasHardErrors = Object.keys(result.rowErrors ?? {}).length > 0
-        setRowErrors(result.rowErrors ?? {})
-        setRowWarnings(result.rowWarnings ?? {})
+      if (!result.ok) {
+        setError(
+          result.error.kind === 'unauthorized'
+            ? result.error.message
+            : "We couldn't save right now. Please try again in a moment."
+        )
+        setSaving(false)
+        return
+      }
+      const data = result.data
+      if (data.blocked) {
+        const hasHardErrors = Object.keys(data.rowErrors ?? {}).length > 0
+        setRowErrors(data.rowErrors ?? {})
+        setRowWarnings(data.rowWarnings ?? {})
         if (hasHardErrors) {
           setError('Some messages were already imported. Remove them to continue.')
-        } else if (result.duplicates > 0) {
+        } else if (data.duplicates > 0) {
           setError(
-            result.duplicates === 1
+            data.duplicates === 1
               ? 'One row looks similar to something you already logged.'
-              : `${result.duplicates} rows look similar to something you already logged.`
+              : `${data.duplicates} rows look similar to something you already logged.`
           )
         } else {
           setError('Review rows marked with issues before saving.')
@@ -278,9 +297,9 @@ export function SmsImportClient() {
         setSaving(false)
         return
       }
-      setSavedCount(result.saved)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save imported expenses.')
+      setSavedCount(data.saved)
+    } catch {
+      setError("We couldn't save right now. Please try again in a moment.")
     } finally {
       setSaving(false)
     }

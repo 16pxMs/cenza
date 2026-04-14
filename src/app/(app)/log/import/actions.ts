@@ -10,6 +10,7 @@ import {
   type ImportCategoryType,
   type ParsedSmsExpense,
 } from '@/lib/sms-import/parser'
+import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 
 interface ParsedRowInput {
   id: string
@@ -117,46 +118,51 @@ export interface SaveParsedSmsExpensesResult {
   rowWarnings: Record<string, string[]>
 }
 
-export async function parseSmsImport(rawText: string): Promise<{
+export interface ParseSmsImportData {
   rows: ParsedSmsExpense[]
   scanned: number
   skippedCredits: number
-}> {
-  const { user, profile } = await getAppSession()
-  if (!user || !profile) throw new Error('Not authenticated')
+}
 
-  const input = rawText?.trim() ?? ''
-  if (!input) {
-    return { rows: [], scanned: 0, skippedCredits: 0 }
-  }
+export async function parseSmsImport(rawText: string): Promise<ActionResult<ParseSmsImportData>> {
+  return runAction(async () => {
+    const { user, profile } = await getAppSession()
+    if (!user || !profile) return unauthorized()
 
-  const supabase = await createClient()
-  const { data: dictionaryRows, error } = await (supabase.from('item_dictionary') as any)
-    .select('name_normalized,label,category_type,category_key')
-    .eq('user_id', user.id)
-    .limit(300)
+    const input = rawText?.trim() ?? ''
+    if (!input) {
+      return ok({ rows: [], scanned: 0, skippedCredits: 0 })
+    }
 
-  if (error) {
-    throw new Error(`Failed to load dictionary: ${error.message}`)
-  }
+    const supabase = await createClient()
+    const { data: dictionaryRows, error } = await (supabase.from('item_dictionary') as any)
+      .select('name_normalized,label,category_type,category_key')
+      .eq('user_id', user.id)
+      .limit(300)
 
-  return parseSmsBlob(input, {
-    defaultCurrency: profile.currency || 'USD',
-    dictionary: (dictionaryRows ?? []).map((row: any) => ({
-      nameNormalized: row.name_normalized,
-      label: row.label,
-      categoryType: row.category_type,
-      categoryKey: row.category_key,
-    })),
+    if (error) {
+      throw new Error(`Failed to load dictionary: ${error.message}`)
+    }
+
+    return ok(parseSmsBlob(input, {
+      defaultCurrency: profile.currency || 'USD',
+      dictionary: (dictionaryRows ?? []).map((row: any) => ({
+        nameNormalized: row.name_normalized,
+        label: row.label,
+        categoryType: row.category_type,
+        categoryKey: row.category_key,
+      })),
+    }))
   })
 }
 
 export async function saveParsedSmsExpenses(
   rows: ParsedRowInput[],
   opts?: { confirmOverride?: boolean }
-): Promise<SaveParsedSmsExpensesResult> {
+): Promise<ActionResult<SaveParsedSmsExpensesResult>> {
+  return runAction<SaveParsedSmsExpensesResult>(async () => {
   const { user, profile } = await getAppSession()
-  if (!user || !profile) throw new Error('Not authenticated')
+  if (!user || !profile) return unauthorized()
 
   const confirmOverride = opts?.confirmOverride === true
 
@@ -169,13 +175,13 @@ export async function saveParsedSmsExpenses(
   }))
 
   if (selectedRows.length === 0) {
-    return {
+    return ok({
       saved: 0,
       duplicates: 0,
       blocked: false,
       rowErrors: {},
       rowWarnings: {},
-    }
+    })
   }
 
   const rowErrors: Record<string, string[]> = {}
@@ -238,13 +244,13 @@ export async function saveParsedSmsExpenses(
   }
 
   if (Object.keys(rowErrors).length > 0) {
-    return {
+    return ok({
       saved: 0,
       duplicates: 0,
       blocked: true,
       rowErrors,
       rowWarnings: {},
-    }
+    })
   }
 
   // ── SOFT WARNING: content fingerprint matches another row in this batch
@@ -291,13 +297,13 @@ export async function saveParsedSmsExpenses(
   }
 
   if (Object.keys(rowWarnings).length > 0 && !confirmOverride) {
-    return {
+    return ok({
       saved: 0,
       duplicates,
       blocked: true,
       rowErrors: {},
       rowWarnings,
-    }
+    })
   }
 
   for (const { row, entryDate } of rowMeta) {
@@ -331,11 +337,12 @@ export async function saveParsedSmsExpenses(
   revalidatePath('/history')
   revalidatePath('/app')
 
-  return {
+  return ok({
     saved: rowMeta.length,
     duplicates,
     blocked: false,
     rowErrors: {},
     rowWarnings: {},
-  }
+  })
+  })
 }
