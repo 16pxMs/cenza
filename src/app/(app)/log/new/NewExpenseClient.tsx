@@ -1293,7 +1293,7 @@ function ReviewStep({
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        height: '56px',
+        height: '64px',
         border: `${T.borderWidth} solid ${T.border}`,
         borderRadius: 'var(--radius-sm)',
         background: T.white,
@@ -1343,7 +1343,7 @@ function ReviewStep({
 
       {item.categoryType !== 'debt' && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
-          <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
             Category
           </p>
           <TypeChips
@@ -1355,6 +1355,18 @@ function ReviewStep({
                 : ['everyday', 'fixed']
             }
           />
+          {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
+            <p style={{
+              margin: 'var(--space-sm) 0 0',
+              fontSize: 'var(--text-sm)',
+              color: T.text3,
+              lineHeight: 1.5,
+            }}>
+              {item.categoryType === 'everyday'
+                ? 'For everyday spending like food, transport, or going out'
+                : 'For fixed costs like rent, bills, or subscriptions'}
+            </p>
+          )}
         </div>
       )}
 
