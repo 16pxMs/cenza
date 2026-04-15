@@ -50,7 +50,7 @@ function slugify(value: string) {
 
 function categoryLabel(value: ImportCategoryType | null) {
   if (!value) return 'Not set'
-  if (value === 'fixed') return 'Essentials'
+  if (value === 'fixed') return 'Bills'
   if (value === 'debt') return 'Debt'
   return 'Life'
 }
@@ -546,7 +546,7 @@ export function SmsImportClient() {
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {([
                                 { value: 'everyday', label: 'Life' },
-                                { value: 'fixed', label: 'Essentials' },
+                                { value: 'fixed', label: 'Bills' },
                                 { value: 'debt', label: 'Debt' },
                               ] as const).map((option) => {
                                 const selected = row.categoryType === option.value

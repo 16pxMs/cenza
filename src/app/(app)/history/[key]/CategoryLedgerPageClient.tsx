@@ -37,7 +37,7 @@ const T = {
 
 const EDIT_TYPE_OPTIONS: Array<{ value: Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>; label: string; helper: string }> = [
   { value: 'everyday', label: 'Life', helper: 'Daily and personal spending.' },
-  { value: 'fixed', label: 'Essentials', helper: 'Home, bills, and recurring payments.' },
+  { value: 'fixed', label: 'Bills', helper: 'Home, utilities, and recurring payments.' },
   { value: 'debt', label: 'Debt', helper: 'Money you borrowed and are paying back.' },
 ]
 
