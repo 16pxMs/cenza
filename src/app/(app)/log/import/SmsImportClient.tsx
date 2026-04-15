@@ -391,10 +391,7 @@ export function SmsImportClient() {
                 }, 0)
                 const readyCount = rows.length - needsAttentionCount
                 const hasAnyLowConfidence = rows.some((row) => row.confidence === 'low')
-                const summary =
-                  needsAttentionCount > 0
-                    ? `${readyCount} ready, ${needsAttentionCount} ${needsAttentionCount === 1 ? 'needs' : 'need'} attention`
-                    : `${readyCount} ${readyCount === 1 ? 'expense' : 'expenses'} ready to save`
+                const readyLine = `${readyCount} ${readyCount === 1 ? 'expense' : 'expenses'} ready to save`
                 return (
                   <div style={{ marginBottom: 12 }}>
                     <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
@@ -404,8 +401,13 @@ export function SmsImportClient() {
                       Review and adjust anything before saving
                     </p>
                     <p style={{ margin: '8px 0 0', fontSize: 12, color: T.text2, fontWeight: 500 }}>
-                      {summary}
+                      {readyLine}
                     </p>
+                    {needsAttentionCount > 0 && (
+                      <p style={{ margin: '2px 0 0', fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
+                        A few need a quick look
+                      </p>
+                    )}
                     {hasAnyLowConfidence && (
                       <p style={{ margin: '4px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
                         This might not be the full picture yet
@@ -610,7 +612,7 @@ export function SmsImportClient() {
 
               {hasHardBlockedRows && !error && (
                 <p style={{ margin: '10px 0 0', fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
-                  Remove the flagged rows to continue
+                  Remove the ones already added to continue
                 </p>
               )}
 
