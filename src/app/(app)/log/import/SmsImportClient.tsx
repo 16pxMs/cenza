@@ -183,20 +183,6 @@ export function SmsImportClient() {
         return next
       })
     )
-    // On edit, the row's own issue list may become stale regardless of
-    // duplicate state — drop its entry so validation recomputes on render.
-    setRowErrors((current) => {
-      if (!current[id]) return current
-      const existing = { ...current }
-      delete existing[id]
-      return existing
-    })
-    setRowWarnings((current) => {
-      if (!current[id]) return current
-      const existing = { ...current }
-      delete existing[id]
-      return existing
-    })
   }
 
   const handleParse = async () => {
