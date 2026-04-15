@@ -66,13 +66,17 @@ interface Props {
   categorySpend?: Record<string, number>
   recentActivity?: Array<{ id: string; label: string; amount: number; date: string }>
   lastCycleRecurringTop?: { label: string; amount: number; total: number } | null
+  billsLeftToPay?: {
+    items: Array<{ key: string; label: string; expected: number; paid: number; leftToPay: number }>
+    totalLeftToPay: number
+  } | null
   isDesktop?: boolean
 }
 
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
-  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, isDesktop,
+  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, billsLeftToPay = null, isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -689,6 +693,59 @@ const reference = receivedConfirmed
     </div>
   ) : null
 
+  // ── Bills left to pay card ───────────────────────────────────
+  const billsCard = billsLeftToPay && billsLeftToPay.totalLeftToPay > 0 ? (
+    <div style={{
+      marginTop: 16,
+      background: 'var(--white)',
+      border: '1px solid var(--border)',
+      borderRadius: 16,
+      padding: '16px 20px',
+      ...fade(0.18),
+    }}>
+      <p style={{
+        margin: '0 0 12px',
+        fontSize: 11,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        letterSpacing: '0.07em',
+        textTransform: 'uppercase',
+      }}>
+        Bills left to pay
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {billsLeftToPay.items.slice(0, 5).map((item) => (
+          <div key={item.key} style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}>
+            <span style={{ fontSize: 14, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.label}
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', flexShrink: 0 }}>
+              {fmt(item.leftToPay, currency)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div style={{
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+      }}>
+        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Total left to pay</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)' }}>
+          {fmt(billsLeftToPay.totalLeftToPay, currency)}
+        </span>
+      </div>
+    </div>
+  ) : null
+
   // ── Render ────────────────────────────────────────────────────
   return (
     <div className={`overview-data${isDesktop ? ' overview-data--desktop' : ''}`}>
@@ -751,6 +808,7 @@ const reference = receivedConfirmed
       {spendingCard}
       {/* Spending insight card — one prioritized actionable signal */}
       {insightCard}
+      {billsCard}
       {planAheadCard}
       {totalGoals > 0 ? goalsCard : noGoalsCard}
       {debtReminderCard}

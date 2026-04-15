@@ -64,6 +64,55 @@ interface OverviewPrevCycleTransactionRow {
   category_type: string
 }
 
+interface FixedEntryShape {
+  key?: unknown
+  label?: unknown
+  monthly?: unknown
+}
+
+export interface BillLeftToPayItem {
+  key: string
+  label: string
+  expected: number
+  paid: number
+  leftToPay: number
+}
+
+export interface BillsLeftToPay {
+  items: BillLeftToPayItem[]
+  totalLeftToPay: number
+}
+
+export function deriveBillsLeftToPay(
+  fixedEntries: unknown[] | null | undefined,
+  cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
+): BillsLeftToPay {
+  const paidByKey = new Map<string, number>()
+  for (const txn of cycleTransactions) {
+    if (txn.category_type !== 'fixed' && txn.category_type !== 'subscription') continue
+    const key = String(txn.category_key ?? '')
+    if (!key) continue
+    paidByKey.set(key, (paidByKey.get(key) ?? 0) + Number(txn.amount ?? 0))
+  }
+
+  const items: BillLeftToPayItem[] = []
+  for (const raw of fixedEntries ?? []) {
+    const entry = (raw ?? {}) as FixedEntryShape
+    const key = String(entry.key ?? '').trim()
+    if (!key) continue
+    const expected = Number(entry.monthly ?? 0)
+    if (!Number.isFinite(expected) || expected <= 0) continue
+    const label = String(entry.label ?? '').trim() || titleFromKey(key)
+    const paid = paidByKey.get(key) ?? 0
+    const leftToPay = Math.max(0, expected - paid)
+    items.push({ key, label, expected, paid, leftToPay })
+  }
+
+  items.sort((a, b) => b.leftToPay - a.leftToPay)
+  const totalLeftToPay = items.reduce((sum, item) => sum + item.leftToPay, 0)
+  return { items, totalLeftToPay }
+}
+
 export interface OverviewPageData {
   name: string
   currency: string
@@ -91,6 +140,7 @@ export interface OverviewPageData {
     amount: number
     total: number
   } | null
+  billsLeftToPay: BillsLeftToPay
 }
 
 function titleFromKey(key: string): string {
@@ -136,7 +186,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
     (supabase.from('fixed_expenses') as any)
-      .select('total_monthly')
+      .select('total_monthly, entries')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
@@ -304,5 +354,9 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     goalSaved: goalSavedMap,
     goalLabels,
     lastCycleRecurringTop,
+    billsLeftToPay: deriveBillsLeftToPay(
+      (fixedExpenses?.entries ?? null) as unknown[] | null,
+      transactionRows
+    ),
   }
 }
