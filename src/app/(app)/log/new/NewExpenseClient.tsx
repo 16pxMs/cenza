@@ -204,7 +204,9 @@ export function NewExpenseClient() {
     : null
 
   const hasInitialKnownItem = !isOther && Boolean(paramLabel)
-  const [step, setStep] = useState<Step>(hasInitialKnownItem ? 'review' : 'method')
+  const [step, setStep] = useState<Step>(
+    hasInitialKnownItem ? 'review' : isOther ? 'queue' : 'method'
+  )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState(0)
@@ -769,7 +771,7 @@ function MethodStep({
   return (
     <div>
       <p style={{ margin: '0 0 24px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-        Paste a few bank messages to get started
+        Paste a few bank or payment messages to get started
       </p>
       <PrimaryBtn size="lg" onClick={onImportFromSms} style={{ marginBottom: 10 }}>
         Paste bank messages

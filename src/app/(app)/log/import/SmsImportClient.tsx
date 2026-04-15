@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconCheck } from '@/components/ui/Icons'
-import { useUser } from '@/lib/context/UserContext'
 import { parseSmsImport, saveParsedSmsExpenses } from './actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
@@ -87,75 +86,9 @@ function validateRow(row: EditableRow) {
   return errors
 }
 
-function smsPlaceholderByCurrency(currency: string) {
-  const c = (currency || 'USD').toUpperCase()
-
-  if (c === 'KES') {
-    return [
-      'M-PESA: Confirmed. KES 2,100 paid to Naivas on 08/04/2026.',
-      'Bank: Your account was debited KES 700 at Uber on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'NGN') {
-    return [
-      'Bank alert: NGN 8,500 spent at Shoprite on 08/04/2026.',
-      'Your account was debited NGN 3,200 via transfer to Bolt on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'ZAR') {
-    return [
-      'Bank alert: ZAR 420 spent at Checkers on 08/04/2026.',
-      'Your account was debited ZAR 160 at Uber on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'UGX') {
-    return [
-      'Mobile money: UGX 25,000 paid to Carrefour on 08/04/2026.',
-      'Bank: Your account was debited UGX 12,000 at Fuel Station on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'TZS') {
-    return [
-      'Mobile money: TZS 18,000 paid to Vodacom on 08/04/2026.',
-      'Bank: Your account was debited TZS 45,000 at Shoppers on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'GHS') {
-    return [
-      'Bank alert: GHS 95 paid at Melcom on 08/04/2026.',
-      'Your account was debited GHS 34 at Bolt on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'GBP') {
-    return [
-      'Card spend: GBP 24.50 at Tesco on 08/04/2026.',
-      'Your account was debited GBP 13.20 at Uber on Apr 8.',
-    ].join('\n')
-  }
-
-  if (c === 'EUR') {
-    return [
-      'Card spend: EUR 18.40 at Carrefour on 08/04/2026.',
-      'Your account was debited EUR 11.00 at Bolt on Apr 8.',
-    ].join('\n')
-  }
-
-  return [
-    `${c} 75.00 spent at Grocery Store on 08/04/2026.`,
-    `Your account was debited ${c} 28.00 at Uber on Apr 8.`,
-  ].join('\n')
-}
-
 export function SmsImportClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { profile } = useUser()
   const returnTo = searchParams.get('returnTo') || '/log'
 
   const [rawText, setRawText] = useState('')
@@ -175,10 +108,11 @@ export function SmsImportClient() {
     () => rows.some((row) => validateRow(row).length > 0),
     [rows]
   )
-  const smsPlaceholder = useMemo(
-    () => smsPlaceholderByCurrency(profile?.currency || 'USD'),
-    [profile?.currency]
-  )
+  const smsPlaceholder = [
+    'M-PESA: Confirmed. KES 2,100 paid to Naivas on 08/04',
+    'Bank: Debit KES 700 at Uber on Apr 8',
+    'Card: Payment 15.00 at Coffee Shop',
+  ].join('\n')
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const hasHardBlockedRows = Object.keys(rowErrors).length > 0
 
@@ -231,7 +165,7 @@ export function SmsImportClient() {
       setRowErrors({})
       setRowWarnings({})
       if (data.rows.length === 0) {
-        setError('No expenses found. Paste a few bank debit messages and try again.')
+        setError("We couldn't pick up any expenses from that. Try pasting a few bank or payment messages.")
       }
     } catch {
       setError("We couldn't read those messages right now. Please try again in a moment.")
@@ -284,7 +218,7 @@ export function SmsImportClient() {
         setRowErrors(data.rowErrors ?? {})
         setRowWarnings(data.rowWarnings ?? {})
         if (hasHardErrors) {
-          setError('Some messages were already imported. Remove them to continue.')
+          setError('Some messages were already added. Remove them to continue.')
         } else if (data.duplicates > 0) {
           setError(
             data.duplicates === 1
@@ -389,7 +323,7 @@ export function SmsImportClient() {
           {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
         <h1 style={{ margin: '0 0 16px', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
-          Import from SMS
+          Add your expenses
         </h1>
 
         <div style={{
@@ -401,10 +335,12 @@ export function SmsImportClient() {
           {!showReview ? (
             <>
               <p style={{ margin: '0 0 6px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                Paste your bank messages
+                Paste your messages
               </p>
               <p style={{ margin: '0 0 14px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-                Open your SMS app, copy recent bank debit messages, then paste them below.
+                Paste a few bank or payment messages below.
+                <br />
+                You can paste several at once.
               </p>
               <textarea
                 value={rawText}
@@ -429,23 +365,29 @@ export function SmsImportClient() {
                   {error}
                 </p>
               )}
+              <p style={{ margin: '10px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+                You can paste several messages at once to save time
+              </p>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+                We only use what you paste here
+              </p>
               <PrimaryBtn
                 size="lg"
                 onClick={handleParse}
                 disabled={parsing || rawText.trim().length === 0}
                 style={{ marginTop: 12 }}
               >
-                {parsing ? 'Parsing…' : 'Find expenses'}
+                {parsing ? 'Reading…' : 'See my expenses'}
               </PrimaryBtn>
             </>
           ) : (
             <>
               <div style={{ marginBottom: 12 }}>
                 <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                  Review your expenses
+                  Here&rsquo;s your recent spending
                 </p>
                 <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
-                  Confirm each one before saving.
+                  Review and adjust anything before saving
                 </p>
               </div>
 
@@ -471,7 +413,7 @@ export function SmsImportClient() {
                     >
                       {row.confidence === 'low' ? (
                         <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                          Needs review before save.
+                          This might not be the full picture yet
                         </p>
                       ) : (
                         <span />
@@ -680,8 +622,8 @@ export function SmsImportClient() {
 
         {!showReview && (
           <div style={{ marginTop: 8 }}>
-            <TertiaryBtn size="md" onClick={() => router.push('/log/new?returnTo=/log')}>
-              Enter manually instead
+            <TertiaryBtn size="md" onClick={() => router.push('/log/new?isOther=true&returnTo=/log')}>
+              Prefer typing? Add manually
             </TertiaryBtn>
           </div>
         )}

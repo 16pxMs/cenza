@@ -237,7 +237,7 @@ export async function saveParsedSmsExpenses(
   for (const { row } of rowMeta) {
     if (!row.sourceHash) continue
     if (importedHashes.has(row.sourceHash) || seenHashInBatch.has(row.sourceHash)) {
-      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), 'This message was already imported']
+      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), 'This message was already added']
       continue
     }
     seenHashInBatch.add(row.sourceHash)
