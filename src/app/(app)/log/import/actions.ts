@@ -122,6 +122,31 @@ export interface ParseSmsImportData {
   rows: ParsedSmsExpense[]
   scanned: number
   skippedCredits: number
+  hasLowConfidence: boolean
+}
+
+function computeHasLowConfidence(rows: ParsedSmsExpense[]): boolean {
+  if (rows.length === 0) return false
+
+  // Signal 1: any row the parser itself flagged as low confidence.
+  if (rows.some((row) => row.confidence === 'low')) return true
+
+  // Signal 2: large amount variation across rows. Heuristic only —
+  // we are not reconstructing balances or totals.
+  const amounts = rows.map((row) => row.amount).filter((n) => Number.isFinite(n) && n > 0)
+  if (amounts.length >= 3) {
+    const min = Math.min(...amounts)
+    const max = Math.max(...amounts)
+    if (min > 0 && max / min >= 20) return true
+  }
+
+  // Signal 3: many rows but very few distinct dates — likely a partial paste.
+  if (rows.length >= 5) {
+    const uniqueDates = new Set(rows.map((row) => row.date)).size
+    if (uniqueDates <= 2) return true
+  }
+
+  return false
 }
 
 export async function parseSmsImport(rawText: string): Promise<ActionResult<ParseSmsImportData>> {
@@ -131,7 +156,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
 
     const input = rawText?.trim() ?? ''
     if (!input) {
-      return ok({ rows: [], scanned: 0, skippedCredits: 0 })
+      return ok({ rows: [], scanned: 0, skippedCredits: 0, hasLowConfidence: false })
     }
 
     const supabase = await createClient()
@@ -144,7 +169,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
       throw new Error(`Failed to load dictionary: ${error.message}`)
     }
 
-    return ok(parseSmsBlob(input, {
+    const parsed = parseSmsBlob(input, {
       defaultCurrency: profile.currency || 'USD',
       dictionary: (dictionaryRows ?? []).map((row: any) => ({
         nameNormalized: row.name_normalized,
@@ -152,7 +177,12 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         categoryType: row.category_type,
         categoryKey: row.category_key,
       })),
-    }))
+    })
+
+    return ok({
+      ...parsed,
+      hasLowConfidence: computeHasLowConfidence(parsed.rows),
+    })
   })
 }
 

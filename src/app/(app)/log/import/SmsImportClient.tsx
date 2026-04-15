@@ -67,6 +67,47 @@ function isGenericDebtLabel(label: string) {
   ].includes(l)
 }
 
+const DUPLICATE_MESSAGE = 'This message was already added'
+
+function recomputeRowState(
+  nextRows: EditableRow[],
+  prevRowErrors: Record<string, string[]>,
+  prevRowWarnings: Record<string, string[]>
+): { nextRowErrors: Record<string, string[]>; nextRowWarnings: Record<string, string[]> } {
+  // Count in-batch occurrences of each sourceHash so we can tell whether a row
+  // is still a duplicate of something currently in the list.
+  const hashCounts = new Map<string, number>()
+  for (const row of nextRows) {
+    if (!row.sourceHash) continue
+    hashCounts.set(row.sourceHash, (hashCounts.get(row.sourceHash) ?? 0) + 1)
+  }
+
+  const nextRowErrors: Record<string, string[]> = {}
+  for (const row of nextRows) {
+    const prev = prevRowErrors[row.id]
+    if (!prev || prev.length === 0) continue
+    // Drop the duplicate message if the row is no longer duplicated in-batch.
+    // Cross-batch duplicates (sms_import_lines) will be re-flagged by the
+    // server on the next save attempt — client state is display only.
+    const filtered = prev.filter((message) => {
+      if (message !== DUPLICATE_MESSAGE) return true
+      const count = row.sourceHash ? hashCounts.get(row.sourceHash) ?? 0 : 0
+      return count > 1
+    })
+    if (filtered.length > 0) nextRowErrors[row.id] = filtered
+  }
+
+  const existingIds = new Set(nextRows.map((row) => row.id))
+  const nextRowWarnings: Record<string, string[]> = {}
+  for (const id of Object.keys(prevRowWarnings)) {
+    if (!existingIds.has(id)) continue
+    const warnings = prevRowWarnings[id]
+    if (warnings && warnings.length > 0) nextRowWarnings[id] = warnings
+  }
+
+  return { nextRowErrors, nextRowWarnings }
+}
+
 function validateRow(row: EditableRow) {
   const errors: string[] = []
 
@@ -96,6 +137,7 @@ export function SmsImportClient() {
   const [rawText, setRawText] = useState('')
   const [rows, setRows] = useState<EditableRow[]>([])
   const [parseMeta, setParseMeta] = useState<{ scanned: number; skippedCredits: number }>({ scanned: 0, skippedCredits: 0 })
+  const [hasLowConfidence, setHasLowConfidence] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
@@ -118,8 +160,20 @@ export function SmsImportClient() {
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const hasHardBlockedRows = Object.keys(rowErrors).length > 0
 
+  const applyRowsChange = (
+    mutator: (current: EditableRow[]) => EditableRow[]
+  ) => {
+    setRows((current) => {
+      const nextRows = mutator(current)
+      const { nextRowErrors, nextRowWarnings } = recomputeRowState(nextRows, rowErrors, rowWarnings)
+      setRowErrors(nextRowErrors)
+      setRowWarnings(nextRowWarnings)
+      return nextRows
+    })
+  }
+
   const updateRow = (id: string, patch: Partial<EditableRow>) => {
-    setRows((current) =>
+    applyRowsChange((current) =>
       current.map((row) => {
         if (row.id !== id) return row
         const next = { ...row, ...patch }
@@ -129,6 +183,8 @@ export function SmsImportClient() {
         return next
       })
     )
+    // On edit, the row's own issue list may become stale regardless of
+    // duplicate state — drop its entry so validation recomputes on render.
     setRowErrors((current) => {
       if (!current[id]) return current
       const existing = { ...current }
@@ -164,6 +220,7 @@ export function SmsImportClient() {
         }))
       )
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
+      setHasLowConfidence(Boolean(data.hasLowConfidence))
       setRowErrors({})
       setRowWarnings({})
       if (data.rows.length === 0) {
@@ -390,7 +447,6 @@ export function SmsImportClient() {
                   return count + (issues.length > 0 ? 1 : 0)
                 }, 0)
                 const readyCount = rows.length - needsAttentionCount
-                const hasAnyLowConfidence = rows.some((row) => row.confidence === 'low')
                 const readyLine = `${readyCount} ${readyCount === 1 ? 'expense' : 'expenses'} ready to save`
                 return (
                   <div style={{ marginBottom: 12 }}>
@@ -408,7 +464,7 @@ export function SmsImportClient() {
                         A few need a quick look
                       </p>
                     )}
-                    {hasAnyLowConfidence && (
+                    {hasLowConfidence && (
                       <p style={{ margin: '4px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
                         This might not be the full picture yet
                       </p>
@@ -451,12 +507,7 @@ export function SmsImportClient() {
                         type="button"
                         aria-label="Remove row"
                         onClick={() => {
-                          setRows((current) => current.filter((r) => r.id !== row.id))
-                          setRowErrors((current) => {
-                            const next = { ...current }
-                            delete next[row.id]
-                            return next
-                          })
+                          applyRowsChange((current) => current.filter((r) => r.id !== row.id))
                           setExpandedRaw((current) => {
                             const next = { ...current }
                             delete next[row.id]
@@ -652,7 +703,10 @@ export function SmsImportClient() {
 
         {!showReview && (
           <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
-            <TertiaryBtn size="md" onClick={() => router.push('/log/new?isOther=true&returnTo=/log')}>
+            <TertiaryBtn
+              size="md"
+              onClick={() => router.push(`/log/new?isOther=true&returnTo=${encodeURIComponent(returnTo)}`)}
+            >
               Add manually
             </TertiaryBtn>
           </div>

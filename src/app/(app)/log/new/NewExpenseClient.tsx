@@ -508,7 +508,7 @@ export function NewExpenseClient() {
     }
 
     if (step === 'queue') {
-      setStep('method')
+      router.push(`/log/import?returnTo=${encodeURIComponent(returnTo)}`)
       return
     }
 
@@ -648,16 +648,20 @@ export function NewExpenseClient() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            width: 44,
             height: 44,
-            padding: 0,
+            minWidth: 44,
+            padding: step === 'queue' ? '0 var(--space-sm) 0 0' : 0,
             color: 'var(--grey-900)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: 'flex-start',
+            gap: 'var(--space-xs)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 'var(--weight-medium)',
           }}
         >
           <IconBack size={20} />
+          {step === 'queue' && <span>Back to SMS</span>}
         </button>
       </div>
 
