@@ -86,7 +86,7 @@ const DEFAULT_COMMON_ITEMS: Array<{ label: string; categoryType: Exclude<Categor
   { label: 'Eating out', categoryType: 'everyday' },
   { label: 'Fuel', categoryType: 'everyday' },
   { label: 'Rent', categoryType: 'fixed' },
-  { label: 'WiFi', categoryType: 'fixed' },
+  { label: 'Internet', categoryType: 'fixed' },
   { label: 'Electricity', categoryType: 'fixed' },
   { label: 'Water', categoryType: 'fixed' },
   { label: 'Netflix', categoryType: 'fixed' },
