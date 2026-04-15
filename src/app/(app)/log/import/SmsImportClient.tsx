@@ -34,6 +34,8 @@ const T = {
   brandMid: 'var(--brand-mid)',
   brandDark: 'var(--brand-dark)',
   redDark: 'var(--red-dark)',
+  redLight: 'var(--red-light)',
+  redBorder: 'var(--red-border)',
 }
 
 function normalize(value: string) {
@@ -382,24 +384,49 @@ export function SmsImportClient() {
             </>
           ) : (
             <>
-              <div style={{ marginBottom: 12 }}>
-                <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                  Here&rsquo;s your recent spending
-                </p>
-                <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
-                  Review and adjust anything before saving
-                </p>
-              </div>
+              {(() => {
+                const needsAttentionCount = rows.reduce((count, row) => {
+                  const issues = rowErrors[row.id] ?? validateRow(row)
+                  return count + (issues.length > 0 ? 1 : 0)
+                }, 0)
+                const readyCount = rows.length - needsAttentionCount
+                const hasAnyLowConfidence = rows.some((row) => row.confidence === 'low')
+                const summary =
+                  needsAttentionCount > 0
+                    ? `${readyCount} ready, ${needsAttentionCount} ${needsAttentionCount === 1 ? 'needs' : 'need'} attention`
+                    : `${readyCount} ${readyCount === 1 ? 'expense' : 'expenses'} ready to save`
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
+                      Here&rsquo;s your recent spending
+                    </p>
+                    <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
+                      Review and adjust anything before saving
+                    </p>
+                    <p style={{ margin: '8px 0 0', fontSize: 12, color: T.text2, fontWeight: 500 }}>
+                      {summary}
+                    </p>
+                    {hasAnyLowConfidence && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+                        This might not be the full picture yet
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {rows.map((row) => (
+                {rows.map((row) => {
+                  const rowIssues = rowErrors[row.id] ?? validateRow(row)
+                  const rowIsHardBlocked = rowIssues.length > 0
+                  return (
                   <div
                     key={row.id}
                     style={{
-                      border: `1px solid ${T.borderSubtle}`,
+                      border: `1px solid ${rowIsHardBlocked ? T.redBorder : T.borderSubtle}`,
                       borderRadius: 12,
                       padding: 12,
-                      background: 'var(--white)',
+                      background: rowIsHardBlocked ? T.redLight : 'var(--white)',
                     }}
                   >
                     <div
@@ -411,13 +438,13 @@ export function SmsImportClient() {
                         marginBottom: 8,
                       }}
                     >
-                      {row.confidence === 'low' ? (
-                        <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
-                          This might not be the full picture yet
-                        </p>
-                      ) : (
-                        <span />
-                      )}
+                      <p style={{ margin: 0, fontSize: 13, color: T.text1, fontWeight: 600 }}>
+                        {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
+                        <span style={{ color: T.text3, fontWeight: 500 }}>
+                          {' · '}
+                          {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </p>
                       <button
                         type="button"
                         aria-label="Remove row"
@@ -533,12 +560,6 @@ export function SmsImportClient() {
                         )
                       })()}
 
-                      <p style={{ margin: 0, fontSize: 13, color: T.text2, fontWeight: 600 }}>
-                        {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
-                        {' · '}
-                        {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </p>
-
                       <div>
                         <button
                           type="button"
@@ -577,12 +598,19 @@ export function SmsImportClient() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               {error && (
                 <p style={{ margin: '10px 0 0', fontSize: 13, color: T.redDark, lineHeight: 1.45 }}>
                   {error}
+                </p>
+              )}
+
+              {hasHardBlockedRows && !error && (
+                <p style={{ margin: '10px 0 0', fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
+                  Remove the flagged rows to continue
                 </p>
               )}
 
@@ -621,9 +649,9 @@ export function SmsImportClient() {
         </div>
 
         {!showReview && (
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
             <TertiaryBtn size="md" onClick={() => router.push('/log/new?isOther=true&returnTo=/log')}>
-              Prefer typing? Add manually
+              Add manually
             </TertiaryBtn>
           </div>
         )}
