@@ -258,6 +258,83 @@ function resolveDictionary(
   return containsMatch ?? null
 }
 
+// Plain-language fallback for lines like "500 for food" or "20000 naira fuel".
+// Runs ONLY when parseSmsBlob returns zero rows (see actions.ts). Reuses the
+// same slugify/inferCategory helpers and the same ParsedSmsExpense shape so
+// downstream save/dedupe logic is unchanged.
+const FALLBACK_CURRENCY_WORDS = [
+  'naira', 'shillings', 'shilling', 'rupees', 'rupee',
+  'dollars', 'dollar', 'pounds', 'pound', 'euros', 'euro',
+  'cedis', 'rand',
+  // Also strip the currency codes the SMS parser already knows about so a
+  // user typing "500 KES for food" doesn't leak "KES" into the label.
+  'kes', 'ksh', 'kshs', 'usd', 'ngn', 'zar', 'ugx', 'tzs', 'ghs',
+  'gbp', 'eur', 'aed',
+]
+
+export function parseSimpleExpenseLines(
+  rawInput: string,
+  options: { defaultCurrency: string }
+): ParsedSmsExpense[] {
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+  const date = toIsoLocalDate(today)
+
+  const lines = rawInput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const stripCurrencyWord = new RegExp(
+    `^(?:${FALLBACK_CURRENCY_WORDS.join('|')})\\b\\s*`,
+    'i'
+  )
+
+  const rows: ParsedSmsExpense[] = []
+
+  lines.forEach((line, index) => {
+    const amountMatch = line.match(/([0-9][0-9,]*(?:\.[0-9]{1,2})?)/)
+    if (!amountMatch || amountMatch.index == null) return
+
+    const amount = Number(amountMatch[1].replace(/,/g, ''))
+    if (!Number.isFinite(amount) || amount <= 0) return
+
+    const tail = line.slice(amountMatch.index + amountMatch[0].length).trim()
+
+    // Prefer the part after "for ". If absent, take the whole tail.
+    const forMatch = tail.match(/\bfor\s+(.+)$/i)
+    let rest = (forMatch ? forMatch[1] : tail).trim()
+
+    // Drop a single leading currency word ("naira", "KES") if present, then
+    // re-check for "for" so "naira for food" still collapses to "food".
+    rest = rest.replace(stripCurrencyWord, '').trim()
+    const forMatch2 = rest.match(/^for\s+(.+)$/i)
+    if (forMatch2) rest = forMatch2[1].trim()
+
+    const label = normalize(rest)
+    if (!label) return
+
+    const categoryType = inferCategory(label)
+    const categoryKey = slugify(label) || `entry_${index + 1}`
+
+    rows.push({
+      id: `row_${index + 1}_${categoryKey}`,
+      raw: line,
+      label,
+      categoryType,
+      categoryKey,
+      amount,
+      currency: options.defaultCurrency,
+      date,
+      include: true,
+      confidence: 'medium',
+      sourceHash: hashSmsLine(line),
+    })
+  })
+
+  return rows
+}
+
 export function parseSmsBlob(
   rawInput: string,
   options: { defaultCurrency: string; dictionary: ImportDictionaryEntry[] }

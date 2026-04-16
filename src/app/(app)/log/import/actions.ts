@@ -7,6 +7,7 @@ import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import {
   parseSmsBlob,
+  parseSimpleExpenseLines,
   type ImportCategoryType,
   type ParsedSmsExpense,
 } from '@/lib/sms-import/parser'
@@ -179,6 +180,23 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         categoryKey: row.category_key,
       })),
     })
+
+    // Fallback: when the SMS parser finds nothing in non-empty input, try a
+    // plain-language parser ("500 for food"). Never mixed with SMS results —
+    // only used when SMS parsing returns zero rows.
+    if (parsed.rows.length === 0) {
+      const fallbackRows = parseSimpleExpenseLines(input, {
+        defaultCurrency: profile.currency || 'USD',
+      })
+      if (fallbackRows.length > 0) {
+        return ok({
+          rows: fallbackRows,
+          scanned: parsed.scanned,
+          skippedCredits: parsed.skippedCredits,
+          hasLowConfidence: computeHasLowConfidence(fallbackRows),
+        })
+      }
+    }
 
     return ok({
       ...parsed,

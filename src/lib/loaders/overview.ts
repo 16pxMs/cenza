@@ -2,6 +2,7 @@ import { GOAL_META } from '@/constants/goals'
 import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import type { GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
@@ -90,16 +91,24 @@ export function deriveBillsLeftToPay(
   const paidByKey = new Map<string, number>()
   for (const txn of cycleTransactions) {
     if (txn.category_type !== 'fixed' && txn.category_type !== 'subscription') continue
-    const key = String(txn.category_key ?? '')
-    if (!key) continue
+    const rawKey = String(txn.category_key ?? '')
+    if (!rawKey) continue
+    // TODO: remove after full backfill of historical fixed-bill keys (0012).
+    // Legacy rows may still carry `wifi`, `kplc`, or `home_wifi_<ts>` — fold
+    // them through the canonicalizer at read time so Bills left to pay
+    // matches during the transition. Subscriptions keep their stored key.
+    const key =
+      txn.category_type === 'fixed' ? canonicalizeFixedBillKey(rawKey) : rawKey
     paidByKey.set(key, (paidByKey.get(key) ?? 0) + Number(txn.amount ?? 0))
   }
 
   const items: BillLeftToPayItem[] = []
   for (const raw of fixedEntries ?? []) {
     const entry = (raw ?? {}) as FixedEntryShape
-    const key = String(entry.key ?? '').trim()
-    if (!key) continue
+    const rawKey = String(entry.key ?? '').trim()
+    if (!rawKey) continue
+    // TODO: remove after full backfill of historical fixed_expenses entries.
+    const key = canonicalizeFixedBillKey(rawKey)
     const expected = Number(entry.monthly ?? 0)
     if (!Number.isFinite(expected) || expected <= 0) continue
     const label = String(entry.label ?? '').trim() || titleFromKey(key)

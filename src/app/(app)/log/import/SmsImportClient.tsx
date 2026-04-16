@@ -210,7 +210,7 @@ export function SmsImportClient() {
       setRowErrors({})
       setRowWarnings({})
       if (data.rows.length === 0) {
-        setError("We couldn't pick up any expenses from that. Try pasting a few bank or payment messages.")
+        setError("We couldn't read these as bank messages. Try simple entries like '500 for food'.")
       }
     } catch {
       setError("We couldn't read those messages right now. Please try again in a moment.")

@@ -8,7 +8,10 @@
 // Scope: fixed bills only. Apply at write sites where a fixed-bill
 // category_key is persisted. Never apply to everyday/debt/goal/subscription.
 
-const FIXED_BILL_SYNONYMS: Record<string, string> = {
+// Exported so the one-off SQL backfill can generate its mapping from the
+// exact same source — no divergence between write-time canonicalization
+// and the historical backfill.
+export const FIXED_BILL_SYNONYMS: Record<string, string> = {
   // Internet / home broadband
   wifi: 'internet',
   home_wifi: 'internet',
@@ -74,7 +77,7 @@ export function isKnownFixedBillKey(rawKey: string): boolean {
   return KNOWN_CANONICAL_KEYS.has(canonical)
 }
 
-const KNOWN_CANONICAL_KEYS = new Set([
+export const KNOWN_CANONICAL_KEYS = new Set([
   'rent',
   'electricity',
   'water',
