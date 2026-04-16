@@ -36,9 +36,9 @@ const T = {
 }
 
 const EDIT_TYPE_OPTIONS: Array<{ value: Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>; label: string; helper: string }> = [
-  { value: 'everyday', label: 'Life', helper: 'Daily and personal spending.' },
-  { value: 'fixed', label: 'Bills', helper: 'Home, utilities, and recurring payments.' },
-  { value: 'debt', label: 'Debt', helper: 'Money you borrowed and are paying back.' },
+  { value: 'everyday', label: 'Spending', helper: 'For everyday spending like food, transport, or going out' },
+  { value: 'fixed', label: 'Bills', helper: 'For fixed costs like rent, bills, or subscriptions' },
+  { value: 'debt', label: 'Debt', helper: 'Money you owe and are paying back' },
 ]
 
 interface CategoryLedgerPageClientProps {

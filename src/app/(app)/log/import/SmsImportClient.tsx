@@ -52,7 +52,13 @@ function categoryLabel(value: ImportCategoryType | null) {
   if (!value) return 'Not set'
   if (value === 'fixed') return 'Bills'
   if (value === 'debt') return 'Debt'
-  return 'Life'
+  return 'Spending'
+}
+
+const CATEGORY_HELPER: Record<ImportCategoryType, string> = {
+  everyday: 'For everyday spending like food, transport, or going out',
+  fixed: 'For fixed costs like rent, bills, or subscriptions',
+  debt: 'Money you owe and are paying back',
 }
 
 function isGenericDebtLabel(label: string) {
@@ -552,7 +558,7 @@ export function SmsImportClient() {
                             />
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {([
-                                { value: 'everyday', label: 'Life' },
+                                { value: 'everyday', label: 'Spending' },
                                 { value: 'fixed', label: 'Bills' },
                                 { value: 'debt', label: 'Debt' },
                               ] as const).map((option) => {
@@ -584,6 +590,11 @@ export function SmsImportClient() {
                                 )
                               })}
                             </div>
+                            {row.categoryType && (
+                              <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                                {CATEGORY_HELPER[row.categoryType]}
+                              </p>
+                            )}
                             {hasIssues && (
                               <div style={{ display: 'grid', gap: 4 }}>
                                 {issues.map((issue, index) => (

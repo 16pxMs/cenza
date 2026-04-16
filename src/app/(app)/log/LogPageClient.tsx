@@ -15,7 +15,7 @@ import type { LogEntry, LogPageData, LogSubItem } from '@/lib/loaders/log'
 import { deleteLogEntry, recordRefund, updateLogEntry } from './actions'
 
 const CATEGORY_LABEL: Record<string, string> = {
-  everyday: 'Life',
+  everyday: 'Spending',
   fixed: 'Bills',
   debt: 'Debt',
 }
@@ -97,7 +97,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
   const FILTER_OPTIONS: Array<{ value: typeof filter; label: string }> = [
     { value: 'all', label: 'All' },
-    { value: 'everyday', label: 'Life' },
+    { value: 'everyday', label: 'Spending' },
     { value: 'fixed', label: 'Bills' },
     { value: 'debt', label: 'Debt' },
   ]

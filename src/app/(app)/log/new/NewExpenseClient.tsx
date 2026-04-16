@@ -67,16 +67,16 @@ const T = {
 
 const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: string }> = {
   everyday: {
-    title: 'Life',
-    helper: 'Day-to-day, one-off, and personal expenses.',
+    title: 'Spending',
+    helper: 'For everyday spending like food, transport, or going out',
   },
   fixed: {
     title: 'Bills',
-    helper: 'Must-pay home and living costs like rent or water.',
+    helper: 'For fixed costs like rent, bills, or subscriptions',
   },
   debt: {
     title: 'Debt',
-    helper: 'Money you borrowed and are paying back.',
+    helper: 'Money you owe and are paying back',
   },
 }
 
@@ -1378,9 +1378,7 @@ function ReviewStep({
               color: T.text3,
               lineHeight: 1.5,
             }}>
-              {item.categoryType === 'everyday'
-                ? 'For everyday spending like food, transport, or going out'
-                : 'For fixed costs like rent, bills, or subscriptions'}
+              {TYPE_COPY[item.categoryType].helper}
             </p>
           )}
         </div>
