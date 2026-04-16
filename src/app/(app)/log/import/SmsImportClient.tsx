@@ -161,8 +161,8 @@ export function SmsImportClient() {
   )
   const smsPlaceholder = [
     'M-PESA: Confirmed. KES 2,100 paid to Naivas',
-    '500 for food',
-    '2000 transport',
+    'food 500',
+    'groceries 2500',
   ].join('\n')
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const hasHardBlockedRows = Object.keys(rowErrors).length > 0
@@ -218,7 +218,7 @@ export function SmsImportClient() {
       setRowErrors({})
       setRowWarnings({})
       if (data.rows.length === 0) {
-        setError("We couldn't read this. Try pasting a bank message, or writing something like '500 for food'.")
+        setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
       }
     } catch {
       setError("We couldn't read those messages right now. Please try again in a moment.")
@@ -391,7 +391,7 @@ export function SmsImportClient() {
                 Paste your messages
               </p>
               <p style={{ margin: '0 0 14px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-                Paste bank messages or simple entries like &lsquo;500 for food&rsquo;.
+                Paste bank messages or simple entries like &lsquo;food 500&rsquo;.
                 <br />
                 You can paste several at once.
               </p>

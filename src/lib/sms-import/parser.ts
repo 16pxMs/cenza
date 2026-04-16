@@ -286,8 +286,8 @@ export function parseSimpleExpenseLines(
     .filter(Boolean)
 
   const stripCurrencyWord = new RegExp(
-    `^(?:${FALLBACK_CURRENCY_WORDS.join('|')})\\b\\s*`,
-    'i'
+    `\\b(?:${FALLBACK_CURRENCY_WORDS.join('|')})\\b`,
+    'ig'
   )
 
   const rows: ParsedSmsExpense[] = []
@@ -299,17 +299,14 @@ export function parseSimpleExpenseLines(
     const amount = Number(amountMatch[1].replace(/,/g, ''))
     if (!Number.isFinite(amount) || amount <= 0) return
 
-    const tail = line.slice(amountMatch.index + amountMatch[0].length).trim()
-
-    // Prefer the part after "for ". If absent, take the whole tail.
-    const forMatch = tail.match(/\bfor\s+(.+)$/i)
-    let rest = (forMatch ? forMatch[1] : tail).trim()
-
-    // Drop a single leading currency word ("naira", "KES") if present, then
-    // re-check for "for" so "naira for food" still collapses to "food".
-    rest = rest.replace(stripCurrencyWord, '').trim()
-    const forMatch2 = rest.match(/^for\s+(.+)$/i)
-    if (forMatch2) rest = forMatch2[1].trim()
+    // Treat everything on either side of the amount as label candidate so
+    // "food 500" and "500 food" both parse. Then strip currency words and
+    // the "for" connector anywhere in the remainder.
+    const before = line.slice(0, amountMatch.index)
+    const after = line.slice(amountMatch.index + amountMatch[0].length)
+    let rest = `${before} ${after}`
+      .replace(stripCurrencyWord, ' ')
+      .replace(/\bfor\b/gi, ' ')
 
     const label = normalize(rest)
     if (!label) return
