@@ -121,7 +121,7 @@ function validateRow(row: EditableRow) {
     errors.push('Date is invalid.')
   }
   if (!row.categoryType) {
-    errors.push('Select a category.')
+    errors.push('Select category.')
   }
   if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
     errors.push('Use a specific debt name (e.g. "KCB loan", "Visa card").')
@@ -138,6 +138,7 @@ export function SmsImportClient() {
   const [rows, setRows] = useState<EditableRow[]>([])
   const [parseMeta, setParseMeta] = useState<{ scanned: number; skippedCredits: number }>({ scanned: 0, skippedCredits: 0 })
   const [hasLowConfidence, setHasLowConfidence] = useState(false)
+  const [usedFallback, setUsedFallback] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
@@ -153,9 +154,9 @@ export function SmsImportClient() {
     [rows]
   )
   const smsPlaceholder = [
-    'M-PESA: Confirmed. KES 2,100 paid to Naivas on 08/04',
-    'Bank: Debit KES 700 at Uber on Apr 8',
-    'Card: Payment 15.00 at Coffee Shop',
+    'M-PESA: Confirmed. KES 2,100 paid to Naivas',
+    '500 for food',
+    '2000 transport',
   ].join('\n')
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const hasHardBlockedRows = Object.keys(rowErrors).length > 0
@@ -207,10 +208,11 @@ export function SmsImportClient() {
       )
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
       setHasLowConfidence(Boolean(data.hasLowConfidence))
+      setUsedFallback(Boolean(data.usedFallback))
       setRowErrors({})
       setRowWarnings({})
       if (data.rows.length === 0) {
-        setError("We couldn't read these as bank messages. Try simple entries like '500 for food'.")
+        setError("We couldn't read this. Try pasting a bank message, or writing something like '500 for food'.")
       }
     } catch {
       setError("We couldn't read those messages right now. Please try again in a moment.")
@@ -383,7 +385,7 @@ export function SmsImportClient() {
                 Paste your messages
               </p>
               <p style={{ margin: '0 0 14px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-                Paste a few bank or payment messages below.
+                Paste bank messages or simple entries like &lsquo;500 for food&rsquo;.
                 <br />
                 You can paste several at once.
               </p>
@@ -440,8 +442,13 @@ export function SmsImportClient() {
                       Here&rsquo;s your recent spending
                     </p>
                     <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
-                      Review and adjust anything before saving
+                      We turned this into expenses. Review and confirm before saving.
                     </p>
+                    {usedFallback && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                        Simple entries use your app currency and may need category confirmation.
+                      </p>
+                    )}
                     <p style={{ margin: '8px 0 0', fontSize: 12, color: T.text2, fontWeight: 500 }}>
                       {readyLine}
                     </p>

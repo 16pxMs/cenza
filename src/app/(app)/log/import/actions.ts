@@ -125,6 +125,9 @@ export interface ParseSmsImportData {
   scanned: number
   skippedCredits: number
   hasLowConfidence: boolean
+  // True when rows came from the plain-language fallback parser. Used only
+  // to surface a short clarifier in the review UI; no business-logic impact.
+  usedFallback: boolean
 }
 
 function computeHasLowConfidence(rows: ParsedSmsExpense[]): boolean {
@@ -152,13 +155,13 @@ function computeHasLowConfidence(rows: ParsedSmsExpense[]): boolean {
 }
 
 export async function parseSmsImport(rawText: string): Promise<ActionResult<ParseSmsImportData>> {
-  return runAction(async () => {
+  return runAction<ParseSmsImportData>(async () => {
     const { user, profile } = await getAppSession()
     if (!user || !profile) return unauthorized()
 
     const input = rawText?.trim() ?? ''
     if (!input) {
-      return ok({ rows: [], scanned: 0, skippedCredits: 0, hasLowConfidence: false })
+      return ok({ rows: [], scanned: 0, skippedCredits: 0, hasLowConfidence: false, usedFallback: false })
     }
 
     const supabase = await createClient()
@@ -194,6 +197,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
           scanned: parsed.scanned,
           skippedCredits: parsed.skippedCredits,
           hasLowConfidence: computeHasLowConfidence(fallbackRows),
+          usedFallback: true,
         })
       }
     }
@@ -201,6 +205,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     return ok({
       ...parsed,
       hasLowConfidence: computeHasLowConfidence(parsed.rows),
+      usedFallback: false,
     })
   })
 }
