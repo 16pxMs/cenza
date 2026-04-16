@@ -6,6 +6,7 @@ import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
 import type { FixedEntry } from '@/components/flows/plan/EditFixedExpensesSheet'
 import type { BudgetCategory } from '@/components/flows/plan/EditSpendingBudgetSheet'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 interface SaveIncomeInput {
   income: number
@@ -131,13 +132,20 @@ export async function saveFixedExpenses(entries: FixedEntry[]): Promise<void> {
 
   const supabase = await createClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const totalMonthly = entries.reduce((sum, entry) => sum + entry.monthly, 0)
+
+  // Canonicalize keys so "Home WiFi", "Fibre", "KPLC", etc. collapse into
+  // known canonical keys (internet, electricity, ...). Labels stay as-is.
+  const canonicalEntries: FixedEntry[] = entries.map((entry) => ({
+    ...entry,
+    key: canonicalizeFixedBillKey(entry.key),
+  }))
+  const totalMonthly = canonicalEntries.reduce((sum, entry) => sum + entry.monthly, 0)
 
   const { error } = await (supabase.from('fixed_expenses') as any).upsert({
     user_id: user.id,
     cycle_id: cycleId,
     total_monthly: totalMonthly,
-    entries,
+    entries: canonicalEntries,
   }, { onConflict: 'user_id,cycle_id' })
 
   if (error) {

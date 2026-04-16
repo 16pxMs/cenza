@@ -11,6 +11,7 @@ import {
   type ParsedSmsExpense,
 } from '@/lib/sms-import/parser'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 interface ParsedRowInput {
   id: string
@@ -337,9 +338,17 @@ export async function saveParsedSmsExpenses(
   }
 
   for (const { row, entryDate } of rowMeta) {
+    // Fixed bills must share a canonical key for Bills-left-to-pay matching.
+    // Other category types persist their parsed key unchanged so we don't
+    // widen the scope of this fix into everyday/debt/goal flows.
+    const persistedKey =
+      row.categoryType === 'fixed'
+        ? canonicalizeFixedBillKey(row.categoryKey)
+        : row.categoryKey
+
     await createCycleTransaction(supabase as any, user.id, profile as any, {
       categoryType: row.categoryType,
-      categoryKey: row.categoryKey,
+      categoryKey: persistedKey,
       categoryLabel: row.label,
       amount: row.amount,
       date: entryDate,
@@ -348,7 +357,7 @@ export async function saveParsedSmsExpenses(
 
     await rememberDictionaryItem(supabase, user.id, {
       label: row.label,
-      categoryKey: row.categoryKey,
+      categoryKey: persistedKey,
       categoryType: row.categoryType,
     })
 

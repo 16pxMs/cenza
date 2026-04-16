@@ -8,6 +8,11 @@
 import { useState, useEffect } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import {
+  canonicalizeFixedBillKey,
+  isKnownFixedBillKey,
+  slugifyBillLabel,
+} from '@/lib/fixed-bills/canonical'
 
 const T = {
   white:     '#FFFFFF',
@@ -128,11 +133,18 @@ export function FixedExpensesEditor({
   const addRow = () => {
     const amount = parseFloat(stripCommas(addAmount))
     if (!addLabel.trim() || !amount || amount <= 0) return
-    const key = addLabel.trim().toLowerCase().replace(/\s+/g, '_') + '_' + Date.now()
+    const trimmed = addLabel.trim()
+    const slug = slugifyBillLabel(trimmed)
+    // Known labels ("Home WiFi", "KPLC", "Fibre") collapse to a canonical key
+    // so Bills left to pay can match them against logged payments. Unknown
+    // labels keep a timestamped slug to stay unique across custom rows.
+    const key = isKnownFixedBillKey(trimmed)
+      ? canonicalizeFixedBillKey(trimmed)
+      : `${slug || 'item'}_${Date.now()}`
     setRows(prev => [...prev, {
       _id:        nextId(),
       key,
-      label:      addLabel.trim(),
+      label:      trimmed,
       monthly:    amount,
       confidence: 'known',
       _amount:    fmt(amount),

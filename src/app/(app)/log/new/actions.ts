@@ -7,6 +7,7 @@ import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
@@ -145,9 +146,17 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
           }
         }
 
+        // Fixed bills share matching by category_key, so variants like
+        // "WiFi" or "Home WiFi" must resolve to the same canonical key
+        // before persisting. Other category types pass through unchanged.
+        const persistedKey =
+          input.categoryType === 'fixed'
+            ? canonicalizeFixedBillKey(input.categoryKey)
+            : input.categoryKey
+
         await createCycleTransaction(supabase as any, user.id, profile, {
           categoryType: input.categoryType,
-          categoryKey: input.categoryKey,
+          categoryKey: persistedKey,
           categoryLabel: input.categoryLabel,
           amount: input.amount,
           note: input.note,
@@ -159,7 +168,10 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
           // or surface a technical message to the user; the transaction
           // already landed.
           try {
-            await rememberDictionaryItem(supabase, user.id, input)
+            await rememberDictionaryItem(supabase, user.id, {
+              ...input,
+              categoryKey: persistedKey,
+            })
           } catch (e) {
             console.error('[log/new] rememberDictionaryItem failed', e)
           }
