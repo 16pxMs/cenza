@@ -29,16 +29,15 @@
 }
 
 .inputPrefix {
-  padding: 0 12px 0 14px;
+  padding: 0 0 0 14px;
   font-size: 14px;
   color: var(--text-3);
   font-weight: 500;
-  border-right: 1px solid var(--border);
-  height: 100%;
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--brand) 20%, transparent);
   font-family: var(--font-sans);
+  pointer-events: none;
+  user-select: none;
 }
 
 .input {
@@ -51,6 +50,10 @@
   font-family: var(--font-sans);
   color: var(--text-1);
   background: transparent;
+}
+
+.inputField:has(.inputPrefix) .input {
+  padding-left: var(--space-sm);
 }
 
 .input[type='number']::-webkit-inner-spin-button,
@@ -91,4 +94,3 @@
   border-color: var(--brand-deep);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
 }
-

@@ -114,3 +114,56 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     entries,
   }
 }
+
+export async function loadEntryById(
+  userId: string,
+  profile: UserProfile,
+  entryId: string
+): Promise<{ entry: LogEntry; currency: string } | null> {
+  const supabase = await createClient()
+  const cycleId = deriveCurrentCycleId(profile)
+
+  const [{ data: txn }, { data: fixedExpenses }] = await Promise.all([
+    (supabase.from('transactions') as any)
+      .select('id, category_key, category_label, category_type, amount, date, note, created_at')
+      .eq('id', entryId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    (supabase.from('fixed_expenses') as any)
+      .select('entries')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+  ])
+
+  if (!txn) return null
+
+  const trackedFixedEntries = readTrackedFixedExpenseEntries((fixedExpenses?.entries ?? null) as unknown[] | null)
+  const trackedFixedEntriesByKey = new Map(
+    trackedFixedEntries.map((entry) => [entry.key, entry] as const)
+  )
+
+  const trackedEssentialKey =
+    txn.category_type === 'fixed'
+      ? canonicalizeFixedBillKey(txn.category_key)
+      : null
+  const trackedEntry = trackedEssentialKey
+    ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
+    : null
+
+  const entry: LogEntry = {
+    id: txn.id,
+    name: txn.category_label || titleCase(txn.category_key),
+    categoryKey: txn.category_key,
+    categoryType: txn.category_type,
+    amount: Number(txn.amount),
+    date: txn.date,
+    note: txn.note ?? null,
+    createdAt: txn.created_at,
+    trackedEssential: !!trackedEntry,
+    trackedEssentialKey: trackedEntry?.key ?? null,
+    trackedMonthlyAmount: trackedEntry?.monthly ?? null,
+  }
+
+  return { entry, currency: profile.currency ?? 'KES' }
+}
