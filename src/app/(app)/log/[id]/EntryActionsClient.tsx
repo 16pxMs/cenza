@@ -212,6 +212,15 @@ export function EntryActionsClient({ entry, currency }: Props) {
     if (!entry.id) return
     setDeletingKey(entry.id)
     try {
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[log.delete] client', {
+          transactionId: entry.id,
+          trackedEssential: entry.trackedEssential,
+          trackedEssentialKey: entry.trackedEssentialKey,
+          categoryKey: entry.categoryKey,
+          categoryLabel: entry.name,
+        })
+      }
       await deleteLogEntry(
         entry.id,
         entry.trackedEssential ? (entry.trackedEssentialKey ?? entry.categoryKey) : null

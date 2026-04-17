@@ -61,6 +61,15 @@ async function removeRecurringEntryForCurrentCycle(
   categoryKey: string
 ): Promise<void> {
   const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  await removeRecurringEntryForCycle(supabase, userId, cycleId, categoryKey)
+}
+
+async function removeRecurringEntryForCycle(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  cycleId: string,
+  categoryKey: string
+): Promise<void> {
   const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
     .select('entries')
     .eq('user_id', userId)
@@ -75,6 +84,19 @@ async function removeRecurringEntryForCurrentCycle(
     fixedExpenses?.entries ?? null,
     canonicalizeFixedBillKey(categoryKey)
   )
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(
+      `[log.delete] recurring-remove
+cycleId: ${cycleId}
+requestedKey: ${categoryKey}
+canonicalKey: ${canonicalizeFixedBillKey(categoryKey)}
+before:
+${JSON.stringify(readTrackedFixedExpenseEntries(fixedExpenses?.entries ?? null), null, 2)}
+after:
+${JSON.stringify(nextEntries, null, 2)}`
+    )
+  }
 
   const { error: recurringError } = await (supabase.from('fixed_expenses') as any).upsert({
     user_id: userId,
@@ -189,6 +211,40 @@ export async function deleteLogEntry(id: string, recurringCategoryKey?: string |
   if (!id.trim()) throw new Error('Entry id is required')
 
   const supabase = await createClient()
+  const { data: txn, error: txnError } = await (supabase.from('transactions') as any)
+    .select('id, category_key, category_label, category_type, cycle_id')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (txnError) throw new Error(`Failed to load entry before delete: ${txnError.message}`)
+  if (!txn) throw new Error('Entry not found')
+
+  const currentCycleId = profile
+    ? await getCurrentCycleId(supabase as any, user.id, profile)
+    : null
+  const removalCycleId = txn.cycle_id || currentCycleId
+  const explicitRecurringKey = recurringCategoryKey?.trim() || null
+  const derivedRecurringKey = canonicalizeFixedBillKey(String(txn.category_key ?? '').trim())
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(
+      `[log.delete] request
+transactionId: ${id}
+receivedRecurringKey: ${explicitRecurringKey}
+transaction:
+${JSON.stringify({
+  id: txn.id,
+  category_key: txn.category_key,
+  category_label: txn.category_label,
+  category_type: txn.category_type,
+  cycle_id: txn.cycle_id,
+}, null, 2)}
+derivedRecurringKey: ${derivedRecurringKey}
+currentCycleId: ${currentCycleId}`
+    )
+  }
+
   const { error } = await (supabase.from('transactions') as any)
     .delete()
     .eq('id', id)
@@ -196,14 +252,41 @@ export async function deleteLogEntry(id: string, recurringCategoryKey?: string |
 
   if (error) throw new Error(`Failed to delete entry: ${error.message}`)
 
-  if (recurringCategoryKey?.trim()) {
-    if (!profile) throw new Error('Profile is required to update recurring state')
-    await removeRecurringEntryForCurrentCycle(
-      supabase,
-      user.id,
-      profile,
-      recurringCategoryKey
-    )
+  if (removalCycleId) {
+    const { data: fixedExpensesAfterDelete, error: fixedExpensesLookupError } = await (supabase.from('fixed_expenses') as any)
+      .select('entries')
+      .eq('user_id', user.id)
+      .eq('cycle_id', removalCycleId)
+      .maybeSingle()
+
+    if (fixedExpensesLookupError) {
+      throw new Error(`Failed to load recurring essentials after delete: ${fixedExpensesLookupError.message}`)
+    }
+
+    const trackedEntries = readTrackedFixedExpenseEntries(fixedExpensesAfterDelete?.entries ?? null)
+    const matchedRecurringKey =
+      explicitRecurringKey ||
+      trackedEntries.find((entry) => entry.key === derivedRecurringKey)?.key ||
+      null
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(
+        `[log.delete] recurring-match
+cycleId: ${removalCycleId}
+trackedEntries:
+${JSON.stringify(trackedEntries, null, 2)}
+matchedRecurringKey: ${matchedRecurringKey}`
+      )
+    }
+
+    if (matchedRecurringKey) {
+      await removeRecurringEntryForCycle(
+        supabase,
+        user.id,
+        removalCycleId,
+        matchedRecurringKey
+      )
+    }
   }
 
   revalidatePath('/log')
