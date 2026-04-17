@@ -14,9 +14,20 @@ interface Props {
   title: string
   children: React.ReactNode
   isDesktop?: boolean
+  hideHeader?: boolean
+  bodyPadding?: 'default' | 'none'
+  variant?: 'default' | 'bottom'
 }
 
-export function Sheet({ open, onClose, title, children }: Props) {
+export function Sheet({
+  open,
+  onClose,
+  title,
+  children,
+  hideHeader = false,
+  bodyPadding = 'default',
+  variant = 'default',
+}: Props) {
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -25,19 +36,21 @@ export function Sheet({ open, onClose, title, children }: Props) {
   if (!open) return null
 
   return (
-    <div className={styles.backdrop}>
+    <div className={`${styles.backdrop} ${variant === 'bottom' ? styles.backdropBottom : ''}`}>
       <div className={styles.overlay} onClick={onClose} />
-      <div className={styles.panel}>
-        <div className={styles.handle}>
+      <div className={`${styles.panel} ${variant === 'bottom' ? styles.panelBottom : ''}`}>
+        <div className={`${styles.handle} ${variant === 'bottom' ? styles.handleBottom : ''}`}>
           <div className={styles.handleBar} />
         </div>
-        <div className={styles.header}>
-          <h2 className={styles.title}>{title}</h2>
-          <button type="button" className={styles.close} onClick={onClose}>
-            <IconChevronX size={16} color="var(--text-2)" />
-          </button>
-        </div>
-        <div className={styles.body}>
+        {!hideHeader && (
+          <div className={styles.header}>
+            <h2 className={styles.title}>{title}</h2>
+            <button type="button" className={styles.close} onClick={onClose}>
+              <IconChevronX size={16} color="var(--text-2)" />
+            </button>
+          </div>
+        )}
+        <div className={`${styles.body} ${bodyPadding === 'none' ? styles.bodyNoPad : ''}`}>
           {children}
         </div>
       </div>

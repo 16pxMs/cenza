@@ -36,6 +36,9 @@ const T = {
   redDark: 'var(--red-dark)',
   redLight: 'var(--red-light)',
   redBorder: 'var(--red-border)',
+  amberLight: 'var(--amber-light)',
+  amberBorder: 'var(--amber-border)',
+  amberDark: 'var(--amber-dark)',
 }
 
 function normalize(value: string) {
@@ -127,7 +130,7 @@ function validateRow(row: EditableRow) {
     errors.push('Date is invalid.')
   }
   if (!row.categoryType) {
-    errors.push('Select category.')
+    errors.push('Choose a category')
   }
   if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
     errors.push('Use a specific debt name (e.g. "KCB loan", "Visa card").')
@@ -450,16 +453,21 @@ export function SmsImportClient() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rows.map((row) => {
-                  const rowIssues = rowErrors[row.id] ?? validateRow(row)
-                  const rowIsHardBlocked = rowIssues.length > 0
+                  const serverErrors = rowErrors[row.id] ?? []
+                  const clientIssues = validateRow(row)
+                  const hasHardError = serverErrors.length > 0 || clientIssues.some((i) => i !== 'Choose a category')
+                  const needsCategory = !row.categoryType && !hasHardError
+                  const cardBorder = hasHardError ? T.redBorder : needsCategory ? T.amberBorder : T.borderSubtle
+                  const cardBg = hasHardError ? T.redLight : needsCategory ? T.amberLight : 'var(--white)'
+
                   return (
                   <div
                     key={row.id}
                     style={{
-                      border: `1px solid ${rowIsHardBlocked ? T.redBorder : T.borderSubtle}`,
+                      border: `1px solid ${cardBorder}`,
                       borderRadius: 12,
                       padding: 12,
-                      background: rowIsHardBlocked ? T.redLight : 'var(--white)',
+                      background: cardBg,
                     }}
                   >
                     <div
@@ -510,8 +518,7 @@ export function SmsImportClient() {
 
                     <div style={{ display: 'grid', gap: 8 }}>
                       {(() => {
-                        const issues = rowErrors[row.id] ?? validateRow(row)
-                        const hasIssues = issues.length > 0
+                        const hardErrors = (serverErrors.length > 0 ? serverErrors : clientIssues).filter((i) => i !== 'Choose a category')
                         const warnings = rowWarnings[row.id] ?? []
                         return (
                           <>
@@ -523,7 +530,7 @@ export function SmsImportClient() {
                                 width: '100%',
                                 height: 42,
                                 borderRadius: 10,
-                                border: `1px solid ${hasIssues ? T.brandMid : T.border}`,
+                                border: `1px solid ${hasHardError ? T.brandMid : T.border}`,
                                 padding: '0 10px',
                                 fontSize: 14,
                                 color: T.text1,
@@ -566,21 +573,26 @@ export function SmsImportClient() {
                                 )
                               })}
                             </div>
+                            {needsCategory && (
+                              <p style={{ margin: 0, fontSize: 12, color: T.amberDark, lineHeight: 1.5 }}>
+                                Choose a category
+                              </p>
+                            )}
                             {row.categoryType && (
                               <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
                                 {CATEGORY_HELPER[row.categoryType]}
                               </p>
                             )}
-                            {hasIssues && (
+                            {hardErrors.length > 0 && (
                               <div style={{ display: 'grid', gap: 4 }}>
-                                {issues.map((issue, index) => (
+                                {hardErrors.map((issue, index) => (
                                   <p key={`${row.id}-issue-${index}`} style={{ margin: 0, fontSize: 11, color: T.redDark, lineHeight: 1.4 }}>
                                     {issue}
                                   </p>
                                 ))}
                               </div>
                             )}
-                            {!hasIssues && warnings.length > 0 && (
+                            {hardErrors.length === 0 && warnings.length > 0 && (
                               <div style={{ display: 'grid', gap: 4 }}>
                                 {warnings.map((warning, index) => (
                                   <p key={`${row.id}-warning-${index}`} style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>

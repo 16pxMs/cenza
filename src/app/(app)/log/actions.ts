@@ -21,6 +21,7 @@ interface UpdateLogEntryInput {
   note?: string
   label?: string
   categoryKey?: string
+  categoryType?: CategoryType
 }
 
 function slugifyCategoryKey(value: string) {
@@ -80,6 +81,10 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
     note: input.note?.trim() || null,
   }
 
+  if (input.categoryType) {
+    patch.category_type = input.categoryType
+  }
+
   if (nextLabel) {
     patch.category_label = nextLabel
     patch.category_key = nextCategoryKey || input.categoryKey || null
@@ -114,4 +119,3 @@ export async function deleteLogEntry(id: string): Promise<void> {
   revalidatePath('/history')
   revalidatePath('/app')
 }
-

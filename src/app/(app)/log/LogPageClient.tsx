@@ -8,8 +8,9 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { PrimaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { IconBack } from '@/components/ui/Icons'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { Input } from '@/components/ui/Input/Input'
+import { IconBack, IconCheck, IconChevronX } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData, LogSubItem } from '@/lib/loaders/log'
 import { deleteLogEntry, recordRefund, updateLogEntry } from './actions'
@@ -19,6 +20,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   fixed: 'Essentials',
   debt: 'Debt',
 }
+
+type EditableCategory = 'everyday' | 'fixed' | 'debt'
 
 function entryToSubItem(entry: LogEntry): LogSubItem {
   return {
@@ -56,6 +59,10 @@ function formatEntryDate(iso: string | null | undefined) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function isEditableCategory(value: string | null | undefined): value is EditableCategory {
+  return value === 'everyday' || value === 'fixed' || value === 'debt'
+}
+
 interface LogPageClientProps {
   data: LogPageData
 }
@@ -77,7 +84,13 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
   const [editLabel, setEditLabel] = useState('')
-  const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
+  const [editCategoryType, setEditCategoryType] = useState<EditableCategory | null>(null)
+  const [editErrors, setEditErrors] = useState<{
+    label?: string
+    amount?: string
+    category?: string
+  }>({})
+  const [editDialog, setEditDialog] = useState<'delete' | 'discard' | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
   const [filter, setFilter] = useState<'all' | 'everyday' | 'fixed' | 'debt'>('all')
 
@@ -142,7 +155,9 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     setEditDate(item.singleEntryDate)
     setEditNote(item.singleEntryNote ?? '')
     setEditLabel(item.label)
-    setEditIsSmsMeta((item.singleEntryNote ?? '').trim().toLowerCase() === 'imported from sms')
+    setEditCategoryType(isEditableCategory(item.groupType) ? item.groupType : 'everyday')
+    setEditErrors({})
+    setEditDialog(null)
     setDeleteStep('edit')
   }
 
@@ -157,6 +172,44 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     autoOpened.current = true
     logOther()
   }, [router, searchParams])
+
+  const editIsDirty = !!(
+    pendingDelete &&
+    deleteStep === 'edit' &&
+    (
+      editLabel.trim() !== pendingDelete.label.trim() ||
+      editAmount !== String(pendingDelete.loggedAmount) ||
+      editCategoryType !== pendingDelete.groupType
+    )
+  )
+
+  const requestCloseEdit = () => {
+    if (deleteStep === 'edit' && editDialog) {
+      setEditDialog(null)
+      return
+    }
+
+    if (deleteStep === 'edit' && editIsDirty) {
+      setEditDialog('discard')
+      return
+    }
+
+    setPendingDelete(null)
+    setEditCategoryType(null)
+    setEditErrors({})
+    setEditDialog(null)
+  }
+
+  const validateEdit = () => {
+    const nextErrors: { label?: string; amount?: string; category?: string } = {}
+
+    if (!editLabel.trim()) nextErrors.label = 'Add a name'
+    if (!editAmount.trim() || !(parseFloat(editAmount) > 0)) nextErrors.amount = 'Add an amount'
+    if (!editCategoryType) nextErrors.category = 'Choose a category'
+
+    setEditErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
 
   const handleSaveRefund = async () => {
     if (!pendingDelete) return
@@ -187,8 +240,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
   const handleSaveEdit = async () => {
     if (!pendingDelete?.singleEntryId) return
+    if (!validateEdit()) return
+
     const amount = parseFloat(editAmount)
-    if (!amount || amount <= 0 || !editDate) return
+    if (!amount || amount <= 0 || !editDate || !editCategoryType) return
 
     setSavingEdit(true)
     try {
@@ -199,6 +254,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         note: editNote,
         label: editLabel,
         categoryKey: pendingDelete.key,
+        categoryType: editCategoryType,
       })
       toast('Entry updated')
       setPendingDelete(null)
@@ -206,7 +262,9 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       setEditDate('')
       setEditNote('')
       setEditLabel('')
-      setEditIsSmsMeta(false)
+      setEditCategoryType(null)
+      setEditErrors({})
+      setEditDialog(null)
       router.refresh()
     } catch {
       toast('Could not update entry')
@@ -220,7 +278,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     try {
       await deleteLogEntry(id)
       toast('Entry removed')
+      setEditDialog(null)
       setPendingDelete(null)
+      setEditErrors({})
+      setEditCategoryType(null)
       router.refresh()
     } catch {
       toast('Could not remove entry')
@@ -529,7 +590,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       {pendingDelete && (
         <Sheet
           open={true}
-          onClose={() => setPendingDelete(null)}
+          onClose={requestCloseEdit}
           title={
             deleteStep === 'reason'
               ? ''
@@ -539,6 +600,9 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   ? 'Edit expense'
                   : 'Are you sure?'
           }
+          hideHeader={deleteStep === 'edit'}
+          bodyPadding={deleteStep === 'edit' ? 'none' : 'default'}
+          variant={deleteStep === 'edit' ? 'bottom' : 'default'}
         >
           {deleteStep === 'reason' && (
             <div>
@@ -631,135 +695,290 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           )}
 
           {deleteStep === 'edit' && pendingDelete && (
-            <div>
-              <p style={{ fontSize: 14, color: T.text3, margin: '0 0 20px', lineHeight: 1.6 }}>
-                {pendingDelete.label} · {data.cycleLabel}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <input
-                  type="text"
-                  value={editLabel}
-                  onChange={event => setEditLabel(event.target.value)}
-                  placeholder="Expense name"
-                  style={{
-                    height: 40,
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    padding: '0 12px',
-                    fontSize: 13,
+            <div style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '80vh',
+              minHeight: 'min(640px, 80vh)',
+              background: 'var(--page-bg)',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 'var(--space-md)',
+                padding: 'var(--space-lg) var(--space-page-mobile) var(--space-md)',
+                borderBottom: `var(--border-width) solid ${T.borderSubtle}`,
+                background: 'var(--page-bg)',
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{
+                    margin: 0,
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-xl)',
+                    fontWeight: 'var(--weight-semibold)',
                     color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={(() => {
-                    if (!editAmount) return ''
-                    const parts = editAmount.split('.')
-                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-                    return parts.join('.')
-                  })()}
-                  onChange={event => {
-                    const value = event.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
-                    const parts = value.split('.')
-                    if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
-                    setEditAmount(value)
-                  }}
-                  placeholder="Amount"
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.15,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {editLabel.trim() || pendingDelete.label}
+                  </p>
+                  <p style={{
+                    margin: 'var(--space-xs) 0 0',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-lg)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.text2,
+                    lineHeight: 1.2,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
+                    {fmt(parseFloat(editAmount) || 0, data.currency)}
+                  </p>
+                  <p style={{
+                    margin: 'var(--space-sm) 0 0',
+                    fontSize: 'var(--text-sm)',
+                    color: T.textMuted,
+                    lineHeight: 1.35,
+                  }}>
+                    {(editCategoryType ? CATEGORY_LABEL[editCategoryType] : CATEGORY_LABEL[pendingDelete.groupType] ?? 'Other')}
+                    {pendingDelete.latestLoggedDate ? ` · ${formatEntryDate(pendingDelete.latestLoggedDate)}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestCloseEdit}
                   style={{
-                    height: 44,
-                    borderRadius: 10,
-                    border: '2px solid var(--border-focus)',
-                    padding: '0 12px',
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    width: '100%',
-                    boxSizing: 'border-box',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--radius-full)',
+                    border: 'none',
+                    background: 'var(--grey-100)',
+                    color: T.text2,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    cursor: 'pointer',
                   }}
-                />
-                <input
-                  type="date"
-                  value={editDate}
-                  onChange={event => setEditDate(event.target.value)}
-                  style={{
-                    height: 40,
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    padding: '0 12px',
-                    fontSize: 13,
-                    color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                {editIsSmsMeta ? (
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span
-                      style={{
-                        height: 28,
-                        borderRadius: 999,
-                        border: `1px solid ${T.border}`,
-                        background: 'var(--grey-100)',
-                        color: T.text3,
-                        padding: '0 10px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Imported from SMS
-                    </span>
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    value={editNote}
-                    onChange={event => setEditNote(event.target.value)}
-                    placeholder="Note (optional)"
-                    style={{
-                      height: 40,
-                      borderRadius: 10,
-                      border: '1px solid var(--border)',
-                      padding: '0 12px',
-                      fontSize: 13,
-                      color: T.text1,
-                      background: T.white,
-                      outline: 'none',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                )}
+                >
+                  <IconChevronX size={16} color="var(--text-2)" />
+                </button>
               </div>
-              <button
-                onClick={handleSaveEdit}
-                disabled={savingEdit || parseFloat(editAmount) <= 0 || !editDate || editLabel.trim().length === 0}
-                style={{
-                  width: '100%',
-                  marginTop: 14,
-                  padding: '14px',
-                  borderRadius: 14,
-                  background: savingEdit ? T.border : T.brandDark,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: T.textInverse,
-                }}
-              >
-                {savingEdit ? 'Saving…' : 'Save changes'}
-              </button>
+
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 'var(--space-lg) var(--space-page-mobile) var(--space-xl)',
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                  <Input
+                    label="Name"
+                    value={editLabel}
+                    onChange={(value) => {
+                      setEditLabel(value)
+                      setEditErrors((current) => ({ ...current, label: undefined }))
+                    }}
+                    autoFocus
+                    placeholder={editLabel ? undefined : 'Name'}
+                    error={editErrors.label}
+                  />
+
+                  <Input
+                    label="Amount"
+                    type="number"
+                    value={editAmount}
+                    onChange={(value) => {
+                      setEditAmount(value)
+                      setEditErrors((current) => ({ ...current, amount: undefined }))
+                    }}
+                    autoFocus={false}
+                    placeholder={editAmount ? undefined : 'Amount'}
+                    error={editErrors.amount}
+                  />
+
+                  <div>
+                    <p style={{
+                      margin: '0 0 6px',
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: T.text2,
+                      letterSpacing: '0.2px',
+                    }}>
+                      Category
+                    </p>
+                    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                      {([
+                        { value: 'everyday', label: 'Spending' },
+                        { value: 'fixed', label: 'Essentials' },
+                        { value: 'debt', label: 'Debt' },
+                      ] as const).map((option) => {
+                        const selected = editCategoryType === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                              setEditCategoryType(option.value)
+                              setEditErrors((current) => ({ ...current, category: undefined }))
+                            }}
+                            style={{
+                              height: 'var(--button-height-md)',
+                              padding: '0 var(--space-md)',
+                              borderRadius: 'var(--radius-full)',
+                              border: selected
+                                ? `var(--border-width-thick) solid ${T.brandDark}`
+                                : `var(--border-width) solid ${T.border}`,
+                              background: selected ? T.brandDark : T.white,
+                              color: selected ? T.textInverse : T.text2,
+                              fontSize: 'var(--text-sm)',
+                              fontWeight: 'var(--weight-medium)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 'var(--space-xs)',
+                              cursor: 'pointer',
+                              lineHeight: 1,
+                            }}
+                          >
+                            {selected && <IconCheck size={14} color="var(--text-inverse)" />}
+                            <span>{option.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {editErrors.category && (
+                      <p style={{
+                        margin: 'var(--space-xs) 0 0',
+                        fontSize: 12,
+                        color: 'var(--red-dark)',
+                        fontWeight: 500,
+                      }}>
+                        {editErrors.category}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{
+                position: 'sticky',
+                bottom: 0,
+                display: 'grid',
+                gap: 'var(--space-sm)',
+                padding: 'var(--space-md) var(--space-page-mobile) calc(var(--space-md) + env(safe-area-inset-bottom, 0px))',
+                borderTop: `var(--border-width) solid ${T.borderSubtle}`,
+                background: 'var(--page-bg)',
+              }}>
+                <PrimaryBtn
+                  size="lg"
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? 'Saving…' : 'Save changes'}
+                </PrimaryBtn>
+                <TertiaryBtn
+                  size="lg"
+                  onClick={() => setEditDialog('delete')}
+                  style={{
+                    color: 'var(--red-dark)',
+                    minHeight: 'var(--button-height)',
+                  }}
+                >
+                  Delete entry
+                </TertiaryBtn>
+              </div>
+
+              {editDialog && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(16, 24, 40, 0.32)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 'var(--space-md)',
+                  zIndex: 2,
+                }}>
+                  <div style={{
+                    width: '100%',
+                    maxWidth: 360,
+                    background: T.white,
+                    borderRadius: 'var(--radius-lg)',
+                    border: `var(--border-width) solid ${T.border}`,
+                    padding: 'var(--space-lg)',
+                  }}>
+                    <p style={{
+                      margin: 0,
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 'var(--text-lg)',
+                      fontWeight: 'var(--weight-semibold)',
+                      color: T.text1,
+                      letterSpacing: '-0.01em',
+                    }}>
+                      {editDialog === 'delete' ? 'Delete this entry?' : 'Discard changes?'}
+                    </p>
+                    {editDialog === 'delete' && (
+                      <p style={{
+                        margin: 'var(--space-sm) 0 0',
+                        fontSize: 'var(--text-sm)',
+                        color: T.text2,
+                        lineHeight: 1.5,
+                      }}>
+                        This will remove it from your log.
+                      </p>
+                    )}
+                    <div style={{
+                      display: 'grid',
+                      gap: 'var(--space-sm)',
+                      marginTop: 'var(--space-lg)',
+                    }}>
+                      {editDialog === 'delete' ? (
+                        <>
+                          <SecondaryBtn
+                            size="lg"
+                            onClick={() => setEditDialog(null)}
+                          >
+                            Cancel
+                          </SecondaryBtn>
+                          <PrimaryBtn
+                            size="lg"
+                            onClick={() => pendingDelete.singleEntryId && handleDeleteEntry(pendingDelete.singleEntryId)}
+                            disabled={deletingKey === pendingDelete.singleEntryId}
+                            style={{
+                              background: 'var(--red-dark)',
+                              color: T.textInverse,
+                            }}
+                          >
+                            {deletingKey === pendingDelete.singleEntryId ? 'Deleting…' : 'Delete'}
+                          </PrimaryBtn>
+                        </>
+                      ) : (
+                        <>
+                          <SecondaryBtn
+                            size="lg"
+                            onClick={() => setEditDialog(null)}
+                          >
+                            Keep editing
+                          </SecondaryBtn>
+                          <TertiaryBtn
+                            size="lg"
+                            onClick={() => {
+                              setEditDialog(null)
+                              setPendingDelete(null)
+                              setEditErrors({})
+                            }}
+                          >
+                            Discard
+                          </TertiaryBtn>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

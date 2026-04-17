@@ -13,6 +13,12 @@
   }
 }
 
+@media (min-width: 1024px) {
+  .backdropBottom {
+    align-items: flex-end;
+  }
+}
+
 .overlay {
   position: absolute;
   inset: 0;
@@ -34,6 +40,12 @@
   box-shadow: var(--shadow-lg);
 }
 
+.panelBottom {
+  max-height: 80vh;
+  padding: 0;
+  box-shadow: var(--shadow-md);
+}
+
 @media (min-width: 1024px) {
   .panel {
     width: 480px;
@@ -41,6 +53,14 @@
     border-radius: 24px;
     padding: 0 0 24px;
     animation: sheetPopIn 0.25s ease;
+  }
+
+  .panelBottom {
+    width: min(100%, 560px);
+    max-height: 80vh;
+    border-radius: 24px 24px 0 0;
+    padding: 0;
+    animation: sheetSlideUp 0.25s ease;
   }
 }
 
@@ -53,6 +73,10 @@
 @media (min-width: 1024px) {
   .handle {
     display: none;
+  }
+
+  .handleBottom {
+    display: flex;
   }
 }
 
@@ -99,6 +123,10 @@
 
 .body {
   padding: 20px var(--space-page-mobile);
+}
+
+.bodyNoPad {
+  padding: 0;
 }
 
 @media (min-width: 1024px) {
