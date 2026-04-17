@@ -5,6 +5,7 @@ import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
 import { createClient } from '@/lib/supabase/server'
 import type { CategoryType } from '@/types/database'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 interface UpdateHistoryEntryInput {
   id: string
@@ -54,13 +55,17 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   const supabase = await createClient()
   const nextLabel = input.label?.trim()
   const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : input.categoryKey
+  const persistedCategoryKey =
+    input.categoryType === 'fixed'
+      ? canonicalizeFixedBillKey(nextCategoryKey)
+      : nextCategoryKey
 
   const patch: Record<string, unknown> = {
     amount,
     date: input.date,
     note: input.note?.trim() || null,
     category_type: input.categoryType,
-    category_key: nextCategoryKey,
+    category_key: persistedCategoryKey,
   }
 
   if (nextLabel) {
@@ -75,8 +80,8 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   if (error) throw new Error(`Failed to update entry: ${error.message}`)
 
   revalidateHistoryPaths(input.currentCategoryKey)
-  if (nextCategoryKey && nextCategoryKey !== input.currentCategoryKey) {
-    revalidateHistoryPaths(nextCategoryKey)
+  if (persistedCategoryKey && persistedCategoryKey !== input.currentCategoryKey) {
+    revalidateHistoryPaths(persistedCategoryKey)
   }
 }
 

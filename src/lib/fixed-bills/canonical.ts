@@ -28,6 +28,16 @@ export const FIXED_BILL_SYNONYMS: Record<string, string> = {
   faiba: 'internet',
   jtl: 'internet',
 
+  // Mobile data / phone bundles
+  phone_internet_and_minutes: 'phone',
+  internet_and_minutes: 'phone',
+  phone_data: 'phone',
+  mobile_data: 'phone',
+  mobile_internet: 'phone',
+  data_bundle: 'phone',
+  data_bundles: 'phone',
+  airtime_and_data: 'phone',
+
   // Rent
   house_rent: 'rent',
   home_rent: 'rent',

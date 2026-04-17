@@ -2,6 +2,8 @@ import { formatCycleLabel, getCycleByDate, profileToPaySchedule } from '@/lib/cy
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { readTrackedFixedExpenseEntries } from '@/lib/fixed-bills/tracking'
 
 export interface LogSubItem {
   key: string
@@ -16,6 +18,9 @@ export interface LogSubItem {
   singleEntryDate?: string | null
   singleEntryNote?: string | null
   scope?: 'key' | 'label'
+  trackedEssential?: boolean
+  trackedEssentialKey?: string | null
+  trackedMonthlyAmount?: number | null
 }
 
 export interface LogEntry {
@@ -27,6 +32,9 @@ export interface LogEntry {
   date: string
   note: string | null
   createdAt: string
+  trackedEssential: boolean
+  trackedEssentialKey: string | null
+  trackedMonthlyAmount: number | null
 }
 
 export interface LogPageData {
@@ -44,11 +52,18 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const cycleId = deriveCurrentCycleId(profile)
   const schedule = profileToPaySchedule(profile)
 
-  const { data: txns } = await (supabase.from('transactions') as any)
-    .select('id, category_key, category_label, category_type, amount, date, note, created_at')
-    .eq('user_id', userId)
-    .eq('cycle_id', cycleId)
-    .order('created_at', { ascending: false })
+  const [{ data: txns }, { data: fixedExpenses }] = await Promise.all([
+    (supabase.from('transactions') as any)
+      .select('id, category_key, category_label, category_type, amount, date, note, created_at')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .order('created_at', { ascending: false }),
+    (supabase.from('fixed_expenses') as any)
+      .select('entries')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+  ])
 
   const currency = profile.currency ?? 'KES'
   const txRows = (txns ?? []) as Array<{
@@ -62,18 +77,36 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     created_at: string
   }>
 
+  const trackedFixedEntries = readTrackedFixedExpenseEntries((fixedExpenses?.entries ?? null) as unknown[] | null)
+  const trackedFixedEntriesByKey = new Map(
+    trackedFixedEntries.map((entry) => [entry.key, entry] as const)
+  )
+
   const entries: LogEntry[] = txRows
     .filter((txn) => txn.category_type !== 'goal')
-    .map((txn) => ({
-      id: txn.id,
-      name: txn.category_label || titleCase(txn.category_key),
-      categoryKey: txn.category_key,
-      categoryType: txn.category_type,
-      amount: Number(txn.amount),
-      date: txn.date,
-      note: txn.note ?? null,
-      createdAt: txn.created_at,
-    }))
+    .map((txn) => {
+      const trackedEssentialKey =
+        txn.category_type === 'fixed'
+          ? canonicalizeFixedBillKey(txn.category_key)
+          : null
+      const trackedEntry = trackedEssentialKey
+        ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
+        : null
+
+      return {
+        id: txn.id,
+        name: txn.category_label || titleCase(txn.category_key),
+        categoryKey: txn.category_key,
+        categoryType: txn.category_type,
+        amount: Number(txn.amount),
+        date: txn.date,
+        note: txn.note ?? null,
+        createdAt: txn.created_at,
+        trackedEssential: !!trackedEntry,
+        trackedEssentialKey: trackedEntry?.key ?? null,
+        trackedMonthlyAmount: trackedEntry?.monthly ?? null,
+      }
+    })
 
   return {
     cycleLabel: formatCycleLabel(getCycleByDate(new Date(), schedule)),

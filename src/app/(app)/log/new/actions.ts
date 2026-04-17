@@ -8,6 +8,7 @@ import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { sumTrackedFixedExpenses, upsertTrackedFixedExpense } from '@/lib/fixed-bills/tracking'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
@@ -20,6 +21,8 @@ interface SaveExpenseInput {
   amount: number
   note?: string | null
   rememberItem: boolean
+  trackAsEssential?: boolean
+  trackedMonthlyAmount?: number | null
 }
 
 interface SaveExpenseBatchItem extends SaveExpenseInput {}
@@ -162,6 +165,35 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
           note: input.note,
         })
         savedCount += 1
+
+        if (input.categoryType === 'fixed' && input.trackAsEssential) {
+          const { data: existingFixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
+            .select('entries')
+            .eq('user_id', user.id)
+            .eq('cycle_id', cycleId)
+            .maybeSingle()
+
+          if (fixedExpensesError) {
+            throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
+          }
+
+          const nextEntries = upsertTrackedFixedExpense(existingFixedExpenses?.entries ?? null, {
+            key: persistedKey,
+            label: input.categoryLabel,
+            monthly: Number(input.trackedMonthlyAmount ?? input.amount),
+          })
+
+          const { error: fixedExpensesUpsertError } = await (supabase.from('fixed_expenses') as any).upsert({
+            user_id: user.id,
+            cycle_id: cycleId,
+            total_monthly: sumTrackedFixedExpenses(nextEntries),
+            entries: nextEntries,
+          }, { onConflict: 'user_id,cycle_id' })
+
+          if (fixedExpensesUpsertError) {
+            throw new Error(`Failed to track essential: ${fixedExpensesUpsertError.message}`)
+          }
+        }
 
         if (input.rememberItem) {
           // Non-critical side effect. A failure here must not fail the save

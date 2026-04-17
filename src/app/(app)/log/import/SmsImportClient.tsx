@@ -6,6 +6,7 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import { parseSmsImport, saveParsedSmsExpenses } from './actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
@@ -21,6 +22,8 @@ interface EditableRow {
   date: string
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
+  trackAsEssential: boolean
+  trackedMonthlyAmount: number | null
 }
 
 const T = {
@@ -148,6 +151,7 @@ export function SmsImportClient() {
   const [rawText, setRawText] = useState('')
   const [rows, setRows] = useState<EditableRow[]>([])
   const [parseMeta, setParseMeta] = useState<{ scanned: number; skippedCredits: number }>({ scanned: 0, skippedCredits: 0 })
+  const [trackedFixedKeys, setTrackedFixedKeys] = useState<string[]>([])
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
@@ -160,12 +164,15 @@ export function SmsImportClient() {
     label: string
     amount: string
     categoryType: ImportCategoryType | null
+    trackAsEssential: boolean
+    trackedMonthlyAmount: string
   } | null>(null)
   const [editDeleteConfirmOpen, setEditDeleteConfirmOpen] = useState(false)
   const [editErrors, setEditErrors] = useState<{
     label?: string
     amount?: string
     category?: string
+    trackedMonthlyAmount?: string
   }>({})
 
   const selectedCount = rows.length
@@ -182,6 +189,14 @@ export function SmsImportClient() {
   ].join('\n')
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const hasHardBlockedRows = Object.keys(rowErrors).length > 0
+
+  const isRowAlreadyTracked = (
+    input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
+  ) => {
+    if (input.categoryType !== 'fixed') return false
+    const canonicalKey = canonicalizeFixedBillKey(slugify(input.categoryKey || input.label))
+    return trackedFixedKeys.includes(canonicalKey)
+  }
 
   const applyRowsChange = (
     mutator: (current: EditableRow[]) => EditableRow[]
@@ -214,6 +229,11 @@ export function SmsImportClient() {
       label: row.label,
       amount: String(row.amount),
       categoryType: row.categoryType,
+      trackAsEssential: row.trackAsEssential,
+      trackedMonthlyAmount:
+        row.trackAsEssential && row.trackedMonthlyAmount != null
+          ? String(row.trackedMonthlyAmount)
+          : '',
     })
     setEditErrors({})
   }
@@ -228,13 +248,28 @@ export function SmsImportClient() {
   const saveEditRow = () => {
     if (!editingRowId || !editDraft) return
 
-    const nextErrors: { label?: string; amount?: string; category?: string } = {}
+    const nextErrors: { label?: string; amount?: string; category?: string; trackedMonthlyAmount?: string } = {}
     const trimmedLabel = editDraft.label.trim()
     const amount = Number(editDraft.amount)
+    const monthlyAmount = Number(editDraft.trackedMonthlyAmount)
+    const nextCategoryType = editDraft.categoryType
+    const alreadyTracked = isRowAlreadyTracked({
+      label: trimmedLabel,
+      categoryKey: slugify(trimmedLabel),
+      categoryType: nextCategoryType,
+    })
 
     if (!trimmedLabel) nextErrors.label = 'Name is required.'
     if (!Number.isFinite(amount) || amount <= 0) nextErrors.amount = 'Amount must be greater than zero.'
-    if (!editDraft.categoryType) nextErrors.category = 'Choose a category'
+    if (!nextCategoryType) nextErrors.category = 'Choose a category'
+    if (
+      nextCategoryType === 'fixed' &&
+      !alreadyTracked &&
+      editDraft.trackAsEssential &&
+      (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0)
+    ) {
+      nextErrors.trackedMonthlyAmount = 'Add a monthly amount'
+    }
 
     if (Object.keys(nextErrors).length > 0) {
       setEditErrors(nextErrors)
@@ -244,8 +279,13 @@ export function SmsImportClient() {
     updateRow(editingRowId, {
       label: trimmedLabel,
       amount,
-      categoryType: editDraft.categoryType,
+      categoryType: nextCategoryType,
       categoryKey: slugify(trimmedLabel),
+      trackAsEssential: nextCategoryType === 'fixed' && !alreadyTracked ? editDraft.trackAsEssential : false,
+      trackedMonthlyAmount:
+        nextCategoryType === 'fixed' && !alreadyTracked && editDraft.trackAsEssential
+          ? monthlyAmount
+          : null,
     })
     closeEditRow()
   }
@@ -270,10 +310,13 @@ export function SmsImportClient() {
         return
       }
       const data = result.data
+      setTrackedFixedKeys(data.trackedFixedKeys ?? [])
       setRows(
         data.rows.map((row) => ({
           ...row,
           categoryType: row.confidence === 'high' ? row.categoryType : null,
+          trackAsEssential: false,
+          trackedMonthlyAmount: null,
         }))
       )
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
@@ -326,6 +369,12 @@ export function SmsImportClient() {
         amount: Number(row.amount),
         date: row.date,
         sourceHash: row.sourceHash,
+        trackAsEssential:
+          row.categoryType === 'fixed' && !isRowAlreadyTracked(row) ? row.trackAsEssential : false,
+        trackedMonthlyAmount:
+          row.categoryType === 'fixed' && !isRowAlreadyTracked(row) && row.trackAsEssential
+            ? Number(row.trackedMonthlyAmount ?? row.amount)
+            : null,
       }))
       logClientSaveTiming('pre-submit-processing', performance.now() - preSubmitStartedAt, {
         rows: payload.length,
@@ -734,6 +783,7 @@ export function SmsImportClient() {
                   size="lg"
                   onClick={() => {
                     setRows([])
+                    setTrackedFixedKeys([])
                     setRowErrors({})
                     setRowWarnings({})
                     setError(null)
@@ -755,6 +805,15 @@ export function SmsImportClient() {
             bodyPadding="none"
             variant="bottom"
           >
+            {(() => {
+              const editDraftAlreadyTracked = isRowAlreadyTracked({
+                label: editDraft.label.trim() || editingRow.label,
+                categoryKey: slugify(editDraft.label.trim() || editingRow.label),
+                categoryType: editDraft.categoryType,
+              })
+              const showTrackingSetup = editDraft.categoryType === 'fixed' && !editDraftAlreadyTracked
+
+              return (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -831,85 +890,202 @@ export function SmsImportClient() {
                 overflowY: 'auto',
                 padding: 'var(--space-md) var(--space-page-mobile) var(--space-md)',
               }}>
-                <Input
-                  label="Name"
-                  value={editDraft.label}
-                  onChange={(value) => {
-                    setEditDraft((current) => current ? { ...current, label: value } : current)
-                    setEditErrors((current) => ({ ...current, label: undefined }))
-                  }}
-                  autoFocus
-                  error={editErrors.label}
-                />
+                <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+                  <div>
+                    <p style={{
+                      margin: '0 0 var(--space-sm)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-semibold)',
+                      color: T.textMuted,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.07em',
+                    }}>
+                      This payment
+                    </p>
 
-                <Input
-                  label="Amount"
-                  type="number"
-                  value={editDraft.amount}
-                  onChange={(value) => {
-                    setEditDraft((current) => current ? { ...current, amount: value } : current)
-                    setEditErrors((current) => ({ ...current, amount: undefined }))
-                  }}
-                  autoFocus={false}
-                  error={editErrors.amount}
-                />
+                    <Input
+                      label="Name"
+                      value={editDraft.label}
+                      onChange={(value) => {
+                        setEditDraft((current) => current ? { ...current, label: value } : current)
+                        setEditErrors((current) => ({
+                          ...current,
+                          label: undefined,
+                          trackedMonthlyAmount: undefined,
+                        }))
+                      }}
+                      autoFocus
+                      error={editErrors.label}
+                    />
 
-                <div style={{ marginBottom: 'var(--space-md)' }}>
-                  <p style={{
-                    margin: '0 0 6px',
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    color: T.text2,
-                    letterSpacing: '0.2px',
-                  }}>
-                    Category
-                  </p>
-                  <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                    {([
-                      { value: 'everyday', label: 'Spending' },
-                      { value: 'fixed', label: 'Essentials' },
-                      { value: 'debt', label: 'Debt' },
-                    ] as const).map((option) => {
-                      const selected = editDraft.categoryType === option.value
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => {
-                            setEditDraft((current) => current ? { ...current, categoryType: option.value } : current)
-                            setEditErrors((current) => ({ ...current, category: undefined }))
-                          }}
-                          style={{
-                            height: 'var(--button-height-md)',
-                            padding: '0 var(--space-md)',
-                            borderRadius: 'var(--radius-full)',
-                            border: selected
-                              ? `var(--border-width) solid var(--brand-mid)`
-                              : `var(--border-width) solid var(--grey-300)`,
-                            background: selected ? 'var(--brand-mid)' : 'var(--grey-100)',
-                            color: selected ? T.brandDark : T.text2,
-                            fontSize: 'var(--text-sm)',
-                            fontWeight: 'var(--weight-medium)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
+                    <Input
+                      label="Amount"
+                      type="number"
+                      value={editDraft.amount}
+                      onChange={(value) => {
+                        setEditDraft((current) => {
+                          if (!current) return current
+                          const next = { ...current, amount: value }
+                          if (
+                            next.categoryType === 'fixed' &&
+                            !editDraftAlreadyTracked &&
+                            next.trackAsEssential &&
+                            !next.trackedMonthlyAmount
+                          ) {
+                            next.trackedMonthlyAmount = value
+                          }
+                          return next
+                        })
+                        setEditErrors((current) => ({
+                          ...current,
+                          amount: undefined,
+                          trackedMonthlyAmount: undefined,
+                        }))
+                      }}
+                      autoFocus={false}
+                      error={editErrors.amount}
+                    />
+
+                    <div>
+                      <p style={{
+                        margin: '0 0 6px',
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        color: T.text2,
+                        letterSpacing: '0.2px',
+                      }}>
+                        Category
+                      </p>
+                      <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                        {([
+                          { value: 'everyday', label: 'Spending' },
+                          { value: 'fixed', label: 'Essentials' },
+                          { value: 'debt', label: 'Debt' },
+                        ] as const).map((option) => {
+                          const selected = editDraft.categoryType === option.value
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => {
+                                setEditDraft((current) => {
+                                  if (!current) return current
+                                  const next = { ...current, categoryType: option.value }
+                                  if (option.value !== 'fixed') {
+                                    next.trackAsEssential = false
+                                    next.trackedMonthlyAmount = ''
+                                  }
+                                  return next
+                                })
+                                setEditErrors((current) => ({
+                                  ...current,
+                                  category: undefined,
+                                  trackedMonthlyAmount: undefined,
+                                }))
+                              }}
+                              style={{
+                                height: 'var(--button-height-md)',
+                                padding: '0 var(--space-md)',
+                                borderRadius: 'var(--radius-full)',
+                                border: selected
+                                  ? `var(--border-width) solid var(--brand-mid)`
+                                  : `var(--border-width) solid var(--grey-300)`,
+                                background: selected ? 'var(--brand-mid)' : 'var(--grey-100)',
+                                color: selected ? T.brandDark : T.text2,
+                                fontSize: 'var(--text-sm)',
+                                fontWeight: 'var(--weight-medium)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {editErrors.category && (
+                        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.amberDark, lineHeight: 1.4 }}>
+                          {editErrors.category}
+                        </p>
+                      )}
+                      {editDraft.categoryType && (
+                        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                          {CATEGORY_HELPER[editDraft.categoryType]}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  {editErrors.category && (
-                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.amberDark, lineHeight: 1.4 }}>
-                      {editErrors.category}
-                    </p>
-                  )}
-                  {editDraft.categoryType && (
-                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
-                      {CATEGORY_HELPER[editDraft.categoryType]}
-                    </p>
+
+                  {showTrackingSetup && (
+                    <div style={{
+                      paddingTop: 'var(--space-md)',
+                      borderTop: `var(--border-width) solid ${T.borderSubtle}`,
+                    }}>
+                      <p style={{
+                        margin: '0 0 var(--space-sm)',
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 'var(--weight-semibold)',
+                        color: T.textMuted,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.07em',
+                      }}>
+                        Set as recurring
+                      </p>
+
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-sm)',
+                        fontSize: 'var(--text-sm)',
+                        color: T.text1,
+                        cursor: 'pointer',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={editDraft.trackAsEssential}
+                          onChange={(event) => {
+                            const checked = event.target.checked
+                            setEditDraft((current) => {
+                              if (!current) return current
+                              return {
+                                ...current,
+                                trackAsEssential: checked,
+                                trackedMonthlyAmount:
+                                  checked
+                                    ? current.trackedMonthlyAmount || current.amount
+                                    : '',
+                              }
+                            })
+                            setEditErrors((current) => ({ ...current, trackedMonthlyAmount: undefined }))
+                          }}
+                          style={{ margin: 0 }}
+                        />
+                        Mark as recurring
+                      </label>
+
+                      {editDraft.trackAsEssential && (
+                        <div style={{ marginTop: 'var(--space-md)' }}>
+                          <Input
+                            label="Monthly amount"
+                            type="number"
+                            value={editDraft.trackedMonthlyAmount}
+                            onChange={(value) => {
+                              setEditDraft((current) => current ? { ...current, trackedMonthlyAmount: value } : current)
+                              setEditErrors((current) => ({ ...current, trackedMonthlyAmount: undefined }))
+                            }}
+                            error={editErrors.trackedMonthlyAmount}
+                          />
+                          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                            This will be included in your monthly expenses.
+                          </p>
+                          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                            Reminders will use your pay schedule by default.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -997,6 +1173,8 @@ export function SmsImportClient() {
                 </div>
               )}
             </div>
+              )
+            })()}
           </Sheet>
         )}
 

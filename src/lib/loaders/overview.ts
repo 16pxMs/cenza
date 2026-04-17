@@ -3,6 +3,7 @@ import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { readTrackedFixedExpenseEntries, type TrackedFixedExpenseEntry } from '@/lib/fixed-bills/tracking'
 import type { GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
@@ -88,6 +89,26 @@ export function deriveBillsLeftToPay(
   fixedEntries: unknown[] | null | undefined,
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
 ): BillsLeftToPay {
+  const expectedEntries = (fixedEntries ?? [])
+    .map((raw) => {
+      const entry = (raw ?? {}) as FixedEntryShape
+      const rawKey = String(entry.key ?? '').trim()
+      if (!rawKey) return null
+
+      // TODO: remove after full backfill of historical fixed_expenses entries.
+      const key = canonicalizeFixedBillKey(rawKey)
+      const expected = Number(entry.monthly ?? 0)
+      if (!Number.isFinite(expected) || expected <= 0) return null
+
+      return {
+        key,
+        expected,
+        label: String(entry.label ?? '').trim() || titleFromKey(key),
+      }
+    })
+    .filter((entry): entry is { key: string; expected: number; label: string } => entry != null)
+
+  const expectedKeys = new Set(expectedEntries.map((entry) => entry.key))
   const paidByKey = new Map<string, number>()
   for (const txn of cycleTransactions) {
     if (txn.category_type !== 'fixed' && txn.category_type !== 'subscription') continue
@@ -99,19 +120,13 @@ export function deriveBillsLeftToPay(
     // matches during the transition. Subscriptions keep their stored key.
     const key =
       txn.category_type === 'fixed' ? canonicalizeFixedBillKey(rawKey) : rawKey
+    if (!expectedKeys.has(key)) continue
     paidByKey.set(key, (paidByKey.get(key) ?? 0) + Number(txn.amount ?? 0))
   }
 
   const items: BillLeftToPayItem[] = []
-  for (const raw of fixedEntries ?? []) {
-    const entry = (raw ?? {}) as FixedEntryShape
-    const rawKey = String(entry.key ?? '').trim()
-    if (!rawKey) continue
-    // TODO: remove after full backfill of historical fixed_expenses entries.
-    const key = canonicalizeFixedBillKey(rawKey)
-    const expected = Number(entry.monthly ?? 0)
-    if (!Number.isFinite(expected) || expected <= 0) continue
-    const label = String(entry.label ?? '').trim() || titleFromKey(key)
+  for (const entry of expectedEntries) {
+    const { key, expected, label } = entry
     const paid = paidByKey.get(key) ?? 0
     const leftToPay = Math.max(0, expected - paid)
     items.push({ key, label, expected, paid, leftToPay })
@@ -149,6 +164,7 @@ export interface OverviewPageData {
     amount: number
     total: number
   } | null
+  trackedEssentials: TrackedFixedExpenseEntry[]
   billsLeftToPay: BillsLeftToPay
 }
 
@@ -213,6 +229,28 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
   const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const goalTargetRows = (goalTargets ?? []) as OverviewGoalTargetRow[]
+
+  if (process.env.NODE_ENV !== 'production') {
+    const fixedTxnDebug = transactionRows
+      .filter((txn) => txn.category_type === 'fixed' || txn.category_type === 'subscription')
+      .map((txn) => ({
+        id: String(txn.id),
+        category_type: txn.category_type,
+        category_key: txn.category_key,
+        category_label: txn.category_label,
+        amount: Number(txn.amount ?? 0),
+        date: txn.date,
+      }))
+
+    console.info(
+      `[overview] bills-left-to-pay debug
+cycleId: ${cycleId}
+fixedExpensesRow.entries:
+${JSON.stringify((fixedExpenses?.entries ?? null) as unknown[] | null, null, 2)}
+fixedCycleTransactions:
+${JSON.stringify(fixedTxnDebug, null, 2)}`
+    )
+  }
   const goalTargetsMap: Record<string, number> = {}
   const goalLabels: Record<string, string> = {}
   const goalAddedAtMap: Record<string, string> = {}
@@ -363,6 +401,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     goalSaved: goalSavedMap,
     goalLabels,
     lastCycleRecurringTop,
+    trackedEssentials: readTrackedFixedExpenseEntries(fixedExpenses?.entries ?? null),
     billsLeftToPay: deriveBillsLeftToPay(
       (fixedExpenses?.entries ?? null) as unknown[] | null,
       transactionRows

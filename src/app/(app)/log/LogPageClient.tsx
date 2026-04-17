@@ -10,10 +10,16 @@ import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
-import { IconBack, IconCheck, IconChevronX } from '@/components/ui/Icons'
+import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData, LogSubItem } from '@/lib/loaders/log'
-import { deleteLogEntry, recordRefund, updateLogEntry } from './actions'
+import {
+  deleteLogEntry,
+  recordRefund,
+  stopTrackingEssential,
+  trackEssential,
+  updateLogEntry,
+} from './actions'
 
 const CATEGORY_LABEL: Record<string, string> = {
   everyday: 'Spending',
@@ -36,6 +42,9 @@ function entryToSubItem(entry: LogEntry): LogSubItem {
     singleEntryDate: entry.date,
     singleEntryNote: entry.note,
     scope: 'key',
+    trackedEssential: entry.trackedEssential,
+    trackedEssentialKey: entry.trackedEssentialKey,
+    trackedMonthlyAmount: entry.trackedMonthlyAmount,
   }
 }
 
@@ -76,7 +85,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const autoOpened = useRef(false)
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<LogSubItem | null>(null)
-  const [deleteStep, setDeleteStep] = useState<'reason' | 'confirm' | 'refund' | 'edit'>('reason')
+  const [deleteStep, setDeleteStep] = useState<'reason' | 'confirm' | 'refund' | 'edit' | 'track'>('reason')
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
@@ -92,6 +101,9 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   }>({})
   const [editDialog, setEditDialog] = useState<'delete' | 'discard' | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [trackingEssential, setTrackingEssential] = useState(false)
+  const [trackMonthlyAmount, setTrackMonthlyAmount] = useState('')
+  const [trackError, setTrackError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'everyday' | 'fixed' | 'debt'>('all')
 
   const entries = data.entries
@@ -245,17 +257,25 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     const amount = parseFloat(editAmount)
     if (!amount || amount <= 0 || !editDate || !editCategoryType) return
 
+    const transactionDirty =
+      editLabel.trim() !== pendingDelete.label.trim() ||
+      amount !== pendingDelete.loggedAmount ||
+      editCategoryType !== pendingDelete.groupType
+
     setSavingEdit(true)
     try {
-      await updateLogEntry({
-        id: pendingDelete.singleEntryId,
-        amount,
-        date: editDate,
-        note: editNote,
-        label: editLabel,
-        categoryKey: pendingDelete.key,
-        categoryType: editCategoryType,
-      })
+      if (transactionDirty) {
+        await updateLogEntry({
+          id: pendingDelete.singleEntryId,
+          amount,
+          date: editDate,
+          note: editNote,
+          label: editLabel,
+          categoryKey: pendingDelete.key,
+          categoryType: editCategoryType,
+        })
+      }
+
       toast('Entry updated')
       setPendingDelete(null)
       setEditAmount('')
@@ -287,6 +307,33 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       toast('Could not remove entry')
     } finally {
       setDeletingKey(null)
+    }
+  }
+
+  const handleToggleEssentialTracking = async () => {
+    if (!pendingDelete || pendingDelete.groupType !== 'fixed') return
+
+    setTrackingEssential(true)
+    try {
+      if (pendingDelete.trackedEssential) {
+        await stopTrackingEssential({
+          categoryKey: pendingDelete.trackedEssentialKey ?? pendingDelete.key,
+        })
+        toast('Removed from recurring')
+      } else {
+        await trackEssential({
+          categoryKey: pendingDelete.key,
+          categoryLabel: pendingDelete.label,
+          amount: parseFloat(trackMonthlyAmount),
+        })
+        toast('Marked as recurring')
+      }
+      setPendingDelete(null)
+      router.refresh()
+    } catch {
+      toast('Could not update recurring status')
+    } finally {
+      setTrackingEssential(false)
     }
   }
 
@@ -594,8 +641,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           title={
             deleteStep === 'reason'
               ? ''
-              : deleteStep === 'refund'
-                ? 'Log a refund'
+                : deleteStep === 'refund'
+                  ? 'Log a refund'
+                : deleteStep === 'track'
+                  ? 'Set as recurring'
                 : deleteStep === 'edit'
                   ? 'Edit expense'
                   : 'Are you sure?'
@@ -629,68 +678,228 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   {fmt(pendingDelete.loggedAmount, data.currency)}
                 </div>
                 <div style={{
-                  fontSize: 'var(--text-sm)',
-                  color: T.text3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-sm)',
+                  flexWrap: 'wrap',
                   marginTop: 'var(--space-sm)',
-                  lineHeight: 1.3,
                 }}>
-                  {CATEGORY_LABEL[pendingDelete.groupType] ?? 'Other'}
-                  {pendingDelete.latestLoggedDate ? ` · ${formatEntryDate(pendingDelete.latestLoggedDate)}` : ''}
+                  <div style={{
+                    fontSize: 'var(--text-sm)',
+                    color: T.text3,
+                    lineHeight: 1.3,
+                  }}>
+                    {CATEGORY_LABEL[pendingDelete.groupType] ?? 'Other'}
+                    {pendingDelete.latestLoggedDate ? ` · ${formatEntryDate(pendingDelete.latestLoggedDate)}` : ''}
+                  </div>
+                  {pendingDelete.trackedEssential && (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      minHeight: 22,
+                      padding: '0 var(--space-sm)',
+                      borderRadius: 'var(--radius-full)',
+                      border: `var(--border-width) solid ${T.border}`,
+                      background: 'var(--grey-50)',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: T.text2,
+                      letterSpacing: '0.02em',
+                    }}>
+                      Recurring
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div style={{
-                background: T.white,
-                border: `1px solid ${T.border}`,
-                borderRadius: 18,
-                overflow: 'hidden',
-              }}>
-                {[
-                {
-                  label: pendingDelete.entryCount && pendingDelete.entryCount > 1 ? 'Review entries' : 'Edit this expense',
-                  sub: pendingDelete.entryCount && pendingDelete.entryCount > 1
-                    ? 'Edit amount, date, or note'
-                    : 'Edit amount, date, or note',
-                  action: () => {
-                    if ((pendingDelete.entryCount ?? 0) <= 1 && pendingDelete.singleEntryId) {
-                      openDirectEdit(pendingDelete)
-                    } else {
-                      setPendingDelete(null)
-                      reviewItemEntries(pendingDelete)
-                    }
-                  },
-                },
-                {
-                  label: 'Refund',
-                  sub: 'Log money returned to you',
-                  action: () => { setRefundAmount(''); setRefundNote(''); setDeleteStep('refund') },
-                },
-                {
-                  label: "Didn't happen",
-                  sub: 'Remove this expense',
-                  action: () => setDeleteStep('confirm'),
-                },
-                ].map((option, index, options) => (
-                  <button
-                    key={option.label}
-                    onClick={option.action}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '14px 16px',
+              <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+                <div>
+                  <p style={{
+                    margin: '0 0 var(--space-sm)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.textMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
+                  }}>
+                    This expense
+                  </p>
+                  <div style={{
+                    background: T.white,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                  }}>
+                    <button
+                      onClick={() => {
+                        if ((pendingDelete.entryCount ?? 0) <= 1 && pendingDelete.singleEntryId) {
+                          openDirectEdit(pendingDelete)
+                        } else {
+                          setPendingDelete(null)
+                          reviewItemEntries(pendingDelete)
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '14px 16px',
+                        background: T.white,
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>
+                          {pendingDelete.entryCount && pendingDelete.entryCount > 1 ? 'Review entries' : 'Edit expense'}
+                        </div>
+                        <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>
+                          Edit amount, date, or note
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {pendingDelete.groupType === 'fixed' && (
+                  <div>
+                    <p style={{
+                      margin: '0 0 var(--space-sm)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-semibold)',
+                      color: T.textMuted,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.07em',
+                    }}>
+                      Recurring
+                    </p>
+                    <div style={{
                       background: T.white,
-                      border: 'none',
-                      borderBottom: index < options.length - 1 ? `1px solid ${T.borderSubtle}` : 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
-                      <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 18,
+                      overflow: 'hidden',
+                    }}>
+                      <button
+                        onClick={
+                          pendingDelete.trackedEssential
+                            ? handleToggleEssentialTracking
+                            : () => {
+                                setTrackMonthlyAmount(String(pendingDelete.loggedAmount))
+                                setTrackError(null)
+                                setDeleteStep('track')
+                              }
+                        }
+                        disabled={trackingEssential}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '14px 16px',
+                          background: T.white,
+                          border: 'none',
+                          cursor: trackingEssential ? 'default' : 'pointer',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>
+                            {pendingDelete.trackedEssential ? 'Remove from recurring' : 'Mark as recurring'}
+                          </div>
+                          <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>
+                            {pendingDelete.trackedEssential
+                              ? 'Remove this from your recurring essentials'
+                              : 'Add this to your recurring essentials'}
+                          </div>
+                        </div>
+                      </button>
                     </div>
-                  </button>
-                ))}
+                  </div>
+                )}
+
+                <div>
+                  <p style={{
+                    margin: '0 0 var(--space-sm)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.textMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
+                  }}>
+                    Other actions
+                  </p>
+                  <div style={{
+                    background: T.white,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                  }}>
+                    <button
+                      onClick={() => { setRefundAmount(''); setRefundNote(''); setDeleteStep('refund') }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '14px 16px',
+                        background: T.white,
+                        border: 'none',
+                        borderBottom: `1px solid ${T.borderSubtle}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>Refund</div>
+                        <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>Log money returned to you</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setDeleteStep('confirm')}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '14px 16px',
+                        background: T.white,
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>Delete entry</div>
+                        <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>Remove this expense</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
               </div>
+            </div>
+          )}
+
+          {deleteStep === 'track' && pendingDelete && (
+            <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+              <Input
+                label="Monthly amount"
+                type="number"
+                value={trackMonthlyAmount}
+                onChange={(value) => {
+                  setTrackMonthlyAmount(value)
+                  setTrackError(null)
+                }}
+                error={trackError ?? undefined}
+              />
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+                This will be included in your monthly expenses.
+              </p>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+                Reminders will use your pay schedule by default.
+              </p>
+              <PrimaryBtn
+                size="lg"
+                onClick={() => {
+                  if (!(parseFloat(trackMonthlyAmount) > 0)) {
+                    setTrackError('Add a monthly amount')
+                    return
+                  }
+                  handleToggleEssentialTracking()
+                }}
+                disabled={trackingEssential}
+              >
+                {trackingEssential ? 'Saving…' : 'Save recurring'}
+              </PrimaryBtn>
             </div>
           )}
 
@@ -843,8 +1052,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                               lineHeight: 1,
                             }}
                           >
-                            {selected && <IconCheck size={14} color="var(--text-inverse)" />}
-                            <span>{option.label}</span>
+                            {option.label}
                           </button>
                         )
                       })}
@@ -860,6 +1068,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                       </p>
                     )}
                   </div>
+
                 </div>
               </div>
 

@@ -15,6 +15,12 @@ import {
 } from '@/lib/sms-import/parser'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import {
+  readTrackedFixedExpenseEntries,
+  sumTrackedFixedExpenses,
+  upsertTrackedFixedExpense,
+} from '@/lib/fixed-bills/tracking'
+import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 
 interface ParsedRowInput {
   id: string
@@ -24,6 +30,8 @@ interface ParsedRowInput {
   amount: number
   date: string
   sourceHash: string
+  trackAsEssential?: boolean
+  trackedMonthlyAmount?: number | null
 }
 
 function normalize(value: string) {
@@ -206,6 +214,7 @@ export interface ParseSmsImportData {
   scanned: number
   skippedCredits: number
   hasLowConfidence: boolean
+  trackedFixedKeys: string[]
   // True when rows came from the plain-language fallback parser. Used only
   // to surface a short clarifier in the review UI; no business-logic impact.
   usedFallback: boolean
@@ -242,18 +251,41 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
 
     const input = rawText?.trim() ?? ''
     if (!input) {
-      return ok({ rows: [], scanned: 0, skippedCredits: 0, hasLowConfidence: false, usedFallback: false })
+      return ok({
+        rows: [],
+        scanned: 0,
+        skippedCredits: 0,
+        hasLowConfidence: false,
+        trackedFixedKeys: [],
+        usedFallback: false,
+      })
     }
 
     const supabase = await createClient()
-    const { data: dictionaryRows, error } = await (supabase.from('item_dictionary') as any)
-      .select('name_normalized,label,category_type,category_key')
-      .eq('user_id', user.id)
-      .limit(300)
+    const cycleId = deriveCurrentCycleId(profile)
+    const [
+      { data: dictionaryRows, error: dictionaryError },
+      { data: fixedExpensesRow, error: fixedExpensesError },
+    ] = await Promise.all([
+      (supabase.from('item_dictionary') as any)
+        .select('name_normalized,label,category_type,category_key')
+        .eq('user_id', user.id)
+        .limit(300),
+      (supabase.from('fixed_expenses') as any)
+        .select('entries')
+        .eq('user_id', user.id)
+        .eq('cycle_id', cycleId)
+        .maybeSingle(),
+    ])
 
-    if (error) {
-      throw new Error(`Failed to load dictionary: ${error.message}`)
+    if (dictionaryError) {
+      throw new Error(`Failed to load dictionary: ${dictionaryError.message}`)
     }
+    if (fixedExpensesError) {
+      throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
+    }
+
+    const trackedFixedKeys = readTrackedFixedExpenseEntries(fixedExpensesRow?.entries ?? null).map((entry) => entry.key)
 
     const parsed = parseSmsBlob(input, {
       defaultCurrency: profile.currency || 'USD',
@@ -278,6 +310,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
           scanned: parsed.scanned,
           skippedCredits: parsed.skippedCredits,
           hasLowConfidence: computeHasLowConfidence(fallbackRows),
+          trackedFixedKeys,
           usedFallback: true,
         })
       }
@@ -286,6 +319,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     return ok({
       ...parsed,
       hasLowConfidence: computeHasLowConfidence(parsed.rows),
+      trackedFixedKeys,
       usedFallback: false,
     })
   })
@@ -507,6 +541,54 @@ export async function saveParsedSmsExpenses(
     }
   }
   mark('db-write-import-lines')
+
+  const trackingRowsByCycle = new Map<string, Array<{ key: string; label: string; monthly: number }>>()
+  for (const { row, cycleId, persistedKey } of persistedRows) {
+    if (row.categoryType !== 'fixed' || row.trackAsEssential !== true) continue
+
+    const monthly = Number(row.trackedMonthlyAmount ?? row.amount)
+    if (!Number.isFinite(monthly) || monthly <= 0) continue
+
+    const items = trackingRowsByCycle.get(cycleId) ?? []
+    items.push({
+      key: persistedKey,
+      label: row.label,
+      monthly,
+    })
+    trackingRowsByCycle.set(cycleId, items)
+  }
+
+  if (trackingRowsByCycle.size > 0) {
+    for (const [cycleId, trackingRows] of trackingRowsByCycle.entries()) {
+      const { data: existingFixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
+        .select('entries')
+        .eq('user_id', user.id)
+        .eq('cycle_id', cycleId)
+        .maybeSingle()
+
+      if (fixedExpensesError) {
+        throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
+      }
+
+      let nextEntries = existingFixedExpenses?.entries ?? null
+      for (const trackingRow of trackingRows) {
+        nextEntries = upsertTrackedFixedExpense(nextEntries, trackingRow)
+      }
+
+      const normalizedEntries = readTrackedFixedExpenseEntries(nextEntries)
+      const { error: fixedExpensesUpsertError } = await (supabase.from('fixed_expenses') as any).upsert({
+        user_id: user.id,
+        cycle_id: cycleId,
+        total_monthly: sumTrackedFixedExpenses(normalizedEntries),
+        entries: normalizedEntries,
+      }, { onConflict: 'user_id,cycle_id' })
+
+      if (fixedExpensesUpsertError) {
+        throw new Error(`Failed to track essential: ${fixedExpensesUpsertError.message}`)
+      }
+    }
+  }
+  mark('db-write-fixed-expenses')
 
   mark('response-ready')
   logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)

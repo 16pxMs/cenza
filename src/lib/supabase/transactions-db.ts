@@ -1,6 +1,7 @@
 import { toLocalDateStr } from '../cycles'
 import { getCycleIdForDate } from './cycles-db'
 import type { CategoryType } from '../../types/database'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 type SupabaseLike = any
 
@@ -27,12 +28,17 @@ export interface TransactionDeleteScope {
 }
 
 export function buildTransactionRecord(input: TransactionWriteInput) {
+  const persistedCategoryKey =
+    input.categoryType === 'fixed'
+      ? canonicalizeFixedBillKey(input.categoryKey)
+      : input.categoryKey
+
   return {
     user_id: input.userId,
     cycle_id: input.cycleId,
     date: input.date,
     category_type: input.categoryType,
-    category_key: input.categoryKey,
+    category_key: persistedCategoryKey,
     category_label: input.categoryLabel,
     amount: input.amount,
     note: input.note?.trim() || null,

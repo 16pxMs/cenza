@@ -7,6 +7,8 @@ import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { Input } from '@/components/ui/Input/Input'
 import { IconBack, IconCheck, IconPlus } from '@/components/ui/Icons'
 import { saveExpenseBatch } from './actions'
 import { GOAL_META } from '@/constants/goals'
@@ -33,6 +35,8 @@ interface PendingExpenseItem {
   amount: string
   note: string
   source: QueueSource
+  trackAsEssential: boolean
+  trackedMonthlyAmount: string
 }
 
 interface RecentLoggedEntry {
@@ -156,6 +160,8 @@ function buildPendingItem(
     amount: '',
     note: '',
     source,
+    trackAsEssential: false,
+    trackedMonthlyAmount: '',
   }
 }
 
@@ -223,6 +229,8 @@ export function NewExpenseClient() {
         amount: paramAmount ?? '',
         note: '',
         source: 'known',
+        trackAsEssential: false,
+        trackedMonthlyAmount: '',
       }]
     }
 
@@ -554,6 +562,8 @@ export function NewExpenseClient() {
       id: makePendingId(activeItem.label, activeItem.source),
       amount: '',
       note: '',
+      trackAsEssential: false,
+      trackedMonthlyAmount: '',
     }
 
     setQueue((current) => {
@@ -596,6 +606,11 @@ export function NewExpenseClient() {
         amount: parseFloat(item.amount.replace(/,/g, '')) || 0,
         note: item.note.trim() || null,
         rememberItem: true,
+        trackAsEssential: item.categoryType === 'fixed' ? item.trackAsEssential : false,
+        trackedMonthlyAmount:
+          item.categoryType === 'fixed' && item.trackAsEssential
+            ? (parseFloat(item.trackedMonthlyAmount.replace(/,/g, '')) || 0)
+            : null,
       })))
 
       if (!result.ok) {
@@ -747,7 +762,14 @@ export function NewExpenseClient() {
                 label: value,
                 categoryKey: normalizeLabel(value).replace(/\s+/g, '_'),
               })}
-              onTypeSelect={(type) => updateActiveItem({ categoryType: type, categorySource: 'manual' })}
+              onTypeSelect={(type) => updateActiveItem({
+                categoryType: type,
+                categorySource: 'manual',
+                trackAsEssential: type === 'fixed' ? activeItem.trackAsEssential : false,
+                trackedMonthlyAmount: type === 'fixed' ? activeItem.trackedMonthlyAmount : '',
+              })}
+              onTrackAsEssentialChange={(value) => updateActiveItem({ trackAsEssential: value })}
+              onTrackedMonthlyAmountChange={(value) => updateActiveItem({ trackedMonthlyAmount: value })}
               onNoteChange={(value) => updateActiveItem({ note: value })}
               onPrevious={handlePrevious}
               onNext={handleNext}
@@ -1128,6 +1150,8 @@ function ReviewStep({
   onAmountChange,
   onLabelChange,
   onTypeSelect,
+  onTrackAsEssentialChange,
+  onTrackedMonthlyAmountChange,
   onNoteChange,
   onPrevious,
   onNext,
@@ -1154,6 +1178,8 @@ function ReviewStep({
   onAmountChange: (value: string) => void
   onLabelChange: (value: string) => void
   onTypeSelect: (type: CategoryType | null) => void
+  onTrackAsEssentialChange: (value: boolean) => void
+  onTrackedMonthlyAmountChange: (value: string) => void
   onNoteChange: (value: string) => void
   onPrevious: () => void
   onNext: () => void
@@ -1164,6 +1190,10 @@ function ReviewStep({
   canAdvance: boolean
   isLastItem: boolean
 }) {
+  const [trackingSetupOpen, setTrackingSetupOpen] = useState(false)
+  const [trackingDraftLabel, setTrackingDraftLabel] = useState(item.label)
+  const [trackingDraftAmount, setTrackingDraftAmount] = useState(item.trackedMonthlyAmount || item.amount)
+  const [trackingError, setTrackingError] = useState<string | null>(null)
   const displayAmount = item.amount
     ? item.amount.replace(/,/g, '').split('.').map((part, index) => (
       index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
@@ -1384,6 +1414,56 @@ function ReviewStep({
         </div>
       )}
 
+      {item.categoryType === 'fixed' && (
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Monthly essential
+          </p>
+          <p style={{
+            margin: '0 0 var(--space-sm)',
+            fontSize: 'var(--text-sm)',
+            color: T.text2,
+            lineHeight: 1.5,
+          }}>
+            Mark this as recurring?
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+            <SecondaryBtn
+              size="md"
+              onClick={() => {
+                setTrackingDraftLabel(item.label)
+                setTrackingDraftAmount(item.trackedMonthlyAmount || item.amount)
+                setTrackingError(null)
+                setTrackingSetupOpen(true)
+              }}
+              style={{ borderColor: item.trackAsEssential ? T.brandMid : T.border, color: T.text1 }}
+            >
+              {item.trackAsEssential ? 'Edit recurring' : 'Yes'}
+            </SecondaryBtn>
+            <TertiaryBtn
+              size="md"
+              onClick={() => {
+                onTrackAsEssentialChange(false)
+                onTrackedMonthlyAmountChange('')
+              }}
+              style={{ color: T.text2 }}
+            >
+              Not now
+            </TertiaryBtn>
+          </div>
+          {item.trackAsEssential && item.trackedMonthlyAmount && (
+            <p style={{
+              margin: 'var(--space-sm) 0 0',
+              fontSize: 'var(--text-sm)',
+              color: T.text3,
+              lineHeight: 1.5,
+            }}>
+              Monthly amount: {currency} {Number(item.trackedMonthlyAmount || '0').toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
+
       <div style={{ marginBottom: 'var(--space-lg)' }}>
         <input
           type="text"
@@ -1467,6 +1547,52 @@ function ReviewStep({
       >
         {primaryActionLabel}
       </PrimaryBtn>
+
+      {item.categoryType === 'fixed' && trackingSetupOpen && (
+        <Sheet
+          open={true}
+          onClose={() => setTrackingSetupOpen(false)}
+          title="Mark as recurring"
+        >
+          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+            <Input
+              label="Name"
+              value={trackingDraftLabel}
+              onChange={setTrackingDraftLabel}
+            />
+            <Input
+              label="Monthly amount"
+              type="number"
+              value={trackingDraftAmount}
+              onChange={(value) => {
+                setTrackingDraftAmount(value)
+                setTrackingError(null)
+              }}
+              error={trackingError ?? undefined}
+            />
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+              This amount is used to calculate what&apos;s left to pay each month.
+            </p>
+            <PrimaryBtn
+              size="lg"
+              onClick={() => {
+                const monthlyAmount = parseFloat(trackingDraftAmount.replace(/,/g, ''))
+                if (!trackingDraftLabel.trim() || !(monthlyAmount > 0)) {
+                  setTrackingError('Add a monthly amount')
+                  return
+                }
+
+                onLabelChange(trackingDraftLabel)
+                onTrackAsEssentialChange(true)
+                onTrackedMonthlyAmountChange(trackingDraftAmount)
+                setTrackingSetupOpen(false)
+              }}
+            >
+              Save recurring
+            </PrimaryBtn>
+          </div>
+        </Sheet>
+      )}
     </div>
   )
 }

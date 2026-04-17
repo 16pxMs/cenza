@@ -5,6 +5,7 @@ import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createClient } from '@/lib/supabase/server'
+import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 interface SaveFirstExpenseInput {
   resolvedGroupType: 'everyday' | 'fixed' | 'subscription'
@@ -21,10 +22,14 @@ export async function saveFirstExpense(input: SaveFirstExpenseInput): Promise<vo
   if (!user || !profile) throw new Error('Not authenticated')
 
   const supabase = await createClient()
+  const persistedKey =
+    input.resolvedGroupType === 'fixed'
+      ? canonicalizeFixedBillKey(input.finalKey)
+      : input.finalKey
 
   await createCycleTransaction(supabase as any, user.id, profile, {
     categoryType: input.resolvedGroupType,
-    categoryKey: input.finalKey,
+    categoryKey: persistedKey,
     categoryLabel: input.finalLabel,
     amount: input.amount,
     note: input.note,
@@ -35,7 +40,7 @@ export async function saveFirstExpense(input: SaveFirstExpenseInput): Promise<vo
   if (input.isSubscription) {
     const { error } = await (supabase.from('subscriptions') as any).insert({
       user_id: user.id,
-      key: input.finalKey,
+      key: persistedKey,
       label: input.finalLabel,
       amount: input.amount,
       needs_check: true,
@@ -57,13 +62,16 @@ export async function saveFirstExpense(input: SaveFirstExpenseInput): Promise<vo
       throw new Error(`Failed to load existing expenses: ${readError.message}`)
     }
 
-    const existingEntries = ((existing as any)?.entries ?? []) as any[]
+    const existingEntries = (((existing as any)?.entries ?? []) as any[]).map((entry: any) => ({
+      ...entry,
+      key: canonicalizeFixedBillKey(String(entry?.key ?? '')),
+    }))
 
-    if (!existingEntries.some((entry: any) => entry.key === input.finalKey)) {
+    if (!existingEntries.some((entry: any) => entry.key === persistedKey)) {
       const newEntries = [
         ...existingEntries,
         {
-          key: input.finalKey,
+          key: persistedKey,
           label: input.finalLabel,
           monthly: input.amount,
           confidence: 'known',

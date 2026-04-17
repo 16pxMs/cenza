@@ -14,8 +14,12 @@ import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
 import { calculateTotalIncome, calculateRemaining, calculatePct, calculateRemainingPct } from '@/lib/math/finance'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
+import { Input } from '@/components/ui/Input/Input'
 import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
+import { stopTrackingEssential, updateTrackedEssential } from '@/app/(app)/log/actions'
+import type { TrackedFixedExpenseEntry } from '@/lib/fixed-bills/tracking'
 
 const GOAL_META: Record<string, {
   label: string
@@ -66,6 +70,7 @@ interface Props {
   categorySpend?: Record<string, number>
   recentActivity?: Array<{ id: string; label: string; amount: number; date: string }>
   lastCycleRecurringTop?: { label: string; amount: number; total: number } | null
+  trackedEssentials?: TrackedFixedExpenseEntry[]
   billsLeftToPay?: {
     items: Array<{ key: string; label: string; expected: number; paid: number; leftToPay: number }>
     totalLeftToPay: number
@@ -76,12 +81,18 @@ interface Props {
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
-  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, billsLeftToPay = null, isDesktop,
+  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, trackedEssentials = [], billsLeftToPay = null, isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [goalsExpanded, setGoalsExpanded] = useState(false)
   const [activeGoalContrib, setActiveGoalContrib] = useState<string | null>(null)
+  const [manageEssentialsOpen, setManageEssentialsOpen] = useState(false)
+  const [activeTrackedBill, setActiveTrackedBill] = useState<TrackedFixedExpenseEntry | null>(null)
+  const [trackedBillLabel, setTrackedBillLabel] = useState('')
+  const [trackedBillMonthlyAmount, setTrackedBillMonthlyAmount] = useState('')
+  const [trackedBillErrors, setTrackedBillErrors] = useState<{ label?: string; monthlyAmount?: string }>({})
+  const [savingTrackedBill, setSavingTrackedBill] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
@@ -694,7 +705,13 @@ const reference = receivedConfirmed
   ) : null
 
   // ── Bills left to pay card ───────────────────────────────────
-  const billsCard = billsLeftToPay && billsLeftToPay.totalLeftToPay > 0 ? (
+  const visibleBillsLeftToPayItems = billsLeftToPay?.items.filter((item) => item.leftToPay > 0) ?? []
+  const shouldShowBillsCard =
+    !!billsLeftToPay &&
+    billsLeftToPay.totalLeftToPay > 0 &&
+    visibleBillsLeftToPayItems.length > 0
+
+  const billsCard = shouldShowBillsCard ? (
     <div style={{
       marginTop: 16,
       background: 'var(--white)',
@@ -703,24 +720,42 @@ const reference = receivedConfirmed
       padding: '16px 20px',
       ...fade(0.18),
     }}>
-      <p style={{
-        margin: '0 0 12px',
-        fontSize: 11,
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        letterSpacing: '0.07em',
-        textTransform: 'uppercase',
+      <div style={{
+        marginBottom: 12,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
       }}>
-        Essentials left to pay
-      </p>
+        <p style={{
+          margin: 0,
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'var(--text-muted)',
+          letterSpacing: '0.07em',
+          textTransform: 'uppercase',
+        }}>
+          Essentials left to pay
+        </p>
+        <TertiaryBtn
+          size="sm"
+          onClick={() => setManageEssentialsOpen(true)}
+          style={{ width: 'auto', minWidth: 0, padding: 0, color: 'var(--text-2)' }}
+        >
+          Manage
+        </TertiaryBtn>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {billsLeftToPay.items.slice(0, 5).map((item) => (
-          <div key={item.key} style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}>
+        {visibleBillsLeftToPayItems.slice(0, 5).map((item) => (
+          <div
+            key={item.key}
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
             <span style={{ fontSize: 14, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.label}
             </span>
@@ -832,6 +867,175 @@ const reference = receivedConfirmed
           />
         )
       })()}
+
+      {manageEssentialsOpen && (
+        <Sheet
+          open={true}
+          onClose={() => {
+            setManageEssentialsOpen(false)
+          }}
+          title="Manage essentials"
+        >
+          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
+              Recurring essentials for this cycle.
+            </p>
+            {trackedEssentials.length > 0 ? (
+              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                {trackedEssentials.map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      display: 'grid',
+                      gap: 'var(--space-sm)',
+                      padding: 'var(--space-md)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'var(--white)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text-1)' }}>
+                        {item.label}
+                      </span>
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-2)', flexShrink: 0 }}>
+                        {fmt(item.monthly, currency)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                      <SecondaryBtn
+                        size="sm"
+                        onClick={() => {
+                          setManageEssentialsOpen(false)
+                          setActiveTrackedBill(item)
+                          setTrackedBillLabel(item.label)
+                          setTrackedBillMonthlyAmount(String(item.monthly))
+                          setTrackedBillErrors({})
+                        }}
+                        style={{ width: 'auto' }}
+                      >
+                        Edit
+                      </SecondaryBtn>
+                      <TertiaryBtn
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await stopTrackingEssential({ categoryKey: item.key })
+                            setManageEssentialsOpen(false)
+                            router.refresh()
+                          } catch (error) {
+                            console.error('[overview] stopTrackingEssential failed', error)
+                          }
+                        }}
+                        style={{ width: 'auto', color: 'var(--red-dark)' }}
+                      >
+                        Remove from recurring
+                      </TertiaryBtn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
+                No recurring essentials yet.
+              </p>
+            )}
+          </div>
+        </Sheet>
+      )}
+
+      {activeTrackedBill && (
+        <Sheet
+          open={true}
+          onClose={() => {
+            setActiveTrackedBill(null)
+            setTrackedBillLabel('')
+            setTrackedBillMonthlyAmount('')
+            setTrackedBillErrors({})
+          }}
+          title={activeTrackedBill.label}
+        >
+          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+            <Input
+              label="Name"
+              value={trackedBillLabel}
+              onChange={(value) => {
+                setTrackedBillLabel(value)
+                setTrackedBillErrors((current) => ({ ...current, label: undefined }))
+              }}
+              error={trackedBillErrors.label}
+            />
+            <Input
+              label="Monthly amount"
+              type="number"
+              value={trackedBillMonthlyAmount}
+              onChange={(value) => {
+                setTrackedBillMonthlyAmount(value)
+                setTrackedBillErrors((current) => ({ ...current, monthlyAmount: undefined }))
+              }}
+              error={trackedBillErrors.monthlyAmount}
+            />
+            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+              This will be included in your monthly expenses.
+            </p>
+            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+              Reminders will use your pay schedule by default.
+            </p>
+            <PrimaryBtn
+              size="lg"
+              onClick={async () => {
+                const label = trackedBillLabel.trim()
+                const monthlyAmount = parseFloat(trackedBillMonthlyAmount)
+                const nextErrors: { label?: string; monthlyAmount?: string } = {}
+                if (!label) {
+                  nextErrors.label = 'Add a name'
+                }
+                if (!(monthlyAmount > 0)) {
+                  nextErrors.monthlyAmount = 'Add a monthly amount'
+                }
+                if (Object.keys(nextErrors).length > 0) {
+                  setTrackedBillErrors(nextErrors)
+                  return
+                }
+
+                setSavingTrackedBill(true)
+                try {
+                  await updateTrackedEssential({
+                    categoryKey: activeTrackedBill.key,
+                    label,
+                    monthlyAmount,
+                  })
+                  setActiveTrackedBill(null)
+                  setManageEssentialsOpen(false)
+                  router.refresh()
+                } finally {
+                  setSavingTrackedBill(false)
+                }
+              }}
+              disabled={savingTrackedBill}
+            >
+              {savingTrackedBill ? 'Saving…' : 'Save changes'}
+            </PrimaryBtn>
+            <SecondaryBtn
+              size="lg"
+              onClick={async () => {
+                setSavingTrackedBill(true)
+                try {
+                  await stopTrackingEssential({ categoryKey: activeTrackedBill.key })
+                  setActiveTrackedBill(null)
+                  setManageEssentialsOpen(false)
+                  router.refresh()
+                } finally {
+                  setSavingTrackedBill(false)
+                }
+              }}
+              disabled={savingTrackedBill}
+            >
+              Remove from recurring
+            </SecondaryBtn>
+          </div>
+        </Sheet>
+      )}
 
     </div>
   )
