@@ -78,7 +78,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     amount?: string
     category?: string
   }>({})
-  const [editDialog, setEditDialog] = useState<'delete' | 'discard' | null>(null)
+  const [editDialog, setEditDialog] = useState<'delete' | 'discard' | 'recurring' | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
 
   const [trackingEssential, setTrackingEssential] = useState(false)
@@ -132,10 +132,8 @@ export function EntryActionsClient({ entry, currency }: Props) {
     return Object.keys(nextErrors).length === 0
   }
 
-  const handleSaveEdit = async () => {
-    if (!entry.id) return
-    if (!validateEdit()) return
-
+  const performSaveEdit = async (removeRecurring: boolean) => {
+    if (!entry.id || !editCategoryType) return
     const amount = parseFloat(editAmount)
     if (!amount || amount <= 0 || !editDate || !editCategoryType) return
 
@@ -146,7 +144,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
 
     setSavingEdit(true)
     try {
-      if (transactionDirty) {
+      if (transactionDirty || removeRecurring) {
         await updateLogEntry({
           id: entry.id,
           amount,
@@ -155,6 +153,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
           label: editLabel,
           categoryKey: entry.categoryKey,
           categoryType: editCategoryType,
+          removeRecurringCategoryKey: removeRecurring
+            ? (entry.trackedEssentialKey ?? entry.categoryKey)
+            : undefined,
         })
       }
       toast('Entry updated')
@@ -165,6 +166,23 @@ export function EntryActionsClient({ entry, currency }: Props) {
     } finally {
       setSavingEdit(false)
     }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!entry.id) return
+    if (!validateEdit()) return
+
+    if (
+      entry.trackedEssential &&
+      entry.categoryType === 'fixed' &&
+      editCategoryType &&
+      editCategoryType !== 'fixed'
+    ) {
+      setEditDialog('recurring')
+      return
+    }
+
+    await performSaveEdit(false)
   }
 
   const handleSaveRefund = async () => {
@@ -683,16 +701,22 @@ export function EntryActionsClient({ entry, currency }: Props) {
                   color: T.text1,
                   letterSpacing: '-0.01em',
                 }}>
-                  {editDialog === 'delete' ? 'Delete this entry?' : 'Discard changes?'}
+                  {editDialog === 'delete'
+                    ? 'Delete this entry?'
+                    : editDialog === 'recurring'
+                      ? 'Keep this as recurring?'
+                      : 'Discard changes?'}
                 </p>
-                {editDialog === 'delete' && (
+                {(editDialog === 'delete' || editDialog === 'recurring') && (
                   <p style={{
                     margin: 'var(--space-sm) 0 0',
                     fontSize: 'var(--text-sm)',
                     color: T.text2,
                     lineHeight: 1.5,
                   }}>
-                    This will remove it from your log.
+                    {editDialog === 'delete'
+                      ? 'This will remove it from your log.'
+                      : 'This item will still appear in reminders.'}
                   </p>
                 )}
                 <div style={{
@@ -718,6 +742,29 @@ export function EntryActionsClient({ entry, currency }: Props) {
                         }}
                       >
                         {deletingKey === entry.id ? 'Deleting…' : 'Delete'}
+                      </PrimaryBtn>
+                    </>
+                  ) : editDialog === 'recurring' ? (
+                    <>
+                      <SecondaryBtn
+                        size="lg"
+                        onClick={() => {
+                          setEditDialog(null)
+                          void performSaveEdit(false)
+                        }}
+                        disabled={savingEdit}
+                      >
+                        Keep recurring
+                      </SecondaryBtn>
+                      <PrimaryBtn
+                        size="lg"
+                        onClick={() => {
+                          setEditDialog(null)
+                          void performSaveEdit(true)
+                        }}
+                        disabled={savingEdit}
+                      >
+                        {savingEdit ? 'Saving…' : 'Remove from recurring'}
                       </PrimaryBtn>
                     </>
                   ) : (
