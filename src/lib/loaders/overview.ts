@@ -66,12 +66,6 @@ interface OverviewPrevCycleTransactionRow {
   category_type: string
 }
 
-interface FixedEntryShape {
-  key?: unknown
-  label?: unknown
-  monthly?: unknown
-}
-
 export interface BillLeftToPayItem {
   key: string
   label: string
@@ -89,24 +83,11 @@ export function deriveBillsLeftToPay(
   fixedEntries: unknown[] | null | undefined,
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
 ): BillsLeftToPay {
-  const expectedEntries = (fixedEntries ?? [])
-    .map((raw) => {
-      const entry = (raw ?? {}) as FixedEntryShape
-      const rawKey = String(entry.key ?? '').trim()
-      if (!rawKey) return null
-
-      // TODO: remove after full backfill of historical fixed_expenses entries.
-      const key = canonicalizeFixedBillKey(rawKey)
-      const expected = Number(entry.monthly ?? 0)
-      if (!Number.isFinite(expected) || expected <= 0) return null
-
-      return {
-        key,
-        expected,
-        label: String(entry.label ?? '').trim() || titleFromKey(key),
-      }
-    })
-    .filter((entry): entry is { key: string; expected: number; label: string } => entry != null)
+  const expectedEntries = readTrackedFixedExpenseEntries(fixedEntries).map((entry) => ({
+    key: entry.key,
+    expected: Number(entry.monthly ?? 0),
+    label: entry.label.trim() || titleFromKey(entry.key),
+  }))
 
   const expectedKeys = new Set(expectedEntries.map((entry) => entry.key))
   const paidByKey = new Map<string, number>()
