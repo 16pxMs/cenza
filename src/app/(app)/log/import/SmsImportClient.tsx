@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
-import { IconBack, IconCheck, IconChevronX } from '@/components/ui/Icons'
+import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { parseSmsImport, saveParsedSmsExpenses } from './actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
@@ -161,6 +161,7 @@ export function SmsImportClient() {
     amount: string
     categoryType: ImportCategoryType | null
   } | null>(null)
+  const [editDeleteConfirmOpen, setEditDeleteConfirmOpen] = useState(false)
   const [editErrors, setEditErrors] = useState<{
     label?: string
     amount?: string
@@ -220,6 +221,7 @@ export function SmsImportClient() {
   const closeEditRow = () => {
     setEditingRowId(null)
     setEditDraft(null)
+    setEditDeleteConfirmOpen(false)
     setEditErrors({})
   }
 
@@ -245,6 +247,12 @@ export function SmsImportClient() {
       categoryType: editDraft.categoryType,
       categoryKey: slugify(trimmedLabel),
     })
+    closeEditRow()
+  }
+
+  const deleteEditingRow = () => {
+    if (!editingRowId) return
+    applyRowsChange((current) => current.filter((row) => row.id !== editingRowId))
     closeEditRow()
   }
 
@@ -282,9 +290,16 @@ export function SmsImportClient() {
   }
 
   const handleSave = async (confirmOverride = false) => {
+    const saveStartedAt = performance.now()
+    const logClientSaveTiming = (step: string, elapsedMs: number, extra?: Record<string, unknown>) => {
+      const detail = extra ? ` ${JSON.stringify(extra)}` : ''
+      console.info(`[sms-import] client-save ${step}=${elapsedMs.toFixed(1)}ms${detail}`)
+    }
+
     setSaving(true)
     setError(null)
     try {
+      const preSubmitStartedAt = performance.now()
       const nextRowErrors: Record<string, string[]> = {}
       for (const row of rows) {
         const issues = validateRow(row)
@@ -296,6 +311,10 @@ export function SmsImportClient() {
         setRowWarnings({})
         setError('Review rows marked with issues before saving.')
         setSaving(false)
+        logClientSaveTiming('pre-submit-validation', performance.now() - preSubmitStartedAt, {
+          rows: rows.length,
+          blocked: true,
+        })
         return
       }
 
@@ -308,8 +327,17 @@ export function SmsImportClient() {
         date: row.date,
         sourceHash: row.sourceHash,
       }))
+      logClientSaveTiming('pre-submit-processing', performance.now() - preSubmitStartedAt, {
+        rows: payload.length,
+        confirmOverride,
+      })
 
+      const serverStartedAt = performance.now()
       const result = await saveParsedSmsExpenses(payload, { confirmOverride })
+      logClientSaveTiming('server-action', performance.now() - serverStartedAt, {
+        rows: payload.length,
+        confirmOverride,
+      })
       if (!result.ok) {
         setError(
           result.error.kind === 'unauthorized'
@@ -317,6 +345,9 @@ export function SmsImportClient() {
             : "We couldn't save right now. Please try again in a moment."
         )
         setSaving(false)
+        logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
+          outcome: 'server-error',
+        })
         return
       }
       const data = result.data
@@ -336,11 +367,22 @@ export function SmsImportClient() {
           setError('Review rows marked with issues before saving.')
         }
         setSaving(false)
+        logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
+          outcome: 'blocked',
+          duplicates: data.duplicates,
+        })
         return
       }
       setSavedCount(data.saved)
+      logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
+        outcome: 'success',
+        saved: data.saved,
+      })
     } catch {
       setError("We couldn't save right now. Please try again in a moment.")
+      logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
+        outcome: 'exception',
+      })
     } finally {
       setSaving(false)
     }
@@ -725,7 +767,7 @@ export function SmsImportClient() {
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 gap: 'var(--space-md)',
-                padding: 'var(--space-lg) var(--space-page-mobile) var(--space-md)',
+                padding: 'var(--space-md) var(--space-page-mobile)',
                 borderBottom: `var(--border-width) solid ${T.borderSubtle}`,
               }}>
                 <div style={{ minWidth: 0 }}>
@@ -733,7 +775,7 @@ export function SmsImportClient() {
                     margin: 0,
                     fontFamily: 'var(--font-display)',
                     fontSize: 'var(--text-lg)',
-                    fontWeight: 'var(--weight-semibold)',
+                    fontWeight: 'var(--weight-bold)',
                     color: T.text1,
                     lineHeight: 1.2,
                     letterSpacing: '-0.01em',
@@ -744,17 +786,16 @@ export function SmsImportClient() {
                     {editDraft.label.trim() || editingRow.label}
                   </p>
                   <p style={{
-                    margin: 'var(--space-xs) 0 0',
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 'var(--text-lg)',
-                    fontWeight: 'var(--weight-semibold)',
+                    margin: 'var(--space-2xs) 0 0',
+                    fontSize: 'var(--text-base)',
+                    fontWeight: 'var(--weight-medium)',
                     color: T.text2,
-                    lineHeight: 1.2,
+                    lineHeight: 1.3,
                   }}>
                     {editingRow.currency} {(Number(editDraft.amount) || 0).toLocaleString()}
                   </p>
                   <p style={{
-                    margin: 'var(--space-sm) 0 0',
+                    margin: 'var(--space-xs) 0 0',
                     fontSize: 'var(--text-sm)',
                     color: T.textMuted,
                     lineHeight: 1.4,
@@ -769,11 +810,11 @@ export function SmsImportClient() {
                   onClick={closeEditRow}
                   aria-label="Close edit modal"
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 32,
+                    height: 32,
                     borderRadius: 'var(--radius-full)',
                     border: 'none',
-                    background: 'var(--grey-100)',
+                    background: 'var(--grey-50)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -781,14 +822,14 @@ export function SmsImportClient() {
                     flexShrink: 0,
                   }}
                 >
-                  <IconChevronX size={16} color="var(--text-2)" />
+                  <IconChevronX size={14} color="var(--text-3)" />
                 </button>
               </div>
 
               <div style={{
                 flex: 1,
                 overflowY: 'auto',
-                padding: 'var(--space-lg) var(--space-page-mobile) var(--space-xl)',
+                padding: 'var(--space-md) var(--space-page-mobile) var(--space-md)',
               }}>
                 <Input
                   label="Name"
@@ -843,27 +884,25 @@ export function SmsImportClient() {
                             padding: '0 var(--space-md)',
                             borderRadius: 'var(--radius-full)',
                             border: selected
-                              ? `var(--border-width-thick) solid ${T.brandDark}`
-                              : `var(--border-width) solid ${T.border}`,
-                            background: selected ? T.brand : 'var(--grey-50)',
+                              ? `var(--border-width) solid var(--brand-mid)`
+                              : `var(--border-width) solid var(--grey-300)`,
+                            background: selected ? 'var(--brand-mid)' : 'var(--grey-100)',
                             color: selected ? T.brandDark : T.text2,
                             fontSize: 'var(--text-sm)',
                             fontWeight: 'var(--weight-medium)',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: 'var(--space-xs)',
                             cursor: 'pointer',
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {selected && <IconCheck size={14} color={T.brandDark} />}
-                          <span>{option.label}</span>
+                          {option.label}
                         </button>
                       )
                     })}
                   </div>
                   {editErrors.category && (
-                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.redDark, lineHeight: 1.4 }}>
+                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.amberDark, lineHeight: 1.4 }}>
                       {editErrors.category}
                     </p>
                   )}
@@ -883,7 +922,80 @@ export function SmsImportClient() {
                 <PrimaryBtn size="lg" onClick={saveEditRow}>
                   Save changes
                 </PrimaryBtn>
+                <SecondaryBtn
+                  size="lg"
+                  onClick={() => setEditDeleteConfirmOpen(true)}
+                  style={{
+                    marginTop: 'var(--space-sm)',
+                    borderColor: T.border,
+                    color: T.redDark,
+                  }}
+                >
+                  Delete entry
+                </SecondaryBtn>
               </div>
+
+              {editDeleteConfirmOpen && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(16, 24, 40, 0.32)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 'var(--space-md)',
+                }}>
+                  <div style={{
+                    width: '100%',
+                    maxWidth: 360,
+                    background: T.white,
+                    borderRadius: 'var(--radius-lg)',
+                    border: `var(--border-width) solid ${T.border}`,
+                    padding: 'var(--space-lg)',
+                  }}>
+                    <p style={{
+                      margin: 0,
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 'var(--text-lg)',
+                      fontWeight: 'var(--weight-semibold)',
+                      color: T.text1,
+                      letterSpacing: '-0.01em',
+                    }}>
+                      Delete this entry?
+                    </p>
+                    <p style={{
+                      margin: 'var(--space-sm) 0 0',
+                      fontSize: 'var(--text-sm)',
+                      color: T.text2,
+                      lineHeight: 1.5,
+                    }}>
+                      This will remove it from your log.
+                    </p>
+                    <div style={{
+                      display: 'grid',
+                      gap: 'var(--space-sm)',
+                      marginTop: 'var(--space-lg)',
+                    }}>
+                      <SecondaryBtn
+                        size="lg"
+                        onClick={() => setEditDeleteConfirmOpen(false)}
+                      >
+                        Cancel
+                      </SecondaryBtn>
+                      <PrimaryBtn
+                        size="lg"
+                        onClick={deleteEditingRow}
+                        style={{
+                          background: T.redDark,
+                          color: T.white,
+                        }}
+                      >
+                        Delete
+                      </PrimaryBtn>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </Sheet>
         )}

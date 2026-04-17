@@ -1,10 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createClient } from '@/lib/supabase/server'
-import { createCycleTransaction } from '@/lib/supabase/transactions-db'
+import { buildTransactionRecord } from '@/lib/supabase/transactions-db'
 import { deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
+import { getCycleByDate, profileToPaySchedule, toLocalDateStr } from '@/lib/cycles'
 import {
   parseSmsBlob,
   parseSimpleExpenseLines,
@@ -28,37 +30,55 @@ function normalize(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-async function rememberDictionaryItem(
+async function rememberDictionaryItems(
   supabase: any,
   userId: string,
-  item: { label: string; categoryKey: string; categoryType: ImportCategoryType }
+  items: Array<{ label: string; categoryKey: string; categoryType: ImportCategoryType }>
 ) {
-  const normalized = normalize(item.label)
-  if (!normalized) return
+  const usageInBatch = new Map<string, number>()
+  const latestItemByNormalized = new Map<string, { label: string; categoryKey: string; categoryType: ImportCategoryType }>()
+
+  for (const item of items) {
+    const normalized = normalize(item.label)
+    if (!normalized) continue
+    usageInBatch.set(normalized, (usageInBatch.get(normalized) ?? 0) + 1)
+    latestItemByNormalized.set(normalized, item)
+  }
+
+  const normalizedNames = Array.from(latestItemByNormalized.keys())
+  if (normalizedNames.length === 0) return
 
   const table = supabase.from('item_dictionary') as any
-  const { data: existing } = await table
-    .select('usage_count')
+  const { data: existingRows, error: existingError } = await table
+    .select('name_normalized,usage_count')
     .eq('user_id', userId)
-    .eq('name_normalized', normalized)
-    .maybeSingle()
+    .in('name_normalized', normalizedNames)
 
-  const usageCount = Number(existing?.usage_count ?? 0) + 1
+  if (existingError) {
+    throw new Error(`Failed to load remembered items: ${existingError.message}`)
+  }
 
-  const { error } = await table.upsert(
-    {
+  const existingUsage = new Map<string, number>()
+  for (const row of existingRows ?? []) {
+    if (!row?.name_normalized) continue
+    existingUsage.set(String(row.name_normalized), Number(row.usage_count ?? 0))
+  }
+
+  const upserts = normalizedNames.map((normalized) => {
+    const item = latestItemByNormalized.get(normalized)!
+    return {
       user_id: userId,
       name_normalized: normalized,
       label: item.label,
       category_key: item.categoryKey,
       category_type: item.categoryType,
-      usage_count: usageCount,
-    },
-    { onConflict: 'user_id,name_normalized' }
-  )
+      usage_count: (existingUsage.get(normalized) ?? 0) + (usageInBatch.get(normalized) ?? 0),
+    }
+  })
 
+  const { error } = await table.upsert(upserts, { onConflict: 'user_id,name_normalized' })
   if (error) {
-    throw new Error(`Failed to remember item: ${error.message}`)
+    throw new Error(`Failed to remember items: ${error.message}`)
   }
 }
 
@@ -89,6 +109,67 @@ function buildRowFingerprint(input: {
     normalizedLabel,
     input.categoryType,
   ].join('|')
+}
+
+function logSaveTiming(
+  label: string,
+  startedAt: number,
+  marks: Array<{ step: string; ms: number }>
+) {
+  const totalMs = Date.now() - startedAt
+  const summary = marks.map((mark) => `${mark.step}=${mark.ms}ms`).join(' | ')
+  console.info(`[sms-import] ${label} total=${totalMs}ms${summary ? ` | ${summary}` : ''}`)
+}
+
+function createTimingMarks(startedAt: number) {
+  const marks: Array<{ step: string; ms: number }> = []
+  let lastMark = startedAt
+
+  return {
+    marks,
+    mark(step: string) {
+      const now = Date.now()
+      marks.push({ step, ms: now - lastMark })
+      lastMark = now
+    },
+  }
+}
+
+async function ensureCycleRows(
+  supabase: any,
+  userId: string,
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+  rowMeta: Array<{ cycleId: string; entryDate: Date }>
+) {
+  const schedule = profileToPaySchedule(profile)
+  const cycleRows = new Map<string, { user_id: string; start_date: string; end_date: string; is_current: boolean }>()
+
+  for (const meta of rowMeta) {
+    if (cycleRows.has(meta.cycleId)) continue
+    const localDay = new Date(
+      meta.entryDate.getFullYear(),
+      meta.entryDate.getMonth(),
+      meta.entryDate.getDate()
+    )
+    const cycle = getCycleByDate(localDay, schedule)
+    cycleRows.set(meta.cycleId, {
+      user_id: userId,
+      start_date: toLocalDateStr(cycle.startDate),
+      end_date: toLocalDateStr(cycle.endDate),
+      is_current: false,
+    })
+  }
+
+  if (cycleRows.size === 0) return
+
+  const { error } = await (supabase.from('cycles') as any).upsert(
+    Array.from(cycleRows.values()),
+    { onConflict: 'user_id,start_date' }
+  )
+
+  if (error) {
+    throw new Error(`Failed to ensure cycles: ${error.message}`)
+  }
 }
 
 function validateParsedRow(row: ParsedRowInput) {
@@ -215,8 +296,16 @@ export async function saveParsedSmsExpenses(
   opts?: { confirmOverride?: boolean }
 ): Promise<ActionResult<SaveParsedSmsExpensesResult>> {
   return runAction<SaveParsedSmsExpensesResult>(async () => {
+  const startedAt = Date.now()
+  const blockingTiming = createTimingMarks(startedAt)
+  const mark = blockingTiming.mark
+
   const { user, profile } = await getAppSession()
-  if (!user || !profile) return unauthorized()
+  mark('session')
+  if (!user || !profile) {
+    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+    return unauthorized()
+  }
 
   const confirmOverride = opts?.confirmOverride === true
 
@@ -227,8 +316,10 @@ export async function saveParsedSmsExpenses(
     amount: Number(row.amount),
     sourceHash: (row.sourceHash ?? '').trim(),
   }))
+  mark('client-payload-normalize')
 
   if (selectedRows.length === 0) {
+    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
     return ok({
       saved: 0,
       duplicates: 0,
@@ -264,8 +355,10 @@ export async function saveParsedSmsExpenses(
       rowErrors[row.id] = errors
     }
   }
+  mark('server-validate')
 
   const supabase = await createClient()
+  mark('create-client')
 
   // ── HARD BLOCK: exact-same SMS already imported (in-batch or cross-batch)
   const hashesToCheck = Array.from(
@@ -286,6 +379,7 @@ export async function saveParsedSmsExpenses(
       if (r?.source_hash) importedHashes.add(String(r.source_hash))
     }
   }
+  mark('duplicate-hash-check')
 
   const seenHashInBatch = new Set<string>()
   for (const { row } of rowMeta) {
@@ -298,6 +392,7 @@ export async function saveParsedSmsExpenses(
   }
 
   if (Object.keys(rowErrors).length > 0) {
+    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
     return ok({
       saved: 0,
       duplicates: 0,
@@ -309,48 +404,52 @@ export async function saveParsedSmsExpenses(
 
   // ── SOFT WARNING: content fingerprint matches another row in this batch
   //    or an existing transaction in the same cycle.
-  const minDate = selectedRows.reduce((acc, row) => (row.date < acc ? row.date : acc), selectedRows[0].date)
-  const maxDate = selectedRows.reduce((acc, row) => (row.date > acc ? row.date : acc), selectedRows[0].date)
-  const { data: existingRows, error: existingError } = await (supabase.from('transactions') as any)
-    .select('cycle_id,date,amount,category_label,category_type')
-    .eq('user_id', user.id)
-    .gte('date', minDate)
-    .lte('date', maxDate)
-
-  if (existingError) {
-    throw new Error(`Failed to check duplicates: ${existingError.message}`)
-  }
-
-  const existingFingerprints = new Set<string>()
-  for (const txn of existingRows ?? []) {
-    if (!txn?.cycle_id || !txn?.date || txn?.amount == null || !txn?.category_label || !txn?.category_type) continue
-    existingFingerprints.add(
-      buildRowFingerprint({
-        cycleId: String(txn.cycle_id),
-        date: String(txn.date),
-        amount: Math.abs(Number(txn.amount)),
-        label: String(txn.category_label),
-        categoryType: String(txn.category_type) as ImportCategoryType,
-      })
-    )
-  }
-
   const seenFingerprintInBatch = new Set<string>()
   let duplicates = 0
-  for (const meta of rowMeta) {
-    const matchesExisting = existingFingerprints.has(meta.fingerprint)
-    const matchesInBatch = seenFingerprintInBatch.has(meta.fingerprint)
-    if (matchesExisting || matchesInBatch) {
-      rowWarnings[meta.row.id] = [
-        ...(rowWarnings[meta.row.id] ?? []),
-        'This looks similar to something you already logged',
-      ]
-      duplicates += 1
+  if (!confirmOverride) {
+    const minDate = selectedRows.reduce((acc, row) => (row.date < acc ? row.date : acc), selectedRows[0].date)
+    const maxDate = selectedRows.reduce((acc, row) => (row.date > acc ? row.date : acc), selectedRows[0].date)
+    const { data: existingRows, error: existingError } = await (supabase.from('transactions') as any)
+      .select('cycle_id,date,amount,category_label,category_type')
+      .eq('user_id', user.id)
+      .gte('date', minDate)
+      .lte('date', maxDate)
+
+    if (existingError) {
+      throw new Error(`Failed to check duplicates: ${existingError.message}`)
     }
-    seenFingerprintInBatch.add(meta.fingerprint)
+
+    const existingFingerprints = new Set<string>()
+    for (const txn of existingRows ?? []) {
+      if (!txn?.cycle_id || !txn?.date || txn?.amount == null || !txn?.category_label || !txn?.category_type) continue
+      existingFingerprints.add(
+        buildRowFingerprint({
+          cycleId: String(txn.cycle_id),
+          date: String(txn.date),
+          amount: Math.abs(Number(txn.amount)),
+          label: String(txn.category_label),
+          categoryType: String(txn.category_type) as ImportCategoryType,
+        })
+      )
+    }
+
+    for (const meta of rowMeta) {
+      const matchesExisting = existingFingerprints.has(meta.fingerprint)
+      const matchesInBatch = seenFingerprintInBatch.has(meta.fingerprint)
+      if (matchesExisting || matchesInBatch) {
+        rowWarnings[meta.row.id] = [
+          ...(rowWarnings[meta.row.id] ?? []),
+          'This looks similar to something you already logged',
+        ]
+        duplicates += 1
+      }
+      seenFingerprintInBatch.add(meta.fingerprint)
+    }
   }
+  mark(confirmOverride ? 'duplicate-fingerprint-skip' : 'duplicate-fingerprint-check')
 
   if (Object.keys(rowWarnings).length > 0 && !confirmOverride) {
+    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
     return ok({
       saved: 0,
       duplicates,
@@ -360,44 +459,84 @@ export async function saveParsedSmsExpenses(
     })
   }
 
-  for (const { row, entryDate } of rowMeta) {
-    // Fixed bills must share a canonical key for Bills-left-to-pay matching.
-    // Other category types persist their parsed key unchanged so we don't
-    // widen the scope of this fix into everyday/debt/goal flows.
+  const persistedRows = rowMeta.map(({ row, entryDate, cycleId }) => {
     const persistedKey =
       row.categoryType === 'fixed'
         ? canonicalizeFixedBillKey(row.categoryKey)
         : row.categoryKey
 
-    await createCycleTransaction(supabase as any, user.id, profile as any, {
+    return {
+      row,
+      entryDate,
+      cycleId,
+      persistedKey,
+    }
+  })
+
+  await ensureCycleRows(supabase, user.id, profile as any, persistedRows)
+  mark('db-write-cycles')
+
+  const transactionRecords = persistedRows.map(({ row, cycleId, entryDate, persistedKey }) =>
+    buildTransactionRecord({
+      userId: user.id,
+      cycleId,
+      date: toLocalDateStr(entryDate),
       categoryType: row.categoryType,
       categoryKey: persistedKey,
       categoryLabel: row.label,
       amount: row.amount,
-      date: entryDate,
       note: 'Imported from SMS',
     })
+  )
 
-    await rememberDictionaryItem(supabase, user.id, {
-      label: row.label,
-      categoryKey: persistedKey,
-      categoryType: row.categoryType,
-    })
+  const { error: transactionInsertError } = await (supabase.from('transactions') as any).insert(transactionRecords)
+  if (transactionInsertError) {
+    throw new Error(`Failed to insert transactions: ${transactionInsertError.message}`)
+  }
+  mark('db-write-transactions')
 
-    if (row.sourceHash) {
-      const { error: importInsertError } = await (supabase.from('sms_import_lines') as any)
-        .insert({ user_id: user.id, source_hash: row.sourceHash })
-      // Ignore unique-violation races; the transaction is already saved and
-      // a future re-import will still be caught by the pre-save query above.
-      if (importInsertError && importInsertError.code !== '23505') {
-        throw new Error(`Failed to record imported message: ${importInsertError.message}`)
-      }
+  const importRows = persistedRows
+    .map(({ row }) => row.sourceHash)
+    .filter((sourceHash) => sourceHash.length > 0)
+    .map((sourceHash) => ({ user_id: user.id, source_hash: sourceHash }))
+
+  if (importRows.length > 0) {
+    const { error: importInsertError } = await (supabase.from('sms_import_lines') as any).insert(importRows)
+    if (importInsertError && importInsertError.code !== '23505') {
+      throw new Error(`Failed to record imported messages: ${importInsertError.message}`)
     }
   }
+  mark('db-write-import-lines')
 
-  revalidatePath('/log')
-  revalidatePath('/history')
-  revalidatePath('/app')
+  mark('response-ready')
+  logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+
+  const backgroundStartedAt = Date.now()
+  after(async () => {
+    const backgroundTiming = createTimingMarks(backgroundStartedAt)
+    try {
+      await rememberDictionaryItems(
+        supabase,
+        user.id,
+        persistedRows.map(({ row, persistedKey }) => ({
+          label: row.label,
+          categoryKey: persistedKey,
+          categoryType: row.categoryType,
+        }))
+      )
+      backgroundTiming.mark('db-write-dictionary')
+
+      revalidatePath('/log')
+      revalidatePath('/app')
+      backgroundTiming.mark('post-save-revalidate')
+
+      logSaveTiming('saveParsedSmsExpenses:background', backgroundStartedAt, backgroundTiming.marks)
+    } catch (error) {
+      backgroundTiming.mark('background-error')
+      logSaveTiming('saveParsedSmsExpenses:background', backgroundStartedAt, backgroundTiming.marks)
+      console.error('[sms-import] background save work failed', error)
+    }
+  })
 
   return ok({
     saved: rowMeta.length,
