@@ -212,7 +212,10 @@ export function EntryActionsClient({ entry, currency }: Props) {
     if (!entry.id) return
     setDeletingKey(entry.id)
     try {
-      await deleteLogEntry(entry.id)
+      await deleteLogEntry(
+        entry.id,
+        entry.trackedEssential ? (entry.trackedEssentialKey ?? entry.categoryKey) : null
+      )
       toast('Entry removed')
       router.push('/log')
       router.refresh()

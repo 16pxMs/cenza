@@ -54,6 +54,40 @@ interface UpdateTrackedEssentialInput {
   monthlyAmount: number
 }
 
+async function removeRecurringEntryForCurrentCycle(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  profile: NonNullable<Awaited<ReturnType<typeof getAppSession>>['profile']>,
+  categoryKey: string
+): Promise<void> {
+  const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
+  const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
+    .select('entries')
+    .eq('user_id', userId)
+    .eq('cycle_id', cycleId)
+    .maybeSingle()
+
+  if (fixedExpensesError) {
+    throw new Error(`Failed to load recurring essentials: ${fixedExpensesError.message}`)
+  }
+
+  const nextEntries = removeTrackedFixedExpense(
+    fixedExpenses?.entries ?? null,
+    canonicalizeFixedBillKey(categoryKey)
+  )
+
+  const { error: recurringError } = await (supabase.from('fixed_expenses') as any).upsert({
+    user_id: userId,
+    cycle_id: cycleId,
+    total_monthly: sumTrackedFixedExpenses(nextEntries),
+    entries: nextEntries,
+  }, { onConflict: 'user_id,cycle_id' })
+
+  if (recurringError) {
+    throw new Error(`Failed to update recurring essentials: ${recurringError.message}`)
+  }
+}
+
 function slugifyCategoryKey(value: string) {
   return value
     .trim()
@@ -136,33 +170,12 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
 
   if (input.removeRecurringCategoryKey?.trim()) {
     if (!profile) throw new Error('Profile is required to update recurring state')
-
-    const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-    const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-      .select('entries')
-      .eq('user_id', user.id)
-      .eq('cycle_id', cycleId)
-      .maybeSingle()
-
-    if (fixedExpensesError) {
-      throw new Error(`Failed to load recurring essentials: ${fixedExpensesError.message}`)
-    }
-
-    const nextEntries = removeTrackedFixedExpense(
-      fixedExpenses?.entries ?? null,
-      canonicalizeFixedBillKey(input.removeRecurringCategoryKey)
+    await removeRecurringEntryForCurrentCycle(
+      supabase,
+      user.id,
+      profile,
+      input.removeRecurringCategoryKey
     )
-
-    const { error: recurringError } = await (supabase.from('fixed_expenses') as any).upsert({
-      user_id: user.id,
-      cycle_id: cycleId,
-      total_monthly: sumTrackedFixedExpenses(nextEntries),
-      entries: nextEntries,
-    }, { onConflict: 'user_id,cycle_id' })
-
-    if (recurringError) {
-      throw new Error(`Failed to update recurring essentials: ${recurringError.message}`)
-    }
   }
 
   revalidatePath('/log')
@@ -170,8 +183,8 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   revalidatePath('/app')
 }
 
-export async function deleteLogEntry(id: string): Promise<void> {
-  const { user } = await getAppSession()
+export async function deleteLogEntry(id: string, recurringCategoryKey?: string | null): Promise<void> {
+  const { user, profile } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
   if (!id.trim()) throw new Error('Entry id is required')
 
@@ -183,9 +196,20 @@ export async function deleteLogEntry(id: string): Promise<void> {
 
   if (error) throw new Error(`Failed to delete entry: ${error.message}`)
 
+  if (recurringCategoryKey?.trim()) {
+    if (!profile) throw new Error('Profile is required to update recurring state')
+    await removeRecurringEntryForCurrentCycle(
+      supabase,
+      user.id,
+      profile,
+      recurringCategoryKey
+    )
+  }
+
   revalidatePath('/log')
   revalidatePath('/history')
   revalidatePath('/app')
+  revalidatePath('/income')
 }
 
 export async function trackEssential(input: TrackEssentialInput): Promise<void> {
