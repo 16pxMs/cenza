@@ -19,7 +19,7 @@ const T = {
 }
 
 function recapDisplayLabel(label: string) {
-  if (label === 'Fixed' || label === 'Fixed spending') return 'Bills'
+  if (label === 'Fixed' || label === 'Fixed spending') return 'Essentials'
   if (label === 'Daily' || label === 'Daily spending') return 'Spending'
   if (label === 'Debts') return 'Debt'
   return label
@@ -99,7 +99,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
 
   // Breakdown segments for the bar
   const segments = [
-    { label: 'Bills', amount: data.breakdown.find(i => i.label === 'Fixed')?.amount ?? 0, color: 'var(--category-essentials)' },
+    { label: 'Essentials', amount: data.breakdown.find(i => i.label === 'Fixed')?.amount ?? 0, color: 'var(--category-essentials)' },
     { label: 'Goals',  amount: data.breakdown.find(i => i.label === 'Goals')?.amount  ?? 0, color: 'var(--category-goals)' },
     { label: 'Spending', amount: data.breakdown.find(i => i.label === 'Daily')?.amount ?? 0, color: 'var(--category-life)' },
     { label: 'Debt', amount: data.breakdown.find(i => i.label === 'Debts')?.amount ?? 0, color: 'var(--category-debt)' },
@@ -315,7 +315,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
               color: T.text2,
               lineHeight: 1.55,
             }}>
-              Once you log expenses, this page will show where your money went across Bills, Spending, and Debt.
+              Once you log expenses, this page will show where your money went across Essentials, Spending, and Debt.
             </p>
 
             <div style={{
@@ -324,7 +324,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
               overflow: 'hidden',
               marginBottom: 'var(--space-card-sm)',
             }}>
-              {['Bills', 'Spending', 'Debt'].map((label, index) => (
+              {['Essentials', 'Spending', 'Debt'].map((label, index) => (
                 <div
                   key={label}
                   style={{

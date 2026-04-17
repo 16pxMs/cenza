@@ -50,7 +50,7 @@ function slugify(value: string) {
 
 function categoryLabel(value: ImportCategoryType | null) {
   if (!value) return 'Not set'
-  if (value === 'fixed') return 'Bills'
+  if (value === 'fixed') return 'Essentials'
   if (value === 'debt') return 'Debt'
   return 'Spending'
 }
@@ -143,8 +143,6 @@ export function SmsImportClient() {
   const [rawText, setRawText] = useState('')
   const [rows, setRows] = useState<EditableRow[]>([])
   const [parseMeta, setParseMeta] = useState<{ scanned: number; skippedCredits: number }>({ scanned: 0, skippedCredits: 0 })
-  const [hasLowConfidence, setHasLowConfidence] = useState(false)
-  const [usedFallback, setUsedFallback] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
@@ -213,8 +211,6 @@ export function SmsImportClient() {
         }))
       )
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
-      setHasLowConfidence(Boolean(data.hasLowConfidence))
-      setUsedFallback(Boolean(data.usedFallback))
       setRowErrors({})
       setRowWarnings({})
       if (data.rows.length === 0) {
@@ -392,8 +388,6 @@ export function SmsImportClient() {
               </p>
               <p style={{ margin: '0 0 14px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
                 Paste bank messages or simple entries like &lsquo;food 500&rsquo;.
-                <br />
-                You can paste several at once.
               </p>
               <textarea
                 value={rawText}
@@ -418,9 +412,6 @@ export function SmsImportClient() {
                   {error}
                 </p>
               )}
-              <p style={{ margin: '10px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
-                You can paste several messages at once to save time
-              </p>
               <p style={{ margin: '6px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
                 We only use what you paste here
               </p>
@@ -440,32 +431,17 @@ export function SmsImportClient() {
                   const issues = rowErrors[row.id] ?? validateRow(row)
                   return count + (issues.length > 0 ? 1 : 0)
                 }, 0)
-                const readyCount = rows.length - needsAttentionCount
-                const readyLine = `${readyCount} ${readyCount === 1 ? 'expense' : 'expenses'} ready to save`
                 return (
                   <div style={{ marginBottom: 12 }}>
                     <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                      Here&rsquo;s your recent spending
+                      Here&rsquo;s what we found
                     </p>
                     <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
-                      We turned this into expenses. Review and confirm before saving.
-                    </p>
-                    {usedFallback && (
-                      <p style={{ margin: '4px 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
-                        Simple entries use your app currency and may need category confirmation.
-                      </p>
-                    )}
-                    <p style={{ margin: '8px 0 0', fontSize: 12, color: T.text2, fontWeight: 500 }}>
-                      {readyLine}
+                      Review and save your expenses.
                     </p>
                     {needsAttentionCount > 0 && (
-                      <p style={{ margin: '2px 0 0', fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
-                        A few need a quick look
-                      </p>
-                    )}
-                    {hasLowConfidence && (
                       <p style={{ margin: '4px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
-                        This might not be the full picture yet
+                        Some entries need a category.
                       </p>
                     )}
                   </div>
@@ -559,7 +535,7 @@ export function SmsImportClient() {
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {([
                                 { value: 'everyday', label: 'Spending' },
-                                { value: 'fixed', label: 'Bills' },
+                                { value: 'fixed', label: 'Essentials' },
                                 { value: 'debt', label: 'Debt' },
                               ] as const).map((option) => {
                                 const selected = row.categoryType === option.value

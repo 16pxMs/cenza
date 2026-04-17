@@ -71,7 +71,7 @@ const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: 
     helper: 'For everyday spending like food, transport, or going out',
   },
   fixed: {
-    title: 'Bills',
+    title: 'Essentials',
     helper: 'For fixed costs like rent, bills, or subscriptions',
   },
   debt: {

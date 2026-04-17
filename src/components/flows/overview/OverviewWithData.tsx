@@ -711,7 +711,7 @@ const reference = receivedConfirmed
         letterSpacing: '0.07em',
         textTransform: 'uppercase',
       }}>
-        Bills left to pay
+        Essentials left to pay
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {billsLeftToPay.items.slice(0, 5).map((item) => (
