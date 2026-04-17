@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { IconBack, IconCheck } from '@/components/ui/Icons'
+import { Input } from '@/components/ui/Input/Input'
+import { IconBack, IconCheck, IconChevronX } from '@/components/ui/Icons'
 import { parseSmsImport, saveParsedSmsExpenses } from './actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
@@ -153,6 +155,17 @@ export function SmsImportClient() {
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
   const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
   const [expandedRaw, setExpandedRaw] = useState<Record<string, boolean>>({})
+  const [editingRowId, setEditingRowId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<{
+    label: string
+    amount: string
+    categoryType: ImportCategoryType | null
+  } | null>(null)
+  const [editErrors, setEditErrors] = useState<{
+    label?: string
+    amount?: string
+    category?: string
+  }>({})
 
   const selectedCount = rows.length
   const savedRows = rows
@@ -160,6 +173,7 @@ export function SmsImportClient() {
     () => rows.some((row) => validateRow(row).length > 0),
     [rows]
   )
+  const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null
   const smsPlaceholder = [
     'M-PESA: Confirmed. KES 2,100 paid to Naivas',
     'food 500',
@@ -191,6 +205,47 @@ export function SmsImportClient() {
         return next
       })
     )
+  }
+
+  const openEditRow = (row: EditableRow) => {
+    setEditingRowId(row.id)
+    setEditDraft({
+      label: row.label,
+      amount: String(row.amount),
+      categoryType: row.categoryType,
+    })
+    setEditErrors({})
+  }
+
+  const closeEditRow = () => {
+    setEditingRowId(null)
+    setEditDraft(null)
+    setEditErrors({})
+  }
+
+  const saveEditRow = () => {
+    if (!editingRowId || !editDraft) return
+
+    const nextErrors: { label?: string; amount?: string; category?: string } = {}
+    const trimmedLabel = editDraft.label.trim()
+    const amount = Number(editDraft.amount)
+
+    if (!trimmedLabel) nextErrors.label = 'Name is required.'
+    if (!Number.isFinite(amount) || amount <= 0) nextErrors.amount = 'Amount must be greater than zero.'
+    if (!editDraft.categoryType) nextErrors.category = 'Choose a category'
+
+    if (Object.keys(nextErrors).length > 0) {
+      setEditErrors(nextErrors)
+      return
+    }
+
+    updateRow(editingRowId, {
+      label: trimmedLabel,
+      amount,
+      categoryType: editDraft.categoryType,
+      categoryKey: slugify(trimmedLabel),
+    })
+    closeEditRow()
   }
 
   const handleParse = async () => {
@@ -473,19 +528,36 @@ export function SmsImportClient() {
                     <div
                       style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
                         gap: 8,
-                        marginBottom: 8,
                       }}
                     >
-                      <p style={{ margin: 0, fontSize: 13, color: T.text1, fontWeight: 600 }}>
-                        {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
-                        <span style={{ color: T.text3, fontWeight: 500 }}>
+                      <button
+                        type="button"
+                        onClick={() => openEditRow(row)}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          display: 'block',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <p style={{ margin: '0 0 4px', fontSize: 15, color: T.text1, fontWeight: 600, lineHeight: 1.3 }}>
+                          {row.label}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.amberDark : T.text3, lineHeight: 1.45 }}>
+                          {needsCategory ? 'Choose a category' : categoryLabel(row.categoryType)}
                           {' · '}
                           {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      </p>
+                        </p>
+                        <p style={{ margin: '8px 0 0', fontSize: 14, color: T.text1, fontWeight: 600 }}>
+                          {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
+                        </p>
+                      </button>
                       <button
                         type="button"
                         aria-label="Remove row"
@@ -516,73 +588,12 @@ export function SmsImportClient() {
                       </button>
                     </div>
 
-                    <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                       {(() => {
                         const hardErrors = (serverErrors.length > 0 ? serverErrors : clientIssues).filter((i) => i !== 'Choose a category')
                         const warnings = rowWarnings[row.id] ?? []
                         return (
                           <>
-                            <input
-                              value={row.label}
-                              onChange={(event) => updateRow(row.id, { label: event.target.value })}
-                              placeholder={row.categoryType === 'debt' ? 'Debt name (e.g. KCB loan)' : 'Expense name'}
-                              style={{
-                                width: '100%',
-                                height: 42,
-                                borderRadius: 10,
-                                border: `1px solid ${hasHardError ? T.brandMid : T.border}`,
-                                padding: '0 10px',
-                                fontSize: 14,
-                                color: T.text1,
-                                background: 'var(--white)',
-                                boxSizing: 'border-box',
-                                fontFamily: 'inherit',
-                              }}
-                            />
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              {([
-                                { value: 'everyday', label: 'Spending' },
-                                { value: 'fixed', label: 'Essentials' },
-                                { value: 'debt', label: 'Debt' },
-                              ] as const).map((option) => {
-                                const selected = row.categoryType === option.value
-                                return (
-                                  <button
-                                    key={`${row.id}-${option.value}`}
-                                    type="button"
-                                    onClick={() => updateRow(row.id, { categoryType: option.value })}
-                                    style={{
-                                      height: 38,
-                                      borderRadius: 999,
-                                      border: `1px solid ${selected ? T.brandMid : T.border}`,
-                                      background: selected ? T.brand : 'var(--grey-50)',
-                                      color: selected ? T.brandDark : T.text2,
-                                      padding: '0 12px',
-                                      fontSize: 14,
-                                      fontWeight: 500,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 6,
-                                      whiteSpace: 'nowrap',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    {selected && <IconCheck size={14} color={T.brandDark} />}
-                                    <span>{option.label}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            {needsCategory && (
-                              <p style={{ margin: 0, fontSize: 12, color: T.amberDark, lineHeight: 1.5 }}>
-                                Choose a category
-                              </p>
-                            )}
-                            {row.categoryType && (
-                              <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
-                                {CATEGORY_HELPER[row.categoryType]}
-                              </p>
-                            )}
                             {hardErrors.length > 0 && (
                               <div style={{ display: 'grid', gap: 4 }}>
                                 {hardErrors.map((issue, index) => (
@@ -692,6 +703,190 @@ export function SmsImportClient() {
             </>
           )}
         </div>
+
+        {editingRow && editDraft && (
+          <Sheet
+            open={true}
+            onClose={closeEditRow}
+            title=""
+            hideHeader={true}
+            bodyPadding="none"
+            variant="bottom"
+          >
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '80vh',
+              minHeight: 'min(560px, 80vh)',
+              background: T.pageBg,
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 'var(--space-md)',
+                padding: 'var(--space-lg) var(--space-page-mobile) var(--space-md)',
+                borderBottom: `var(--border-width) solid ${T.borderSubtle}`,
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{
+                    margin: 0,
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-lg)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.text1,
+                    lineHeight: 1.2,
+                    letterSpacing: '-0.01em',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {editDraft.label.trim() || editingRow.label}
+                  </p>
+                  <p style={{
+                    margin: 'var(--space-xs) 0 0',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-lg)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: T.text2,
+                    lineHeight: 1.2,
+                  }}>
+                    {editingRow.currency} {(Number(editDraft.amount) || 0).toLocaleString()}
+                  </p>
+                  <p style={{
+                    margin: 'var(--space-sm) 0 0',
+                    fontSize: 'var(--text-sm)',
+                    color: T.textMuted,
+                    lineHeight: 1.4,
+                  }}>
+                    {editDraft.categoryType ? categoryLabel(editDraft.categoryType) : 'Choose a category'}
+                    {' · '}
+                    {new Date(`${editingRow.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeEditRow}
+                  aria-label="Close edit modal"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--radius-full)',
+                    border: 'none',
+                    background: 'var(--grey-100)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <IconChevronX size={16} color="var(--text-2)" />
+                </button>
+              </div>
+
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 'var(--space-lg) var(--space-page-mobile) var(--space-xl)',
+              }}>
+                <Input
+                  label="Name"
+                  value={editDraft.label}
+                  onChange={(value) => {
+                    setEditDraft((current) => current ? { ...current, label: value } : current)
+                    setEditErrors((current) => ({ ...current, label: undefined }))
+                  }}
+                  autoFocus
+                  error={editErrors.label}
+                />
+
+                <Input
+                  label="Amount"
+                  type="number"
+                  value={editDraft.amount}
+                  onChange={(value) => {
+                    setEditDraft((current) => current ? { ...current, amount: value } : current)
+                    setEditErrors((current) => ({ ...current, amount: undefined }))
+                  }}
+                  autoFocus={false}
+                  error={editErrors.amount}
+                />
+
+                <div style={{ marginBottom: 'var(--space-md)' }}>
+                  <p style={{
+                    margin: '0 0 6px',
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: T.text2,
+                    letterSpacing: '0.2px',
+                  }}>
+                    Category
+                  </p>
+                  <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                    {([
+                      { value: 'everyday', label: 'Spending' },
+                      { value: 'fixed', label: 'Essentials' },
+                      { value: 'debt', label: 'Debt' },
+                    ] as const).map((option) => {
+                      const selected = editDraft.categoryType === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            setEditDraft((current) => current ? { ...current, categoryType: option.value } : current)
+                            setEditErrors((current) => ({ ...current, category: undefined }))
+                          }}
+                          style={{
+                            height: 'var(--button-height-md)',
+                            padding: '0 var(--space-md)',
+                            borderRadius: 'var(--radius-full)',
+                            border: selected
+                              ? `var(--border-width-thick) solid ${T.brandDark}`
+                              : `var(--border-width) solid ${T.border}`,
+                            background: selected ? T.brand : 'var(--grey-50)',
+                            color: selected ? T.brandDark : T.text2,
+                            fontSize: 'var(--text-sm)',
+                            fontWeight: 'var(--weight-medium)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-xs)',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {selected && <IconCheck size={14} color={T.brandDark} />}
+                          <span>{option.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {editErrors.category && (
+                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.redDark, lineHeight: 1.4 }}>
+                      {editErrors.category}
+                    </p>
+                  )}
+                  {editDraft.categoryType && (
+                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                      {CATEGORY_HELPER[editDraft.categoryType]}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div style={{
+                padding: 'var(--space-md) var(--space-page-mobile) calc(var(--space-md) + env(safe-area-inset-bottom, 0px))',
+                borderTop: `var(--border-width) solid ${T.borderSubtle}`,
+                background: T.pageBg,
+              }}>
+                <PrimaryBtn size="lg" onClick={saveEditRow}>
+                  Save changes
+                </PrimaryBtn>
+              </div>
+            </div>
+          </Sheet>
+        )}
 
         {!showReview && (
           <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
