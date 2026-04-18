@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
@@ -9,6 +9,7 @@ import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import { parseSmsImport, saveParsedSmsExpenses, loadActiveDebts, type ActiveDebtOption } from './actions'
 import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
+import { saveRecurringSetup } from '@/app/(app)/log/new/actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
 
@@ -162,6 +163,12 @@ export function SmsImportClient() {
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [savedWithOverride, setSavedWithOverride] = useState(false)
+  const [recurringPromptDismissed, setRecurringPromptDismissed] = useState(false)
+  const [recurringSetupOpen, setRecurringSetupOpen] = useState(false)
+  const [recurringDueDay, setRecurringDueDay] = useState('')
+  const [recurringSaving, setRecurringSaving] = useState(false)
+  const [recurringError, setRecurringError] = useState<string | null>(null)
+  const [recurringSaved, setRecurringSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
   const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
@@ -216,6 +223,35 @@ export function SmsImportClient() {
     const canonicalKey = canonicalizeFixedBillKey(slugify(input.categoryKey || input.label))
     return trackedFixedKeys.includes(canonicalKey)
   }
+
+  const recurringCandidate =
+    savedRows.length === 1 &&
+    savedRows[0] &&
+    savedRows[0].categoryType !== 'debt' &&
+    !isRowAlreadyTracked(savedRows[0])
+      ? savedRows[0]
+      : null
+  const alreadyTrackedRecurringItem =
+    savedRows.length === 1 &&
+    savedRows[0] &&
+    savedRows[0].categoryType === 'fixed' &&
+    isRowAlreadyTracked(savedRows[0])
+      ? savedRows[0]
+      : null
+  const recurringDueDayNumber = Number(recurringDueDay)
+  const hasValidRecurringDueDay =
+    Number.isInteger(recurringDueDayNumber) &&
+    recurringDueDayNumber >= 1 &&
+    recurringDueDayNumber <= 28
+
+  useEffect(() => {
+    setRecurringPromptDismissed(false)
+    setRecurringSetupOpen(false)
+    setRecurringDueDay('')
+    setRecurringSaving(false)
+    setRecurringError(null)
+    setRecurringSaved(false)
+  }, [savedCount, recurringCandidate?.id])
 
   const applyRowsChange = (
     mutator: (current: EditableRow[]) => EditableRow[]
@@ -349,25 +385,12 @@ export function SmsImportClient() {
     const nextErrors: { label?: string; amount?: string; category?: string; trackedMonthlyAmount?: string; debtId?: string } = {}
     const trimmedLabel = editDraft.label.trim()
     const amount = Number(editDraft.amount)
-    const monthlyAmount = Number(editDraft.trackedMonthlyAmount)
     const nextCategoryType = editDraft.categoryType
-    const alreadyTracked = isRowAlreadyTracked({
-      label: trimmedLabel,
-      categoryKey: slugify(trimmedLabel),
-      categoryType: nextCategoryType,
-    })
+    const existingRow = rows.find((row) => row.id === editingRowId) ?? null
 
     if (!trimmedLabel) nextErrors.label = 'Name is required.'
     if (!Number.isFinite(amount) || amount <= 0) nextErrors.amount = 'Amount must be greater than zero.'
     if (!nextCategoryType) nextErrors.category = 'Choose a category'
-    if (
-      nextCategoryType === 'fixed' &&
-      !alreadyTracked &&
-      editDraft.trackAsEssential &&
-      (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0)
-    ) {
-      nextErrors.trackedMonthlyAmount = 'Add a monthly amount'
-    }
     if (nextCategoryType === 'debt' && !editDraft.debtId) {
       nextErrors.debtId = 'Select which debt this payment is for.'
     }
@@ -386,10 +409,13 @@ export function SmsImportClient() {
       amount,
       categoryType: nextCategoryType,
       categoryKey: slugify(trimmedLabel),
-      trackAsEssential: nextCategoryType === 'fixed' && !alreadyTracked ? editDraft.trackAsEssential : false,
+      trackAsEssential:
+        nextCategoryType === 'fixed'
+          ? (existingRow?.trackAsEssential ?? false)
+          : false,
       trackedMonthlyAmount:
-        nextCategoryType === 'fixed' && !alreadyTracked && editDraft.trackAsEssential
-          ? monthlyAmount
+        nextCategoryType === 'fixed'
+          ? (existingRow?.trackedMonthlyAmount ?? null)
           : null,
       debtId: selectedDebt ? selectedDebt.id : null,
       debtName: selectedDebt ? selectedDebt.name : null,
@@ -606,6 +632,51 @@ export function SmsImportClient() {
               </div>
             )}
 
+            {recurringSaved ? (
+              <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                Saved as monthly
+              </p>
+            ) : alreadyTrackedRecurringItem ? (
+              <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                Already set as monthly
+              </p>
+            ) : recurringCandidate && !recurringPromptDismissed ? (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: 16,
+                  borderRadius: 16,
+                  background: 'var(--grey-50)',
+                }}
+              >
+                <p style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+                  Does this repeat each month?
+                </p>
+                <p style={{ margin: '0 0 12px', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+                  We’ll keep it on your list each month.
+                </p>
+                <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                  <TertiaryBtn
+                    size="md"
+                    onClick={() => {
+                      setRecurringError(null)
+                      setRecurringSetupOpen(true)
+                    }}
+                    style={{ color: T.text1, fontWeight: 'var(--weight-medium)', paddingInline: 0 }}
+                  >
+                    Make it monthly
+                  </TertiaryBtn>
+                  <TertiaryBtn
+                    size="md"
+                    onClick={() => setRecurringPromptDismissed(true)}
+                    style={{ color: T.text3 }}
+                  >
+                    Not now
+                  </TertiaryBtn>
+                </div>
+              </div>
+            ) : null}
+
             <PrimaryBtn size="lg" onClick={() => router.push('/app')}>
               Back to overview
             </PrimaryBtn>
@@ -614,6 +685,126 @@ export function SmsImportClient() {
             </SecondaryBtn>
           </div>
         </div>
+
+        {recurringSetupOpen && recurringCandidate && (
+          <Sheet
+            open={true}
+            onClose={() => {
+              if (recurringSaving) return
+              setRecurringSetupOpen(false)
+            }}
+            title="Make it monthly"
+          >
+            <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+                We’ll keep it on your list each month.
+              </p>
+
+              <label style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
+                  Due day
+                </span>
+                <span style={{ fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                  Day of the month this is usually due
+                </span>
+                <select
+                  value={recurringDueDay}
+                  onChange={(event) => {
+                    setRecurringDueDay(event.target.value)
+                    setRecurringError(null)
+                  }}
+                  style={{
+                    width: '100%',
+                    height: 48,
+                    borderRadius: 'var(--radius-sm)',
+                    border: `var(--border-width) solid ${T.border}`,
+                    padding: '0 var(--space-md)',
+                    fontSize: 'var(--text-base)',
+                    color: T.text1,
+                    background: T.white,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <option value="">Choose a day</option>
+                  {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {recurringError && (
+                <p style={{
+                  margin: 0,
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: T.redLight,
+                  border: `var(--border-width) solid ${T.redBorder}`,
+                  fontSize: 'var(--text-sm)',
+                  color: T.redDark,
+                  lineHeight: 1.5,
+                }}>
+                  {recurringError}
+                </p>
+              )}
+
+              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                <PrimaryBtn
+                  size="lg"
+                  onClick={async () => {
+                    if (!hasValidRecurringDueDay) {
+                      setRecurringError('Choose a due day to continue.')
+                      return
+                    }
+                    setRecurringSaving(true)
+                    setRecurringError(null)
+                    try {
+                      const result = await saveRecurringSetup({
+                        label: recurringCandidate.label,
+                        amount: recurringCandidate.amount,
+                        dueDay: recurringDueDayNumber,
+                        priority: 'flex',
+                      })
+
+                      if (!result.ok) {
+                        throw new Error(result.error.message)
+                      }
+
+                      setRecurringSaving(false)
+                      setRecurringSaved(true)
+                      setRecurringPromptDismissed(true)
+                      setRecurringSetupOpen(false)
+                      setTrackedFixedKeys((current) => {
+                        const nextKey = canonicalizeFixedBillKey(slugify(recurringCandidate.categoryKey || recurringCandidate.label))
+                        return current.includes(nextKey) ? current : [...current, nextKey]
+                      })
+                    } catch (caught) {
+                      setRecurringSaving(false)
+                      setRecurringError(caught instanceof Error ? caught.message : 'Failed to save recurring setup.')
+                    }
+                  }}
+                  disabled={recurringSaving || !hasValidRecurringDueDay}
+                >
+                  {recurringSaving ? 'Saving…' : 'Save'}
+                </PrimaryBtn>
+                <SecondaryBtn
+                  size="lg"
+                  onClick={() => {
+                    setRecurringError(null)
+                    setRecurringSetupOpen(false)
+                  }}
+                  style={{ borderColor: T.border, color: T.text1 }}
+                  disabled={recurringSaving}
+                >
+                  Cancel
+                </SecondaryBtn>
+              </div>
+            </div>
+          </Sheet>
+        )}
       </div>
     )
   }
@@ -924,13 +1115,6 @@ export function SmsImportClient() {
             variant="bottom"
           >
             {(() => {
-              const editDraftAlreadyTracked = isRowAlreadyTracked({
-                label: editDraft.label.trim() || editingRow.label,
-                categoryKey: slugify(editDraft.label.trim() || editingRow.label),
-                categoryType: editDraft.categoryType,
-              })
-              const showTrackingSetup = editDraft.categoryType === 'fixed' && !editDraftAlreadyTracked
-
               return (
             <div style={{
               display: 'flex',
@@ -1029,7 +1213,6 @@ export function SmsImportClient() {
                         setEditErrors((current) => ({
                           ...current,
                           label: undefined,
-                          trackedMonthlyAmount: undefined,
                         }))
                       }}
                       autoFocus
@@ -1041,23 +1224,10 @@ export function SmsImportClient() {
                       type="number"
                       value={editDraft.amount}
                       onChange={(value) => {
-                        setEditDraft((current) => {
-                          if (!current) return current
-                          const next = { ...current, amount: value }
-                          if (
-                            next.categoryType === 'fixed' &&
-                            !editDraftAlreadyTracked &&
-                            next.trackAsEssential &&
-                            !next.trackedMonthlyAmount
-                          ) {
-                            next.trackedMonthlyAmount = value
-                          }
-                          return next
-                        })
+                        setEditDraft((current) => current ? { ...current, amount: value } : current)
                         setEditErrors((current) => ({
                           ...current,
                           amount: undefined,
-                          trackedMonthlyAmount: undefined,
                         }))
                       }}
                       autoFocus={false}
@@ -1101,7 +1271,6 @@ export function SmsImportClient() {
                                 setEditErrors((current) => ({
                                   ...current,
                                   category: undefined,
-                                  trackedMonthlyAmount: undefined,
                                   debtId: undefined,
                                 }))
                                 if (option.value === 'debt') {
@@ -1351,75 +1520,6 @@ export function SmsImportClient() {
                     )}
                   </div>
 
-                  {showTrackingSetup && (
-                    <div style={{
-                      paddingTop: 'var(--space-md)',
-                      borderTop: `var(--border-width) solid ${T.borderSubtle}`,
-                    }}>
-                      <p style={{
-                        margin: '0 0 var(--space-sm)',
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 'var(--weight-semibold)',
-                        color: T.textMuted,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.07em',
-                      }}>
-                        Set as recurring
-                      </p>
-
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-sm)',
-                        fontSize: 'var(--text-sm)',
-                        color: T.text1,
-                        cursor: 'pointer',
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={editDraft.trackAsEssential}
-                          onChange={(event) => {
-                            const checked = event.target.checked
-                            setEditDraft((current) => {
-                              if (!current) return current
-                              return {
-                                ...current,
-                                trackAsEssential: checked,
-                                trackedMonthlyAmount:
-                                  checked
-                                    ? current.trackedMonthlyAmount || current.amount
-                                    : '',
-                              }
-                            })
-                            setEditErrors((current) => ({ ...current, trackedMonthlyAmount: undefined }))
-                          }}
-                          style={{ margin: 0 }}
-                        />
-                        Mark as recurring
-                      </label>
-
-                      {editDraft.trackAsEssential && (
-                        <div style={{ marginTop: 'var(--space-md)' }}>
-                          <Input
-                            label="Monthly amount"
-                            type="number"
-                            value={editDraft.trackedMonthlyAmount}
-                            onChange={(value) => {
-                              setEditDraft((current) => current ? { ...current, trackedMonthlyAmount: value } : current)
-                              setEditErrors((current) => ({ ...current, trackedMonthlyAmount: undefined }))
-                            }}
-                            error={editErrors.trackedMonthlyAmount}
-                          />
-                          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                            This will be included in your monthly expenses.
-                          </p>
-                          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                            Reminders will use your pay schedule by default.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
 

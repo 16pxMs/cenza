@@ -32,6 +32,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         goalTargets={overview.goalTargets}
         goalSaved={overview.goalSaved}
         goalLabels={overview.goalLabels}
+        selectedGoal={overview.selectedGoal}
         debtTotal={overview.debtTotal}
         onAddDebts={() => router.push('/history/debt/new?returnTo=/app')}
         onReviewDebts={() => router.push('/history/debt?label=Debt&type=debt&returnTo=/app')}
@@ -49,6 +50,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         lastCycleRecurringTop={overview.lastCycleRecurringTop}
         trackedEssentials={overview.trackedEssentials}
         billsLeftToPay={overview.billsLeftToPay}
+        overviewObligations={overview.overviewObligations}
         debtReminderCandidates={overview.debtReminderCandidates}
         isDesktop={isDesktop}
       />

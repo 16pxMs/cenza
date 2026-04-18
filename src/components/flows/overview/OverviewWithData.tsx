@@ -20,6 +20,7 @@ import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
 import { stopTrackingEssential, updateTrackedEssential } from '@/app/(app)/log/actions'
 import type { TrackedFixedExpenseEntry } from '@/lib/fixed-bills/tracking'
+import type { OverviewObligation } from '@/lib/loaders/overview'
 
 const GOAL_META: Record<string, {
   label: string
@@ -59,6 +60,15 @@ interface Props {
   goalTargets: Record<string, any> | null
   goalSaved?: Record<string, number>
   goalLabels?: Record<string, string>
+  selectedGoal?: {
+    id: string
+    label: string
+    target: number | null
+    totalSaved: number
+    createdAt: string
+    lastContributionAt: string | null
+    contributionCount: number
+  } | null
   onAddDebts?: () => void
   onReviewDebts?: () => void
   onLogExpense?: () => void
@@ -76,6 +86,7 @@ interface Props {
     items: Array<{ key: string; label: string; expected: number; paid: number; leftToPay: number }>
     totalLeftToPay: number
   } | null
+  overviewObligations?: OverviewObligation[]
   debtReminderCandidates?: Array<{
     debtId: string
     label: string
@@ -90,8 +101,8 @@ interface Props {
 
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
-  goalTargets, goalSaved = {}, goalLabels = {}, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
-  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, trackedEssentials = [], billsLeftToPay = null, debtReminderCandidates = [], isDesktop,
+  goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
+  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, trackedEssentials = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -170,8 +181,6 @@ export function OverviewWithData({
   const isComplete   = totalGoals > 0 && filledGoals >= totalGoals
   const pendingGoals = totalGoals - filledGoals
   const hasActiveDebts = activeDebts.length > 0
-  const validGoals = goals.filter(g => !!GOAL_META[g])
-  const visibleGoalPreview = validGoals.slice(0, 2)
 
   // ── Fade-in helper ───────────────────────────────────────────
   const fade = (delay: number): React.CSSProperties => ({
@@ -348,30 +357,23 @@ const reference = receivedConfirmed
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-          <div>
-            <p style={{ margin: '0 0 4px', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-              Goals
-            </p>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>
-              {totalGoals > 0 ? 'Keep your goals moving.' : 'You have no goals yet.'}
-            </p>
-          </div>
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+            Goals
+          </p>
           <ChevronRight size={16} color="var(--text-muted)" strokeWidth={2.2} style={{ flexShrink: 0 }} />
         </div>
 
         {totalGoals > 0 ? (
           <div style={{ display: 'grid', gap: 12 }}>
-            {visibleGoalPreview.map((gid) => {
-              const m = GOAL_META[gid]
-              const label = goalLabels[gid] ?? m.label
-              const target = goalTargets?.[gid] ? Number(goalTargets[gid]) : 0
-              const saved = goalSaved[gid] ?? 0
+            {selectedGoal ? (() => {
+              const target = selectedGoal.target ?? 0
+              const saved = selectedGoal.totalSaved ?? 0
               const pct = target > 0 ? Math.min(100, (saved / target) * 100) : 0
 
               return (
-                <div key={gid}>
+                <div key={selectedGoal.id}>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                    <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{label}</span>
+                    <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{selectedGoal.label}</span>
                     <span style={{ fontSize: 12, color: 'var(--text-3)', flexShrink: 0 }}>
                       {target > 0 ? `${Math.round(pct)}%` : 'No target'}
                     </span>
@@ -394,25 +396,20 @@ const reference = receivedConfirmed
                   </p>
                 </div>
               )
-            })}
-
-            {validGoals.length === 0 && (
+            })() : (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
-                Add a goal to start tracking progress here.
+                You have no active goals.
               </p>
             )}
           </div>
         ) : (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
-            Set a goal to give your money a job beyond this month.
+            You have no goals yet.
           </p>
         )}
       </div>
     </div>
   )
-
-  // ── Bills left to pay card ───────────────────────────────────
-  const visibleBillsLeftToPayItems = billsLeftToPay?.items.filter((item) => item.leftToPay > 0) ?? []
 
   const priorityCard = (() => {
     if (!resolvedPriority) return null
@@ -491,29 +488,7 @@ const reference = receivedConfirmed
       ? 'var(--amber-light)'
       : 'var(--progress-track)'
 
-  const obligationPreviewItems = [
-    ...prioritizedDebtReminders.map((candidate) => ({
-      key: `debt-${candidate.debtId}`,
-      label: candidate.label,
-      detail:
-        candidate.state === 'overdue'
-          ? 'Debt overdue'
-          : candidate.state === 'due'
-            ? 'Debt due today'
-            : 'Debt coming up',
-      amount: candidate.balance,
-      rank: candidate.state === 'overdue' ? 0 : candidate.state === 'due' ? 1 : 2,
-    })),
-    ...visibleBillsLeftToPayItems.map((item) => ({
-      key: `bill-${item.key}`,
-      label: item.label,
-      detail: 'Essential left to pay',
-      amount: item.leftToPay,
-      rank: 3,
-    })),
-  ]
-    .sort((a, b) => (a.rank === b.rank ? b.amount - a.amount : a.rank - b.rank))
-    .slice(0, 2)
+  const obligationPreviewItems = overviewObligations.slice(0, 3)
 
   const snapshotCard = (
     <div style={{ marginTop: 16, ...fade(0.12) }}>
@@ -627,7 +602,7 @@ const reference = receivedConfirmed
     </div>
   )
 
-  const obligationsPreviewCard = (
+  const obligationsPreviewCard = obligationPreviewItems.length > 0 ? (
     <div style={{ marginTop: 16, ...fade(0.14) }}>
       <div
         style={{
@@ -637,58 +612,52 @@ const reference = receivedConfirmed
           padding: '16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-          <div>
-            <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-              Obligations
-            </p>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>
-              Things that still need attention.
-            </p>
-          </div>
-          <ChevronRight size={16} color="var(--text-muted)" strokeWidth={2.2} />
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>
+          Upcoming payments
+        </p>
+      </div>
 
-        {obligationPreviewItems.length > 0 ? (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {obligationPreviewItems.map((item) => (
-              <div
-                key={item.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  border: '1px solid var(--border)',
-                  background: 'var(--grey-50)',
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{item.label}</p>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-3)' }}>{item.detail}</p>
-                </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {obligationPreviewItems.map((item) => (
+            <button
+              key={`${item.source}-${item.id}`}
+              onClick={() => router.push(item.actionHref)}
+              style={{
+                width: '100%',
+                display: 'grid',
+                gap: 6,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                background: 'var(--white)',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-1)', minWidth: 0 }}>
+                  {item.name}
+                </p>
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', flexShrink: 0 }}>
-                  {fmt(item.amount, currency)}
+                  {fmt(item.amount, item.currency)}
                 </span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
-            No urgent obligations right now.
-          </p>
-        )}
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
+                {item.status === 'overdue'
+                  ? 'Overdue'
+                  : item.status === 'today'
+                    ? 'Due today'
+                    : `Due in ${item.daysUntilDue} ${item.daysUntilDue === 1 ? 'day' : 'days'}`}
+              </p>
+            </button>
+          ))}
+        </div>
 
         <div style={{ marginTop: 12 }}>
           {hasActiveDebts || prioritizedDebtReminders.length > 0 ? (
             <SecondaryBtn size="sm" onClick={onReviewDebts} style={{ width: '100%' }}>
               Open things to pay
-            </SecondaryBtn>
-          ) : visibleBillsLeftToPayItems.length > 0 ? (
-            <SecondaryBtn size="sm" onClick={() => setManageEssentialsOpen(true)} style={{ width: '100%' }}>
-              Manage essentials
             </SecondaryBtn>
           ) : (
             <SecondaryBtn size="sm" onClick={onAddDebts} style={{ width: '100%' }}>
@@ -698,7 +667,7 @@ const reference = receivedConfirmed
         </div>
       </div>
     </div>
-  )
+  ) : null
 
   // ── Render ────────────────────────────────────────────────────
   return (

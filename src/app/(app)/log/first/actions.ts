@@ -75,6 +75,8 @@ export async function saveFirstExpense(input: SaveFirstExpenseInput): Promise<vo
           label: input.finalLabel,
           monthly: input.amount,
           confidence: 'known',
+          due_day: null,
+          priority: 'flex',
         },
       ]
 

@@ -8,9 +8,8 @@ import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { Input } from '@/components/ui/Input/Input'
 import { IconBack, IconCheck, IconPlus } from '@/components/ui/Icons'
-import { saveExpenseBatch } from './actions'
+import { saveExpenseBatch, saveRecurringSetup } from './actions'
 import { GOAL_META } from '@/constants/goals'
 import type { GoalId } from '@/types/database'
 
@@ -216,6 +215,7 @@ export function NewExpenseClient() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState(0)
+  const [savedItems, setSavedItems] = useState<PendingExpenseItem[]>([])
   const [queueNotice, setQueueNotice] = useState<string | null>(null)
   const [newItemName, setNewItemName] = useState('')
   const [queue, setQueue] = useState<PendingExpenseItem[]>(() => {
@@ -620,6 +620,7 @@ export function NewExpenseClient() {
       }
 
       setSavedCount(queue.length)
+      setSavedItems(queue)
       setSaving(false)
       setStep('done')
     } catch {
@@ -727,15 +728,35 @@ export function NewExpenseClient() {
           ) : step === 'done' ? (
             <DoneStep
               savedCount={savedCount}
-              items={queue}
+              items={savedItems}
               currency={currency}
               returnTo={returnTo}
+              onSaveRecurringSetup={async (dueDay) => {
+                const recurringCandidate = savedItems.length === 1 ? savedItems[0] : null
+                if (!recurringCandidate) {
+                  throw new Error('No saved item available for recurring setup.')
+                }
+
+                const result = await saveRecurringSetup({
+                  label: recurringCandidate.label,
+                  amount: parseFloat(recurringCandidate.amount.replace(/,/g, '')) || 0,
+                  dueDay: Number(dueDay),
+                  priority: 'flex',
+                })
+
+                if (!result.ok) {
+                  throw new Error(result.error.message)
+                }
+
+                router.refresh()
+              }}
               onLogMore={() => {
                 setQueue([])
                 setActiveIndex(0)
                 setNewItemName('')
                 setSaveError(null)
                 setSavedCount(0)
+                setSavedItems([])
                 setStep('queue')
               }}
               onGoToRecap={() => { router.refresh(); router.push('/log') }}
@@ -765,11 +786,7 @@ export function NewExpenseClient() {
               onTypeSelect={(type) => updateActiveItem({
                 categoryType: type,
                 categorySource: 'manual',
-                trackAsEssential: type === 'fixed' ? activeItem.trackAsEssential : false,
-                trackedMonthlyAmount: type === 'fixed' ? activeItem.trackedMonthlyAmount : '',
               })}
-              onTrackAsEssentialChange={(value) => updateActiveItem({ trackAsEssential: value })}
-              onTrackedMonthlyAmountChange={(value) => updateActiveItem({ trackedMonthlyAmount: value })}
               onNoteChange={(value) => updateActiveItem({ note: value })}
               onPrevious={handlePrevious}
               onNext={handleNext}
@@ -814,6 +831,7 @@ function DoneStep({
   items,
   currency,
   returnTo,
+  onSaveRecurringSetup,
   onLogMore,
   onGoToRecap,
   onGoToOverview,
@@ -823,11 +841,21 @@ function DoneStep({
   items: PendingExpenseItem[]
   currency: string
   returnTo: string
+  onSaveRecurringSetup: (dueDay: string) => Promise<void>
   onLogMore: () => void
   onGoToRecap: () => void
   onGoToOverview: () => void
   onGoToDebtReview: () => void
 }) {
+  const [recurringPromptDismissed, setRecurringPromptDismissed] = useState(false)
+  const [recurringSetupOpen, setRecurringSetupOpen] = useState(false)
+  const recurringCandidate = items.length === 1 && items[0] && items[0].categoryType !== 'debt' && items[0].categoryType !== 'goal' && !items[0].trackAsEssential
+    ? items[0]
+    : null
+  const [recurringDueDay, setRecurringDueDay] = useState('')
+  const [recurringSaving, setRecurringSaving] = useState(false)
+  const [recurringError, setRecurringError] = useState<string | null>(null)
+  const [recurringSaved, setRecurringSaved] = useState(false)
   const cameFromOverview = returnTo.startsWith('/app')
   const hasDebtItems = items.some((item) => item.categoryType === 'debt')
 
@@ -835,6 +863,15 @@ function DoneStep({
     const amount = parseFloat(value.replace(/,/g, '')) || 0
     return `${currency} ${amount.toLocaleString()}`
   }
+
+  useEffect(() => {
+    setRecurringPromptDismissed(false)
+    setRecurringSetupOpen(false)
+    setRecurringSaving(false)
+    setRecurringError(null)
+    setRecurringSaved(false)
+    setRecurringDueDay('')
+  }, [recurringCandidate?.id, recurringCandidate?.label, recurringCandidate?.amount])
 
   return (
     <div>
@@ -877,6 +914,49 @@ function DoneStep({
         ))}
       </div>
 
+      {recurringCandidate && !recurringPromptDismissed && !recurringSaved && (
+        <div
+          style={{
+            marginBottom: 'var(--space-lg)',
+            padding: 'var(--space-md)',
+            borderRadius: 'var(--radius-sm)',
+            background: T.grey50,
+          }}
+        >
+          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+            Does this repeat each month?
+          </p>
+          <p style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+            We’ll remind you each month.
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+            <TertiaryBtn
+              size="md"
+              onClick={() => {
+                setRecurringError(null)
+                setRecurringSetupOpen(true)
+              }}
+              style={{ color: T.text1, fontWeight: 'var(--weight-medium)', paddingInline: 0 }}
+            >
+              Make it monthly
+            </TertiaryBtn>
+            <TertiaryBtn
+              size="md"
+              onClick={() => setRecurringPromptDismissed(true)}
+              style={{ color: T.text3 }}
+            >
+              Not now
+            </TertiaryBtn>
+          </div>
+        </div>
+      )}
+
+      {recurringSaved && (
+        <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+          Monthly payment added
+        </p>
+      )}
+
       <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
         <PrimaryBtn
           size="lg"
@@ -907,6 +987,100 @@ function DoneStep({
           {cameFromOverview ? 'Back to overview' : 'View expense log'}
         </SecondaryBtn>
       </div>
+
+      {recurringSetupOpen && recurringCandidate && (
+        <Sheet
+          open={true}
+          onClose={() => {
+            if (recurringSaving) return
+            setRecurringSetupOpen(false)
+          }}
+          title="Make it monthly"
+        >
+          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+              We’ll remind you each month.
+            </p>
+            <label style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
+                Due day
+              </span>
+              <span style={{ fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                Day of the month this is usually due
+              </span>
+              <select
+                value={recurringDueDay}
+                onChange={(event) => {
+                  setRecurringDueDay(event.target.value)
+                  setRecurringError(null)
+                }}
+                style={{
+                  width: '100%',
+                  height: 48,
+                  borderRadius: 'var(--radius-sm)',
+                  border: `${T.borderWidth} solid ${T.border}`,
+                  padding: '0 var(--space-md)',
+                  fontSize: 'var(--text-base)',
+                  color: T.text1,
+                  background: T.white,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <option value="">Choose a day</option>
+                {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {recurringError && (
+              <p style={{
+                margin: 0,
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                background: T.redLight,
+                border: `${T.borderWidth} solid ${T.redBorder}`,
+                fontSize: 'var(--text-sm)',
+                color: T.redDark,
+                lineHeight: 1.5,
+              }}>
+                {recurringError}
+              </p>
+            )}
+            <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+              <PrimaryBtn
+                size="lg"
+                onClick={async () => {
+                  setRecurringSaving(true)
+                  setRecurringError(null)
+                  try {
+                    await onSaveRecurringSetup(recurringDueDay)
+                    setRecurringSaving(false)
+                    setRecurringSaved(true)
+                    setRecurringPromptDismissed(true)
+                    setRecurringSetupOpen(false)
+                  } catch (error) {
+                    setRecurringSaving(false)
+                    setRecurringError(error instanceof Error ? error.message : 'Failed to save recurring setup.')
+                  }
+                }}
+              >
+                {recurringSaving ? 'Saving…' : 'Save'}
+              </PrimaryBtn>
+              <SecondaryBtn
+                size="lg"
+                onClick={() => setRecurringSetupOpen(false)}
+                style={{ borderColor: T.border, color: T.text1 }}
+              >
+                Cancel
+              </SecondaryBtn>
+            </div>
+          </div>
+        </Sheet>
+      )}
     </div>
   )
 }
@@ -1150,8 +1324,6 @@ function ReviewStep({
   onAmountChange,
   onLabelChange,
   onTypeSelect,
-  onTrackAsEssentialChange,
-  onTrackedMonthlyAmountChange,
   onNoteChange,
   onPrevious,
   onNext,
@@ -1178,8 +1350,6 @@ function ReviewStep({
   onAmountChange: (value: string) => void
   onLabelChange: (value: string) => void
   onTypeSelect: (type: CategoryType | null) => void
-  onTrackAsEssentialChange: (value: boolean) => void
-  onTrackedMonthlyAmountChange: (value: string) => void
   onNoteChange: (value: string) => void
   onPrevious: () => void
   onNext: () => void
@@ -1190,10 +1360,6 @@ function ReviewStep({
   canAdvance: boolean
   isLastItem: boolean
 }) {
-  const [trackingSetupOpen, setTrackingSetupOpen] = useState(false)
-  const [trackingDraftLabel, setTrackingDraftLabel] = useState(item.label)
-  const [trackingDraftAmount, setTrackingDraftAmount] = useState(item.trackedMonthlyAmount || item.amount)
-  const [trackingError, setTrackingError] = useState<string | null>(null)
   const displayAmount = item.amount
     ? item.amount.replace(/,/g, '').split('.').map((part, index) => (
       index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
@@ -1414,56 +1580,6 @@ function ReviewStep({
         </div>
       )}
 
-      {item.categoryType === 'fixed' && (
-        <div style={{ marginBottom: 'var(--space-lg)' }}>
-          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Monthly essential
-          </p>
-          <p style={{
-            margin: '0 0 var(--space-sm)',
-            fontSize: 'var(--text-sm)',
-            color: T.text2,
-            lineHeight: 1.5,
-          }}>
-            Mark this as recurring?
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-            <SecondaryBtn
-              size="md"
-              onClick={() => {
-                setTrackingDraftLabel(item.label)
-                setTrackingDraftAmount(item.trackedMonthlyAmount || item.amount)
-                setTrackingError(null)
-                setTrackingSetupOpen(true)
-              }}
-              style={{ borderColor: item.trackAsEssential ? T.brandMid : T.border, color: T.text1 }}
-            >
-              {item.trackAsEssential ? 'Edit recurring' : 'Yes'}
-            </SecondaryBtn>
-            <TertiaryBtn
-              size="md"
-              onClick={() => {
-                onTrackAsEssentialChange(false)
-                onTrackedMonthlyAmountChange('')
-              }}
-              style={{ color: T.text2 }}
-            >
-              Not now
-            </TertiaryBtn>
-          </div>
-          {item.trackAsEssential && item.trackedMonthlyAmount && (
-            <p style={{
-              margin: 'var(--space-sm) 0 0',
-              fontSize: 'var(--text-sm)',
-              color: T.text3,
-              lineHeight: 1.5,
-            }}>
-              Monthly amount: {currency} {Number(item.trackedMonthlyAmount || '0').toLocaleString()}
-            </p>
-          )}
-        </div>
-      )}
-
       <div style={{ marginBottom: 'var(--space-lg)' }}>
         <input
           type="text"
@@ -1547,52 +1663,6 @@ function ReviewStep({
       >
         {primaryActionLabel}
       </PrimaryBtn>
-
-      {item.categoryType === 'fixed' && trackingSetupOpen && (
-        <Sheet
-          open={true}
-          onClose={() => setTrackingSetupOpen(false)}
-          title="Mark as recurring"
-        >
-          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-            <Input
-              label="Name"
-              value={trackingDraftLabel}
-              onChange={setTrackingDraftLabel}
-            />
-            <Input
-              label="Monthly amount"
-              type="number"
-              value={trackingDraftAmount}
-              onChange={(value) => {
-                setTrackingDraftAmount(value)
-                setTrackingError(null)
-              }}
-              error={trackingError ?? undefined}
-            />
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-              This amount is used to calculate what&apos;s left to pay each month.
-            </p>
-            <PrimaryBtn
-              size="lg"
-              onClick={() => {
-                const monthlyAmount = parseFloat(trackingDraftAmount.replace(/,/g, ''))
-                if (!trackingDraftLabel.trim() || !(monthlyAmount > 0)) {
-                  setTrackingError('Add a monthly amount')
-                  return
-                }
-
-                onLabelChange(trackingDraftLabel)
-                onTrackAsEssentialChange(true)
-                onTrackedMonthlyAmountChange(trackingDraftAmount)
-                setTrackingSetupOpen(false)
-              }}
-            >
-              Save recurring
-            </PrimaryBtn>
-          </div>
-        </Sheet>
-      )}
     </div>
   )
 }

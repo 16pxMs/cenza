@@ -7,7 +7,7 @@ import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { canonicalizeFixedBillKey, slugifyBillLabel } from '@/lib/fixed-bills/canonical'
 import { sumTrackedFixedExpenses, upsertTrackedFixedExpense } from '@/lib/fixed-bills/tracking'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
@@ -26,6 +26,12 @@ interface SaveExpenseInput {
 }
 
 interface SaveExpenseBatchItem extends SaveExpenseInput {}
+interface SaveRecurringSetupInput {
+  label: string
+  amount: number
+  dueDay: number
+  priority: 'core' | 'flex'
+}
 const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
 
 async function rememberDictionaryItem(
@@ -218,6 +224,89 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
         revalidatePath('/app')
       }
     }
+
+    return ok(undefined)
+  })
+}
+
+export async function saveRecurringSetup(input: SaveRecurringSetupInput): Promise<ActionResult<void>> {
+  return runAction<void>(async () => {
+    const { user, profile } = await getAppSession()
+    if (!user || !profile) return unauthorized()
+
+    const label = input.label.trim()
+    const amount = Number(input.amount)
+    const dueDay = Number(input.dueDay)
+    const priority = input.priority === 'core' ? 'core' : 'flex'
+
+    if (!label) {
+      return {
+        ok: false,
+        error: { kind: 'validation', message: 'Name is required.' },
+      }
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return {
+        ok: false,
+        error: { kind: 'validation', message: 'Amount must be greater than zero.' },
+      }
+    }
+
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) {
+      return {
+        ok: false,
+        error: { kind: 'validation', message: 'Choose a due day between 1 and 28.' },
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+    const cycleId = deriveCurrentCycleId(profile)
+    const recurringKey = canonicalizeFixedBillKey(slugifyBillLabel(label))
+
+    const { data: existingFixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
+      .select('entries')
+      .eq('user_id', user.id)
+      .eq('cycle_id', cycleId)
+      .maybeSingle()
+
+    if (fixedExpensesError) {
+      throw new Error(`Failed to load recurring items: ${fixedExpensesError.message}`)
+    }
+
+    const nextEntries = upsertTrackedFixedExpense(existingFixedExpenses?.entries ?? null, {
+      key: recurringKey,
+      label,
+      monthly: amount,
+      due_day: dueDay,
+      priority,
+    })
+
+    const { error: fixedExpensesUpsertError } = await (supabase.from('fixed_expenses') as any).upsert({
+      user_id: user.id,
+      cycle_id: cycleId,
+      total_monthly: sumTrackedFixedExpenses(nextEntries),
+      entries: nextEntries,
+    }, { onConflict: 'user_id,cycle_id' })
+
+    if (fixedExpensesUpsertError) {
+      throw new Error(`Failed to save recurring setup: ${fixedExpensesUpsertError.message}`)
+    }
+
+    try {
+      await rememberDictionaryItem(supabase, user.id, {
+        categoryLabel: label,
+        categoryKey: recurringKey,
+        categoryType: 'fixed',
+      })
+    } catch (error) {
+      console.error('[log/new] remember recurring item failed', error)
+    }
+
+    revalidatePath('/log')
+    revalidatePath('/history')
+    revalidatePath('/app')
+    revalidatePath('/income')
 
     return ok(undefined)
   })

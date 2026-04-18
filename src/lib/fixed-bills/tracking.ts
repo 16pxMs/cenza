@@ -5,6 +5,29 @@ export interface TrackedFixedExpenseEntry {
   label: string
   monthly: number
   confidence?: string
+  due_day?: number | null
+  priority?: 'core' | 'flex'
+}
+
+export type TrackedFixedExpenseObligationStatus = 'overdue' | 'today' | 'soon' | 'upcoming'
+
+export interface TrackedFixedExpenseDueState {
+  isSettledForCurrentPeriod: boolean
+  dueDate: string
+  daysUntilDue: number
+  status: TrackedFixedExpenseObligationStatus
+  amountDue: number
+}
+
+function normalizeDueDay(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) return null
+  return parsed
+}
+
+function normalizePriority(value: unknown): 'core' | 'flex' {
+  return value === 'flex' ? 'flex' : 'core'
 }
 
 function asTrackedEntry(raw: unknown): TrackedFixedExpenseEntry | null {
@@ -21,6 +44,8 @@ function asTrackedEntry(raw: unknown): TrackedFixedExpenseEntry | null {
     label: String(entry.label ?? '').trim() || canonicalKey,
     monthly,
     confidence: typeof entry.confidence === 'string' ? entry.confidence : undefined,
+    due_day: normalizeDueDay(entry.due_day),
+    priority: normalizePriority(entry.priority),
   }
 }
 
@@ -47,11 +72,18 @@ export function isTrackedFixedExpense(
 
 export function upsertTrackedFixedExpense(
   entries: unknown[] | null | undefined,
-  input: { key: string; label: string; monthly: number }
+  input: { key: string; label: string; monthly: number; due_day?: number | null; priority?: 'core' | 'flex' }
 ): TrackedFixedExpenseEntry[] {
   const canonicalKey = canonicalizeFixedBillKey(input.key)
   const monthly = Number(input.monthly)
   const nextEntries = readTrackedFixedExpenseEntries(entries)
+  const existingEntry = nextEntries.find((entry) => entry.key === canonicalKey)
+  const hasDueDay = Object.prototype.hasOwnProperty.call(input, 'due_day')
+  const hasPriority = Object.prototype.hasOwnProperty.call(input, 'priority')
+  const dueDay = hasDueDay ? normalizeDueDay(input.due_day) : undefined
+  const priority = hasPriority
+    ? normalizePriority(input.priority)
+    : (existingEntry?.priority ?? 'flex')
 
   if (!canonicalKey || !Number.isFinite(monthly) || monthly <= 0) {
     return nextEntries
@@ -62,6 +94,8 @@ export function upsertTrackedFixedExpense(
     label: input.label.trim() || canonicalKey,
     monthly,
     confidence: 'known',
+    ...(hasDueDay ? { due_day: dueDay } : {}),
+    priority,
   }
 
   const existingIndex = nextEntries.findIndex((entry) => entry.key === canonicalKey)
@@ -88,4 +122,57 @@ export function removeTrackedFixedExpense(
 
 export function sumTrackedFixedExpenses(entries: Array<{ monthly: number }>): number {
   return entries.reduce((sum, entry) => sum + Number(entry.monthly ?? 0), 0)
+}
+
+function startOfToday(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function toDateKey(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function daysBetween(fromDate: Date, toDate: Date) {
+  return Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function deriveStatus(daysUntilDue: number): TrackedFixedExpenseObligationStatus {
+  if (daysUntilDue < 0) return 'overdue'
+  if (daysUntilDue === 0) return 'today'
+  if (daysUntilDue <= 5) return 'soon'
+  return 'upcoming'
+}
+
+export function deriveTrackedFixedExpenseDueState(
+  entry: TrackedFixedExpenseEntry,
+  cycleTransactions: Array<{ amount: number | string; category_key: string; category_type: string }>,
+  todayInput = new Date()
+): TrackedFixedExpenseDueState | null {
+  const dueDay = normalizeDueDay(entry.due_day)
+  const monthlyAmount = Number(entry.monthly ?? 0)
+  if (dueDay == null) return null
+  if (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0) return null
+
+  const today = startOfToday(todayInput)
+  const currentDueDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
+  const nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay)
+
+  const paidThisCycle = cycleTransactions.reduce((sum, txn) => {
+    if (txn.category_type !== 'fixed') return sum
+    const canonicalKey = canonicalizeFixedBillKey(String(txn.category_key ?? ''))
+    if (canonicalKey !== entry.key) return sum
+    return sum + Number(txn.amount ?? 0)
+  }, 0)
+
+  const isSettledForCurrentPeriod = paidThisCycle >= monthlyAmount
+  const effectiveDueDate = isSettledForCurrentPeriod ? nextDueDate : currentDueDate
+  const daysUntilDue = daysBetween(today, effectiveDueDate)
+
+  return {
+    isSettledForCurrentPeriod,
+    dueDate: toDateKey(effectiveDueDate),
+    daysUntilDue,
+    status: deriveStatus(daysUntilDue),
+    amountDue: isSettledForCurrentPeriod ? 0 : monthlyAmount,
+  }
 }
