@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
 interface SaveFirstExpenseInput {
@@ -21,7 +21,7 @@ export async function saveFirstExpense(input: SaveFirstExpenseInput): Promise<vo
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const persistedKey =
     input.resolvedGroupType === 'fixed'
       ? canonicalizeFixedBillKey(input.finalKey)

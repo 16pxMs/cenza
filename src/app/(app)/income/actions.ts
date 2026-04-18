@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { FixedEntry } from '@/components/flows/plan/EditFixedExpensesSheet'
 import type { BudgetCategory } from '@/components/flows/plan/EditSpendingBudgetSheet'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
@@ -22,7 +22,7 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
 
   const nextIncomeType = input.incomeType ?? profile.income_type ?? (input.paydayDay != null ? 'salaried' : null)
   const nextPaydayDay = (() => {
@@ -130,7 +130,7 @@ export async function saveFixedExpenses(entries: FixedEntry[]): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
 
   // Canonicalize keys so "Home WiFi", "Fibre", "KPLC", etc. collapse into
@@ -161,7 +161,7 @@ export async function saveSpendingBudget(categories: BudgetCategory[]): Promise<
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const totalBudget = categories.reduce((sum, category) => sum + category.budget, 0)
 

@@ -2,8 +2,13 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/database'
 
-// Typed Supabase client for use in Server Components and Route Handlers
-export async function createClient() {
+type CookieToSet = {
+  name: string
+  value: string
+  options?: Parameters<Awaited<ReturnType<typeof cookies>>['set']>[2]
+}
+
+export async function createServerSupabaseClient() {
   const cookieStore = await cookies()
 
   return createServerClient<Database>(
@@ -14,16 +19,21 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet: { name: string; value: string; options: object }[]) {
+        setAll(cookiesToSet: CookieToSet[]) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
-            )
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
           } catch {
-            // setAll called from a Server Component — safe to ignore
+            // Server Components cannot always write cookies. Middleware refreshes
+            // the auth session, so reads can still succeed safely here.
           }
         },
       },
     }
   )
+}
+
+export async function createClient() {
+  return createServerSupabaseClient()
 }

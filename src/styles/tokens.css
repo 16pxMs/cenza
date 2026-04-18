@@ -48,6 +48,10 @@
   --text-inverse:  var(--grey-0);   /* inverse — text on dark surfaces */
   --text-brand:    var(--brand-dark); /* brand — accents, links, CTAs */
 
+  /* Progress */
+  --progress-fill:  var(--grey-400);
+  --progress-track: var(--grey-200);
+
   /* Green */
   --green:        #22C55E;
   --green-light:  #F0FDF4;

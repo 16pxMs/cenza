@@ -6,11 +6,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import styles from './BottomNav.module.css'
-import { IconOverview, IconSpend } from '@/components/ui/Icons'
+import { IconMore, IconOverview, IconSpend } from '@/components/ui/Icons'
 
 const TABS = [
-  { href: '/app',     label: 'Overview', Icon: IconOverview },
-  { href: '/history', label: 'Recap',    Icon: IconSpend    },
+  { href: '/app', label: 'Overview', Icon: IconOverview },
+  { href: '/log', label: 'Activity', Icon: IconSpend },
+  { href: '/menu', label: 'Menu', Icon: IconMore },
 ]
 
 export function BottomNav() {
@@ -22,7 +23,9 @@ export function BottomNav() {
         const on =
           t.href === '/app'
             ? pathname === '/app'
-            : pathname === t.href || pathname.startsWith(`${t.href}/`)
+            : t.href === '/log'
+              ? pathname === '/log' || pathname.startsWith('/log/')
+              : pathname !== '/app' && !pathname.startsWith('/log')
         return (
           <Link key={t.href} href={t.href} className={styles.item} prefetch>
             {on && <div className={styles.indicator} />}

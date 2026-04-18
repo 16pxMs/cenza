@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
+import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { PrimaryBtn } from '@/components/ui/Button/Button'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData } from '@/lib/loaders/log'
@@ -381,18 +381,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         </div>
       </div>
 
-      {isDesktop && (
-        <div style={{ padding: `var(--space-lg) var(--space-page-desktop) 0` }}>
-          <PrimaryBtn
-            size="lg"
-            onClick={() => router.push('/log/new?returnTo=/log')}
-            style={{ background: T.brandDark, color: T.textInverse }}
-          >
-            Add expense
-          </PrimaryBtn>
-        </div>
-      )}
-
     </div>
   )
 
@@ -400,7 +388,10 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh' }}>
         <SideNav />
-        <main style={{ flex: 1, maxWidth: 720, margin: '0 auto' }}>{content}</main>
+        <main style={{ flex: 1, maxWidth: 720, margin: '0 auto' }}>
+          {content}
+          <GlobalAddButton returnTo="/log" />
+        </main>
       </div>
     )
   }
@@ -408,27 +399,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
       <main>{content}</main>
-      <div style={{
-        position: 'fixed',
-        bottom: 72,
-        left: 0,
-        right: 0,
-        padding: '10px 16px',
-        background: T.pageBg,
-        borderTop: '1px solid var(--border-subtle)',
-        zIndex: 40,
-      }}>
-        <PrimaryBtn
-          size="lg"
-          onClick={() => router.push('/log/new?returnTo=/log')}
-          style={{
-            background: T.brandDark,
-            color: T.textInverse,
-          }}
-        >
-          Add expense
-        </PrimaryBtn>
-      </div>
+      <GlobalAddButton returnTo="/log" />
       <BottomNav />
     </div>
   )

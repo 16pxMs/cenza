@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getOnboardingPageRedirect } from '@/lib/auth/auth-flow'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import styles from '../onboarding.module.css'
 import { saveOnboardingName } from '../actions'
 import { SubmitButton } from '../SubmitButton'
@@ -14,7 +14,7 @@ export default async function OnboardingNamePage({
   searchParams: Promise<{ error?: string }>
 }) {
   const params = await searchParams
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

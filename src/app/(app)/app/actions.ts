@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 interface AddGoalContributionInput {
   goalId: string
@@ -25,7 +25,7 @@ export async function addGoalContribution(input: AddGoalContributionInput): Prom
   if (!input.goalLabel.trim()) throw new Error('Goal label is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   await createCycleTransaction(supabase as any, user.id, profile, {
     categoryType: 'goal',
     categoryKey: input.goalId,
@@ -48,7 +48,7 @@ export async function confirmReceivedIncome(received: number, receivedDate?: str
     throw new Error('Received income must be greater than zero')
   }
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const timestamp = (() => {
     if (!receivedDate) return new Date().toISOString()

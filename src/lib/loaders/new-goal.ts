@@ -1,5 +1,5 @@
 import { deriveIncomeTotal } from '@/lib/income/derived'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { GoalId, UserProfile } from '@/types/database'
 
@@ -17,7 +17,7 @@ export async function loadNewGoalPageData(
   profile: UserProfile,
   goalType: GoalId | null
 ): Promise<NewGoalPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
   const fetchSaved = goalType

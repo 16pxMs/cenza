@@ -6,11 +6,12 @@
 'use client'
 import { useRouter, usePathname } from 'next/navigation'
 import styles from './SideNav.module.css'
-import { IconOverview, IconSpend } from '@/components/ui/Icons'
+import { IconMore, IconOverview, IconSpend } from '@/components/ui/Icons'
 
 const TABS = [
-  { href: '/app',     label: 'Overview', Icon: IconOverview },
-  { href: '/history', label: 'Recap',    Icon: IconSpend    },
+  { href: '/app', label: 'Overview', Icon: IconOverview },
+  { href: '/log', label: 'Activity', Icon: IconSpend },
+  { href: '/menu', label: 'Menu', Icon: IconMore },
 ]
 
 export function SideNav() {
@@ -27,7 +28,9 @@ export function SideNav() {
         const on =
           t.href === '/app'
             ? pathname === '/app'
-            : pathname === t.href || pathname.startsWith(`${t.href}/`)
+            : t.href === '/log'
+              ? pathname === '/log' || pathname.startsWith('/log/')
+              : pathname !== '/app' && !pathname.startsWith('/log')
         return (
           <button
             key={t.href}

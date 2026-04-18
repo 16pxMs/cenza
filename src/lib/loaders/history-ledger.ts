@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { formatCycleLabel, getCurrentCycle, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
 import type { CategoryType, UserProfile } from '@/types/database'
@@ -28,7 +28,7 @@ export async function loadHistoryLedgerPageData(
   categoryLabel?: string,
   targetDate?: Date,
 ): Promise<HistoryLedgerPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = targetDate
     ? deriveCycleIdForDate(profile, targetDate)
     : deriveCurrentCycleId(profile)

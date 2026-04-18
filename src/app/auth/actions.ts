@@ -2,10 +2,10 @@
 
 import { redirect } from 'next/navigation'
 import { clearPinDeviceState } from '@/lib/actions/pin'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function signInWithGoogle(formData?: FormData) {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   // Start OAuth from a clean auth state so cancelled/retried attempts
   // cannot inherit a stale existing session.
   await supabase.auth.signOut()
@@ -40,7 +40,7 @@ export async function signInWithGoogle(formData?: FormData) {
 
 export async function signOut() {
   await clearPinDeviceState()
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   await supabase.auth.signOut()
   redirect('/login?tab=login')
 }
@@ -53,7 +53,7 @@ export async function reconnectWithGoogle() {
 
 export async function signOutAndForgetDevice() {
   await clearPinDeviceState({ forgetDevice: true })
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   await supabase.auth.signOut()
   redirect('/login?tab=login')
 }

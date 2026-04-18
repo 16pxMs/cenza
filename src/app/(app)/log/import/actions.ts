@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { getAppSession } from '@/lib/auth/app-session'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { buildTransactionRecord } from '@/lib/supabase/transactions-db'
 import { deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { getCycleByDate, profileToPaySchedule, toLocalDateStr } from '@/lib/cycles'
@@ -20,7 +20,8 @@ import {
   sumTrackedFixedExpenses,
   upsertTrackedFixedExpense,
 } from '@/lib/fixed-bills/tracking'
-import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { deriveCurrentCycleId, getCycleIdForDate } from '@/lib/supabase/cycles-db'
+import { addDebtTransaction, getDebt, getDebtTransactions } from '@/lib/supabase/debt-db'
 
 interface ParsedRowInput {
   id: string
@@ -32,6 +33,43 @@ interface ParsedRowInput {
   sourceHash: string
   trackAsEssential?: boolean
   trackedMonthlyAmount?: number | null
+  debtId?: string | null
+}
+
+export interface ActiveDebtOption {
+  id: string
+  name: string
+  currency: string
+  currentBalance: number
+  direction: 'owed_by_me' | 'owed_to_me'
+}
+
+export async function loadActiveDebts(): Promise<ActionResult<ActiveDebtOption[]>> {
+  return runAction<ActiveDebtOption[]>(async () => {
+    const { user } = await getAppSession()
+    if (!user) return unauthorized()
+
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await (supabase.from('debts') as any)
+      .select('id, name, currency, current_balance, direction')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+
+    if (error) {
+      throw new Error(`Failed to load debts: ${error.message}`)
+    }
+
+    return ok(
+      (data ?? []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        currency: row.currency,
+        currentBalance: Number(row.current_balance),
+        direction: row.direction,
+      }))
+    )
+  })
 }
 
 function normalize(value: string) {
@@ -96,6 +134,10 @@ function validateDate(date: string) {
 
 function normalizeLabel(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function normalizeDebtNote(value: string | null | undefined) {
+  return (value ?? '').trim()
 }
 
 function amountToMinorUnits(amount: number) {
@@ -205,6 +247,7 @@ export interface SaveParsedSmsExpensesResult {
   saved: number
   duplicates: number
   blocked: boolean
+  overridden: boolean
   rowErrors: Record<string, string[]>
   rowWarnings: Record<string, string[]>
 }
@@ -261,7 +304,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
       })
     }
 
-    const supabase = await createClient()
+    const supabase = await createServerSupabaseClient()
     const cycleId = deriveCurrentCycleId(profile)
     const [
       { data: dictionaryRows, error: dictionaryError },
@@ -337,7 +380,7 @@ export async function saveParsedSmsExpenses(
   const { user, profile } = await getAppSession()
   mark('session')
   if (!user || !profile) {
-    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
     return unauthorized()
   }
 
@@ -353,11 +396,12 @@ export async function saveParsedSmsExpenses(
   mark('client-payload-normalize')
 
   if (selectedRows.length === 0) {
-    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+    logSaveTiming('saveParsedSmsExpenses:write', startedAt, blockingTiming.marks)
     return ok({
       saved: 0,
       duplicates: 0,
       blocked: false,
+      overridden: false,
       rowErrors: {},
       rowWarnings: {},
     })
@@ -391,7 +435,7 @@ export async function saveParsedSmsExpenses(
   }
   mark('server-validate')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   mark('create-client')
 
   // ── HARD BLOCK: exact-same SMS already imported (in-batch or cross-batch)
@@ -426,11 +470,12 @@ export async function saveParsedSmsExpenses(
   }
 
   if (Object.keys(rowErrors).length > 0) {
-    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
     return ok({
       saved: 0,
       duplicates: 0,
       blocked: true,
+      overridden: false,
       rowErrors,
       rowWarnings: {},
     })
@@ -440,7 +485,7 @@ export async function saveParsedSmsExpenses(
   //    or an existing transaction in the same cycle.
   const seenFingerprintInBatch = new Set<string>()
   let duplicates = 0
-  if (!confirmOverride) {
+  if (selectedRows.length > 0) {
     const minDate = selectedRows.reduce((acc, row) => (row.date < acc ? row.date : acc), selectedRows[0].date)
     const maxDate = selectedRows.reduce((acc, row) => (row.date > acc ? row.date : acc), selectedRows[0].date)
     const { data: existingRows, error: existingError } = await (supabase.from('transactions') as any)
@@ -480,14 +525,15 @@ export async function saveParsedSmsExpenses(
       seenFingerprintInBatch.add(meta.fingerprint)
     }
   }
-  mark(confirmOverride ? 'duplicate-fingerprint-skip' : 'duplicate-fingerprint-check')
+  mark('duplicate-fingerprint-check')
 
   if (Object.keys(rowWarnings).length > 0 && !confirmOverride) {
-    logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
     return ok({
       saved: 0,
       duplicates,
       blocked: true,
+      overridden: false,
       rowErrors: {},
       rowWarnings,
     })
@@ -507,25 +553,157 @@ export async function saveParsedSmsExpenses(
     }
   })
 
+  // ── DEBT VALIDATION: load linked debts and reject invalid repayments
+  //    before any writes happen.
+  const debtLinkedMeta = persistedRows.filter(
+    ({ row }) => row.categoryType === 'debt' && row.debtId
+  )
+  const resolvedDebts = new Map<string, Awaited<ReturnType<typeof getDebt>>>()
+  const existingDebtTransactions = new Map<string, Awaited<ReturnType<typeof addDebtTransaction>>[] | any[]>()
+
+  for (const { row } of debtLinkedMeta) {
+    const debtId = row.debtId!
+    if (resolvedDebts.has(debtId)) continue
+    resolvedDebts.set(debtId, await getDebt(debtId))
+  }
+  for (const { row } of debtLinkedMeta) {
+    const debtId = row.debtId!
+    if (existingDebtTransactions.has(debtId)) continue
+    existingDebtTransactions.set(debtId, await getDebtTransactions(debtId))
+  }
+  mark('debt-resolve')
+
+  // Running balance per debt tracks cumulative repayments within this batch
+  // so two rows targeting the same debt cannot exceed its balance together.
+  const debtRunningPaid = new Map<string, number>()
+
+  for (const { row } of debtLinkedMeta) {
+    const debt = resolvedDebts.get(row.debtId!)
+    const errors: string[] = []
+
+    if (!debt) {
+      errors.push('The selected debt no longer exists.')
+    } else if (debt.status !== 'active') {
+      errors.push('This debt is no longer active.')
+    } else if (debt.currency !== profile.currency) {
+      errors.push(
+        `This debt uses ${debt.currency}. Imported SMS payments currently use your ${profile.currency} profile currency, so link a debt with the same currency.`
+      )
+    } else {
+      const alreadyPaid = debtRunningPaid.get(debt.id) ?? 0
+      const remainingBalance = debt.current_balance - alreadyPaid
+      const entryType = debt.direction === 'owed_by_me' ? 'payment_out' : 'payment_in'
+      const existingTransactionsForDebt = existingDebtTransactions.get(debt.id) ?? []
+      const exactExistingRepayment = existingTransactionsForDebt.find((transaction: any) =>
+        transaction.entry_type === entryType &&
+        transaction.transaction_date === row.date &&
+        Number(transaction.amount) === row.amount &&
+        normalizeDebtNote(transaction.note) === 'Imported from SMS'
+      )
+
+      if (exactExistingRepayment) {
+        errors.push('This SMS payment was already recorded on this debt.')
+      } else if (row.amount > remainingBalance) {
+        errors.push(
+          remainingBalance <= 0
+            ? 'This debt has already been fully repaid.'
+            : `Amount exceeds remaining balance (${remainingBalance.toLocaleString()}).`
+        )
+      } else {
+        debtRunningPaid.set(debt.id, alreadyPaid + row.amount)
+      }
+    }
+
+    if (errors.length > 0) {
+      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), ...errors]
+    }
+  }
+
+  if (Object.keys(rowErrors).length > 0) {
+    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
+    return ok({
+      saved: 0,
+      duplicates: 0,
+      blocked: true,
+      overridden: false,
+      rowErrors,
+      rowWarnings: {},
+    })
+  }
+  mark('debt-validate')
+
   await ensureCycleRows(supabase, user.id, profile as any, persistedRows)
   mark('db-write-cycles')
 
-  const transactionRecords = persistedRows.map(({ row, cycleId, entryDate, persistedKey }) =>
-    buildTransactionRecord({
-      userId: user.id,
-      cycleId,
-      date: toLocalDateStr(entryDate),
-      categoryType: row.categoryType,
-      categoryKey: persistedKey,
-      categoryLabel: row.label,
-      amount: row.amount,
-      note: 'Imported from SMS',
-    })
+  // Split: debt rows with a linked debtId go through the debt engine;
+  // everything else uses the generic batch insert.
+  const genericRows = persistedRows.filter(
+    ({ row }) => !(row.categoryType === 'debt' && row.debtId)
   )
 
-  const { error: transactionInsertError } = await (supabase.from('transactions') as any).insert(transactionRecords)
-  if (transactionInsertError) {
-    throw new Error(`Failed to insert transactions: ${transactionInsertError.message}`)
+  if (genericRows.length > 0) {
+    const transactionRecords = genericRows.map(({ row, cycleId, entryDate, persistedKey }) =>
+      buildTransactionRecord({
+        userId: user.id,
+        cycleId,
+        date: toLocalDateStr(entryDate),
+        categoryType: row.categoryType,
+        categoryKey: persistedKey,
+        categoryLabel: row.label,
+        amount: row.amount,
+        note: 'Imported from SMS',
+      })
+    )
+
+    const { error: transactionInsertError } = await (supabase.from('transactions') as any).insert(transactionRecords)
+    if (transactionInsertError) {
+      throw new Error(`Failed to insert transactions: ${transactionInsertError.message}`)
+    }
+  }
+
+  for (const { row, entryDate } of debtLinkedMeta) {
+    const debt = resolvedDebts.get(row.debtId!)!
+    const entryType = debt.direction === 'owed_by_me' ? 'payment_out' : 'payment_in'
+    const dateStr = toLocalDateStr(entryDate)
+
+    const debtTxn = await addDebtTransaction({
+      debtId: debt.id,
+      entryType,
+      amount: row.amount,
+      currency: debt.currency,
+      transactionDate: dateStr,
+      note: 'Imported from SMS',
+    })
+
+    if (debtTxn) {
+      try {
+        const txnDate = new Date(`${dateStr}T00:00:00`)
+        const cycleId = await getCycleIdForDate(supabase as any, user.id, profile as any, txnDate)
+
+        const { data: mirrorData, error: mirrorError } = await (supabase.from('transactions') as any)
+          .insert({
+            user_id: user.id,
+            cycle_id: cycleId,
+            date: dateStr,
+            category_type: 'debt',
+            category_key: 'debt_repayment',
+            category_label: debt.name,
+            amount: row.amount,
+            note: 'Imported from SMS',
+          })
+          .select('id')
+          .single()
+
+        if (!mirrorError && mirrorData) {
+          await (supabase.from('debt_transactions') as any)
+            .update({ linked_transaction_id: mirrorData.id })
+            .eq('id', debtTxn.id)
+            .eq('user_id', user.id)
+        }
+      } catch {
+        // Mirror is best-effort; debt transaction already committed.
+      }
+    }
   }
   mark('db-write-transactions')
 
@@ -591,7 +769,12 @@ export async function saveParsedSmsExpenses(
   mark('db-write-fixed-expenses')
 
   mark('response-ready')
-  logSaveTiming('saveParsedSmsExpenses:blocking', startedAt, blockingTiming.marks)
+  const overridden = confirmOverride && duplicates > 0
+  logSaveTiming(
+    overridden ? 'saveParsedSmsExpenses:overridden' : 'saveParsedSmsExpenses:write',
+    startedAt,
+    blockingTiming.marks
+  )
 
   const backgroundStartedAt = Date.now()
   after(async () => {
@@ -624,6 +807,7 @@ export async function saveParsedSmsExpenses(
     saved: rowMeta.length,
     duplicates,
     blocked: false,
+    overridden,
     rowErrors: {},
     rowWarnings: {},
   })

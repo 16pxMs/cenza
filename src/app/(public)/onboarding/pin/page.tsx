@@ -4,10 +4,10 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { PinSetupClient } from '@/components/flows/pin/PinSetupClient'
 import { getOnboardingPageRedirect } from '@/lib/auth/auth-flow'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export default async function OnboardingPinPage() {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

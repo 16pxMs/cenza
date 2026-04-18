@@ -7,7 +7,8 @@ import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Bu
 import { Input } from '@/components/ui/Input/Input'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
-import { parseSmsImport, saveParsedSmsExpenses } from './actions'
+import { parseSmsImport, saveParsedSmsExpenses, loadActiveDebts, type ActiveDebtOption } from './actions'
+import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
 
@@ -24,6 +25,8 @@ interface EditableRow {
   sourceHash: string
   trackAsEssential: boolean
   trackedMonthlyAmount: number | null
+  debtId: string | null
+  debtName: string | null
 }
 
 const T = {
@@ -140,6 +143,9 @@ function validateRow(row: EditableRow) {
   if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
     errors.push('Use a specific debt name (e.g. "KCB loan", "Visa card").')
   }
+  if (row.categoryType === 'debt' && !row.debtId) {
+    errors.push('Select which debt this payment is for.')
+  }
   return errors
 }
 
@@ -155,6 +161,7 @@ export function SmsImportClient() {
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  const [savedWithOverride, setSavedWithOverride] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
   const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
@@ -166,6 +173,7 @@ export function SmsImportClient() {
     categoryType: ImportCategoryType | null
     trackAsEssential: boolean
     trackedMonthlyAmount: string
+    debtId: string | null
   } | null>(null)
   const [editDeleteConfirmOpen, setEditDeleteConfirmOpen] = useState(false)
   const [editErrors, setEditErrors] = useState<{
@@ -173,7 +181,18 @@ export function SmsImportClient() {
     amount?: string
     category?: string
     trackedMonthlyAmount?: string
+    debtId?: string
   }>({})
+  const [activeDebts, setActiveDebts] = useState<ActiveDebtOption[]>([])
+  const [debtsLoaded, setDebtsLoaded] = useState(false)
+  const [showCreateDebt, setShowCreateDebt] = useState(false)
+  const [createDebtDraft, setCreateDebtDraft] = useState({
+    name: '',
+    direction: 'owed_by_me' as 'owed_by_me' | 'owed_to_me',
+    totalOwed: '',
+  })
+  const [creatingDebt, setCreatingDebt] = useState(false)
+  const [createDebtError, setCreateDebtError] = useState<string | null>(null)
 
   const selectedCount = rows.length
   const savedRows = rows
@@ -223,6 +242,80 @@ export function SmsImportClient() {
     )
   }
 
+  const ensureDebtsLoaded = async () => {
+    if (debtsLoaded) return
+    const result = await loadActiveDebts()
+    if (result.ok) {
+      setActiveDebts(result.data)
+    }
+    setDebtsLoaded(true)
+  }
+
+  const openCreateDebtForm = (prefillName: string) => {
+    setCreateDebtDraft({
+      name: prefillName,
+      direction: 'owed_by_me',
+      totalOwed: editDraft?.amount ?? '',
+    })
+    setCreateDebtError(null)
+    setShowCreateDebt(true)
+  }
+
+  const closeCreateDebtForm = () => {
+    setShowCreateDebt(false)
+    setCreateDebtError(null)
+  }
+
+  const handleCreateDebt = async () => {
+    const name = createDebtDraft.name.trim()
+    if (!name) {
+      setCreateDebtError('Name is required.')
+      return
+    }
+
+    const repaymentAmount = Number(editDraft?.amount ?? 0)
+    if (!Number.isFinite(repaymentAmount) || repaymentAmount <= 0) {
+      setCreateDebtError('The row amount must be greater than zero.')
+      return
+    }
+
+    const totalOwed = Number(createDebtDraft.totalOwed)
+    if (!Number.isFinite(totalOwed) || totalOwed <= 0) {
+      setCreateDebtError('Total owed must be greater than zero.')
+      return
+    }
+    if (totalOwed < repaymentAmount) {
+      setCreateDebtError('Total owed must be at least the payment amount.')
+      return
+    }
+
+    setCreatingDebt(true)
+    setCreateDebtError(null)
+    try {
+      const debtId = await createDebtWithOpeningBalance({
+        name,
+        direction: createDebtDraft.direction,
+        openingAmount: totalOwed,
+      })
+
+      const newDebt: ActiveDebtOption = {
+        id: debtId,
+        name,
+        currency: '',
+        currentBalance: totalOwed,
+        direction: createDebtDraft.direction,
+      }
+      setActiveDebts((current) => [newDebt, ...current])
+      setEditDraft((current) => current ? { ...current, debtId } : current)
+      setEditErrors((current) => ({ ...current, debtId: undefined }))
+      setShowCreateDebt(false)
+    } catch (err) {
+      setCreateDebtError(err instanceof Error ? err.message : 'Failed to create debt.')
+    } finally {
+      setCreatingDebt(false)
+    }
+  }
+
   const openEditRow = (row: EditableRow) => {
     setEditingRowId(row.id)
     setEditDraft({
@@ -234,8 +327,13 @@ export function SmsImportClient() {
         row.trackAsEssential && row.trackedMonthlyAmount != null
           ? String(row.trackedMonthlyAmount)
           : '',
+      debtId: row.debtId,
     })
     setEditErrors({})
+    setShowCreateDebt(false)
+    if (row.categoryType === 'debt') {
+      ensureDebtsLoaded()
+    }
   }
 
   const closeEditRow = () => {
@@ -248,7 +346,7 @@ export function SmsImportClient() {
   const saveEditRow = () => {
     if (!editingRowId || !editDraft) return
 
-    const nextErrors: { label?: string; amount?: string; category?: string; trackedMonthlyAmount?: string } = {}
+    const nextErrors: { label?: string; amount?: string; category?: string; trackedMonthlyAmount?: string; debtId?: string } = {}
     const trimmedLabel = editDraft.label.trim()
     const amount = Number(editDraft.amount)
     const monthlyAmount = Number(editDraft.trackedMonthlyAmount)
@@ -270,11 +368,18 @@ export function SmsImportClient() {
     ) {
       nextErrors.trackedMonthlyAmount = 'Add a monthly amount'
     }
+    if (nextCategoryType === 'debt' && !editDraft.debtId) {
+      nextErrors.debtId = 'Select which debt this payment is for.'
+    }
 
     if (Object.keys(nextErrors).length > 0) {
       setEditErrors(nextErrors)
       return
     }
+
+    const selectedDebt = nextCategoryType === 'debt' && editDraft.debtId
+      ? activeDebts.find((d) => d.id === editDraft.debtId) ?? null
+      : null
 
     updateRow(editingRowId, {
       label: trimmedLabel,
@@ -286,6 +391,8 @@ export function SmsImportClient() {
         nextCategoryType === 'fixed' && !alreadyTracked && editDraft.trackAsEssential
           ? monthlyAmount
           : null,
+      debtId: selectedDebt ? selectedDebt.id : null,
+      debtName: selectedDebt ? selectedDebt.name : null,
     })
     closeEditRow()
   }
@@ -317,11 +424,14 @@ export function SmsImportClient() {
           categoryType: row.confidence === 'high' ? row.categoryType : null,
           trackAsEssential: false,
           trackedMonthlyAmount: null,
+          debtId: null,
+          debtName: null,
         }))
       )
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
       setRowErrors({})
       setRowWarnings({})
+      setSavedWithOverride(false)
       if (data.rows.length === 0) {
         setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
       }
@@ -353,6 +463,7 @@ export function SmsImportClient() {
         setRowErrors(nextRowErrors)
         setRowWarnings({})
         setError('Review rows marked with issues before saving.')
+        setSavedWithOverride(false)
         setSaving(false)
         logClientSaveTiming('pre-submit-validation', performance.now() - preSubmitStartedAt, {
           rows: rows.length,
@@ -375,6 +486,7 @@ export function SmsImportClient() {
           row.categoryType === 'fixed' && !isRowAlreadyTracked(row) && row.trackAsEssential
             ? Number(row.trackedMonthlyAmount ?? row.amount)
             : null,
+        debtId: row.categoryType === 'debt' ? row.debtId : null,
       }))
       logClientSaveTiming('pre-submit-processing', performance.now() - preSubmitStartedAt, {
         rows: payload.length,
@@ -404,6 +516,7 @@ export function SmsImportClient() {
         const hasHardErrors = Object.keys(data.rowErrors ?? {}).length > 0
         setRowErrors(data.rowErrors ?? {})
         setRowWarnings(data.rowWarnings ?? {})
+        setSavedWithOverride(false)
         if (hasHardErrors) {
           setError('Some messages were already added. Remove them to continue.')
         } else if (data.duplicates > 0) {
@@ -423,9 +536,12 @@ export function SmsImportClient() {
         return
       }
       setSavedCount(data.saved)
+      setSavedWithOverride(data.overridden === true)
+      setRowWarnings({})
       logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
-        outcome: 'success',
+        outcome: data.overridden ? 'overridden' : 'success',
         saved: data.saved,
+        duplicates: data.duplicates,
       })
     } catch {
       setError("We couldn't save right now. Please try again in a moment.")
@@ -451,7 +567,7 @@ export function SmsImportClient() {
               {savedCount} {savedCount === 1 ? 'expense added' : 'expenses added'}
             </p>
             <p style={{ margin: '0 0 16px', fontSize: 14, color: T.text2, lineHeight: 1.5 }}>
-              Your expense log is up to date.
+              {savedWithOverride ? 'Saved anyway.' : 'Your expense log is up to date.'}
             </p>
 
             {savedRows.length > 0 && (
@@ -642,6 +758,8 @@ export function SmsImportClient() {
                         </p>
                         <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.amberDark : T.text3, lineHeight: 1.45 }}>
                           {needsCategory ? 'Choose a category' : categoryLabel(row.categoryType)}
+                          {row.categoryType === 'debt' && row.debtName ? ` · ${row.debtName}` : ''}
+                          {row.categoryType === 'debt' && !row.debtId ? ' · Select a debt' : ''}
                           {' · '}
                           {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </p>
@@ -975,13 +1093,20 @@ export function SmsImportClient() {
                                     next.trackAsEssential = false
                                     next.trackedMonthlyAmount = ''
                                   }
+                                  if (option.value !== 'debt') {
+                                    next.debtId = null
+                                  }
                                   return next
                                 })
                                 setEditErrors((current) => ({
                                   ...current,
                                   category: undefined,
                                   trackedMonthlyAmount: undefined,
+                                  debtId: undefined,
                                 }))
+                                if (option.value === 'debt') {
+                                  ensureDebtsLoaded()
+                                }
                               }}
                               style={{
                                 height: 'var(--button-height-md)',
@@ -1016,6 +1141,214 @@ export function SmsImportClient() {
                         </p>
                       )}
                     </div>
+
+                    {editDraft.categoryType === 'debt' && (
+                      <div style={{ marginTop: 'var(--space-md)' }}>
+                        <p style={{
+                          margin: '0 0 6px',
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: T.text2,
+                          letterSpacing: '0.2px',
+                        }}>
+                          Link to debt
+                        </p>
+
+                        {showCreateDebt ? (
+                          <div style={{
+                            border: `var(--border-width) solid ${T.border}`,
+                            borderRadius: 'var(--radius-md)',
+                            padding: '12px',
+                            background: 'var(--grey-50)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 'var(--space-sm)',
+                          }}>
+                            <Input
+                              label="Debt name"
+                              value={createDebtDraft.name}
+                              onChange={(value) => {
+                                setCreateDebtDraft((current) => ({ ...current, name: value }))
+                                setCreateDebtError(null)
+                              }}
+                              autoFocus
+                            />
+
+                            <Input
+                              label="Total owed"
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="0.01"
+                              value={createDebtDraft.totalOwed}
+                              onChange={(value) => {
+                                setCreateDebtDraft((current) => ({ ...current, totalOwed: value }))
+                                setCreateDebtError(null)
+                              }}
+                            />
+
+                            <div>
+                              <p style={{
+                                margin: '0 0 6px',
+                                fontSize: 12.5,
+                                fontWeight: 600,
+                                color: T.text2,
+                                letterSpacing: '0.2px',
+                              }}>
+                                Direction
+                              </p>
+                              <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                {([
+                                  { value: 'owed_by_me', label: 'I owe this' },
+                                  { value: 'owed_to_me', label: 'Owed to me' },
+                                ] as const).map((option) => {
+                                  const selected = createDebtDraft.direction === option.value
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      onClick={() =>
+                                        setCreateDebtDraft((current) => ({ ...current, direction: option.value }))
+                                      }
+                                      style={{
+                                        height: 'var(--button-height-md)',
+                                        padding: '0 var(--space-md)',
+                                        borderRadius: 'var(--radius-full)',
+                                        border: selected
+                                          ? `var(--border-width) solid var(--brand-mid)`
+                                          : `var(--border-width) solid var(--grey-300)`,
+                                        background: selected ? 'var(--brand-mid)' : 'var(--white)',
+                                        color: selected ? T.brandDark : T.text2,
+                                        fontSize: 'var(--text-sm)',
+                                        fontWeight: 'var(--weight-medium)',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.5 }}>
+                              You&apos;re recording a payment of {editDraft.amount ? Number(editDraft.amount).toLocaleString() : '0'} for this debt.
+                            </p>
+
+                            {createDebtError && (
+                              <p style={{ margin: 0, fontSize: 12, color: T.redDark, lineHeight: 1.4 }}>
+                                {createDebtError}
+                              </p>
+                            )}
+
+                            <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+                              <PrimaryBtn
+                                size="md"
+                                onClick={handleCreateDebt}
+                                disabled={creatingDebt}
+                              >
+                                {creatingDebt ? 'Creating…' : 'Create'}
+                              </PrimaryBtn>
+                              <SecondaryBtn
+                                size="md"
+                                onClick={closeCreateDebtForm}
+                                disabled={creatingDebt}
+                              >
+                                Cancel
+                              </SecondaryBtn>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openCreateDebtForm(editDraft.label)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--space-xs)',
+                                padding: '10px 12px',
+                                borderRadius: 'var(--radius-md)',
+                                border: `var(--border-width) dashed var(--grey-300)`,
+                                background: 'var(--white)',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                width: '100%',
+                                marginBottom: activeDebts.length > 0 ? 'var(--space-xs)' : 0,
+                              }}
+                            >
+                              <span style={{
+                                fontSize: 'var(--text-sm)',
+                                fontWeight: 'var(--weight-medium)',
+                                color: T.brandDark,
+                              }}>
+                                + Create new debt
+                              </span>
+                            </button>
+
+                            {!debtsLoaded ? (
+                              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                                Loading debts…
+                              </p>
+                            ) : activeDebts.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                                {activeDebts.map((debt) => {
+                                  const selected = editDraft.debtId === debt.id
+                                  return (
+                                    <button
+                                      key={debt.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setEditDraft((current) =>
+                                          current ? { ...current, debtId: selected ? null : debt.id } : current
+                                        )
+                                        setEditErrors((current) => ({ ...current, debtId: undefined }))
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: 'var(--space-sm)',
+                                        padding: '10px 12px',
+                                        borderRadius: 'var(--radius-md)',
+                                        border: selected
+                                          ? `var(--border-width) solid var(--brand-mid)`
+                                          : `var(--border-width) solid var(--grey-300)`,
+                                        background: selected ? 'var(--brand-mid)' : 'var(--white)',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                      }}
+                                    >
+                                      <span style={{
+                                        fontSize: 'var(--text-sm)',
+                                        fontWeight: 'var(--weight-medium)',
+                                        color: selected ? T.brandDark : T.text1,
+                                      }}>
+                                        {debt.name}
+                                      </span>
+                                      <span style={{
+                                        fontSize: 'var(--text-xs)',
+                                        color: selected ? T.brandDark : T.text3,
+                                        whiteSpace: 'nowrap',
+                                      }}>
+                                        {debt.currency} {debt.currentBalance.toLocaleString()}
+                                      </span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+
+                        {editErrors.debtId && (
+                          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.amberDark, lineHeight: 1.4 }}>
+                            {editErrors.debtId}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {showTrackingSetup && (

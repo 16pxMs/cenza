@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 const HAS_PIN      = 'cenza-has-pin'
 const PIN_VERIFIED = 'cenza-pin-verified'
@@ -29,7 +29,7 @@ async function setKnownDeviceCookies(userId: string): Promise<void> {
 export async function setupPin(pin: string, opts?: { onboarding?: boolean }): Promise<void> {
   if (!/^\d{4}$/.test(pin)) throw new Error('PIN must be exactly 4 digits')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
@@ -61,7 +61,7 @@ export async function setupPin(pin: string, opts?: { onboarding?: boolean }): Pr
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 

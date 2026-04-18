@@ -1,7 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function saveOnboardingName(formData: FormData) {
   const firstName = String(formData.get('firstName') ?? formData.get('name') ?? '').trim()
@@ -12,7 +12,7 @@ export async function saveOnboardingName(formData: FormData) {
     redirect('/onboarding/name')
   }
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -69,7 +69,7 @@ export async function saveOnboardingCurrency(formData: FormData) {
     redirect('/onboarding/currency')
   }
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

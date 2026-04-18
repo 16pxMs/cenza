@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { CategoryType } from '@/types/database'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
@@ -52,7 +52,7 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   if (!input.date.trim()) throw new Error('Entry date is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const nextLabel = input.label?.trim()
   const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : input.categoryKey
   const persistedCategoryKey =
@@ -91,7 +91,7 @@ export async function deleteHistoryEntry(id: string, categoryKey: string): Promi
   if (!id.trim()) throw new Error('Entry id is required')
   if (!categoryKey.trim()) throw new Error('Category key is required')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await (supabase.from('transactions') as any)
     .delete()
     .eq('id', id)
@@ -111,7 +111,7 @@ export async function refundHistoryCategory(input: RefundHistoryEntryInput): Pro
   if (!input.categoryLabel.trim()) throw new Error('Category label is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Refund amount must be greater than zero')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   await createCycleRefundTransaction(supabase as any, user.id, profile, {
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,

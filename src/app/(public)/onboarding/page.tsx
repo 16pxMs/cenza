@@ -1,11 +1,11 @@
 export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { getOnboardingDestination } from '@/lib/auth/auth-flow'
 
 export default async function OnboardingIndexPage() {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

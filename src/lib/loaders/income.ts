@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
@@ -51,7 +51,7 @@ export interface SpendingBudgetSetupPageData {
 }
 
 export async function loadIncomeSetupPageData(userId: string, profile: UserProfile): Promise<IncomeSetupPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
   const { data: currentIncome } = await (supabase.from('income_entries') as any)
@@ -91,7 +91,7 @@ export async function loadFixedExpensesSetupPageData(
   userId: string,
   profile: UserProfile
 ): Promise<FixedExpensesSetupPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
   const { data } = await (supabase.from('fixed_expenses') as any)
@@ -110,7 +110,7 @@ export async function loadSpendingBudgetSetupPageData(
   userId: string,
   profile: UserProfile
 ): Promise<SpendingBudgetSetupPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
 
@@ -142,7 +142,7 @@ export async function loadSpendingBudgetSetupPageData(
 }
 
 export async function loadIncomePageData(userId: string, profile: UserProfile): Promise<IncomePageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
 

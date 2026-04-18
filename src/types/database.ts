@@ -6,6 +6,15 @@ export type GoalId = 'emergency' | 'car' | 'travel' | 'home' | 'education' | 'bu
 export type Frequency = 'monthly' | 'quarterly' | 'biannual' | 'yearly' | 'weekly'
 export type CategoryType = 'everyday' | 'fixed' | 'subscription' | 'goal' | 'debt' | 'other'
 export type SubscriptionStatus = 'yes_known' | 'yes_unknown'
+export type DebtDirection = 'owed_by_me' | 'owed_to_me'
+export type DebtStatus = 'active' | 'cleared' | 'cancelled'
+export type DebtKind = 'standard' | 'financing'
+export type DebtTransactionEntryType =
+  | 'principal_increase'
+  | 'payment_in'
+  | 'payment_out'
+  | 'adjustment_increase'
+  | 'adjustment_decrease'
 
 // ─── Value-object types ───────────────────────────────────────────────────────
 
@@ -141,6 +150,39 @@ export interface ItemDictionary {
   updated_at:      string
 }
 
+export interface Debt {
+  id: string
+  user_id: string
+  name: string
+  normalized_name: string
+  direction: DebtDirection
+  currency: string
+  debt_kind: DebtKind
+  current_balance: number
+  status: DebtStatus
+  financing_total_cost: number | null
+  financing_target_date: string | null
+  financing_principal_tx_id: string | null
+  standard_due_date: string | null
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DebtTransaction {
+  id: string
+  user_id: string
+  debt_id: string
+  entry_type: DebtTransactionEntryType
+  amount: number
+  currency: string
+  transaction_date: string
+  note: string | null
+  linked_transaction_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ─── Supabase database shape (for typed client) ───────────────────────────────
 
 export interface Database {
@@ -156,6 +198,8 @@ export interface Database {
       goal_targets:        { Row: GoalTarget;         Insert: Omit<GoalTarget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<GoalTarget> }
       transactions:        { Row: Transaction;        Insert: Omit<Transaction, 'id' | 'created_at'>; Update: Partial<Transaction> }
       item_dictionary:     { Row: ItemDictionary;     Insert: Omit<ItemDictionary, 'id' | 'created_at' | 'updated_at'>; Update: Partial<ItemDictionary> }
+      debts:               { Row: Debt;               Insert: Omit<Debt, 'id' | 'created_at' | 'updated_at' | 'current_balance' | 'status'>; Update: Partial<Debt> }
+      debt_transactions:   { Row: DebtTransaction;    Insert: Omit<DebtTransaction, 'id' | 'created_at' | 'updated_at'>; Update: Partial<DebtTransaction> }
     }
   }
 }

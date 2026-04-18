@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 interface GoalTargetInput {
   amount: number
@@ -27,7 +27,7 @@ export async function saveTargets(
       }))
 
     if (rows.length > 0) {
-      const supabase = await createClient()
+      const supabase = await createServerSupabaseClient()
       const { error } = await (supabase.from('goal_targets') as any).upsert(
         rows,
         { onConflict: 'user_id,goal_id' }

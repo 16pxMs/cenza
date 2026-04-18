@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { GoalId, UserProfile } from '@/types/database'
 
 export interface GoalsPageGoalData {
@@ -33,7 +33,7 @@ interface GoalTransactionRow {
 }
 
 export async function loadGoalsPageData(userId: string, profile: UserProfile): Promise<GoalsPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
 
   const goals = (profile.goals ?? []) as GoalId[]
   const { data: targetsData } = await (supabase.from('goal_targets') as any)

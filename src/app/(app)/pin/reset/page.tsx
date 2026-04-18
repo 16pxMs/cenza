@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { PinSetupClient } from '@/components/flows/pin/PinSetupClient'
 
 export default async function PinResetPage() {
@@ -22,7 +22,7 @@ export default async function PinResetPage() {
   }
 
   // Guard 3: must have a valid session
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { deleteTransactionsForCycleDateByCategory } from '@/lib/supabase/transactions-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { GoalId } from '@/types/database'
 
 interface SaveNewGoalInput {
@@ -16,7 +16,7 @@ export async function saveNewGoal(input: SaveNewGoalInput): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const existingGoals = (profile.goals ?? []) as GoalId[]
   const isReAdding = !existingGoals.includes(input.goalId)
   const newGoals = isReAdding ? [...existingGoals, input.goalId] : existingGoals

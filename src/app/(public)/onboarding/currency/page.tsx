@@ -3,11 +3,11 @@ export const dynamic = 'force-dynamic'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getOnboardingPageRedirect } from '@/lib/auth/auth-flow'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { CurrencyClient } from '../CurrencyClient'
 
 export default async function OnboardingCurrencyPage() {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

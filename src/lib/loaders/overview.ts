@@ -1,10 +1,10 @@
 import { GOAL_META } from '@/constants/goals'
 import { deriveIncomeTotal } from '@/lib/income/derived'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import { readTrackedFixedExpenseEntries, type TrackedFixedExpenseEntry } from '@/lib/fixed-bills/tracking'
-import type { GoalId, UserProfile } from '@/types/database'
+import type { Debt, GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
   id: string
@@ -79,6 +79,16 @@ export interface BillsLeftToPay {
   totalLeftToPay: number
 }
 
+export interface DebtReminderCandidate {
+  debtId: string
+  label: string
+  dueDate: string
+  balance: number
+  state: 'upcoming' | 'due' | 'overdue'
+  kind: 'financing_target' | 'standard_due'
+  expectedMonthly?: number
+}
+
 export function deriveBillsLeftToPay(
   fixedEntries: unknown[] | null | undefined,
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
@@ -124,6 +134,7 @@ export interface OverviewPageData {
   incomeType: 'salaried' | 'variable' | null
   paydayDay: number | null
   goals: GoalId[]
+  activeDebts: Debt[]
   hasStartedCycleData: boolean
   incomeData: IncomeData
   totalSpent: number
@@ -147,6 +158,86 @@ export interface OverviewPageData {
   } | null
   trackedEssentials: TrackedFixedExpenseEntry[]
   billsLeftToPay: BillsLeftToPay
+  debtReminderCandidates: DebtReminderCandidate[]
+}
+
+function parseDate(value: string | null) {
+  if (!value) return null
+  const parsed = new Date(`${value}T00:00:00`)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function monthsBetween(fromDate: Date, toDate: Date) {
+  const yearDiff = toDate.getFullYear() - fromDate.getFullYear()
+  const monthDiff = toDate.getMonth() - fromDate.getMonth()
+  let months = yearDiff * 12 + monthDiff
+
+  if (toDate.getDate() < fromDate.getDate()) {
+    months -= 1
+  }
+
+  return months
+}
+
+function deriveDebtReminderCandidates(debts: Debt[]): DebtReminderCandidate[] {
+  const today = parseDate(new Date().toISOString().slice(0, 10))
+  if (!today) return []
+
+  const candidates: DebtReminderCandidate[] = []
+
+  for (const debt of debts) {
+    if (debt.status !== 'active' || Number(debt.current_balance) <= 0) continue
+
+    if (debt.debt_kind === 'financing') {
+      if (!debt.financing_target_date) continue
+      const targetDate = parseDate(debt.financing_target_date)
+      if (!targetDate) continue
+
+      const monthsLeft = monthsBetween(today, targetDate)
+      const state: DebtReminderCandidate['state'] =
+        monthsLeft < 0 ? 'overdue' : monthsLeft === 0 ? 'due' : 'upcoming'
+
+      candidates.push({
+        debtId: debt.id,
+        label: debt.name.trim() || 'Untitled debt',
+        dueDate: debt.financing_target_date,
+        balance: Number(debt.current_balance),
+        state,
+        kind: 'financing_target',
+        expectedMonthly:
+          monthsLeft > 0 ? Math.max(0, Number(debt.current_balance) / monthsLeft) : undefined,
+      })
+      continue
+    }
+
+    if (!debt.standard_due_date) continue
+    const dueDate = parseDate(debt.standard_due_date)
+    if (!dueDate) continue
+
+    const state: DebtReminderCandidate['state'] =
+      dueDate < today ? 'overdue' : dueDate.getTime() === today.getTime() ? 'due' : 'upcoming'
+
+    candidates.push({
+      debtId: debt.id,
+      label: debt.name.trim() || 'Untitled debt',
+      dueDate: debt.standard_due_date,
+      balance: Number(debt.current_balance),
+      state,
+      kind: 'standard_due',
+    })
+  }
+
+  const stateRank: Record<DebtReminderCandidate['state'], number> = {
+    overdue: 0,
+    due: 1,
+    upcoming: 2,
+  }
+
+  return candidates.sort((a, b) => {
+    const byState = stateRank[a.state] - stateRank[b.state]
+    if (byState !== 0) return byState
+    return a.dueDate.localeCompare(b.dueDate)
+  })
 }
 
 function titleFromKey(key: string): string {
@@ -163,7 +254,7 @@ function toGoalLabel(goalId: GoalId, destination: string | null): string {
 }
 
 export async function loadOverviewPageData(userId: string, profile: UserProfile): Promise<OverviewPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
   const prevCycleRecurringPromise = prevCycleId
@@ -180,6 +271,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     { data: fixedExpenses },
     { data: spendingBudget },
     { data: goalTargets },
+    { data: debts },
     { data: prevCycleRecurringRows },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
@@ -204,12 +296,16 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     (supabase.from('goal_targets') as any)
       .select('goal_id, amount, added_at, destination')
       .eq('user_id', userId),
+    (supabase.from('debts') as any)
+      .select('*')
+      .eq('user_id', userId),
     prevCycleRecurringPromise,
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
   const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const goalTargetRows = (goalTargets ?? []) as OverviewGoalTargetRow[]
+  const debtRows = (debts ?? []) as Debt[]
 
   if (process.env.NODE_ENV !== 'production') {
     const fixedTxnDebug = transactionRows
@@ -249,14 +345,12 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
 
   const [
     totalSpent,
-    debtTotal,
     categorySpend,
     goalSavedMap,
   ] = (() => {
     const nextCategorySpend: Record<string, number> = {}
     const nextGoalSavedMap: Record<string, number> = {}
     const nextTotalSpent = transactionRows.reduce((sum, txn) => sum + Number(txn.amount), 0)
-    let nextDebtTotal = 0
 
     for (const txn of transactionRows) {
       if (txn.category_type === 'goal') {
@@ -269,13 +363,18 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
       if (txn.category_type === 'everyday' || txn.category_type === 'subscription') {
         nextCategorySpend[txn.category_key] = (nextCategorySpend[txn.category_key] ?? 0) + Number(txn.amount)
       }
-      if (txn.category_type === 'debt') {
-        nextDebtTotal += Number(txn.amount)
-      }
     }
 
-    return [nextTotalSpent, nextDebtTotal, nextCategorySpend, nextGoalSavedMap] as const
+    return [nextTotalSpent, nextCategorySpend, nextGoalSavedMap] as const
   })()
+
+  const activeDebts = debtRows.filter(
+    (debt) => debt.status === 'active' && Number(debt.current_balance) > 0
+  )
+  const debtTotal = activeDebts.reduce(
+    (sum, debt) => sum + Number(debt.current_balance),
+    0
+  )
 
   const recentActivity = [...transactionRows]
     .sort((a, b) => {
@@ -349,6 +448,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   })()
 
   const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
+  const debtReminderCandidates = deriveDebtReminderCandidates(debtRows)
 
   return {
     name: displayFirstName,
@@ -362,6 +462,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
         ? Number(profile.pay_schedule_days[0])
         : null,
     goals: (profile.goals ?? []) as GoalId[],
+    activeDebts,
     hasStartedCycleData,
     incomeData: {
       income: Number(incomeRow?.salary ?? 0),
@@ -387,5 +488,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
       (fixedExpenses?.entries ?? null) as unknown[] | null,
       transactionRows
     ),
+    debtReminderCandidates,
   }
 }

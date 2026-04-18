@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { deriveIncomeTotal } from '@/lib/income/derived'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 
@@ -22,7 +22,7 @@ export interface SettingsPageData {
 }
 
 export async function loadSettingsPageData(user: User, profile: UserProfile): Promise<SettingsPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
   const { data: income } = await (supabase.from('income_entries') as any)

@@ -1,11 +1,11 @@
 import { cache } from 'react'
 import type { User } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { UserProfile } from '@/types/database'
 
 async function loadUserProfile(
   userId: string,
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
 ): Promise<UserProfile | null> {
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -22,7 +22,7 @@ export interface AppSession {
 }
 
 export const getAppSession = cache(async (): Promise<AppSession> => {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

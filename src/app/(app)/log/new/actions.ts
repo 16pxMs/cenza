@@ -5,7 +5,7 @@ import { getAppSession } from '@/lib/auth/app-session'
 import { hasIncomeForCycle } from '@/lib/income/derived'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import { sumTrackedFixedExpenses, upsertTrackedFixedExpense } from '@/lib/fixed-bills/tracking'
@@ -92,7 +92,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
     const { user, profile } = await getAppSession()
     if (!user || !profile) return unauthorized()
 
-    const supabase = await createClient()
+    const supabase = await createServerSupabaseClient()
     const cycleId = deriveCurrentCycleId(profile)
 
     const [{ data: incomeRow, error: incomeError }, { data: cycleTxns, error: txnError }] = await Promise.all([

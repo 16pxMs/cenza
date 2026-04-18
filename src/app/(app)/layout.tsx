@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { UserProvider } from '@/lib/context/UserContext'
 import { ToastProvider } from '@/lib/context/ToastContext'
-import { SessionTimeout } from '@/components/auth/SessionTimeout'
 import { getAppSession } from '@/lib/auth/app-session'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +22,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <UserProvider initialUser={user} initialProfile={profile}>
       <ToastProvider>
-        <SessionTimeout />
         {children}
       </ToastProvider>
     </UserProvider>

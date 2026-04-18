@@ -4,13 +4,13 @@ import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function saveCurrency(code: string): Promise<void> {
   const { user } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await (supabase.from('user_profiles') as any)
     .update({ currency: code })
     .eq('id', user.id)
@@ -33,7 +33,7 @@ export async function savePaySchedule(
   const { user } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await (supabase.from('user_profiles') as any)
     .update({ pay_schedule_type: scheduleType, pay_schedule_days: scheduleDays })
     .eq('id', user.id)

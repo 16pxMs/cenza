@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
+import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
 import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
@@ -26,12 +27,13 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         incomeType={overview.incomeType}
         paydayDay={overview.paydayDay}
         goals={overview.goals}
+        activeDebts={overview.activeDebts}
         incomeData={overview.incomeData}
         goalTargets={overview.goalTargets}
         goalSaved={overview.goalSaved}
         goalLabels={overview.goalLabels}
         debtTotal={overview.debtTotal}
-        onAddDebts={() => router.push('/log/new?label=Debt&type=debt&key=debt&returnTo=/app')}
+        onAddDebts={() => router.push('/history/debt/new?returnTo=/app')}
         onReviewDebts={() => router.push('/history/debt?label=Debt&type=debt&returnTo=/app')}
         onLogExpense={() => router.push('/log/new?returnTo=/app')}
         onConfirmIncome={() => setReceivedSheetOpen(true)}
@@ -47,6 +49,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         lastCycleRecurringTop={overview.lastCycleRecurringTop}
         trackedEssentials={overview.trackedEssentials}
         billsLeftToPay={overview.billsLeftToPay}
+        debtReminderCandidates={overview.debtReminderCandidates}
         isDesktop={isDesktop}
       />
       <ReceivedIncomeSheet
@@ -62,6 +65,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
           router.refresh()
         }}
       />
+      <GlobalAddButton returnTo="/app" />
     </>
   )
 

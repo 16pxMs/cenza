@@ -1,5 +1,5 @@
 import { formatCycleLabel, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
@@ -48,7 +48,7 @@ function titleCase(value: string) {
 }
 
 export async function loadLogPageData(userId: string, profile: UserProfile): Promise<LogPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const schedule = profileToPaySchedule(profile)
 
@@ -120,7 +120,7 @@ export async function loadEntryById(
   profile: UserProfile,
   entryId: string
 ): Promise<{ entry: LogEntry; currency: string } | null> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
   const [{ data: txn }, { data: fixedExpenses }] = await Promise.all([

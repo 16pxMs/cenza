@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { deleteTransactionsForCycleDateByCategory } from '@/lib/supabase/transactions-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { GoalId } from '@/types/database'
 
 function revalidateGoalPaths() {
@@ -16,7 +16,7 @@ export async function saveGoalTarget(goalId: GoalId, amount: number | null): Pro
   const { user } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await (supabase.from('goal_targets') as any).upsert(
     { user_id: user.id, goal_id: goalId, amount },
     { onConflict: 'user_id,goal_id' }
@@ -32,7 +32,7 @@ export async function archiveGoal(goalId: GoalId): Promise<void> {
   if (!user || !profile) throw new Error('Not authenticated')
 
   const newGoals = (profile.goals ?? []).filter(goal => goal !== goalId)
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
 
   await Promise.all([
     (async () => {
@@ -52,7 +52,7 @@ export async function removeGoal(goalId: GoalId): Promise<void> {
   if (!user || !profile) throw new Error('Not authenticated')
 
   const newGoals = (profile.goals ?? []).filter(goal => goal !== goalId)
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
 
   await Promise.all([
     (async () => {

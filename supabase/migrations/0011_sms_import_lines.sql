@@ -16,6 +16,9 @@ create index if not exists sms_import_lines_user_id_idx
 
 alter table public.sms_import_lines enable row level security;
 
+drop policy if exists "Users can manage own sms import lines"
+  on public.sms_import_lines;
+
 create policy "Users can manage own sms import lines"
   on public.sms_import_lines
   for all

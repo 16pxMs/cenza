@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { CategoryType } from '@/types/database'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
@@ -55,7 +55,7 @@ interface UpdateTrackedEssentialInput {
 }
 
 async function removeRecurringEntryForCurrentCycle(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string,
   profile: NonNullable<Awaited<ReturnType<typeof getAppSession>>['profile']>,
   categoryKey: string
@@ -65,7 +65,7 @@ async function removeRecurringEntryForCurrentCycle(
 }
 
 async function removeRecurringEntryForCycle(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string,
   cycleId: string,
   categoryKey: string
@@ -131,7 +131,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<void> {
     throw new Error('Refund amount must be greater than zero')
   }
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   await createCycleRefundTransaction(supabase as any, user.id, profile, {
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
@@ -157,7 +157,7 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   if (!input.date.trim()) throw new Error('Entry date is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const nextLabel = input.label?.trim()
   const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : null
   const baseCategoryKey = nextCategoryKey || input.categoryKey || null
@@ -210,7 +210,7 @@ export async function deleteLogEntry(id: string, recurringCategoryKey?: string |
   if (!user) throw new Error('Not authenticated')
   if (!id.trim()) throw new Error('Entry id is required')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const { data: txn, error: txnError } = await (supabase.from('transactions') as any)
     .select('id, category_key, category_label, category_type, cycle_id')
     .eq('id', id)
@@ -304,7 +304,7 @@ export async function trackEssential(input: TrackEssentialInput): Promise<void> 
   if (!input.categoryLabel.trim()) throw new Error('Category label is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
     .select('entries')
@@ -340,7 +340,7 @@ export async function stopTrackingEssential(input: StopTrackingEssentialInput): 
   if (!user || !profile) throw new Error('Not authenticated')
   if (!input.categoryKey.trim()) throw new Error('Category key is required')
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
     .select('entries')
@@ -379,7 +379,7 @@ export async function updateTrackedEssentialMonthlyAmount(
     throw new Error('Monthly amount must be greater than zero')
   }
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
     .select('entries')
@@ -431,7 +431,7 @@ export async function updateTrackedEssential(
     throw new Error('Monthly amount must be greater than zero')
   }
 
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
   const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
     .select('entries')

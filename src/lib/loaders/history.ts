@@ -1,5 +1,5 @@
 import { deriveIncomeTotal } from '@/lib/income/derived'
-import { createClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import {
   formatCycleLabel,
@@ -87,7 +87,7 @@ function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
 }
 
 export async function loadHistoryPageData(userId: string, profile: UserProfile, targetDate?: Date): Promise<HistoryPageData> {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   const cycleId = targetDate
     ? deriveCycleIdForDate(profile, targetDate)
     : deriveCurrentCycleId(profile)
