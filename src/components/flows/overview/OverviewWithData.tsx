@@ -373,7 +373,7 @@ const reference = receivedConfirmed
               return (
                 <div key={selectedGoal.id}>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>{selectedGoal.label}</span>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-1)' }}>{selectedGoal.label}</span>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-3)', flexShrink: 0 }}>
                       {target > 0 ? `${Math.round(pct)}%` : 'No target'}
                     </span>
@@ -448,7 +448,7 @@ const reference = receivedConfirmed
           disabled={!isActionable}
         >
           <div style={{ flex: 1 }}>
-            <p style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', lineHeight: 1.35 }}>
+            <p style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', lineHeight: 1.35 }}>
               {resolvedPriority.title}
             </p>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
@@ -506,7 +506,7 @@ const reference = receivedConfirmed
         </p>
 
         {/* Main amount */}
-        <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: snapshotRemaining < 0 ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
+        <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotRemaining < 0 ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
           {formatAmount(snapshotRemaining, { currency, variant: 'full' })}
         </p>
 
@@ -549,7 +549,7 @@ const reference = receivedConfirmed
               <span
                 style={{
                   fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-semibold)',
+                  fontWeight: 'var(--weight-medium)',
                   color: 'var(--text-muted)',
                 }}
               >
@@ -558,7 +558,7 @@ const reference = receivedConfirmed
               <span
                 style={{
                   fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--weight-semibold)',
+                  fontWeight: 'var(--weight-medium)',
                   color: 'var(--text-1)',
                 }}
               >
@@ -569,7 +569,7 @@ const reference = receivedConfirmed
               <span
                 style={{
                   fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-semibold)',
+                  fontWeight: 'var(--weight-medium)',
                   color: 'var(--text-muted)',
                 }}
               >
@@ -578,7 +578,7 @@ const reference = receivedConfirmed
               <span
                 style={{
                   fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--weight-semibold)',
+                  fontWeight: 'var(--weight-medium)',
                   color: 'var(--text-1)',
                 }}
               >
@@ -636,10 +636,10 @@ const reference = receivedConfirmed
               }}
             >
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-                <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-1)', minWidth: 0 }}>
                   {item.name}
                 </p>
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', flexShrink: 0 }}>
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', flexShrink: 0 }}>
                   {fmt(item.amount, item.currency)}
                 </span>
               </div>
@@ -692,7 +692,7 @@ const reference = receivedConfirmed
             cursor: 'pointer', flexShrink: 0, marginTop: 4,
           }}
         >
-          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-inverse)' }}>
+          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-inverse)' }}>
             {name ? name[0].toUpperCase() : '?'}
           </span>
         </button>
@@ -732,7 +732,7 @@ const reference = receivedConfirmed
                   Set a target for {pendingGoals} {pendingGoals === 1 ? 'goal' : 'goals'} to track progress
                 </span>
               </div>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-dark)', fontWeight: 'var(--weight-semibold)' }}>Do it now</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-dark)', fontWeight: 'var(--weight-medium)' }}>Do it now</span>
             </div>
           )}
         </>
@@ -783,7 +783,7 @@ const reference = receivedConfirmed
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-                      <span style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text-1)' }}>
+                      <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>
                         {item.label}
                       </span>
                       <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-2)', flexShrink: 0 }}>

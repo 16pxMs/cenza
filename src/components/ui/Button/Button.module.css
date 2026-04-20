@@ -2,24 +2,24 @@
   border-radius: var(--radius-md);
   cursor: pointer;
   font-family: var(--font-sans);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.2px;
   transition: all 0.2s ease;
 }
 
 .btnSizeSm {
   height: var(--button-height-sm);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .btnSizeMd {
   height: var(--button-height-md);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .btnSizeLg {
   height: var(--button-height);
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .btnPrimary {

@@ -233,7 +233,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
           <h1 style={{
             margin: 0,
             fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--weight-bold)',
+            fontWeight: 'var(--weight-medium)',
             color: 'var(--text-1)',
             lineHeight: 1.15,
             letterSpacing: '-0.02em',
@@ -254,7 +254,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                 lineHeight: 1,
                 letterSpacing: '-0.02em',
                 color: 'var(--text-1)',
-                fontWeight: 'var(--weight-bold)',
+                fontWeight: 'var(--weight-medium)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {fmt(detail.balance, detail.currency)}
@@ -304,7 +304,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                     fontSize: 'var(--text-xs)',
                     color: 'var(--text-muted)',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
+                    letterSpacing: '0.07em',
                   }}>
                     Due date
                   </p>
@@ -312,7 +312,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                     <p style={{
                       margin: 0,
                       fontSize: 'var(--text-base)',
-                      fontWeight: 'var(--weight-semibold)',
+                      fontWeight: 'var(--weight-medium)',
                       color: 'var(--text-1)',
                     }}>
                       {detail.standardDueDate ? formatDate(detail.standardDueDate) : 'No due date set'}
@@ -326,7 +326,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                         background: '#FDE8E6',
                         color: 'var(--red-dark)',
                         fontSize: 'var(--text-xs)',
-                        fontWeight: 'var(--weight-semibold)',
+                        fontWeight: 'var(--weight-medium)',
                         letterSpacing: '0.02em',
                       }}>
                         Overdue
@@ -401,19 +401,19 @@ export default async function DebtDetailPage({ params }: PageProps) {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Total cost</span>
-                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
                   {fmt(detail.financingTotalCost, detail.currency)}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>You’ve paid</span>
-                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
                   {fmt(detail.financingPaid, detail.currency)}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Left to pay</span>
-                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
                   {fmt(detail.financingRemaining, detail.currency)}
                 </span>
               </div>
@@ -430,13 +430,13 @@ export default async function DebtDetailPage({ params }: PageProps) {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Finish by</span>
-                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>
                     {formatDate(detail.financingTargetDate)}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Time remaining</span>
-                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>
                     {detail.financingMonthsLeft != null && detail.financingMonthsLeft > 0
                       ? `${detail.financingMonthsLeft} month${detail.financingMonthsLeft === 1 ? '' : 's'}`
                       : 'Overdue'}
@@ -445,13 +445,13 @@ export default async function DebtDetailPage({ params }: PageProps) {
                 {detail.financingExpectedMonthly != null ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Pay about</span>
-                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
                       {fmt(detail.financingExpectedMonthly, detail.currency)}/month
                     </span>
                   </div>
                 ) : null}
                 {detail.financingPaceStatus ? (
-                  <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>
                     {detail.financingPaceStatus}
                   </p>
                 ) : null}
@@ -513,7 +513,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                     border: '1px solid var(--border)',
                     textDecoration: 'none',
                     fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-semibold)',
+                    fontWeight: 'var(--weight-medium)',
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -573,7 +573,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                     }}>
                       <span style={{
                         fontSize: 'var(--text-base)',
-                        fontWeight: 'var(--weight-semibold)',
+                        fontWeight: 'var(--weight-medium)',
                         color: 'var(--text-1)',
                         whiteSpace: 'nowrap',
                         fontVariantNumeric: 'tabular-nums',

@@ -18,9 +18,8 @@
 }
 
 .chipSelected {
-  border: var(--border-width) solid var(--brand-mid);
-  background: var(--brand);
-  color: var(--brand-dark);
+  border: var(--border-width) solid color-mix(in srgb, var(--brand-mid) 55%, transparent);
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
 }
 
 .chipFill {

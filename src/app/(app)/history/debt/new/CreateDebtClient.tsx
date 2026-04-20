@@ -2,15 +2,17 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Input } from '@/components/ui/Input/Input'
+import { SingleTaskFlowStep } from '@/components/layout/SingleTaskFlowStep/SingleTaskFlowStep'
 import { PrimaryBtn } from '@/components/ui/Button/Button'
-import { IconBack } from '@/components/ui/Icons'
+import cardStyles from '@/components/ui/Card/Card.module.css'
 import type { DebtDirection } from '@/lib/supabase/debt-db'
 import { createDebtWithOpeningBalance } from './actions'
+import styles from './CreateDebtClient.module.css'
 
 interface Props {
   currency: string
   returnTo: string
+  activeDebtNames: string[]
 }
 
 type FormErrors = {
@@ -33,17 +35,17 @@ const TRACKING_OPTIONS: Array<{
   {
     value: 'i_owe',
     label: 'I owe someone',
-    helper: 'One amount to pay back',
+    helper: 'Pay it back at once',
   },
   {
     value: 'i_owe_over_time',
     label: 'I owe someone over time',
-    helper: 'Paying in parts',
+    helper: 'Pay it over time',
   },
   {
     value: 'owed_to_me',
     label: 'Someone owes me',
-    helper: 'You will collect this',
+    helper: 'They’ll pay you back',
   },
 ]
 
@@ -56,6 +58,17 @@ function isValidDateString(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const parsed = new Date(`${value}T00:00:00`)
   return !Number.isNaN(parsed.getTime())
+}
+
+function normalizeDebtNameForMatch(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function addCommas(raw: string): string {
+  if (!raw) return raw
+  const parts = raw.split('.')
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return parts.join('.')
 }
 
 function mapTrackingChoice(choice: DebtTrackingChoice | null): { direction: DebtDirection; mode: CreateDebtMode } | null {
@@ -84,42 +97,86 @@ function OptionButton({
     <button
       type="button"
       onClick={onClick}
-      style={{
-        width: '100%',
-        minHeight: 52,
-        border: active ? 'none' : 'var(--border-width) solid var(--border)',
-        borderRadius: 'var(--radius-md)',
-        padding: 12,
-        background: active ? 'var(--brand)' : 'transparent',
-        boxShadow: active ? '0 0 0 1px var(--brand-dark)' : 'none',
-        color: 'var(--text-1)',
-        textAlign: 'left',
-        cursor: 'pointer',
-      }}
+      className={[
+        cardStyles.selectableCard,
+        active ? cardStyles.selectableCardSelected : '',
+      ].filter(Boolean).join(' ')}
     >
       {children}
     </button>
   )
 }
 
+function FieldFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      height: 48,
+      borderRadius: 'var(--radius-sm)',
+      border: '1px solid var(--border)',
+      background: 'var(--white)',
+      overflow: 'hidden',
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{
+      fontSize: 'var(--text-sm)',
+      fontWeight: 'var(--weight-medium)',
+      color: 'var(--text-2)',
+      display: 'block',
+      marginBottom: 'var(--space-xs)',
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function FieldError({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{
+      margin: 'var(--space-xs) 0',
+      fontSize: 'var(--text-sm)',
+      color: 'var(--red-dark)',
+      fontFamily: 'var(--font-sans)',
+      fontWeight: 'var(--weight-regular)',
+    }}>
+      {children}
+    </p>
+  )
+}
+
 function StepDebtName({
   name,
   error,
+  placeholder,
   onChange,
 }: {
   name: string
   error?: string
+  placeholder: string
   onChange: (value: string) => void
 }) {
   return (
-    <Input
-      label="Debt name"
-      value={name}
-      onChange={onChange}
-      error={error}
-      placeholder="e.g. Credit card, Mary, Sofa"
-      autoFocus
-    />
+    <div style={{ marginBottom: 'var(--space-md)', width: '100%' }}>
+      <FieldFrame>
+        <input
+          aria-label="Debt name"
+          className={styles.fieldInput}
+          value={name}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          autoFocus
+          autoComplete="off"
+        />
+      </FieldFrame>
+      {error ? <FieldError>{error}</FieldError> : null}
+    </div>
   )
 }
 
@@ -143,7 +200,7 @@ function StepDebtType({
               active={active}
               onClick={() => onTrackingChoiceChange(option.value)}
             >
-              <span style={{ display: 'block', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+              <span style={{ display: 'block', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>
                 {option.label}
               </span>
               <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-3)', lineHeight: 1.35 }}>
@@ -156,9 +213,9 @@ function StepDebtType({
       {error ? (
         <p style={{
           margin: 'var(--space-xs) 0 0',
-          fontSize: 12,
+          fontSize: 'var(--text-sm)',
           color: 'var(--red-dark)',
-          fontWeight: 500,
+          fontWeight: 'var(--weight-regular)',
         }}>
           {error}
         </p>
@@ -179,16 +236,41 @@ function StepDebtAmount({
   onChange: (value: string) => void
 }) {
   return (
-    <Input
-      label="Amount"
-      type="number"
-      prefix={currency}
-      value={amount}
-      onChange={onChange}
-      error={error}
-      placeholder="0"
-      autoFocus
-    />
+    <div style={{ marginBottom: 'var(--space-md)', width: '100%' }}>
+      <label style={{ display: 'block' }}>
+        <FieldLabel>Amount</FieldLabel>
+        <FieldFrame>
+          <span style={{
+            padding: '0 0 0 14px',
+            fontSize: 'var(--text-base)',
+            color: 'var(--text-3)',
+            fontWeight: 'var(--weight-regular)',
+            fontFamily: 'var(--font-sans)',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}>
+            {currency}
+          </span>
+          <input
+            className={styles.fieldInput}
+            inputMode="decimal"
+            pattern="[0-9]*"
+            enterKeyHint="done"
+            value={addCommas(amount)}
+            onChange={(event) => {
+              const raw = event.target.value.replace(/,/g, '')
+              if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+              onChange(raw)
+            }}
+            placeholder="0"
+            autoFocus
+            autoComplete="off"
+            style={{ paddingLeft: 'var(--space-sm)' }}
+          />
+        </FieldFrame>
+      </label>
+      {error ? <FieldError>{error}</FieldError> : null}
+    </div>
   )
 }
 
@@ -207,27 +289,26 @@ function StepDebtOptionalDetails({
 }) {
   return (
     <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
-      <Input
-        label="Due date"
-        type="date"
-        value={dueDate}
-        onChange={onDueDateChange}
-        error={dueDateError}
-        autoFocus
-      />
+      <div style={{ marginBottom: 'var(--space-md)', width: '100%' }}>
+        <label style={{ display: 'block' }}>
+          <FieldLabel>Due date</FieldLabel>
+          <FieldFrame>
+            <input
+              className={styles.fieldInput}
+              type="date"
+              value={dueDate}
+              onChange={(event) => onDueDateChange(event.target.value)}
+              autoFocus
+            />
+          </FieldFrame>
+        </label>
+        {dueDateError ? <FieldError>{dueDateError}</FieldError> : null}
+      </div>
 
       <label style={{ display: 'block' }}>
-        <span style={{
-          fontSize: '12.5px',
-          fontWeight: 600,
-          color: 'var(--text-2)',
-          display: 'block',
-          marginBottom: 6,
-          letterSpacing: '0.2px',
-        }}>
-          Note
-        </span>
+        <FieldLabel>Note</FieldLabel>
         <textarea
+          className={styles.textArea}
           value={note}
           onChange={(event) => onNoteChange(event.target.value)}
           placeholder="Optional note"
@@ -239,9 +320,7 @@ function StepDebtOptionalDetails({
             borderRadius: 'var(--radius-sm)',
             background: 'var(--white)',
             padding: '12px 14px',
-            fontSize: 15,
             fontFamily: 'var(--font-sans)',
-            color: 'var(--text-1)',
             outline: 'none',
             resize: 'vertical',
             minHeight: 104,
@@ -252,7 +331,7 @@ function StepDebtOptionalDetails({
   )
 }
 
-export default function CreateDebtClient({ currency, returnTo }: Props) {
+export default function CreateDebtClient({ currency, returnTo, activeDebtNames }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [step, setStep] = useState<Step>(1)
@@ -265,16 +344,45 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
 
   const nextPath = resolveReturnPath(returnTo)
   const isLastStep = step === 4
+  const normalizedActiveDebtNames = new Set(activeDebtNames.map(normalizeDebtNameForMatch))
+  const normalizedName = normalizeDebtNameForMatch(name)
+  const hasDuplicateActiveDebtName = normalizedName.length > 0 && normalizedActiveDebtNames.has(normalizedName)
+  const stepOneBlocked = !trackingChoice
+  const stepTwoBlocked = !normalizedName || hasDuplicateActiveDebtName
+  const debtNamePlaceholder =
+    trackingChoice === 'i_owe_over_time'
+      ? 'e.g. Laptop, Sofa, Phone'
+      : trackingChoice === 'owed_to_me'
+        ? 'e.g. Alex, Client, Sarah'
+        : 'e.g. John, Landlord, Mum'
+  const debtNameTitle =
+    trackingChoice === 'i_owe_over_time'
+      ? 'What are you paying for?'
+      : trackingChoice === 'owed_to_me'
+        ? 'Who owes you?'
+        : 'Who do you owe?'
+  const stepCopy: Record<Step, { title: string; supportingLine?: string }> = {
+    1: { title: "What's this for?" },
+    2: { title: debtNameTitle },
+    3: { title: 'How much is it?' },
+    4: { title: 'Any extra details?', supportingLine: 'Due date and note are optional.' },
+  }
+  const displayedNameError =
+    errors.name ??
+    (name.length > 0 && !normalizedName ? 'Debt name is required' : undefined) ??
+    (hasDuplicateActiveDebtName ? 'You already have an active debt with this name.' : undefined)
 
   const validateStep = (targetStep: Step): FormErrors => {
     const nextErrors: FormErrors = {}
 
-    if (targetStep === 1 && !name.trim()) {
-      nextErrors.name = 'Debt name is required'
+    if (targetStep === 1 && !trackingChoice) {
+      nextErrors.trackingChoice = 'Choose what you are tracking'
     }
 
-    if (targetStep === 2 && !trackingChoice) {
-      nextErrors.trackingChoice = 'Choose what you are tracking'
+    if (targetStep === 2 && !name.trim()) {
+      nextErrors.name = 'Debt name is required'
+    } else if (targetStep === 2 && hasDuplicateActiveDebtName) {
+      nextErrors.name = 'You already have an active debt with this name.'
     }
 
     if (targetStep === 3) {
@@ -326,8 +434,8 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       const firstInvalidStep: Step =
-        nextErrors.name ? 1 :
-        nextErrors.trackingChoice ? 2 :
+        nextErrors.trackingChoice ? 1 :
+        nextErrors.name ? 2 :
         nextErrors.amount ? 3 :
         4
       setStep(firstInvalidStep)
@@ -381,21 +489,22 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
     switch (step) {
       case 1:
         return (
-          <StepDebtName
-            name={name}
-            error={errors.name}
-            onChange={(value) => {
-              setName(value)
-              setErrors((current) => ({ ...current, name: undefined, form: undefined }))
-            }}
-          />
-        )
-      case 2:
-        return (
           <StepDebtType
             trackingChoice={trackingChoice}
             error={errors.trackingChoice}
             onTrackingChoiceChange={handleTrackingChoiceChange}
+          />
+        )
+      case 2:
+        return (
+          <StepDebtName
+            name={name}
+            error={displayedNameError}
+            placeholder={debtNamePlaceholder}
+            onChange={(value) => {
+              setName(value)
+              setErrors((current) => ({ ...current, name: undefined, form: undefined }))
+            }}
           />
         )
       case 3:
@@ -427,105 +536,58 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
     }
   })()
 
-  return (
-    <main style={{
-      minHeight: '100vh',
-      background: 'var(--page-bg)',
-      padding: 'var(--space-lg) var(--space-page-mobile) calc(var(--space-xxl) + var(--bottom-nav-height, 0px))',
-    }}>
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <button
-          type="button"
-          onClick={goBack}
-          aria-label="Back"
-          disabled={isPending}
-          style={{
-            width: 44,
-            height: 44,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 'var(--space-lg)',
-            color: 'var(--grey-900)',
-            background: 'transparent',
-            border: 'none',
-            padding: 0,
-            cursor: isPending ? 'default' : 'pointer',
-          }}
-        >
-          <IconBack size={20} />
-        </button>
+  const action = (
+    <>
+      {errors.form ? (
+        <p style={{
+          margin: 0,
+          fontSize: 'var(--text-sm)',
+          fontWeight: 'var(--weight-regular)',
+          color: 'var(--red-dark)',
+          lineHeight: 1.5,
+        }}>
+          {errors.form}
+        </p>
+      ) : null}
 
-        <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
-          <div>
-            <p style={{
-              margin: '0 0 var(--space-2xs)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-semibold)',
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-            }}>
-              Step {step} of 4
-            </p>
-            <h1 style={{
-              margin: 0,
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--text-2xl)',
-              fontWeight: 'var(--weight-semibold)',
-              color: 'var(--text-1)',
-              lineHeight: 1.15,
-              letterSpacing: '-0.02em',
-            }}>
-              Add a debt
-            </h1>
-            {step === 2 ? (
-              <p style={{
-                margin: 'var(--space-sm) 0 0',
+      <PrimaryBtn
+        size="lg"
+        onClick={isLastStep ? handleSubmit : handleContinue}
+        disabled={isPending || (step === 1 && stepOneBlocked) || (step === 2 && stepTwoBlocked)}
+        style={step === 1 || step === 2 ? (
+          (step === 1 && stepOneBlocked) || (step === 2 && stepTwoBlocked)
+            ? {
+                background: 'var(--border-subtle)',
+                color: 'var(--text-muted)',
                 fontSize: 'var(--text-base)',
-                color: 'var(--text-2)',
-                lineHeight: 1.45,
-              }}>
-                What are you tracking?
-              </p>
-            ) : null}
-          </div>
+                fontWeight: 'var(--weight-medium)',
+              }
+            : {
+                background: 'var(--brand-dark)',
+                color: 'var(--text-inverse)',
+                fontSize: 'var(--text-base)',
+                fontWeight: 'var(--weight-medium)',
+              }
+        ) : {
+          fontSize: 'var(--text-base)',
+          fontWeight: 'var(--weight-medium)',
+        }}
+      >
+        {isPending ? 'Saving…' : isLastStep ? 'Save debt' : 'Continue'}
+      </PrimaryBtn>
+    </>
+  )
 
-          <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
-            {stepContent}
-
-            {errors.form ? (
-              <p style={{
-                margin: 0,
-                fontSize: 'var(--text-sm)',
-                color: 'var(--red-dark)',
-                lineHeight: 1.5,
-              }}>
-                {errors.form}
-              </p>
-            ) : null}
-
-            <PrimaryBtn
-              size="lg"
-              onClick={isLastStep ? handleSubmit : handleContinue}
-              disabled={isPending || (step === 2 && !trackingChoice)}
-              style={step === 2 ? (
-                !trackingChoice
-                  ? {
-                      background: 'var(--border-subtle)',
-                      color: 'var(--text-muted)',
-                    }
-                  : {
-                      background: 'var(--brand-dark)',
-                      color: 'var(--text-inverse)',
-                    }
-              ) : undefined}
-            >
-              {isPending ? 'Saving…' : isLastStep ? 'Save debt' : 'Continue'}
-            </PrimaryBtn>
-          </div>
-        </div>
-      </div>
-    </main>
+  return (
+    <SingleTaskFlowStep
+      stepLabel={`Step ${step} of 4`}
+      title={stepCopy[step].title}
+      supportingLine={stepCopy[step].supportingLine}
+      onBack={goBack}
+      backDisabled={isPending}
+      action={action}
+    >
+      {stepContent}
+    </SingleTaskFlowStep>
   )
 }

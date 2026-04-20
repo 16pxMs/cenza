@@ -10,7 +10,7 @@
   align-items: center;
   justify-content: center;
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .desktopLayout {
@@ -42,8 +42,8 @@
   background: var(--brand-dark);
   border: none;
   color: #fff;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -64,8 +64,8 @@
   border-radius: 50%;
   background: var(--brand-dark);
   color: #fff;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,8 +79,8 @@
   background: #FEF2F2;
   border: 1px solid #FECACA;
   color: #DC2626;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
   cursor: pointer;
 }
 
@@ -93,7 +93,7 @@
   background: rgba(0,0,0,0.88);
   color: #0f0;
   font-family: monospace;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 8px 12px;
   line-height: 1.7;
   border-top: 1px solid #333;

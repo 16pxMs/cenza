@@ -18,9 +18,26 @@
 }
 
 .cardSelected {
-  background: color-mix(in srgb, var(--brand) 33%, transparent);
-  border-color: var(--brand-deep);
-  border-width: 2px;
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
+  border-color: color-mix(in srgb, var(--brand-mid) 55%, transparent);
+}
+
+.selectableCard {
+  width: 100%;
+  min-height: 52px;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: transparent;
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.selectableCardSelected {
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
+  border-color: color-mix(in srgb, var(--brand-mid) 55%, transparent);
 }
 
 .sectionHeader {
@@ -31,18 +48,18 @@
 }
 
 .sectionHeaderTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.07em;
   font-family: var(--font-sans);
   margin: 0;
 }
 
 .sectionHeaderAction {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--brand-deep);
   background: none;
   border: none;

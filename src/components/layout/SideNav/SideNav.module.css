@@ -34,8 +34,8 @@
 }
 
 .logoName {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
   color: var(--brand-dark);
   letter-spacing: 1px;
   font-family: var(--font-sans);
@@ -62,12 +62,12 @@
 }
 
 .itemLabel {
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
   color: var(--text-2);
 }
 
 .itemLabelActive {
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   color: var(--brand-dark);
 }

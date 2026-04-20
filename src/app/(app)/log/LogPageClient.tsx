@@ -158,7 +158,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
           <span style={{
             fontSize: 'var(--text-base)',
-            fontWeight: 'var(--weight-semibold)',
+            fontWeight: 'var(--weight-medium)',
             color: T.text1,
             flexShrink: 0,
             marginLeft: 'var(--space-sm)',
@@ -193,7 +193,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         <p style={{
           margin: '0 0 var(--space-2xs)',
           fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-bold)',
+          fontWeight: 'var(--weight-medium)',
           color: T.text1,
           letterSpacing: '-0.02em',
           lineHeight: 1.1,
@@ -226,7 +226,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             <p style={{
               margin: '0 0 var(--space-sm)',
               fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-semibold)',
+              fontWeight: 'var(--weight-medium)',
               color: T.text1,
               lineHeight: 1.3,
             }}>
@@ -251,7 +251,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                   </span>
                   <span style={{
                     fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-semibold)',
+                    fontWeight: 'var(--weight-medium)',
                     color: T.text1,
                     fontVariantNumeric: 'tabular-nums',
                   }}>

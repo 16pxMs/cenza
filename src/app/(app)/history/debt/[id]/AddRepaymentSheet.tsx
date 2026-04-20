@@ -122,7 +122,7 @@ export function AddRepaymentSheet({
             <p style={{
               margin: 0,
               fontSize: 'var(--text-base)',
-              fontWeight: 'var(--weight-semibold)',
+              fontWeight: 'var(--weight-medium)',
               color: 'var(--text-1)',
             }}>
               {debtName}

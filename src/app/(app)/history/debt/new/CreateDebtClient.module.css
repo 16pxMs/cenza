@@ -1,0 +1,28 @@
+.fieldInput {
+  flex: 1;
+  height: 100%;
+  border: none;
+  outline: none;
+  padding: 0 14px;
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  background: transparent;
+}
+
+.fieldInput::placeholder {
+  font-size: var(--text-base);
+  color: var(--text-3);
+}
+
+.textArea {
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  color: var(--text-1);
+}
+
+.textArea::placeholder {
+  font-size: var(--text-base);
+  color: var(--text-3);
+}

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
+import { getDebts } from '@/lib/supabase/debt-db'
 import CreateDebtClient from './CreateDebtClient'
 
 interface NewDebtPageProps {
@@ -21,11 +22,17 @@ export default async function NewDebtPage({ searchParams }: NewDebtPageProps) {
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const returnTo = firstValue(resolvedSearchParams.returnTo) ?? '/app'
+  const debts = await getDebts(user.id)
+  const activeDebtNames = debts
+    .filter((debt) => debt.status === 'active')
+    .map((debt) => debt.normalized_name)
+    .filter(Boolean)
 
   return (
     <CreateDebtClient
       currency={profile.currency}
       returnTo={returnTo}
+      activeDebtNames={activeDebtNames}
     />
   )
 }

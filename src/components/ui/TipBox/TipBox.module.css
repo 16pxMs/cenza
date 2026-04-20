@@ -11,14 +11,14 @@
 }
 
 .tipBoxIcon {
-  font-size: 14px;
+  font-size: var(--text-sm);
   flex-shrink: 0;
   align-self: flex-start;
 }
 
 .tipBoxText {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   line-height: 1.55;
   font-style: italic;
 

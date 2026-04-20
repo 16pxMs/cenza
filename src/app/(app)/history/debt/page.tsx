@@ -47,7 +47,7 @@ function DebtRow({ debt, showSeparator }: { debt: ReturnType<typeof toDisplayDeb
       </p>
       <span style={{
         fontSize: 'var(--text-base)',
-        fontWeight: 'var(--weight-semibold)',
+        fontWeight: 'var(--weight-medium)',
         color: debt.isCleared ? 'var(--text-3)' : 'var(--text-1)',
         flexShrink: 0,
         fontVariantNumeric: 'tabular-nums',
