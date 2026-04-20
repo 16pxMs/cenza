@@ -1,9 +1,13 @@
 .btnBase {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-md);
   cursor: pointer;
   font-family: var(--font-sans);
   font-weight: var(--weight-medium);
   letter-spacing: 0.2px;
+  text-decoration: none;
   transition: all 0.2s ease;
 }
 

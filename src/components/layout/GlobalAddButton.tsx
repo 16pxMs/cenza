@@ -17,23 +17,29 @@ export function GlobalAddButton({ returnTo }: Props) {
       onClick={() => router.push(`/log/new?returnTo=${encodeURIComponent(returnTo)}`)}
       style={{
         position: 'fixed',
-        right: 20,
-        bottom: 'calc(var(--bottom-nav-height, 0px) + 20px)',
-        width: 56,
+        right: 'var(--space-lg)',
+        bottom: 'calc(var(--bottom-nav-height, 0px) + var(--space-lg))',
+        minWidth: 0,
         height: 56,
-        borderRadius: 999,
+        borderRadius: 'var(--radius-full)',
         border: 'none',
         background: 'var(--brand-dark)',
         color: 'var(--text-inverse)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 'var(--space-xs)',
+        padding: '0 var(--space-md)',
         boxShadow: '0 10px 24px rgba(0,0,0,0.16)',
         cursor: 'pointer',
         zIndex: 45,
+        fontSize: 'var(--text-base)',
+        fontWeight: 'var(--weight-semibold)',
+        fontFamily: 'var(--font-sans)',
       }}
     >
-      <IconPlus size={22} color="currentColor" />
+      <IconPlus size={18} color="currentColor" />
+      <span>Add expense</span>
     </button>
   )
 }

@@ -1,10 +1,17 @@
 'use client'
 
+import Link from 'next/link'
 import styles from './Button.module.css'
 
 interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode
   size?: 'sm' | 'md' | 'lg'
+}
+
+interface LinkProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> {
+  children: React.ReactNode
+  href: string
+  size?: Props['size']
 }
 
 function sizeClass(size: Props['size']) {
@@ -28,6 +35,18 @@ export function PrimaryBtn({ children, className, size = 'lg', ...props }: Props
     >
       {children}
     </button>
+  )
+}
+
+export function PrimaryLink({ children, href, className, size = 'lg', ...props }: LinkProps) {
+  return (
+    <Link
+      href={href}
+      className={`${styles.btnBase} ${styles.btnPrimary} ${sizeClass(size)} ${className ?? ''}`}
+      {...props}
+    >
+      {children}
+    </Link>
   )
 }
 

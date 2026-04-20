@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
+import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
@@ -87,7 +89,6 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
   const activeIndex   = data.availableCycleIds.indexOf(activeCycleId)
   const canGoPrev     = activeIndex > 0
   const canGoNext     = activeIndex >= 0 && activeIndex < data.availableCycleIds.length - 1
-  const pad           = isDesktop ? '0 var(--space-page-desktop)' : '0 var(--space-page-mobile)'
   const currentCycleRoute = activeCycleId === currentCycleId ? '/history' : `/history?cycle=${activeCycleId}`
 
   function navToCycle(cycleId: string) {
@@ -106,17 +107,16 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
   ].filter(s => s.amount > 0)
 
   const content = (
-    <div style={{ paddingBottom: isDesktop ? 'var(--size-touch-footer-desktop)' : 'var(--size-touch-footer-mobile)' }}>
+    <AppSubpageLayout>
 
-      {/* ── Header + month nav ── */}
-      <div style={{ padding: isDesktop ? 'var(--space-xl) var(--space-page-desktop) var(--space-card-md)' : 'var(--space-lg) var(--space-page-mobile) var(--space-md)' }}>
-        <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Recap
-        </p>
+      <AppSubpageHeader title="Recap" backHref="/menu" ariaLabel="Back to More" />
+
+      {/* ── Month nav ── */}
+      <div style={{ marginBottom: 'var(--space-card-md)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
             {data.cycleLabel}
-          </h1>
+          </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
             <button
               onClick={() => canGoPrev && navToCycle(data.availableCycleIds[activeIndex - 1])}
@@ -136,7 +136,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
         </div>
       </div>
 
-      <div style={{ padding: pad }}>
+      <div>
 
         {/* ── 1. Verdict line ── */}
         {verdict && (
@@ -375,7 +375,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
         )}
 
       </div>
-    </div>
+    </AppSubpageLayout>
   )
 
   if (isDesktop) {

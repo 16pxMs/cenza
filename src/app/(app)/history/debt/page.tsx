@@ -5,7 +5,9 @@ import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
 import { fmt } from '@/lib/finance'
 import { getDebts, type Debt } from '@/lib/supabase/debt-db'
-import { IconPlus } from '@/components/ui/Icons'
+import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
+import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
+import { PrimaryLink } from '@/components/ui/Button/Button'
 
 function toDisplayDebt(debt: Debt) {
   return {
@@ -70,19 +72,17 @@ export default async function DebtListPage() {
     <main style={{
       minHeight: '100vh',
       background: 'var(--page-bg)',
-      padding: 'var(--space-xl) var(--space-page-mobile) 160px',
     }}>
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <h1 style={{
-          margin: '0 0 var(--space-lg)',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-bold)',
-          color: 'var(--text-1)',
-          letterSpacing: '-0.02em',
-          lineHeight: 1.15,
-        }}>
-          Debts
-        </h1>
+      <AppSubpageLayout maxWidth={720}>
+        <AppSubpageHeader title="Debts" backHref="/menu" ariaLabel="Back to More" />
+
+        <PrimaryLink
+          href="/history/debt/new?returnTo=/history/debt"
+          size="md"
+          style={{ marginBottom: 'var(--space-lg)' }}
+        >
+          Add debt
+        </PrimaryLink>
 
         {allDebts.length === 0 ? (
           <p style={{
@@ -132,31 +132,7 @@ export default async function DebtListPage() {
             )}
           </>
         )}
-      </div>
-
-      <Link
-        href="/history/debt/new?returnTo=/history/debt"
-        aria-label="Create debt"
-        style={{
-          position: 'fixed',
-          right: 20,
-          bottom: 'calc(var(--bottom-nav-height, 0px) + 20px)',
-          width: 56,
-          height: 56,
-          borderRadius: 'var(--radius-full)',
-          border: 'none',
-          background: 'var(--brand-dark)',
-          color: 'var(--text-inverse)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 10px 24px rgba(0,0,0,0.16)',
-          zIndex: 45,
-          textDecoration: 'none',
-        }}
-      >
-        <IconPlus size={22} color="currentColor" />
-      </Link>
+      </AppSubpageLayout>
     </main>
   )
 }

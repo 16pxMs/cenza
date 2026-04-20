@@ -1,0 +1,21 @@
+.layout {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-lg) var(--space-page-mobile)
+    calc(var(--bottom-nav-height, 0px) + var(--app-subpage-fab-size, 56px) + var(--space-lg));
+}
+
+.inner {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.inner > header:first-child {
+  margin-bottom: var(--space-lg);
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    padding: var(--space-xl) var(--space-page-desktop);
+  }
+}

@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/context/UserContext'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
+import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
@@ -179,12 +181,8 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   )
 
   const content = (
-    <div style={{ padding: isDesktop ? '40px 32px' : '24px 16px', maxWidth: 560 }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: T.text1, letterSpacing: -0.4 }}>
-          Settings
-        </h1>
-      </div>
+    <AppSubpageLayout maxWidth={560}>
+      <AppSubpageHeader title="Settings" backHref="/menu" ariaLabel="Back to More" />
 
       {sectionLabel('Profile')}
       {sectionCard(<>
@@ -335,7 +333,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           </div>
         )}
       </>)}
-    </div>
+    </AppSubpageLayout>
   )
 
   return (

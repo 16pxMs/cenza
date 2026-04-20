@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { useToast } from '@/lib/context/ToastContext'
+import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
+import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
-import { PrimaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, PrimaryLink } from '@/components/ui/Button/Button'
 import { GOAL_META } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
@@ -334,55 +336,30 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
     }
   }
 
-  const pad = isDesktop ? '40px 32px' : '24px 16px'
-
   const content = (
-    <div style={{ padding: pad, maxWidth: 600 }}>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', color: T.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
-              Goals
-            </div>
-            <h1 style={{ margin: 0, fontSize: 26, color: T.text1 }}>
-              Your goals
-            </h1>
-          </div>
-          {data.goalDataList.length > 0 && data.goals.length < 8 && (
-            <button
-              onClick={() => router.push(`/goals/new?exclude=${data.goals.join(',')}`)}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                background: T.brandDark,
-                border: 'none',
-                color: '#fff',
-                fontSize: 22,
-                lineHeight: 1,
-                cursor: 'pointer',
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginTop: 4,
-              }}
-            >
-              +
-            </button>
-          )}
+    <AppSubpageLayout maxWidth={600}>
+      <AppSubpageHeader title="Goals" backHref="/menu" ariaLabel="Back to More" />
+
+      {data.goals.length < 8 && (
+        <PrimaryLink
+          href={data.goals.length > 0 ? `/goals/new?exclude=${data.goals.join(',')}` : '/goals/new'}
+          size="md"
+          style={{ marginBottom: 'var(--space-lg)' }}
+        >
+          Add goal
+        </PrimaryLink>
+      )}
+
+      {data.goals.length > 0 && (
+        <div style={{ fontSize: 14, color: T.text3, marginBottom: 'var(--space-lg)' }}>
+          {data.goals.length} goal{data.goals.length !== 1 ? 's' : ''} ·{' '}
+          {data.totalSaved > 0
+            ? `${fmt(data.totalSaved, data.currency)} saved`
+            : data.totalTargets > 0
+              ? `${fmt(data.totalTargets, data.currency)} in targets`
+              : 'No targets set yet'}
         </div>
-        {data.goals.length > 0 && (
-          <div style={{ marginTop: 6, fontSize: 14, color: T.text3 }}>
-            {data.goals.length} goal{data.goals.length !== 1 ? 's' : ''} ·{' '}
-            {data.totalSaved > 0
-              ? `${fmt(data.totalSaved, data.currency)} saved`
-              : data.totalTargets > 0
-                ? `${fmt(data.totalTargets, data.currency)} in targets`
-                : 'No targets set yet'}
-          </div>
-        )}
-      </div>
+      )}
 
       {data.goalDataList.length === 0 ? (
         <div>
@@ -419,23 +396,6 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
               </div>
             ))}
           </div>
-          <button
-            onClick={() => router.push('/goals/new')}
-            style={{
-              width: '100%',
-              height: 56,
-              borderRadius: 'var(--radius-lg)',
-              background: T.brandDark,
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 'var(--text-base)',
-              fontWeight: 'var(--weight-semibold)',
-              color: '#fff',
-              letterSpacing: '-0.1px',
-            }}
-          >
-            Set up my first goal
-          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
@@ -444,7 +404,7 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
           ))}
         </div>
       )}
-    </div>
+    </AppSubpageLayout>
   )
 
   return (
