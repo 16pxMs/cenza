@@ -44,15 +44,20 @@ const TIMELINE_OPTIONS = [
   { months: 36, label: '3 years' },
 ]
 
-const GOAL_PICK_BLURBS: Record<GoalId, string> = {
-  emergency: 'Build a buffer for genuine emergencies.',
-  car: 'Save toward a car purchase or upkeep.',
-  travel: 'Set money aside for a trip.',
-  home: 'Work toward a deposit or housing goal.',
-  education: 'Save for fees, courses, or school costs.',
-  business: 'Build capital for launch or growth.',
-  family: 'Set money aside for family needs.',
-  other: 'Create a goal in your own words.',
+const GOAL_PICK_LABELS: Record<GoalId, string> = {
+  emergency: 'Emergency fund',
+  car: 'Car',
+  travel: 'Travel',
+  home: 'Home',
+  education: 'Education',
+  business: 'Business',
+  family: 'Family',
+  other: 'Other',
+}
+
+const GOAL_PICK_HELPERS: Partial<Record<GoalId, string>> = {
+  emergency: 'For unexpected costs',
+  other: 'Name your own goal',
 }
 
 interface NewGoalClientProps {
@@ -255,46 +260,70 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
           You've added all available goal types.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {availableGoals.map(goal => (
-            <button
-              key={goal.id}
-              onClick={() => selectGoal(goal.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 14,
-                padding: '18px 18px 18px 20px',
-                borderRadius: 18,
-                border: `1px solid var(--border)`,
-                background: T.white,
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 'var(--text-md)',
-                  fontWeight: 'var(--weight-semibold)',
-                  color: T.text1,
-                  marginBottom: 4,
-                  letterSpacing: -0.2,
-                  lineHeight: 1.25,
-                }}>
-                  {goal.label}
+        <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+          {availableGoals.map(goal => {
+            const selected = selectedGoal === goal.id
+            const helper = GOAL_PICK_HELPERS[goal.id]
+
+            return (
+              <button
+                key={goal.id}
+                onClick={() => selectGoal(goal.id)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-sm)',
+                  padding: '14px 0',
+                  border: 'none',
+                  borderBottom: `var(--border-width) solid ${selected ? 'color-mix(in srgb, var(--brand-mid) 55%, transparent)' : 'var(--border-subtle)'}`,
+                  background: selected ? 'color-mix(in srgb, var(--brand) 28%, transparent)' : 'transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--radius-full)',
+                    background: selected ? 'transparent' : T.white,
+                    border: `var(--border-width) solid ${selected ? 'transparent' : 'var(--border-subtle)'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    fontSize: 'var(--text-base)',
+                  }}
+                  aria-hidden="true"
+                >
+                  {goal.icon}
                 </div>
-                <div style={{
-                  fontSize: 'var(--text-base)',
-                  fontWeight: 'var(--weight-regular)',
-                  color: T.text3,
-                  lineHeight: 1.5,
-                  maxWidth: 420,
-                }}>
-                  {GOAL_PICK_BLURBS[goal.id]}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 'var(--text-base)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: T.text1,
+                    lineHeight: 1.35,
+                  }}>
+                    {GOAL_PICK_LABELS[goal.id]}
+                  </div>
+                  {helper && (
+                    <div style={{
+                      marginTop: 2,
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-regular)',
+                      color: T.text3,
+                      lineHeight: 1.45,
+                    }}>
+                      {helper}
+                    </div>
+                  )}
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -569,6 +598,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
       isDesktop={isDesktop}
       isSaving={saving}
       copyOverride={targetCopyOverride}
+      surface={step === 'pick' ? 'plain' : 'card'}
     >
       {step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
     </SetupFlowPage>

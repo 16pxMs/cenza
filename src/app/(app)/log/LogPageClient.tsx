@@ -106,6 +106,11 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const renderEntryRow = (entry: LogEntry) => {
     const categoryLabel = CATEGORY_LABEL[entry.categoryType] ?? 'Other'
     const savedAt = formatSavedAt(entry.createdAt)
+    const entryHref = entry.categoryType === 'debt'
+      ? entry.debtId
+        ? `/history/debt/${entry.debtId}`
+        : '/history/debt'
+      : `/log/${entry.id}`
 
     return (
       <div
@@ -119,7 +124,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         }}
       >
         <button
-          onClick={() => router.push(`/log/${entry.id}`)}
+          onClick={() => router.push(entryHref)}
           style={{
             flex: 1,
             display: 'flex',

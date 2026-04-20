@@ -13,7 +13,7 @@
 
 /* Greeting */
 .overview-data__greeting {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 .overview-data__heading {
   font-family: var(--font-sans);

@@ -35,6 +35,9 @@ export interface LogEntry {
   trackedEssential: boolean
   trackedEssentialKey: string | null
   trackedMonthlyAmount: number | null
+  debtId: string | null
+  debtTransactionId: string | null
+  debtEntryType: string | null
 }
 
 export interface LogPageData {
@@ -45,6 +48,40 @@ export interface LogPageData {
 
 function titleCase(value: string) {
   return value.replace(/\b\w/g, c => c.toUpperCase())
+}
+
+async function loadDebtMirrorMetadata(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  userId: string,
+  linkedTransactionIds: string[]
+) {
+  const ids = linkedTransactionIds.filter(Boolean)
+  if (ids.length === 0) return new Map<string, {
+    debtId: string
+    debtTransactionId: string
+    debtEntryType: string
+  }>()
+
+  const { data } = await (supabase.from('debt_transactions') as any)
+    .select('id, debt_id, entry_type, linked_transaction_id')
+    .eq('user_id', userId)
+    .in('linked_transaction_id', ids)
+
+  const rows = (data ?? []) as Array<{
+    id: string
+    debt_id: string
+    entry_type: string
+    linked_transaction_id: string
+  }>
+
+  return new Map(rows.map((row) => [
+    row.linked_transaction_id,
+    {
+      debtId: row.debt_id,
+      debtTransactionId: row.id,
+      debtEntryType: row.entry_type,
+    },
+  ] as const))
 }
 
 export async function loadLogPageData(userId: string, profile: UserProfile): Promise<LogPageData> {
@@ -81,6 +118,11 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const trackedFixedEntriesByKey = new Map(
     trackedFixedEntries.map((entry) => [entry.key, entry] as const)
   )
+  const debtMetadataByLinkedTransactionId = await loadDebtMirrorMetadata(
+    supabase,
+    userId,
+    txRows.filter((txn) => txn.category_type === 'debt').map((txn) => txn.id)
+  )
 
   const entries: LogEntry[] = txRows
     .filter((txn) => txn.category_type !== 'goal')
@@ -91,6 +133,9 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
           : null
       const trackedEntry = trackedEssentialKey
         ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
+        : null
+      const debtMetadata = txn.category_type === 'debt'
+        ? debtMetadataByLinkedTransactionId.get(txn.id) ?? null
         : null
 
       return {
@@ -105,6 +150,9 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
         trackedEssential: !!trackedEntry,
         trackedEssentialKey: trackedEntry?.key ?? null,
         trackedMonthlyAmount: trackedEntry?.monthly ?? null,
+        debtId: debtMetadata?.debtId ?? null,
+        debtTransactionId: debtMetadata?.debtTransactionId ?? null,
+        debtEntryType: debtMetadata?.debtEntryType ?? null,
       }
     })
 
@@ -150,6 +198,14 @@ export async function loadEntryById(
   const trackedEntry = trackedEssentialKey
     ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
     : null
+  const debtMetadataByLinkedTransactionId = await loadDebtMirrorMetadata(
+    supabase,
+    userId,
+    txn.category_type === 'debt' ? [txn.id] : []
+  )
+  const debtMetadata = txn.category_type === 'debt'
+    ? debtMetadataByLinkedTransactionId.get(txn.id) ?? null
+    : null
 
   const entry: LogEntry = {
     id: txn.id,
@@ -163,6 +219,9 @@ export async function loadEntryById(
     trackedEssential: !!trackedEntry,
     trackedEssentialKey: trackedEntry?.key ?? null,
     trackedMonthlyAmount: trackedEntry?.monthly ?? null,
+    debtId: debtMetadata?.debtId ?? null,
+    debtTransactionId: debtMetadata?.debtTransactionId ?? null,
+    debtEntryType: debtMetadata?.debtEntryType ?? null,
   }
 
   return { entry, currency: profile.currency ?? 'KES' }

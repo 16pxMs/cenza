@@ -20,11 +20,16 @@ import {
   trackEssential,
   updateLogEntry,
 } from '../actions'
+import {
+  deleteDebtTransactionForDebt,
+  updateDebtTransactionForDebt,
+} from '../../history/debt/[id]/actions'
 
 const CATEGORY_LABEL: Record<string, string> = {
   everyday: 'Spending',
   fixed: 'Essentials',
   debt: 'Debt',
+  goal: 'Goal',
 }
 
 const CATEGORY_HELPER: Record<EditableCategory, string> = {
@@ -62,7 +67,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const { isDesktop } = useBreakpoint()
   const { toast } = useToast()
 
-  const [activeFlow, setActiveFlow] = useState<'edit' | 'refund' | 'confirm' | 'track' | null>(null)
+  const [activeFlow, setActiveFlow] = useState<'edit' | 'refund' | 'confirm' | 'track' | 'debtEdit' | null>(null)
 
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
@@ -80,6 +85,11 @@ export function EntryActionsClient({ entry, currency }: Props) {
   }>({})
   const [editDialog, setEditDialog] = useState<'delete' | 'discard' | 'recurring' | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [debtEditAmount, setDebtEditAmount] = useState('')
+  const [debtEditDate, setDebtEditDate] = useState('')
+  const [debtEditNote, setDebtEditNote] = useState('')
+  const [debtEditError, setDebtEditError] = useState<string | null>(null)
+  const [savingDebtEdit, setSavingDebtEdit] = useState(false)
 
   const [trackingEssential, setTrackingEssential] = useState(false)
   const [trackMonthlyAmount, setTrackMonthlyAmount] = useState('')
@@ -88,6 +98,13 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
 
   const goBack = () => router.push('/log')
+  const isDebtEntry = entry.categoryType === 'debt'
+  const isGoalEntry = entry.categoryType === 'goal'
+  const hasLinkedDebt = isDebtEntry && !!entry.debtId && !!entry.debtTransactionId
+  const debtHref = entry.debtId ? `/history/debt/${entry.debtId}` : '/history/debt'
+  const debtEntryLabel = entry.debtEntryType === 'principal_increase'
+    ? 'opening balance'
+    : 'entry'
 
   const openEdit = () => {
     setEditAmount(String(entry.amount))
@@ -98,6 +115,22 @@ export function EntryActionsClient({ entry, currency }: Props) {
     setEditErrors({})
     setEditDialog(null)
     setActiveFlow('edit')
+  }
+
+  const openDebtEdit = () => {
+    setDebtEditAmount(String(entry.amount))
+    setDebtEditDate(entry.date)
+    setDebtEditNote(entry.note ?? '')
+    setDebtEditError(null)
+    setActiveFlow('debtEdit')
+  }
+
+  const openGoalEdit = () => {
+    setDebtEditAmount(String(entry.amount))
+    setDebtEditDate(entry.date)
+    setDebtEditNote(entry.note ?? '')
+    setDebtEditError(null)
+    setActiveFlow('debtEdit')
   }
 
   const editIsDirty =
@@ -208,10 +241,65 @@ export function EntryActionsClient({ entry, currency }: Props) {
     }
   }
 
+  const handleSaveDebtEdit = async () => {
+    const amount = parseFloat(debtEditAmount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setDebtEditError('Amount must be greater than zero')
+      return
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(debtEditDate.trim())) {
+      setDebtEditError('Enter a valid date')
+      return
+    }
+
+    setSavingDebtEdit(true)
+    setDebtEditError(null)
+    try {
+      if (isGoalEntry) {
+        await updateLogEntry({
+          id: entry.id,
+          amount,
+          date: debtEditDate,
+          note: debtEditNote,
+          categoryKey: entry.categoryKey,
+          categoryType: 'goal',
+        })
+        toast('Goal entry updated')
+      } else {
+        if (!entry.debtId || !entry.debtTransactionId) return
+        await updateDebtTransactionForDebt({
+          debtId: entry.debtId,
+          transactionId: entry.debtTransactionId,
+          amount,
+          date: debtEditDate,
+          note: debtEditNote,
+        })
+        toast('Debt entry updated')
+      }
+      router.push('/log')
+      router.refresh()
+    } catch {
+      setDebtEditError(isGoalEntry ? 'Could not update goal entry' : 'Could not update debt entry')
+    } finally {
+      setSavingDebtEdit(false)
+    }
+  }
+
   const handleDeleteEntry = async () => {
     if (!entry.id) return
     setDeletingKey(entry.id)
     try {
+      if (hasLinkedDebt && entry.debtId && entry.debtTransactionId) {
+        const result = await deleteDebtTransactionForDebt({
+          debtId: entry.debtId,
+          transactionId: entry.debtTransactionId,
+        })
+        toast(result.deletedDebt ? 'Debt removed' : 'Debt entry removed')
+        router.push('/log')
+        router.refresh()
+        return
+      }
+
       if (process.env.NODE_ENV !== 'production') {
         console.info('[log.delete] client', {
           transactionId: entry.id,
@@ -343,33 +431,173 @@ export function EntryActionsClient({ entry, currency }: Props) {
 
       {/* Action cards */}
       <div style={{ padding: `0 ${pageX}`, display: 'grid', gap: 'var(--space-sm)' }}>
-        <div style={{
-          background: T.white,
-          border: `1px solid ${T.border}`,
-          borderRadius: 'var(--radius-lg)',
-          overflow: 'hidden',
-        }}>
-          <button
-            onClick={openEdit}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              padding: 'var(--space-md)',
+        {isDebtEntry ? (
+          <>
+            <div style={{
               background: T.white,
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-              Edit expense
+              border: `1px solid ${T.border}`,
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+            }}>
+              <button
+                onClick={() => router.push(debtHref)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: 'var(--space-md)',
+                  background: T.white,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                  {entry.debtId ? 'Open debt' : 'Go to debts'}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                  View this in Things to pay
+                </div>
+              </button>
             </div>
-            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-              Change amount or category
-            </div>
-          </button>
-        </div>
 
-        {entry.categoryType === 'fixed' && (
+            {entry.debtId && (
+              <div style={{
+                background: T.white,
+                border: `1px solid ${T.border}`,
+                borderRadius: 'var(--radius-lg)',
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={() => router.push(`${debtHref}?action=add-payment`)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: 'var(--space-md)',
+                    background: T.white,
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                    Add payment
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                    Record another payment for this debt
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {hasLinkedDebt && (
+              <div style={{
+                background: T.white,
+                border: `1px solid ${T.border}`,
+                borderRadius: 'var(--radius-lg)',
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={openDebtEdit}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: 'var(--space-md)',
+                    background: T.white,
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                    {entry.debtEntryType === 'principal_increase' ? 'Edit opening balance' : 'Edit entry'}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                    Update the debt {debtEntryLabel}
+                  </div>
+                </button>
+              </div>
+            )}
+          </>
+        ) : isGoalEntry ? (
+          <>
+            <div style={{
+              background: T.white,
+              border: `1px solid ${T.border}`,
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+            }}>
+              <button
+                onClick={() => router.push('/goals')}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: 'var(--space-md)',
+                  background: T.white,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                  Open goal
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                  View this in Goals
+                </div>
+              </button>
+            </div>
+
+            <div style={{
+              background: T.white,
+              border: `1px solid ${T.border}`,
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+            }}>
+              <button
+                onClick={openGoalEdit}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: 'var(--space-md)',
+                  background: T.white,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                  Edit entry
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                  Update this goal contribution
+                </div>
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{
+            background: T.white,
+            border: `1px solid ${T.border}`,
+            borderRadius: 'var(--radius-lg)',
+            overflow: 'hidden',
+          }}>
+            <button
+              onClick={openEdit}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: 'var(--space-md)',
+                background: T.white,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                Edit expense
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                Change amount or category
+              </div>
+            </button>
+          </div>
+        )}
+
+        {!isDebtEntry && !isGoalEntry && entry.categoryType === 'fixed' && (
           <div style={{
             background: T.white,
             border: `1px solid ${T.border}`,
@@ -408,27 +636,29 @@ export function EntryActionsClient({ entry, currency }: Props) {
           </div>
         )}
 
-        <div style={{
-          background: T.white,
-          border: `1px solid ${T.border}`,
-          borderRadius: 'var(--radius-lg)',
-          overflow: 'hidden',
-        }}>
-          <button
-            onClick={() => { setRefundAmount(''); setRefundNote(''); setActiveFlow('refund') }}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              padding: 'var(--space-md)',
-              background: T.white,
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>Refund</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>Log money returned</div>
-          </button>
-        </div>
+        {!isDebtEntry && !isGoalEntry && (
+          <div style={{
+            background: T.white,
+            border: `1px solid ${T.border}`,
+            borderRadius: 'var(--radius-lg)',
+            overflow: 'hidden',
+          }}>
+            <button
+              onClick={() => { setRefundAmount(''); setRefundNote(''); setActiveFlow('refund') }}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: 'var(--space-md)',
+                background: T.white,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>Refund</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>Log money returned</div>
+            </button>
+          </div>
+        )}
 
         <div style={{
           background: T.white,
@@ -448,7 +678,13 @@ export function EntryActionsClient({ entry, currency }: Props) {
             }}
           >
             <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--red-dark)' }}>Delete entry</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>Remove this expense</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+              {isDebtEntry
+                ? `Remove this debt ${debtEntryLabel}`
+                : isGoalEntry
+                  ? 'Remove this goal contribution'
+                  : 'Remove this expense'}
+            </div>
           </button>
         </div>
       </div>
@@ -807,14 +1043,87 @@ export function EntryActionsClient({ entry, currency }: Props) {
       </Sheet>
 
       <Sheet
+        open={activeFlow === 'debtEdit'}
+        onClose={() => setActiveFlow(null)}
+        title={
+          isGoalEntry
+            ? 'Edit goal entry'
+            : entry.debtEntryType === 'principal_increase'
+              ? 'Edit opening balance'
+              : 'Edit debt entry'
+        }
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <Input
+            label="Amount"
+            prefix={currency}
+            type="number"
+            value={debtEditAmount}
+            onChange={(value) => {
+              setDebtEditAmount(value)
+              setDebtEditError(null)
+            }}
+            error={debtEditError ?? undefined}
+          />
+          <Input
+            label="Date"
+            type="date"
+            value={debtEditDate}
+            onChange={(value) => {
+              setDebtEditDate(value)
+              setDebtEditError(null)
+            }}
+          />
+          <Input
+            label="Note"
+            value={debtEditNote}
+            onChange={setDebtEditNote}
+            placeholder="Optional note"
+          />
+          <PrimaryBtn
+            size="lg"
+            onClick={handleSaveDebtEdit}
+            disabled={savingDebtEdit}
+          >
+            {savingDebtEdit ? 'Saving…' : 'Save changes'}
+          </PrimaryBtn>
+          <TertiaryBtn
+            size="md"
+            onClick={() => setActiveFlow(null)}
+            style={{ padding: '12px' }}
+          >
+            Cancel
+          </TertiaryBtn>
+        </div>
+      </Sheet>
+
+      <Sheet
         open={activeFlow === 'confirm'}
         onClose={() => setActiveFlow(null)}
         title="Are you sure?"
       >
         <div>
           <p style={{ fontSize: 14, color: '#475467', margin: '0 0 24px', lineHeight: 1.6 }}>
-            This will permanently remove your <strong>{entry.name}</strong> entry of{' '}
-            <strong>{fmt(entry.amount, currency)}</strong> for this month.
+            {isDebtEntry
+              ? (
+                  <>
+                    This will remove the <strong>{entry.name}</strong> debt {debtEntryLabel} of{' '}
+                    <strong>{fmt(entry.amount, currency)}</strong>.
+                  </>
+                )
+              : isGoalEntry
+                ? (
+                    <>
+                      This will remove the <strong>{entry.name}</strong> goal contribution of{' '}
+                      <strong>{fmt(entry.amount, currency)}</strong>.
+                    </>
+                  )
+              : (
+                  <>
+                    This will permanently remove your <strong>{entry.name}</strong> entry of{' '}
+                    <strong>{fmt(entry.amount, currency)}</strong> for this month.
+                  </>
+                )}
           </p>
           <button
             onClick={handleDeleteEntry}

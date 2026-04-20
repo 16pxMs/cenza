@@ -34,9 +34,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         goalLabels={overview.goalLabels}
         selectedGoal={overview.selectedGoal}
         debtTotal={overview.debtTotal}
-        onAddDebts={() => router.push('/history/debt/new?returnTo=/app')}
         onReviewDebts={() => router.push('/history/debt?label=Debt&type=debt&returnTo=/app')}
-        onLogExpense={() => router.push('/log/new?returnTo=/app')}
         onConfirmIncome={() => setReceivedSheetOpen(true)}
         onContribGoal={async (goalId, goalLabel, amount, note) => {
           await addGoalContribution({ goalId, goalLabel, amount, note })

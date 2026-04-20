@@ -1,9 +1,8 @@
 'use client'
 
-import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { SecondaryBtn } from '@/components/ui/Button/Button'
 
 interface Props {
-  onLogExpense?: () => void
   onCreateGoal?: () => void
 }
 
@@ -15,7 +14,7 @@ const PREVIEW_ROWS = [
   { icon: '💡', label: 'Utilities' },
 ]
 
-export function OverviewEmptyState({ onLogExpense, onCreateGoal }: Props) {
+export function OverviewEmptyState({ onCreateGoal }: Props) {
   return (
     <div style={{ marginTop: 8 }}>
       <h2 style={{ margin: '0 0 14px', fontSize: 'var(--text-2xl)', color: 'var(--text-1)', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
@@ -59,17 +58,6 @@ export function OverviewEmptyState({ onLogExpense, onCreateGoal }: Props) {
           Your spending will appear here.
         </p>
 
-        <PrimaryBtn
-          size="sm"
-          onClick={onLogExpense}
-          style={{
-            width: 'auto',
-            padding: '0 16px',
-            borderRadius: 999,
-          }}
-        >
-          Log an expense
-        </PrimaryBtn>
       </div>
 
       <p style={{

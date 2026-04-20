@@ -12,6 +12,7 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { SettingsRow } from '@/components/ui/SettingsRow/SettingsRow'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { fmt } from '@/lib/finance'
@@ -138,34 +139,13 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
     }
   }
 
-  const row = (
-    label: string,
-    value: React.ReactNode,
-    onTap?: () => void,
-    isLast = false,
-  ): React.ReactNode => (
-    <button
-      onClick={onTap}
-      disabled={!onTap}
-      style={{
-        width: '100%', textAlign: 'left', background: 'none',
-        border: 'none', borderBottom: isLast ? 'none' : `1px solid ${T.border}`,
-        padding: '14px 16px', cursor: onTap ? 'pointer' : 'default',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        boxSizing: 'border-box',
-      }}
-    >
-      <span style={{ fontSize: 15, color: T.text1 }}>{label}</span>
-      <span style={{ fontSize: 14, color: onTap ? T.brandDark : T.textMuted, fontWeight: onTap ? 500 : 400 }}>
-        {value}
-      </span>
-    </button>
-  )
-
   const sectionCard = (children: React.ReactNode) => (
     <div style={{
-      background: T.white, border: `1px solid ${T.border}`,
-      borderRadius: 16, overflow: 'hidden', marginBottom: 20,
+      background: 'var(--white)',
+      border: 'var(--border-width) solid var(--border)',
+      borderRadius: 'var(--radius-lg)',
+      overflow: 'hidden',
+      marginBottom: 'var(--space-lg)',
     }}>
       {children}
     </div>
@@ -173,8 +153,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
   const sectionLabel = (text: string) => (
     <p style={{
-      margin: '0 0 8px', fontSize: 12, fontWeight: 600,
-      color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em',
+      margin: '0 0 var(--space-xs)',
+      fontSize: 'var(--text-xs)',
+      fontWeight: 'var(--weight-semibold)',
+      color: 'var(--text-muted)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.07em',
     }}>
       {text}
     </p>
@@ -203,93 +187,64 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             <p style={{ margin: '2px 0 0', fontSize: 13, color: T.text3 }}>{data.email}</p>
           </div>
         </div>
-        {row('Sign-in method', 'Google', undefined, true)}
+        <SettingsRow label="Sign-in method" value="Google" valueTone="default" isLast />
       </>)}
 
       {sectionLabel('Preferences')}
       {sectionCard(<>
-        {row(
-          'Currency',
-          currencyMeta ? `${currencyMeta.flag}  ${currency}` : currency,
-          undefined,
-        )}
-        <p style={{ margin: 0, padding: '0 16px 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
-          Currency is locked after onboarding to keep your totals consistent.
-        </p>
-        {row(
-          'Pay schedule',
-          formatScheduleValue(
+        <SettingsRow
+          label="Currency"
+          value={currencyMeta ? `${currencyMeta.flag}  ${currency}` : currency}
+          supportingText="Locked after onboarding to keep totals consistent."
+          valueTone="default"
+          isLast
+        />
+      </>)}
+
+      {sectionLabel('Income')}
+      {sectionCard(<>
+        <SettingsRow
+          label="Income"
+          value={data.monthlyTotal ? fmt(data.monthlyTotal, currency) : 'Not set'}
+          supportingText={formatScheduleValue(
             scheduleConfigured ? initialScheduleType : null,
             scheduleConfigured ? initialScheduleDays : []
-          ),
-          openPaySchedule,
-          false,
-        )}
-        <p style={{ margin: 0, padding: '0 16px 12px', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
-          {formatScheduleSentence(
-            scheduleConfigured ? initialScheduleType : null,
-            scheduleConfigured ? initialScheduleDays : []
-          )}
-        </p>
-        {row(
-          'Monthly income',
-          data.monthlyTotal ? fmt(data.monthlyTotal, currency) : 'Not set',
-          () => router.push('/income/new?returnTo=/settings'),
-          true,
-        )}
+          ).replace('Monthly ·', 'Paid monthly ·').replace('Twice a month ·', 'Paid twice a month ·')}
+          onClick={() => router.push('/income/new?returnTo=/settings')}
+          isLast
+        />
       </>)}
 
       {sectionLabel('Security')}
       {sectionCard(<>
-        <p style={{
-          margin: 0,
-          padding: '14px 16px 0',
-          fontSize: 13,
-          color: T.text3,
-          lineHeight: 1.6,
-        }}>
-          PIN unlocks Cenza on this device. Google is still used to reconnect or recover your account.
-        </p>
-        {row('PIN', hasPinCookie ? 'Change' : 'Set up', () => setChangePinOpen(true), true)}
+        <SettingsRow
+          label="PIN"
+          value={hasPinCookie ? 'Change' : 'Set up'}
+          supportingText="Unlocks Cenza on this device. Google still reconnects your account."
+          onClick={() => setChangePinOpen(true)}
+          isLast
+        />
       </>)}
 
       {sectionLabel('Account')}
       {sectionCard(<>
-        <p style={{
-          margin: 0,
-          padding: '14px 16px 0',
-          fontSize: 13,
-          color: T.text3,
-          lineHeight: 1.6,
-        }}>
-          Signing out ends this session. This device will still be recognized the next time you come back.
-        </p>
-        <button
+        <SettingsRow
+          label="Sign out"
+          supportingText="Ends this session. This device will still be recognized next time."
           onClick={async () => {
             await clearPinDeviceState()
             await supabase.auth.signOut()
             window.location.href = '/login?tab=login'
           }}
-          style={{
-            width: '100%', textAlign: 'left', background: 'none', border: 'none',
-            borderBottom: `1px solid ${T.border}`, padding: '14px 16px',
-            cursor: 'pointer', fontSize: 15, color: T.text1, boxSizing: 'border-box',
-          }}
-        >
-          Sign out
-        </button>
+        />
 
         {deleteStep === 'idle' ? (
-          <button
+          <SettingsRow
+            label="Delete account"
+            destructive
             onClick={() => setDeleteStep('confirm')}
-            style={{
-              width: '100%', textAlign: 'left', background: 'none', border: 'none',
-              padding: '14px 16px', cursor: 'pointer', fontSize: 15, color: '#D93025',
-              boxSizing: 'border-box',
-            }}
-          >
-            Delete account
-          </button>
+            isLast
+          />
         ) : (
           <div style={{ padding: '16px' }}>
             <p style={{ margin: '0 0 12px', fontSize: 14, color: T.text2, lineHeight: 1.6 }}>

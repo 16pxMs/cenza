@@ -143,6 +143,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<void> {
   revalidatePath('/log')
   revalidatePath('/history')
   revalidatePath('/app')
+  revalidatePath('/goals')
 }
 
 export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> {
@@ -203,6 +204,7 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   revalidatePath('/log')
   revalidatePath('/history')
   revalidatePath('/app')
+  revalidatePath('/goals')
 }
 
 export async function deleteLogEntry(id: string, recurringCategoryKey?: string | null): Promise<void> {
@@ -293,6 +295,7 @@ matchedRecurringKey: ${matchedRecurringKey}`
   revalidatePath('/history')
   revalidatePath('/app')
   revalidatePath('/income')
+  revalidatePath('/goals')
 }
 
 export async function trackEssential(input: TrackEssentialInput): Promise<void> {

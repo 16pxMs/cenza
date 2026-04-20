@@ -703,7 +703,6 @@ function AppShell({ screen }: { screen: DemoScreen }) {
     name={MOCK.name} currency={MOCK.currency} goals={MOCK.goals}
     incomeData={incomeData} goalTargets={goalTargets}
     isDesktop={isDesktop}
-    onLogExpense={() => setIncomeSheetOpen(true)}
   />
 
   return (

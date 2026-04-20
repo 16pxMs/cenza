@@ -12,7 +12,7 @@ import { ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
 import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
-import { calculateTotalIncome, calculateRemaining, calculatePct } from '@/lib/math/finance'
+import { calculateTotalIncome, calculateRemaining } from '@/lib/math/finance'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
@@ -21,6 +21,14 @@ import { OverviewEmptyState } from './OverviewEmptyState'
 import { stopTrackingEssential, updateTrackedEssential } from '@/app/(app)/log/actions'
 import type { TrackedFixedExpenseEntry } from '@/lib/fixed-bills/tracking'
 import type { OverviewObligation } from '@/lib/loaders/overview'
+
+const OVERVIEW_UPCOMING_PAYMENT_WINDOW_DAYS = 14
+const OBLIGATION_PREVIEW_STATUS_RANK: Record<OverviewObligation['status'], number> = {
+  overdue: 0,
+  today: 1,
+  soon: 2,
+  upcoming: 3,
+}
 
 const GOAL_META: Record<string, {
   label: string
@@ -69,9 +77,7 @@ interface Props {
     lastContributionAt: string | null
     contributionCount: number
   } | null
-  onAddDebts?: () => void
   onReviewDebts?: () => void
-  onLogExpense?: () => void
   onConfirmIncome?: () => void
   onContribGoal?: (goalId: string, goalLabel: string, amount: number, note: string) => Promise<void>
   totalSpent?: number
@@ -101,7 +107,7 @@ interface Props {
 
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
-  goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onAddDebts, onReviewDebts, onLogExpense, onConfirmIncome, onContribGoal,
+  goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, trackedEssentials = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
 }: Props) {
   const router = useRouter()
@@ -180,7 +186,6 @@ export function OverviewWithData({
   const filledGoals  = goalTargets ? Object.keys(goalTargets).length : 0
   const isComplete   = totalGoals > 0 && filledGoals >= totalGoals
   const pendingGoals = totalGoals - filledGoals
-  const hasActiveDebts = activeDebts.length > 0
 
   // ── Fade-in helper ───────────────────────────────────────────
   const fade = (delay: number): React.CSSProperties => ({
@@ -269,7 +274,6 @@ const reference = receivedConfirmed
     return "Confirm this month's income."
   })()
 
-  const spentPct  = calculatePct(totalSpent, referenceBase)
   const isCanonicalEmpty = totalIncome <= 0 && !hasLogged && !receivedConfirmed && !isMidMonthStart
 
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
@@ -474,21 +478,49 @@ const reference = receivedConfirmed
         ? -totalSpent
         : referenceBase
   const hasIncome = snapshotReference > 0
-  const snapshotProgressPercent = hasIncome
-    ? Math.max(0, Math.min(100, spentPct))
+  const snapshotRemainingRatio = hasIncome
+    ? Math.max(0, Math.min(1, snapshotRemaining / snapshotReference))
     : 0
-  const snapshotProgressFill = spentPct > 100
-    ? 'var(--red-dark)'
-    : spentPct >= 80
-      ? 'var(--amber-dark)'
-      : 'var(--progress-fill)'
-  const snapshotProgressTrack = spentPct > 100
+  const snapshotProgressPercent = snapshotRemainingRatio * 100
+  const snapshotIsOverspent = hasIncome && snapshotRemaining < 0
+  const snapshotIsAlmostOut = hasIncome && snapshotRemaining > 0 && snapshotRemaining <= snapshotReference * 0.2
+  const snapshotProgressFill =
+    snapshotRemaining <= 0
+      ? 'var(--red)'
+      : snapshotRemainingRatio > 0.5
+      ? 'var(--green)'
+      : snapshotRemainingRatio >= 0.2
+        ? 'var(--amber)'
+        : 'var(--red)'
+  const snapshotProgressTrack = snapshotIsOverspent
     ? 'var(--red-light)'
-    : spentPct >= 80
-      ? 'var(--amber-light)'
-      : 'var(--progress-track)'
+    : 'var(--progress-track)'
+  const snapshotMainCopy = snapshotRemaining < 0
+    ? `-${formatAmount(Math.abs(snapshotRemaining), { currency, variant: 'full' })}`
+    : formatAmount(snapshotRemaining, { currency, variant: 'full' })
+  const snapshotSupportingCopy = snapshotRemaining <= 0
+    ? 'No money left this month'
+    : snapshotIsAlmostOut
+      ? 'Almost out this month'
+      : 'Left this month'
 
-  const obligationPreviewItems = overviewObligations.slice(0, 3)
+  const obligationPreviewItems = overviewObligations
+    .filter((item) => (
+      item.status === 'overdue' ||
+      item.status === 'today' ||
+      item.status === 'soon' ||
+      item.daysUntilDue <= OVERVIEW_UPCOMING_PAYMENT_WINDOW_DAYS
+    ))
+    .sort((a, b) => {
+      const byStatus = OBLIGATION_PREVIEW_STATUS_RANK[a.status] - OBLIGATION_PREVIEW_STATUS_RANK[b.status]
+      if (byStatus !== 0) return byStatus
+
+      const byDueDate = a.dueDate.localeCompare(b.dueDate)
+      if (byDueDate !== 0) return byDueDate
+
+      return b.amount - a.amount
+    })
+    .slice(0, 3)
 
   const snapshotCard = (
     <div style={{ marginTop: 16, ...fade(0.12) }}>
@@ -506,8 +538,11 @@ const reference = receivedConfirmed
         </p>
 
         {/* Main amount */}
-        <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotRemaining < 0 ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
-          {formatAmount(snapshotRemaining, { currency, variant: 'full' })}
+        <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotIsOverspent ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
+          {snapshotMainCopy}
+        </p>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', color: 'var(--text-muted)' }}>
+          {snapshotSupportingCopy}
         </p>
 
         {/* Progress bar */}
@@ -515,7 +550,7 @@ const reference = receivedConfirmed
           <div style={{ marginTop: 12 }}>
             <div
               style={{
-                height: 6,
+                height: 8,
                 background: snapshotProgressTrack,
                 borderRadius: 'var(--radius-full)',
                 overflow: 'hidden',
@@ -592,17 +627,18 @@ const reference = receivedConfirmed
           </p>
         )}
 
-        {/* CTA */}
-        <div style={{ marginTop: 12 }}>
-          <TertiaryBtn size="sm" onClick={hasIncome ? onLogExpense : () => router.push('/income')} style={{ width: 'auto', padding: 0 }}>
-            {hasIncome ? 'Log expense' : 'Set up income'}
-          </TertiaryBtn>
-        </div>
+        {!hasIncome && (
+          <div style={{ marginTop: 12 }}>
+            <TertiaryBtn size="sm" onClick={() => router.push('/income')} style={{ width: 'auto', padding: 0 }}>
+              Set up income
+            </TertiaryBtn>
+          </div>
+        )}
       </div>
     </div>
   )
 
-  const obligationsPreviewCard = obligationPreviewItems.length > 0 ? (
+  const obligationsPreviewCard = (
     <div style={{ marginTop: 16, ...fade(0.14) }}>
       <div
         style={{
@@ -618,56 +654,58 @@ const reference = receivedConfirmed
         </p>
       </div>
 
-        <div style={{ display: 'grid', gap: 10 }}>
-          {obligationPreviewItems.map((item) => (
-            <button
-              key={`${item.source}-${item.id}`}
-              onClick={() => router.push(item.actionHref)}
-              style={{
-                width: '100%',
-                display: 'grid',
-                gap: 6,
-                padding: '10px 12px',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                background: 'var(--white)',
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-                <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-1)', minWidth: 0 }}>
-                  {item.name}
+        <div>
+          {obligationPreviewItems.length > 0 ? (
+            obligationPreviewItems.map((item, index) => (
+              <button
+                key={`${item.source}-${item.id}`}
+                onClick={() => router.push(item.actionHref)}
+                style={{
+                  width: '100%',
+                  display: 'grid',
+                  gap: 6,
+                  padding: index === 0 ? '0 0 12px' : '12px 0',
+                  border: 'none',
+                  borderTop: index === 0 ? 'none' : '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-1)', minWidth: 0 }}>
+                    {item.name}
+                  </p>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', flexShrink: 0 }}>
+                    {fmt(item.amount, item.currency)}
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
+                  {item.status === 'overdue'
+                    ? 'Overdue'
+                    : item.status === 'today'
+                      ? 'Due today'
+                      : `Due in ${item.daysUntilDue} ${item.daysUntilDue === 1 ? 'day' : 'days'}`}
                 </p>
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', flexShrink: 0 }}>
-                  {fmt(item.amount, item.currency)}
-                </span>
-              </div>
-              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
-                {item.status === 'overdue'
-                  ? 'Overdue'
-                  : item.status === 'today'
-                    ? 'Due today'
-                    : `Due in ${item.daysUntilDue} ${item.daysUntilDue === 1 ? 'day' : 'days'}`}
-              </p>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          {hasActiveDebts || prioritizedDebtReminders.length > 0 ? (
-            <SecondaryBtn size="sm" onClick={onReviewDebts} style={{ width: '100%' }}>
-              Open things to pay
-            </SecondaryBtn>
+              </button>
+            ))
           ) : (
-            <SecondaryBtn size="sm" onClick={onAddDebts} style={{ width: '100%' }}>
-              Add debt payment
-            </SecondaryBtn>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
+              Nothing due soon
+            </p>
           )}
         </div>
+
+        {obligationPreviewItems.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <TertiaryBtn size="sm" onClick={onReviewDebts} style={{ width: 'auto', padding: 0 }}>
+              Open things to pay
+            </TertiaryBtn>
+          </div>
+        )}
       </div>
     </div>
-  ) : null
+  )
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -700,7 +738,6 @@ const reference = receivedConfirmed
 
       {isCanonicalEmpty ? (
         <OverviewEmptyState
-          onLogExpense={onLogExpense}
           onCreateGoal={() => router.push('/goals/new?from=overview')}
         />
       ) : (

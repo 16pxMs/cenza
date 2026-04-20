@@ -20,6 +20,7 @@ interface Props {
   isDesktop?: boolean
   isSaving?: boolean
   copyOverride?: Partial<(typeof SETUP_PAGE_COPY)[SetupPageCopyKey]>
+  surface?: 'card' | 'plain'
 }
 
 export function SetupFlowPage({
@@ -29,6 +30,7 @@ export function SetupFlowPage({
   isDesktop,
   isSaving,
   copyOverride,
+  surface = 'card',
 }: Props) {
   const copy = {
     ...SETUP_PAGE_COPY[pageKey],
@@ -61,10 +63,12 @@ export function SetupFlowPage({
 
         <section
           style={{
-            background: T.white,
-            border: `1px solid ${T.border}`,
-            borderRadius: 24,
-            padding: isDesktop ? '28px 28px 24px' : '24px 18px 20px',
+            background: surface === 'card' ? T.white : 'transparent',
+            border: surface === 'card' ? `1px solid ${T.border}` : 'none',
+            borderRadius: surface === 'card' ? 24 : 0,
+            padding: surface === 'card'
+              ? isDesktop ? '28px 28px 24px' : '24px 18px 20px'
+              : 0,
           }}
         >
           {hasHeader && (

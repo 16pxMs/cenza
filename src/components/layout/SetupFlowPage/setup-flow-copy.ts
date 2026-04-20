@@ -42,7 +42,7 @@ export const SETUP_PAGE_COPY: Record<SetupPageCopyKey, SetupPageCopy> = {
   },
   goal_pick: {
     eyebrow: '',
-    title: 'What are you saving for?',
+    title: 'Choose a goal',
     subtitle: '',
     savingText: 'Saving your goal…',
   },

@@ -12,6 +12,7 @@ interface Props {
   currency: string
   currentBalance: number
   emphasized?: boolean
+  initialOpen?: boolean
 }
 
 function formatToday() {
@@ -24,11 +25,12 @@ export function AddRepaymentSheet({
   currency,
   currentBalance,
   emphasized = false,
+  initialOpen = false,
 }: Props) {
   const router = useRouter()
   const amountRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(initialOpen)
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(formatToday())
   const [note, setNote] = useState('')

@@ -14,6 +14,7 @@ import { EditStandardDebtDueDateSheet } from './EditStandardDebtDueDateSheet'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -176,11 +177,13 @@ function toDisplayTransaction(txn: DebtTransaction, fallbackIndex: number, curre
   }
 }
 
-export default async function DebtDetailPage({ params }: PageProps) {
+export default async function DebtDetailPage({ params, searchParams }: PageProps) {
   const { user } = await getAppSession()
   if (!user) redirect('/')
 
   const { id } = await params
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const shouldOpenAddPayment = resolvedSearchParams.action === 'add-payment'
   const [debt, transactions] = await Promise.all([
     getDebt(id),
     getDebtTransactions(id),
@@ -276,6 +279,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
                   currency={detail.currency}
                   currentBalance={detail.balance}
                   emphasized={detail.isOverdue}
+                  initialOpen={shouldOpenAddPayment}
                 />
               ) : (
                 <AddOpeningBalanceSheet
