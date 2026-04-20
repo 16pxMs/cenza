@@ -11,7 +11,7 @@ import { IconMore, IconOverview, IconSpend } from '@/components/ui/Icons'
 const TABS = [
   { href: '/app', label: 'Overview', Icon: IconOverview },
   { href: '/log', label: 'Activity', Icon: IconSpend },
-  { href: '/menu', label: 'Menu', Icon: IconMore },
+  { href: '/menu', label: 'More', Icon: IconMore },
 ]
 
 export function BottomNav() {

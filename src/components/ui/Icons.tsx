@@ -36,6 +36,7 @@ export {
   Briefcase        as IconGoalBusiness,
   Users            as IconGoalFamily,
   Star             as IconGoalOther,
+  BarChart3        as IconRecap,
 } from 'lucide-react'
 
 // ── IconBadge ────────────────────────────────────────────────

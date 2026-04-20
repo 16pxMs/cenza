@@ -1,10 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/Input/Input'
-import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn } from '@/components/ui/Button/Button'
 import { IconBack } from '@/components/ui/Icons'
 import type { DebtDirection } from '@/lib/supabase/debt-db'
 import { createDebtWithOpeningBalance } from './actions'
@@ -16,32 +15,35 @@ interface Props {
 
 type FormErrors = {
   name?: string
-  mode?: string
-  direction?: string
-  openingAmount?: string
+  trackingChoice?: string
+  amount?: string
   dueDate?: string
-  totalCost?: string
-  upfrontPaid?: string
-  targetDate?: string
   form?: string
 }
 
 type CreateDebtMode = 'standard' | 'financing'
+type DebtTrackingChoice = 'i_owe' | 'i_owe_over_time' | 'owed_to_me'
+type Step = 1 | 2 | 3 | 4
 
-const DIRECTION_OPTIONS: Array<{
-  value: DebtDirection
+const TRACKING_OPTIONS: Array<{
+  value: DebtTrackingChoice
   label: string
   helper: string
 }> = [
   {
-    value: 'owed_by_me',
-    label: 'You owe',
-    helper: 'Money you need to pay back',
+    value: 'i_owe',
+    label: 'I owe someone',
+    helper: 'One amount to pay back',
+  },
+  {
+    value: 'i_owe_over_time',
+    label: 'I owe someone over time',
+    helper: 'Paying in parts',
   },
   {
     value: 'owed_to_me',
-    label: 'Owed to you',
-    helper: 'Money someone else needs to pay you back',
+    label: 'Someone owes me',
+    helper: 'You will collect this',
   },
 ]
 
@@ -50,86 +52,313 @@ function resolveReturnPath(returnTo: string) {
   return trimmed.startsWith('/') ? trimmed : '/app'
 }
 
+function isValidDateString(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00`)
+  return !Number.isNaN(parsed.getTime())
+}
+
+function mapTrackingChoice(choice: DebtTrackingChoice | null): { direction: DebtDirection; mode: CreateDebtMode } | null {
+  switch (choice) {
+    case 'i_owe':
+      return { direction: 'owed_by_me', mode: 'standard' }
+    case 'i_owe_over_time':
+      return { direction: 'owed_by_me', mode: 'financing' }
+    case 'owed_to_me':
+      return { direction: 'owed_to_me', mode: 'standard' }
+    default:
+      return null
+  }
+}
+
+function OptionButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: '100%',
+        minHeight: 52,
+        border: active ? 'none' : 'var(--border-width) solid var(--border)',
+        borderRadius: 'var(--radius-md)',
+        padding: 12,
+        background: active ? 'var(--brand)' : 'transparent',
+        boxShadow: active ? '0 0 0 1px var(--brand-dark)' : 'none',
+        color: 'var(--text-1)',
+        textAlign: 'left',
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function StepDebtName({
+  name,
+  error,
+  onChange,
+}: {
+  name: string
+  error?: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <Input
+      label="Debt name"
+      value={name}
+      onChange={onChange}
+      error={error}
+      placeholder="e.g. Credit card, Mary, Sofa"
+      autoFocus
+    />
+  )
+}
+
+function StepDebtType({
+  trackingChoice,
+  error,
+  onTrackingChoiceChange,
+}: {
+  trackingChoice: DebtTrackingChoice | null
+  error?: string
+  onTrackingChoiceChange: (value: DebtTrackingChoice) => void
+}) {
+  return (
+    <div>
+      <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+        {TRACKING_OPTIONS.map((option) => {
+          const active = trackingChoice === option.value
+          return (
+            <OptionButton
+              key={option.value}
+              active={active}
+              onClick={() => onTrackingChoiceChange(option.value)}
+            >
+              <span style={{ display: 'block', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                {option.label}
+              </span>
+              <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-3)', lineHeight: 1.35 }}>
+                {option.helper}
+              </span>
+            </OptionButton>
+          )
+        })}
+      </div>
+      {error ? (
+        <p style={{
+          margin: 'var(--space-xs) 0 0',
+          fontSize: 12,
+          color: 'var(--red-dark)',
+          fontWeight: 500,
+        }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function StepDebtAmount({
+  amount,
+  currency,
+  error,
+  onChange,
+}: {
+  amount: string
+  currency: string
+  error?: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <Input
+      label="Amount"
+      type="number"
+      prefix={currency}
+      value={amount}
+      onChange={onChange}
+      error={error}
+      placeholder="0"
+      autoFocus
+    />
+  )
+}
+
+function StepDebtOptionalDetails({
+  dueDate,
+  note,
+  dueDateError,
+  onDueDateChange,
+  onNoteChange,
+}: {
+  dueDate: string
+  note: string
+  dueDateError?: string
+  onDueDateChange: (value: string) => void
+  onNoteChange: (value: string) => void
+}) {
+  return (
+    <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+      <Input
+        label="Due date"
+        type="date"
+        value={dueDate}
+        onChange={onDueDateChange}
+        error={dueDateError}
+        autoFocus
+      />
+
+      <label style={{ display: 'block' }}>
+        <span style={{
+          fontSize: '12.5px',
+          fontWeight: 600,
+          color: 'var(--text-2)',
+          display: 'block',
+          marginBottom: 6,
+          letterSpacing: '0.2px',
+        }}>
+          Note
+        </span>
+        <textarea
+          value={note}
+          onChange={(event) => onNoteChange(event.target.value)}
+          placeholder="Optional note"
+          rows={4}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            border: 'var(--border-width) solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--white)',
+            padding: '12px 14px',
+            fontSize: 15,
+            fontFamily: 'var(--font-sans)',
+            color: 'var(--text-1)',
+            outline: 'none',
+            resize: 'vertical',
+            minHeight: 104,
+          }}
+        />
+      </label>
+    </div>
+  )
+}
+
 export default function CreateDebtClient({ currency, returnTo }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [mode, setMode] = useState<CreateDebtMode>('standard')
+  const [step, setStep] = useState<Step>(1)
+  const [trackingChoice, setTrackingChoice] = useState<DebtTrackingChoice | null>(null)
   const [name, setName] = useState('')
-  const [direction, setDirection] = useState<DebtDirection | null>(null)
-  const [openingAmount, setOpeningAmount] = useState('')
+  const [amount, setAmount] = useState('')
   const [dueDate, setDueDate] = useState('')
-  const [totalCost, setTotalCost] = useState('')
-  const [upfrontPaid, setUpfrontPaid] = useState('0')
-  const [targetDate, setTargetDate] = useState('')
   const [note, setNote] = useState('')
   const [errors, setErrors] = useState<FormErrors>({})
 
   const nextPath = resolveReturnPath(returnTo)
+  const isLastStep = step === 4
 
-  const validate = (): FormErrors => {
+  const validateStep = (targetStep: Step): FormErrors => {
     const nextErrors: FormErrors = {}
 
-    if (!name.trim()) {
+    if (targetStep === 1 && !name.trim()) {
       nextErrors.name = 'Debt name is required'
     }
 
-    if (mode === 'standard') {
-      if (!direction) {
-        nextErrors.direction = 'Choose whether this debt is yours or owed to you'
-      }
+    if (targetStep === 2 && !trackingChoice) {
+      nextErrors.trackingChoice = 'Choose what you are tracking'
+    }
 
-      const amount = Number(openingAmount)
-      if (!Number.isFinite(amount) || amount <= 0) {
-        nextErrors.openingAmount = 'Opening amount must be greater than zero'
+    if (targetStep === 3) {
+      const parsedAmount = Number(amount)
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        nextErrors.amount = 'Amount must be greater than zero'
       }
-    } else {
-      const total = Number(totalCost)
-      const upfront = Number(upfrontPaid)
+    }
 
-      if (!Number.isFinite(total) || total <= 0) {
-        nextErrors.totalCost = 'Total cost must be greater than zero'
-      }
-
-      if (!Number.isFinite(upfront) || upfront < 0) {
-        nextErrors.upfrontPaid = 'Upfront payment must be zero or greater'
-      } else if (Number.isFinite(total) && upfront >= total) {
-        nextErrors.upfrontPaid = 'Upfront payment must be less than total cost'
-      }
-
-      if (!targetDate.trim()) {
-        nextErrors.targetDate = 'Target date is required'
-      }
+    if (targetStep === 4 && dueDate.trim() && !isValidDateString(dueDate)) {
+      nextErrors.dueDate = 'Enter a valid due date'
     }
 
     return nextErrors
   }
 
-  const handleSubmit = () => {
-    const nextErrors = validate()
+  const validateAll = (): FormErrors => {
+    return {
+      ...validateStep(1),
+      ...validateStep(2),
+      ...validateStep(3),
+      ...validateStep(4),
+    }
+  }
+
+  const goBack = () => {
+    if (isPending) return
+    if (step > 1) {
+      setErrors({})
+      setStep((current) => (current - 1) as Step)
+      return
+    }
+    router.push(nextPath)
+  }
+
+  const handleContinue = () => {
+    const nextErrors = validateStep(step)
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       return
     }
 
     setErrors({})
+    setStep((current) => Math.min(4, current + 1) as Step)
+  }
+
+  const handleSubmit = () => {
+    const nextErrors = validateAll()
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors)
+      const firstInvalidStep: Step =
+        nextErrors.name ? 1 :
+        nextErrors.trackingChoice ? 2 :
+        nextErrors.amount ? 3 :
+        4
+      setStep(firstInvalidStep)
+      return
+    }
+
+    setErrors({})
     startTransition(async () => {
       try {
+        const parsedAmount = Number(amount)
+        const mappedChoice = mapTrackingChoice(trackingChoice)
+        if (!mappedChoice) {
+          throw new Error('Choose what you are tracking')
+        }
+
         const debtId = await createDebtWithOpeningBalance(
-          mode === 'financing'
+          mappedChoice.mode === 'financing'
             ? {
                 mode: 'financing',
                 name,
-                totalCost: Number(totalCost),
-                upfrontPaid: Number(upfrontPaid),
-                targetDate,
+                totalCost: parsedAmount,
+                upfrontPaid: 0,
+                targetDate: dueDate || null,
                 note,
               }
             : {
                 mode: 'standard',
                 name,
-                direction: direction as DebtDirection,
-                openingAmount: Number(openingAmount),
-                dueDate,
+                direction: mappedChoice.direction,
+                openingAmount: parsedAmount,
+                dueDate: dueDate || null,
                 note,
               }
         )
@@ -143,6 +372,61 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
     })
   }
 
+  const handleTrackingChoiceChange = (value: DebtTrackingChoice) => {
+    setTrackingChoice(value)
+    setErrors((current) => ({ ...current, trackingChoice: undefined, form: undefined }))
+  }
+
+  const stepContent = (() => {
+    switch (step) {
+      case 1:
+        return (
+          <StepDebtName
+            name={name}
+            error={errors.name}
+            onChange={(value) => {
+              setName(value)
+              setErrors((current) => ({ ...current, name: undefined, form: undefined }))
+            }}
+          />
+        )
+      case 2:
+        return (
+          <StepDebtType
+            trackingChoice={trackingChoice}
+            error={errors.trackingChoice}
+            onTrackingChoiceChange={handleTrackingChoiceChange}
+          />
+        )
+      case 3:
+        return (
+          <StepDebtAmount
+            amount={amount}
+            currency={currency}
+            error={errors.amount}
+            onChange={(value) => {
+              setAmount(value)
+              setErrors((current) => ({ ...current, amount: undefined, form: undefined }))
+            }}
+          />
+        )
+      case 4:
+      default:
+        return (
+          <StepDebtOptionalDetails
+            dueDate={dueDate}
+            note={note}
+            dueDateError={errors.dueDate}
+            onDueDateChange={(value) => {
+              setDueDate(value)
+              setErrors((current) => ({ ...current, dueDate: undefined, form: undefined }))
+            }}
+            onNoteChange={setNote}
+          />
+        )
+    }
+  })()
+
   return (
     <main style={{
       minHeight: '100vh',
@@ -150,9 +434,11 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
       padding: 'var(--space-lg) var(--space-page-mobile) calc(var(--space-xxl) + var(--bottom-nav-height, 0px))',
     }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <Link
-          href={nextPath}
+        <button
+          type="button"
+          onClick={goBack}
           aria-label="Back"
+          disabled={isPending}
           style={{
             width: 44,
             height: 44,
@@ -161,313 +447,56 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
             justifyContent: 'center',
             marginBottom: 'var(--space-lg)',
             color: 'var(--grey-900)',
-            textDecoration: 'none',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: isPending ? 'default' : 'pointer',
           }}
         >
           <IconBack size={20} />
-        </Link>
+        </button>
 
-        <section style={{
-          background: 'var(--white)',
-          border: 'var(--border-width) solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-lg)',
-        }}>
-          <p style={{
-            margin: '0 0 var(--space-2xs)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 'var(--weight-semibold)',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-          }}>
-            New debt
-          </p>
-          <h1 style={{
-            margin: 0,
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-2xl)',
-            fontWeight: 'var(--weight-semibold)',
-            color: 'var(--text-1)',
-            lineHeight: 1.15,
-            letterSpacing: '-0.02em',
-          }}>
-            Add a debt to track
-          </h1>
-          <p style={{
-            margin: 'var(--space-sm) 0 0',
-            fontSize: 'var(--text-base)',
-            color: 'var(--text-2)',
-            lineHeight: 1.6,
-          }}>
-            {mode === 'financing'
-              ? 'Save the financing purchase and we will create the carried balance automatically.'
-              : 'Save the debt first, then we will record the opening balance as the first transaction.'}
-          </p>
-
-          <div style={{ marginTop: 'var(--space-lg)' }}>
-            <div style={{ marginBottom: 'var(--space-md)' }}>
+        <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+          <div>
+            <p style={{
+              margin: '0 0 var(--space-2xs)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}>
+              Step {step} of 4
+            </p>
+            <h1 style={{
+              margin: 0,
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-2xl)',
+              fontWeight: 'var(--weight-semibold)',
+              color: 'var(--text-1)',
+              lineHeight: 1.15,
+              letterSpacing: '-0.02em',
+            }}>
+              Add a debt
+            </h1>
+            {step === 2 ? (
               <p style={{
-                margin: '0 0 6px',
-                fontSize: '12.5px',
-                fontWeight: 600,
+                margin: 'var(--space-sm) 0 0',
+                fontSize: 'var(--text-base)',
                 color: 'var(--text-2)',
-                letterSpacing: '0.2px',
+                lineHeight: 1.45,
               }}>
-                Type
+                What are you tracking?
               </p>
-              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                {([
-                  {
-                    value: 'standard',
-                    label: 'Standard debt',
-                    helper: 'Track a regular debt with an opening balance',
-                  },
-                  {
-                    value: 'financing',
-                    label: 'Financing purchase',
-                    helper: 'Track a purchase with total cost, upfront payment, and payoff target',
-                  },
-                ] as const).map((option) => {
-                  const active = mode === option.value
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        setMode(option.value)
-                        setErrors((current) => ({
-                          ...current,
-                          mode: undefined,
-                          direction: undefined,
-                          openingAmount: undefined,
-                          dueDate: undefined,
-                          totalCost: undefined,
-                          upfrontPaid: undefined,
-                          targetDate: undefined,
-                        }))
-                      }}
-                      style={{
-                        border: `1px solid ${active ? 'var(--brand-deep)' : 'var(--border)'}`,
-                        borderRadius: 14,
-                        padding: '14px 16px',
-                        background: active ? 'color-mix(in srgb, var(--brand) 10%, var(--white))' : 'var(--white)',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{
-                        fontSize: 'var(--text-base)',
-                        fontWeight: 'var(--weight-semibold)',
-                        color: 'var(--text-1)',
-                      }}>
-                        {option.label}
-                      </div>
-                      <div style={{
-                        marginTop: 4,
-                        fontSize: 'var(--text-sm)',
-                        color: 'var(--text-3)',
-                        lineHeight: 1.45,
-                      }}>
-                        {option.helper}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            ) : null}
+          </div>
 
-            <Input
-              label="Debt name"
-              value={name}
-              onChange={setName}
-              error={errors.name}
-              placeholder={mode === 'financing' ? 'e.g. Sofa, Laptop, Fridge' : 'e.g. Credit card, Mary, Car loan'}
-            />
-
-            {mode === 'standard' ? (
-              <>
-                <div style={{ marginBottom: 'var(--space-md)' }}>
-                  <p style={{
-                    margin: '0 0 6px',
-                    fontSize: '12.5px',
-                    fontWeight: 600,
-                    color: 'var(--text-2)',
-                    letterSpacing: '0.2px',
-                  }}>
-                    Direction
-                  </p>
-                  <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                    {DIRECTION_OPTIONS.map((option) => {
-                      const active = direction === option.value
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setDirection(option.value)}
-                          style={{
-                            border: `1px solid ${active ? 'var(--brand-deep)' : 'var(--border)'}`,
-                            borderRadius: 14,
-                            padding: '14px 16px',
-                            background: active ? 'color-mix(in srgb, var(--brand) 10%, var(--white))' : 'var(--white)',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <div style={{
-                            fontSize: 'var(--text-base)',
-                            fontWeight: 'var(--weight-semibold)',
-                            color: 'var(--text-1)',
-                          }}>
-                            {option.label}
-                          </div>
-                          <div style={{
-                            marginTop: 4,
-                            fontSize: 'var(--text-sm)',
-                            color: 'var(--text-3)',
-                            lineHeight: 1.45,
-                          }}>
-                            {option.helper}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {errors.direction ? (
-                    <p style={{
-                      margin: 'var(--space-xs) 0 0',
-                      fontSize: 12,
-                      color: 'var(--red-dark)',
-                      fontWeight: 500,
-                    }}>
-                      {errors.direction}
-                    </p>
-                  ) : null}
-                </div>
-
-                <Input
-                  label="Opening amount"
-                  type="number"
-                  prefix={currency}
-                  value={openingAmount}
-                  onChange={setOpeningAmount}
-                  error={errors.openingAmount}
-                  placeholder="0"
-                />
-
-                <Input
-                  label="Due date"
-                  type="date"
-                  value={dueDate}
-                  onChange={(value) => {
-                    setDueDate(value)
-                    setErrors((current) => ({ ...current, dueDate: undefined }))
-                  }}
-                  error={errors.dueDate}
-                  hint="Optional. Add a due date if you want this debt to appear in reminders."
-                />
-              </>
-            ) : (
-              <>
-                <Input
-                  label="Total cost"
-                  type="number"
-                  prefix={currency}
-                  value={totalCost}
-                  onChange={setTotalCost}
-                  error={errors.totalCost}
-                  placeholder="0"
-                />
-
-                <Input
-                  label="Upfront payment"
-                  type="number"
-                  prefix={currency}
-                  value={upfrontPaid}
-                  onChange={setUpfrontPaid}
-                  error={errors.upfrontPaid}
-                  placeholder="0"
-                />
-
-                <label style={{ display: 'block', marginBottom: 'var(--space-md)' }}>
-                  <span style={{
-                    fontSize: '12.5px',
-                    fontWeight: 600,
-                    color: 'var(--text-2)',
-                    display: 'block',
-                    marginBottom: 6,
-                    letterSpacing: '0.2px',
-                  }}>
-                    Target date
-                  </span>
-                  <input
-                    type="date"
-                    value={targetDate}
-                    onChange={(event) => setTargetDate(event.target.value)}
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      height: 48,
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--white)',
-                      padding: '0 14px',
-                      fontSize: 15,
-                      fontFamily: 'var(--font-sans)',
-                      color: 'var(--text-1)',
-                      outline: 'none',
-                    }}
-                  />
-                  {errors.targetDate ? (
-                    <p style={{
-                      margin: 'var(--space-xs) 0 0',
-                      fontSize: 12,
-                      color: 'var(--red-dark)',
-                      fontWeight: 500,
-                    }}>
-                      {errors.targetDate}
-                    </p>
-                  ) : null}
-                </label>
-              </>
-            )}
-
-            <label style={{ display: 'block', marginBottom: 'var(--space-lg)' }}>
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 600,
-                color: 'var(--text-2)',
-                display: 'block',
-                marginBottom: 6,
-                letterSpacing: '0.2px',
-              }}>
-                Note
-              </span>
-              <textarea
-                value={note}
-                onChange={event => setNote(event.target.value)}
-                placeholder="Optional note"
-                rows={4}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--white)',
-                  padding: '12px 14px',
-                  fontSize: 15,
-                  fontFamily: 'var(--font-sans)',
-                  color: 'var(--text-1)',
-                  outline: 'none',
-                  resize: 'vertical',
-                  minHeight: 104,
-                }}
-              />
-            </label>
+          <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+            {stepContent}
 
             {errors.form ? (
               <p style={{
-                margin: '0 0 var(--space-md)',
+                margin: 0,
                 fontSize: 'var(--text-sm)',
                 color: 'var(--red-dark)',
                 lineHeight: 1.5,
@@ -476,24 +505,26 @@ export default function CreateDebtClient({ currency, returnTo }: Props) {
               </p>
             ) : null}
 
-            <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-              <SecondaryBtn
-                size="lg"
-                onClick={() => router.push(nextPath)}
-                disabled={isPending}
-              >
-                Cancel
-              </SecondaryBtn>
-              <PrimaryBtn
-                size="lg"
-                onClick={handleSubmit}
-                disabled={isPending}
-              >
-                {isPending ? 'Saving…' : 'Create debt'}
-              </PrimaryBtn>
-            </div>
+            <PrimaryBtn
+              size="lg"
+              onClick={isLastStep ? handleSubmit : handleContinue}
+              disabled={isPending || (step === 2 && !trackingChoice)}
+              style={step === 2 ? (
+                !trackingChoice
+                  ? {
+                      background: 'var(--border-subtle)',
+                      color: 'var(--text-muted)',
+                    }
+                  : {
+                      background: 'var(--brand-dark)',
+                      color: 'var(--text-inverse)',
+                    }
+              ) : undefined}
+            >
+              {isPending ? 'Saving…' : isLastStep ? 'Save debt' : 'Continue'}
+            </PrimaryBtn>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   )

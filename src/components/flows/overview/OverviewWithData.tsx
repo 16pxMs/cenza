@@ -357,7 +357,7 @@ const reference = receivedConfirmed
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 'var(--weight-semibold)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
             Goals
           </p>
           <ChevronRight size={16} color="var(--text-muted)" strokeWidth={2.2} style={{ flexShrink: 0 }} />
@@ -373,8 +373,8 @@ const reference = receivedConfirmed
               return (
                 <div key={selectedGoal.id}>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                    <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{selectedGoal.label}</span>
-                    <span style={{ fontSize: 12, color: 'var(--text-3)', flexShrink: 0 }}>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)' }}>{selectedGoal.label}</span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-3)', flexShrink: 0 }}>
                       {target > 0 ? `${Math.round(pct)}%` : 'No target'}
                     </span>
                   </div>
@@ -391,19 +391,19 @@ const reference = receivedConfirmed
                       />
                     )}
                   </div>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
                     {target > 0 ? `${fmt(saved, currency)} of ${fmt(target, currency)}` : 'Set a target to track this goal'}
                   </p>
                 </div>
               )
             })() : (
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.55 }}>
                 You have no active goals.
               </p>
             )}
           </div>
         ) : (
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.55 }}>
             You have no goals yet.
           </p>
         )}
@@ -448,10 +448,10 @@ const reference = receivedConfirmed
           disabled={!isActionable}
         >
           <div style={{ flex: 1 }}>
-            <p style={{ margin: '0 0 4px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', lineHeight: 1.35 }}>
+            <p style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', lineHeight: 1.35 }}>
               {resolvedPriority.title}
             </p>
-            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
               {resolvedPriority.subtitle}
             </p>
           </div>
@@ -613,7 +613,7 @@ const reference = receivedConfirmed
         }}
       >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>
+        <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
           Upcoming payments
         </p>
       </div>
@@ -636,14 +636,14 @@ const reference = receivedConfirmed
               }}
             >
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-1)', minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', minWidth: 0 }}>
                   {item.name}
                 </p>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', flexShrink: 0 }}>
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', flexShrink: 0 }}>
                   {fmt(item.amount, item.currency)}
                 </span>
               </div>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
                 {item.status === 'overdue'
                   ? 'Overdue'
                   : item.status === 'today'
@@ -676,10 +676,10 @@ const reference = receivedConfirmed
       {/* Greeting */}
       <div className="overview-data__greeting" style={{ ...fade(0.05), display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-            {new Date().toLocaleString('default', { month: 'long', year: 'numeric' }).toUpperCase()}
+          <p style={{ margin: '0 0 4px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+            {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
           </p>
-          <h1 className={`overview-data__heading${isDesktop ? ' overview-data__heading--desktop' : ''}`}>
+          <h1 className="overview-data__heading">
             {(() => { const h = new Date().getHours(); return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening' })()}, {name}
           </h1>
         </div>
@@ -692,7 +692,7 @@ const reference = receivedConfirmed
             cursor: 'pointer', flexShrink: 0, marginTop: 4,
           }}
         >
-          <span style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-inverse)' }}>
             {name ? name[0].toUpperCase() : '?'}
           </span>
         </button>
@@ -728,11 +728,11 @@ const reference = receivedConfirmed
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: '#92400E' }}>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--amber-dark)' }}>
                   Set a target for {pendingGoals} {pendingGoals === 1 ? 'goal' : 'goals'} to track progress
                 </span>
               </div>
-              <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>Do it now</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-dark)', fontWeight: 'var(--weight-semibold)' }}>Do it now</span>
             </div>
           )}
         </>
@@ -863,10 +863,10 @@ const reference = receivedConfirmed
               }}
               error={trackedBillErrors.monthlyAmount}
             />
-            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
               This will be included in your monthly expenses.
             </p>
-            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
               Reminders will use your pay schedule by default.
             </p>
             <PrimaryBtn

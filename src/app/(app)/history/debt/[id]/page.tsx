@@ -58,7 +58,7 @@ function formatDebtStatus(status: Debt['status']) {
 function formatDebtTransactionLabel(entryType: DebtTransaction['entry_type']) {
   switch (entryType) {
     case 'principal_increase':
-      return 'Principal added'
+      return 'Initial amount'
     case 'payment_in':
       return 'Payment received'
     case 'payment_out':
@@ -134,10 +134,10 @@ function toDisplayDebt(debt: Debt, fallbackId: string) {
       : monthsLeft <= 0
         ? 'Overdue'
         : paidRatio >= expectedPaidRatio - 0.05
-          ? 'On pace'
-          : paidRatio >= expectedPaidRatio - 0.2
-            ? 'Needs attention'
-            : 'Needs attention'
+          ? 'You’re on track'
+        : paidRatio >= expectedPaidRatio - 0.2
+          ? 'You may need to pay more'
+            : 'You may need to pay more'
 
   return {
     id: debt.id,
@@ -204,7 +204,7 @@ export default async function DebtDetailPage({ params }: PageProps) {
     <main style={{
       minHeight: '100vh',
       background: 'var(--page-bg)',
-      padding: 'var(--space-lg) var(--space-page-mobile) calc(var(--space-xxl) + var(--bottom-nav-height, 0px))',
+      padding: 'var(--space-xl) var(--space-page-mobile) calc(var(--space-xxl) + var(--bottom-nav-height, 0px))',
     }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <Link
@@ -230,123 +230,60 @@ export default async function DebtDetailPage({ params }: PageProps) {
           borderRadius: 'var(--radius-lg)',
           padding: 'var(--space-lg)',
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 'var(--space-md)',
-            flexWrap: 'wrap',
+          <h1 style={{
+            margin: 0,
+            fontSize: 'var(--text-xl)',
+            fontWeight: 'var(--weight-bold)',
+            color: 'var(--text-1)',
+            lineHeight: 1.15,
+            letterSpacing: '-0.02em',
           }}>
-            <div>
-              <p style={{
-                margin: '0 0 var(--space-2xs)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 'var(--weight-semibold)',
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}>
-                Debt detail
-              </p>
-              <h1 style={{
-                margin: 0,
-                fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                fontWeight: 'var(--weight-semibold)',
-                color: 'var(--text-1)',
-                lineHeight: 1.15,
-                letterSpacing: '-0.02em',
-              }}>
-                {detail.name}
-              </h1>
-            </div>
-            {hasTransactions ? (
-              <AddRepaymentSheet
-                debtId={detail.id}
-                debtName={detail.name}
-                currency={detail.currency}
-                currentBalance={detail.balance}
-                emphasized={detail.isOverdue}
-              />
-            ) : (
-              <AddOpeningBalanceSheet
-                debtId={detail.id}
-                debtName={detail.name}
-                currency={detail.currency}
-              />
-            )}
-          </div>
+            {detail.name}
+          </h1>
 
           <div style={{
             display: 'flex',
             flexDirection: 'column',
             gap: 'var(--space-md)',
-            marginTop: 'var(--space-lg)',
+            marginTop: 'calc(var(--space-sm) + var(--space-xs))',
           }}>
             <div>
-              <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Current balance
-              </p>
               <p style={{
                 margin: 0,
-                fontFamily: 'var(--font-display)',
-                fontSize: 'clamp(2rem, 5vw, 3rem)',
+                fontSize: 'var(--text-2xl)',
                 lineHeight: 1,
-                letterSpacing: '-0.04em',
+                letterSpacing: '-0.02em',
                 color: 'var(--text-1)',
-                fontWeight: 'var(--weight-semibold)',
+                fontWeight: 'var(--weight-bold)',
+                fontVariantNumeric: 'tabular-nums',
               }}>
                 {fmt(detail.balance, detail.currency)}
               </p>
+              <p style={{
+                margin: 'var(--space-2xs) 0 0',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-3)',
+              }}>
+                {detail.direction} · {detail.status}
+              </p>
             </div>
 
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 'var(--space-sm)',
-            }}>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2xs)',
-                padding: '8px 12px',
-                borderRadius: 999,
-                background: 'var(--grey-50)',
-                color: 'var(--text-2)',
-              }}>
-                <span style={{
-                  fontSize: 'var(--text-xs)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: 'var(--text-muted)',
-                }}>
-                  Direction
-                </span>
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)' }}>
-                  {detail.direction}
-                </span>
-              </div>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2xs)',
-                padding: '8px 12px',
-                borderRadius: 999,
-                background: 'var(--grey-50)',
-                color: 'var(--text-2)',
-              }}>
-                <span style={{
-                  fontSize: 'var(--text-xs)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: 'var(--text-muted)',
-                }}>
-                  Status
-                </span>
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)' }}>
-                  {detail.status}
-                </span>
-              </div>
+            <div style={{ marginTop: 'calc(var(--space-md) + var(--space-xs))' }}>
+              {hasTransactions ? (
+                <AddRepaymentSheet
+                  debtId={detail.id}
+                  debtName={detail.name}
+                  currency={detail.currency}
+                  currentBalance={detail.balance}
+                  emphasized={detail.isOverdue}
+                />
+              ) : (
+                <AddOpeningBalanceSheet
+                  debtId={detail.id}
+                  debtName={detail.name}
+                  currency={detail.currency}
+                />
+              )}
             </div>
 
             {detail.debtKind === 'standard' ? (
@@ -424,118 +361,99 @@ export default async function DebtDetailPage({ params }: PageProps) {
             padding: 'var(--space-lg)',
           }}>
             <p style={{
-              margin: '0 0 var(--space-2xs)',
+              margin: '0 0 var(--space-md)',
               fontSize: 'var(--text-xs)',
               fontWeight: 'var(--weight-semibold)',
               color: 'var(--text-muted)',
               textTransform: 'uppercase',
-              letterSpacing: '0.08em',
+              letterSpacing: '0.07em',
             }}>
-              Financing progress
+              Your progress
             </p>
-            <div style={{
-              display: 'grid',
-              gap: 'var(--space-md)',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              marginTop: 'var(--space-md)',
-            }}>
-              <div>
-                <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Total cost
-                </p>
-                <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-semibold)' }}>
-                  {fmt(detail.financingTotalCost, detail.currency)}
-                </p>
-              </div>
-              <div>
-                <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Paid so far
-                </p>
-                <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-semibold)' }}>
-                  {fmt(detail.financingPaid, detail.currency)}
-                </p>
-              </div>
-              <div>
-                <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Remaining balance
-                </p>
-                <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-semibold)' }}>
-                  {fmt(detail.financingRemaining, detail.currency)}
-                </p>
-              </div>
-            </div>
 
-            <div style={{ marginTop: 'var(--space-lg)' }}>
+            <div style={{
+              height: 6,
+              borderRadius: 999,
+              background: 'var(--progress-track)',
+              overflow: 'hidden',
+            }}>
               <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-sm)',
-              }}>
-                <div style={{
-                  flex: 1,
-                  height: 10,
-                  borderRadius: 999,
-                  background: 'var(--grey-100, var(--grey-50))',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{
-                    width: `${detail.financingProgress * 100}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    background: 'var(--brand-dark)',
-                    transition: 'width 0.2s ease',
-                  }} />
-                </div>
-                <span style={{
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--weight-medium)',
-                  color: 'var(--text-2)',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {Math.round(detail.financingProgress * 100)}%
+                width: `${detail.financingProgress * 100}%`,
+                height: '100%',
+                borderRadius: 999,
+                background: 'var(--brand-dark)',
+                transition: 'width 0.2s ease',
+              }} />
+            </div>
+            <p style={{
+              margin: 'var(--space-xs) 0 0',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-3)',
+            }}>
+              You’ve paid {Math.round(detail.financingProgress * 100)}%
+            </p>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-sm)',
+              marginTop: 'var(--space-lg)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Total cost</span>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(detail.financingTotalCost, detail.currency)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>You’ve paid</span>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(detail.financingPaid, detail.currency)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Left to pay</span>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(detail.financingRemaining, detail.currency)}
                 </span>
               </div>
             </div>
 
             {detail.financingTargetDate ? (
               <div style={{
-                marginTop: 'var(--space-lg)',
-                display: 'grid',
-                gap: 'var(--space-md)',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-sm)',
+                marginTop: 'var(--space-md)',
+                paddingTop: 'var(--space-md)',
+                borderTop: 'var(--border-width) solid var(--border-subtle)',
               }}>
-                <div>
-                  <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Target date
-                  </p>
-                  <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-semibold)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Finish by</span>
+                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
                     {formatDate(detail.financingTargetDate)}
-                  </p>
-                  <p style={{ margin: 'var(--space-2xs) 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Time remaining</span>
+                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
                     {detail.financingMonthsLeft != null && detail.financingMonthsLeft > 0
-                      ? `${detail.financingMonthsLeft} month${detail.financingMonthsLeft === 1 ? '' : 's'} left`
+                      ? `${detail.financingMonthsLeft} month${detail.financingMonthsLeft === 1 ? '' : 's'}`
                       : 'Overdue'}
-                  </p>
+                  </span>
                 </div>
-                <div>
-                  <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Monthly pace needed
-                  </p>
-                  <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-semibold)' }}>
-                    {detail.financingExpectedMonthly != null
-                      ? `${fmt(detail.financingExpectedMonthly, detail.currency)}/mo`
-                      : 'Not available'}
-                  </p>
-                </div>
-                {detail.financingPaceStatus ? (
-                  <div>
-                    <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      Pace
-                    </p>
-                    <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-semibold)' }}>
-                      {detail.financingPaceStatus}
-                    </p>
+                {detail.financingExpectedMonthly != null ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Pay about</span>
+                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(detail.financingExpectedMonthly, detail.currency)}/month
+                    </span>
                   </div>
+                ) : null}
+                {detail.financingPaceStatus ? (
+                  <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                    {detail.financingPaceStatus}
+                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -551,7 +469,6 @@ export default async function DebtDetailPage({ params }: PageProps) {
           }}>
             <h2 style={{
               margin: 0,
-              fontFamily: 'var(--font-display)',
               fontSize: 'var(--text-lg)',
               fontWeight: 'var(--weight-semibold)',
               color: 'var(--text-1)',
@@ -624,71 +541,61 @@ export default async function DebtDetailPage({ params }: PageProps) {
                   <div
                     key={item.id}
                     style={{
-                      padding: 'var(--space-md) var(--space-lg)',
+                      padding: '12px var(--space-md)',
                       borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
                       display: 'flex',
-                      alignItems: 'flex-start',
+                      alignItems: 'center',
                       justifyContent: 'space-between',
                       gap: 'var(--space-md)',
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-1)', fontWeight: 'var(--weight-medium)' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{
+                        margin: 0,
+                        fontSize: 'var(--text-base)',
+                        color: 'var(--text-1)',
+                        fontWeight: 'var(--weight-regular)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
                         {item.primary}
                       </p>
-                      <p style={{ margin: 'var(--space-2xs) 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.45 }}>
+                      <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
                         {item.date ? formatDate(item.date) : 'Date unavailable'}
-                        {item.note ? ` · ${item.note}` : ''}
                       </p>
                     </div>
                     <div style={{
                       flexShrink: 0,
                       display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-end',
-                      gap: 'var(--space-xs)',
+                      alignItems: 'center',
+                      gap: 'var(--space-sm)',
                     }}>
-                      <div style={{
+                      <span style={{
                         fontSize: 'var(--text-base)',
                         fontWeight: 'var(--weight-semibold)',
                         color: 'var(--text-1)',
                         whiteSpace: 'nowrap',
+                        fontVariantNumeric: 'tabular-nums',
                       }}>
                         {fmt(item.amount, item.currency)}
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'flex-end',
-                        gap: 2,
-                      }}>
-                        {isLockedFinancingPrincipal ? (
-                          <span
-                            style={{
-                              fontSize: 'var(--text-xs)',
-                              color: 'var(--text-3)',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Initial financing balance
-                          </span>
-                        ) : (
-                          <>
-                            <EditDebtTransactionSheet
-                              debtId={detail.id}
-                              transactionId={item.id}
-                              amount={item.amount}
-                              date={item.date}
-                              note={item.note}
-                            />
-                              <DebtTransactionDeleteButton
-                                debtId={detail.id}
-                                transactionId={item.id}
-                                deletesEntireDebt={items.length === 1}
-                              />
-                          </>
-                        )}
-                      </div>
+                      </span>
+                      {!isLockedFinancingPrincipal && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <EditDebtTransactionSheet
+                            debtId={detail.id}
+                            transactionId={item.id}
+                            amount={item.amount}
+                            date={item.date}
+                            note={item.note}
+                          />
+                          <DebtTransactionDeleteButton
+                            debtId={detail.id}
+                            transactionId={item.id}
+                            deletesEntireDebt={items.length === 1}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )

@@ -1,33 +1,16 @@
 'use client'
 
-import { ChevronRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { IconGoals, IconSettings, IconSpend, IconTarget } from '@/components/ui/Icons'
+import { IconCalendar, IconGoals, IconRecap, IconSettings } from '@/components/ui/Icons'
 
-const MENU_SECTIONS = [
-  {
-    title: 'Money',
-    items: [
-      { href: '/history/debt', label: 'Things to pay', Icon: IconSpend },
-      { href: '/history', label: 'Recap', Icon: IconSpend },
-    ],
-  },
-  {
-    title: 'Planning',
-    items: [
-      { href: '/goals', label: 'Goals', Icon: IconGoals },
-      { href: '/targets', label: 'Targets', Icon: IconTarget },
-    ],
-  },
-  {
-    title: 'System',
-    items: [
-      { href: '/settings', label: 'Settings', Icon: IconSettings },
-    ],
-  },
+const DESTINATIONS = [
+  { href: '/history/debt', label: 'Debts', Icon: IconCalendar },
+  { href: '/history', label: 'Recap', Icon: IconRecap },
+  { href: '/goals', label: 'Goals', Icon: IconGoals },
+  { href: '/settings', label: 'Settings', Icon: IconSettings },
 ] as const
 
 export default function MenuPageClient() {
@@ -40,79 +23,58 @@ export default function MenuPageClient() {
         width: '100%',
         maxWidth: 760,
         margin: '0 auto',
-        padding: '20px 16px 96px',
+        padding: isDesktop ? 'var(--space-xl) var(--space-page-desktop)' : 'var(--space-lg) var(--space-page-mobile) 160px',
       }}
     >
-      <div style={{ marginBottom: 20 }}>
-        <p
-          style={{
-            margin: '0 0 4px',
-            fontSize: 12,
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            letterSpacing: '0.07em',
-            textTransform: 'uppercase',
-          }}
-        >
-          Navigation
-        </p>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 'clamp(28px, 5vw, 36px)',
-            lineHeight: 1.1,
-            letterSpacing: '-0.03em',
-            color: 'var(--text-1)',
-          }}
-        >
-          Menu
-        </h1>
-      </div>
-
-      <div style={{ display: 'grid', gap: 20 }}>
-        {MENU_SECTIONS.map((section) => (
-          <section key={section.title}>
-            <p
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 'var(--space-lg)',
+        }}
+      >
+        {DESTINATIONS.map((item) => (
+          <button
+            key={item.href}
+            type="button"
+            onClick={() => router.push(item.href)}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--space-sm)',
+              padding: 'var(--space-lg) var(--space-md)',
+              borderRadius: 'var(--radius-lg)',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              textAlign: 'center',
+            }}
+          >
+            <div
               style={{
-                margin: '0 0 10px',
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--text-muted)',
-                letterSpacing: '0.07em',
-                textTransform: 'uppercase',
+                width: 44,
+                height: 44,
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--grey-100)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              {section.title}
-            </p>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {section.items.map((item) => (
-                <button
-                  key={item.href}
-                  type="button"
-                  onClick={() => router.push(item.href)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    width: '100%',
-                    padding: '16px',
-                    borderRadius: 16,
-                    border: '1px solid var(--border)',
-                    background: 'var(--white)',
-                    color: 'var(--text-1)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  <item.Icon size={18} color="var(--text-2)" />
-                  <span style={{ flex: 1, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)' }}>
-                    {item.label}
-                  </span>
-                  <ChevronRight size={16} color="var(--text-muted)" strokeWidth={2.2} />
-                </button>
-              ))}
+              <item.Icon size={20} color="var(--text-1)" />
             </div>
-          </section>
+            <span
+              style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-medium)',
+                color: 'var(--text-1)',
+              }}
+            >
+              {item.label}
+            </span>
+          </button>
         ))}
       </div>
     </div>
@@ -128,7 +90,7 @@ export default function MenuPageClient() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: 88 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <main>{content}</main>
       <BottomNav />
     </div>

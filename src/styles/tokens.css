@@ -101,7 +101,7 @@
   --text-sm:   13px; /* secondary labels, captions      */
   --text-base: 15px; /* primary body                    */
   --text-md:   17px; /* slightly emphasised body        */
-  --text-lg:   20px; /* large labels, sub-headings      */
+  --text-lg:   18px; /* section titles, sub-headings     */
   --text-xl:   24px; /* small display figures           */
   --text-2xl:  28px; /* page headings                   */
   --text-3xl:  32px; /* hero / display numbers          */

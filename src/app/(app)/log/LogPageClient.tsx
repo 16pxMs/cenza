@@ -7,7 +7,6 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
-import { IconBack } from '@/components/ui/Icons'
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData } from '@/lib/loaders/log'
 
@@ -61,7 +60,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const FILTER_OPTIONS: Array<{ value: typeof filter; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'everyday', label: 'Spending' },
-    { value: 'fixed', label: 'Essentials' },
+    { value: 'fixed', label: 'Fixed' },
     { value: 'debt', label: 'Debt' },
   ]
 
@@ -115,7 +114,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           display: 'flex',
           alignItems: 'center',
           background: T.white,
-          minHeight: 72,
           padding: `0 ${pageX}`,
           borderTop: `var(--border-width) solid ${T.borderSubtle}`,
         }}
@@ -129,8 +127,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             gap: 'var(--space-md)',
             border: 'none',
             background: 'transparent',
-            padding: 'var(--space-md) 0',
-            minHeight: 72,
+            padding: '12px 0',
             cursor: 'pointer',
             textAlign: 'left',
             boxSizing: 'border-box',
@@ -138,10 +135,9 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontFamily: 'var(--font-display)',
               fontSize: 'var(--text-base)',
               fontWeight: 'var(--weight-regular)',
-              color: T.text2,
+              color: T.text1,
               lineHeight: 1.3,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -153,7 +149,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               fontSize: 'var(--text-sm)',
               fontWeight: 'var(--weight-regular)',
               color: T.text3,
-              marginTop: 'var(--space-sm)',
+              marginTop: 4,
               lineHeight: 1.3,
             }}>
               {categoryLabel}{savedAt ? ` · ${savedAt}` : ''}
@@ -161,7 +157,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           </div>
 
           <span style={{
-            fontFamily: 'var(--font-display)',
             fontSize: 'var(--text-base)',
             fontWeight: 'var(--weight-semibold)',
             color: T.text1,
@@ -178,100 +173,45 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
 
   const content = (
-    <div style={{ paddingBottom: isDesktop ? 'var(--space-xxl)' : 144, paddingTop: 'var(--space-xs)' }}>
+    <div style={{ paddingBottom: isDesktop ? 'var(--space-xxl)' : 160, paddingTop: 'var(--space-xs)' }}>
       {/* Header */}
       <div style={{
         padding: isDesktop
-          ? `var(--space-xl) var(--space-page-desktop) var(--space-md)`
-          : `var(--space-lg) var(--space-page-mobile) var(--space-md)`,
+          ? `var(--space-xl) var(--space-page-desktop) var(--space-lg)`
+          : `var(--space-lg) var(--space-page-mobile) var(--space-lg)`,
       }}>
-        <button
-          onClick={() => router.push('/app')}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            width: 44,
-            height: 44,
-            padding: 0,
-            marginBottom: 'var(--space-sm)',
-            marginLeft: -10,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <IconBack size={18} color="var(--grey-900)" />
-        </button>
         <p style={{
-          margin: '0 0 var(--space-xs)',
+          margin: '0 0 var(--space-sm)',
           fontSize: 'var(--text-xs)',
           fontWeight: 'var(--weight-semibold)',
           color: T.textMuted,
           textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+          letterSpacing: '0.07em',
         }}>
           {data.cycleLabel}
         </p>
-        <h1 style={{
-          fontSize: 'var(--text-lg)',
-          fontWeight: 'var(--weight-semibold)',
-          color: T.text2,
+        <p style={{
+          margin: '0 0 var(--space-2xs)',
+          fontSize: 'var(--text-2xl)',
+          fontWeight: 'var(--weight-bold)',
+          color: T.text1,
+          letterSpacing: '-0.02em',
+          lineHeight: 1.1,
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {fmt(totalLogged, data.currency)}
+        </p>
+        <p style={{
           margin: 0,
-          letterSpacing: '-0.01em',
-          lineHeight: 1.2,
+          fontSize: 'var(--text-sm)',
+          color: T.text3,
+          lineHeight: 1.4,
         }}>
-          Expense log
-        </h1>
+          {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'}
+        </p>
       </div>
 
-      {/* Summary */}
-      <div style={{
-        padding: `0 ${pageX}`,
-        marginBottom: 'var(--space-lg)',
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'space-between',
-          gap: 'var(--space-md)',
-        }}>
-          <div>
-            <p style={{
-              margin: '0 0 var(--space-xs)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-semibold)',
-              color: T.textMuted,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-            }}>
-              Logged total
-            </p>
-            <p style={{
-              margin: 0,
-              fontSize: 'var(--text-sm)',
-              color: T.text3,
-              lineHeight: 1.4,
-            }}>
-              {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'} logged
-            </p>
-          </div>
-          <p style={{
-            margin: 0,
-            fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--weight-semibold)',
-            color: T.text1,
-            letterSpacing: '-0.02em',
-            lineHeight: 1,
-            textAlign: 'right',
-            fontVariantNumeric: 'tabular-nums',
-          }}>
-            {fmt(totalLogged, data.currency)}
-          </p>
-        </div>
-      </div>
-
-      {/* Insight — permanent, contained surface */}
+      {/* Top expenses */}
       {topCategories.length > 0 && (
         <div style={{
           padding: `0 ${pageX}`,
@@ -280,19 +220,19 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           <div style={{
             background: T.white,
             borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-md)',
-            border: `var(--border-width) solid ${T.borderSubtle}`,
+            padding: 12,
+            border: `var(--border-width) solid ${T.border}`,
           }}>
             <p style={{
               margin: '0 0 var(--space-sm)',
-              fontSize: 'var(--text-base)',
+              fontSize: 'var(--text-sm)',
               fontWeight: 'var(--weight-semibold)',
               color: T.text1,
               lineHeight: 1.3,
             }}>
-              Top expenses this month
+              Top expenses
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
               {topCategories.map(cat => (
                 <div key={cat.name} style={{
                   display: 'flex',
@@ -302,7 +242,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                 }}>
                   <span style={{
                     fontSize: 'var(--text-sm)',
-                    color: T.text2,
+                    color: T.text3,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
@@ -324,12 +264,12 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         </div>
       )}
 
-      {/* Filter controls */}
+      {/* Filter chips */}
       <div style={{
         padding: `0 ${pageX}`,
         marginBottom: 'var(--space-md)',
         display: 'flex',
-        gap: 'var(--space-sm)',
+        gap: 'var(--space-2xs)',
         flexWrap: 'wrap',
       }}>
         {FILTER_OPTIONS.map(option => {
@@ -339,14 +279,14 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               key={option.value}
               onClick={() => setFilter(option.value)}
               style={{
-                height: 'var(--control-sm)',
-                padding: '0 var(--space-md)',
+                height: 30,
+                padding: '0 12px',
                 borderRadius: 'var(--radius-full)',
                 border: selected
-                  ? `var(--border-width-thick) solid ${T.brandDark}`
-                  : `var(--border-width) solid ${T.border}`,
-                background: selected ? T.brandDark : T.white,
-                color: selected ? T.textInverse : T.text2,
+                  ? '1px solid transparent'
+                  : `1px solid ${T.border}`,
+                background: selected ? 'var(--brand)' : 'transparent',
+                color: selected ? T.brandDark : T.text3,
                 fontSize: 'var(--text-sm)',
                 fontWeight: 'var(--weight-medium)',
                 cursor: 'pointer',
@@ -397,7 +337,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 88 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <main>{content}</main>
       <GlobalAddButton returnTo="/log" />
       <BottomNav />
