@@ -8,7 +8,7 @@ import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
-import { saveMonthlyReminderEntryForCycle } from '@/lib/monthly-reminders/storage'
+import { saveMonthlyReminderEntriesForCycle } from '@/lib/monthly-reminders/storage'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
@@ -26,15 +26,6 @@ interface SaveExpenseInput {
 
 interface SaveExpenseBatchItem extends SaveExpenseInput {}
 const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
-
-async function saveMonthlyReminder(
-  supabase: any,
-  userId: string,
-  cycleId: string,
-  input: { key: string; label: string; monthly: number }
-) {
-  await saveMonthlyReminderEntryForCycle(supabase, userId, cycleId, input)
-}
 
 async function rememberDictionaryItem(
   supabase: any,
@@ -145,6 +136,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
     }
 
     let savedCount = 0
+    const monthlyReminderRows: Array<{ key: string; label: string; monthly: number }> = []
     try {
       for (const input of items) {
         if (input.mode === 'update' && input.priorEntryId) {
@@ -175,7 +167,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
         savedCount += 1
 
         if (input.categoryType !== 'debt' && input.repeatsMonthly) {
-          await saveMonthlyReminder(supabase, user.id, cycleId, {
+          monthlyReminderRows.push({
             key: recurringExpenseKey(input.categoryType, persistedKey),
             label: input.categoryLabel,
             monthly: Number(input.amount),
@@ -195,6 +187,10 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
             console.error('[log/new] rememberDictionaryItem failed', e)
           }
         }
+      }
+
+      if (monthlyReminderRows.length > 0) {
+        await saveMonthlyReminderEntriesForCycle(supabase, user.id, cycleId, monthlyReminderRows)
       }
     } finally {
       // Always refresh the UI for whatever actually landed, even if a later

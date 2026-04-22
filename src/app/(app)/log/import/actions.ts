@@ -313,6 +313,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     const [
       { data: dictionaryRows, error: dictionaryError },
       { data: recentRows, error: recentRowsError },
+      monthlyReminderEntries,
     ] = await Promise.all([
       (supabase.from('item_dictionary') as any)
         .select('name_normalized,label,category_type,category_key,usage_count')
@@ -323,6 +324,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         .eq('user_id', user.id)
         .order('date', { ascending: false })
         .limit(300),
+      loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId),
     ])
 
     if (dictionaryError) {
@@ -332,7 +334,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
       throw new Error(`Failed to load recent transactions: ${recentRowsError.message}`)
     }
 
-    const monthlyReminderKeys = (await loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId)).map((entry) => entry.key)
+    const monthlyReminderKeys = monthlyReminderEntries.map((entry) => entry.key)
     const categoryCountsByLabel = new Map<string, Map<ImportCategoryType, number>>()
     for (const row of recentRows ?? []) {
       const normalized = normalize(row.category_label ?? '')

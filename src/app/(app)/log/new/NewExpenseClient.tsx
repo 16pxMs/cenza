@@ -198,7 +198,7 @@ function formatRecentEntryHint(entry: RecentLoggedEntry, currency: string, name:
 export function NewExpenseClient() {
   const router = useRouter()
   const params = useSearchParams()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const { user, profile } = useUser()
 
   const paramKey = params.get('key')

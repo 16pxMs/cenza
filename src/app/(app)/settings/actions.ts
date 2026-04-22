@@ -5,6 +5,7 @@ import { getAppSession } from '@/lib/auth/app-session'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { deleteMonthlyStorageForUser } from '@/lib/monthly-reminders/storage'
 
 export async function saveCurrency(code: string): Promise<void> {
   const { user } = await getAppSession()
@@ -59,7 +60,7 @@ export async function deleteAccountPermanently(): Promise<void> {
     () => (admin.from('transactions') as any).delete().eq('user_id', user.id),
     () => (admin.from('income_entries') as any).delete().eq('user_id', user.id),
     () => (admin.from('goal_targets') as any).delete().eq('user_id', user.id),
-    () => (admin.from('fixed_expenses') as any).delete().eq('user_id', user.id),
+    () => deleteMonthlyStorageForUser(admin, user.id).then(() => ({ error: null })),
     () => (admin.from('spending_budgets') as any).delete().eq('user_id', user.id),
     () => (admin.from('spending_categories') as any).delete().eq('user_id', user.id),
     () => (admin.from('subscriptions') as any).delete().eq('user_id', user.id),

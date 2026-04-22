@@ -1,5 +1,9 @@
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 
+// Guardrail: Do not access fixed_expenses.entries directly anywhere else in
+// the codebase. All access must go through this adapter to prevent mixing
+// planned financial data and reminder data.
+
 export type MonthlyStorageEntryType = 'planned' | 'monthly_reminder'
 
 export interface PlannedMonthlyEntry {
@@ -22,6 +26,12 @@ export interface MonthlyReminderEntry {
 }
 
 type MonthlyStorageEntry = PlannedMonthlyEntry | MonthlyReminderEntry
+
+export interface MonthlyStorageSnapshot {
+  plannedEntries: PlannedMonthlyEntry[]
+  reminderEntries: MonthlyReminderEntry[]
+  plannedTotal: number
+}
 
 type SupabaseLike = {
   from: (table: string) => any
@@ -226,6 +236,57 @@ export async function loadPlannedMonthlyEntriesForCycle(
   cycleId: string
 ): Promise<PlannedMonthlyEntry[]> {
   return readPlannedMonthlyEntries(await loadMonthlyStorageEntriesForCycle(supabase, userId, cycleId))
+}
+
+export async function loadMonthlyStorageSnapshotForCycle(
+  supabase: SupabaseLike,
+  userId: string,
+  cycleId: string
+): Promise<MonthlyStorageSnapshot> {
+  const entries = await loadMonthlyStorageEntriesForCycle(supabase, userId, cycleId)
+  return {
+    plannedEntries: readPlannedMonthlyEntries(entries),
+    reminderEntries: readMonthlyReminderEntries(entries),
+    plannedTotal: sumPlannedMonthlyAmounts(entries),
+  }
+}
+
+export async function loadPlannedMonthlyTotalForCycle(
+  supabase: SupabaseLike,
+  userId: string,
+  cycleId: string
+): Promise<number> {
+  return sumPlannedMonthlyAmounts(await loadMonthlyStorageEntriesForCycle(supabase, userId, cycleId))
+}
+
+export async function loadMonthlyStorageCycleIdsForUser(
+  supabase: SupabaseLike,
+  userId: string
+): Promise<string[]> {
+  const { data, error } = await (supabase.from('fixed_expenses') as any)
+    .select('cycle_id')
+    .eq('user_id', userId)
+
+  if (error) {
+    throw new Error(`Failed to load monthly storage cycles: ${error.message}`)
+  }
+
+  return (data ?? [])
+    .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id : null)
+    .filter((cycleId: string | null): cycleId is string => !!cycleId)
+}
+
+export async function deleteMonthlyStorageForUser(
+  supabase: SupabaseLike,
+  userId: string
+): Promise<void> {
+  const { error } = await (supabase.from('fixed_expenses') as any)
+    .delete()
+    .eq('user_id', userId)
+
+  if (error) {
+    throw new Error(`Failed to delete monthly storage: ${error.message}`)
+  }
 }
 
 export async function saveMonthlyReminderEntryForCycle(

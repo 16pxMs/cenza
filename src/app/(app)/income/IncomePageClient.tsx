@@ -3,7 +3,6 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { deriveIncomeTotal } from '@/lib/income/derived'
-import { readPlannedMonthlyEntries } from '@/lib/monthly-reminders/storage'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -61,7 +60,7 @@ export default function IncomePageClient({
   const [isPending] = useTransition()
 
   const incomeTotal = data.incomeData ? deriveIncomeTotal(data.incomeData) : 0
-  const fixedTotal = data.fixedExpenses ? Number(data.fixedExpenses.total_monthly ?? 0) : 0
+  const fixedTotal = data.fixedExpenses ? Number(data.fixedExpenses.monthlyTotal ?? 0) : 0
   const budgetTotal = data.spendingBudget ? Number(data.spendingBudget.total_budget ?? 0) : 0
   const available = incomeTotal - fixedTotal
   const extras = data.incomeData?.extra_income ?? []
@@ -74,7 +73,7 @@ export default function IncomePageClient({
   const subtleAmt: React.CSSProperties = { fontSize: 12, fontWeight: 400, color: T.textMuted, marginLeft: 1 }
 
   const hasIncome = !!data.incomeData && !preview
-  const plannedFixedEntries = readPlannedMonthlyEntries<any>(data.fixedExpenses?.entries ?? null)
+  const plannedFixedEntries = data.fixedExpenses?.entries ?? []
   const hasFixed = plannedFixedEntries.some((entry: any) => entry.confidence !== 'unsure' && entry.monthly > 0)
   const hasBudget = !!(data.spendingBudget && (data.spendingBudget.categories as any[]).some((category: any) => category.budget > 0))
   const isNegative = available < 0

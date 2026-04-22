@@ -7,6 +7,10 @@ import {
   getCycleByDate,
   profileToPaySchedule,
 } from '@/lib/cycles'
+import {
+  loadMonthlyStorageCycleIdsForUser,
+  loadPlannedMonthlyTotalForCycle,
+} from '@/lib/monthly-reminders/storage'
 import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
@@ -95,12 +99,12 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
 
   const [
     { data: txnRows },
-    { data: expenses },
+    fixedMonthly,
     { data: budgets },
     { data: income },
     { data: txnCycles },
     { data: incomeCycles },
-    { data: expenseCycles },
+    expenseCycles,
     { data: budgetCycles },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
@@ -109,11 +113,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .eq('cycle_id', cycleId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false }),
-    (supabase.from('fixed_expenses') as any)
-      .select('total_monthly')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
+    loadPlannedMonthlyTotalForCycle(supabase, userId, cycleId),
     (supabase.from('spending_budgets') as any)
       .select('total_budget, categories')
       .eq('user_id', userId)
@@ -130,9 +130,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     (supabase.from('income_entries') as any)
       .select('cycle_id')
       .eq('user_id', userId),
-    (supabase.from('fixed_expenses') as any)
-      .select('cycle_id')
-      .eq('user_id', userId),
+    loadMonthlyStorageCycleIdsForUser(supabase, userId),
     (supabase.from('spending_budgets') as any)
       .select('cycle_id')
       .eq('user_id', userId),
@@ -163,7 +161,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     [
       ...(txnCycles ?? []),
       ...(incomeCycles ?? []),
-      ...(expenseCycles ?? []),
+      ...expenseCycles.map((cycle_id) => ({ cycle_id })),
       ...(budgetCycles ?? []),
     ]
       .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id : null)
@@ -177,7 +175,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     cycleLabel: formatCycleLabel(cycle),
     currency: profile.currency ?? 'KES',
     rows: categoryRows,
-    totalBudget: Number(expenses?.total_monthly ?? 0) + Number(budgets?.total_budget ?? 0),
+    totalBudget: fixedMonthly + Number(budgets?.total_budget ?? 0),
     totalSpent,
     totalIncome: deriveIncomeTotal((income ?? null) as HistoryIncomeRow | null),
     breakdown,

@@ -4,8 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import {
-  loadMonthlyReminderEntriesForCycle,
-  loadPlannedMonthlyEntriesForCycle,
+  loadMonthlyStorageSnapshotForCycle,
   readPlannedMonthlyEntries,
   type MonthlyReminderEntry,
 } from '@/lib/monthly-reminders/storage'
@@ -426,14 +425,12 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
   const [
     { data: txns },
     { data: income },
-    { data: fixedExpenses },
+    monthlyStorage,
     { data: spendingBudget },
     { data: goalTargets },
     { data: debts },
     { data: prevCycleRecurringRows },
     { data: goalContributionRows },
-    monthlyReminders,
-    plannedMonthlyEntries,
   ] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, amount, category_key, category_type, category_label, date')
@@ -444,11 +441,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
-    (supabase.from('fixed_expenses') as any)
-      .select('total_monthly')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
+    loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
     (supabase.from('spending_budgets') as any)
       .select('total_budget, categories')
       .eq('user_id', userId)
@@ -468,16 +461,17 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
           .eq('user_id', userId)
           .eq('category_type', 'goal')
           .in('category_key', goals),
-    loadMonthlyReminderEntriesForCycle(supabase, userId, cycleId),
-    loadPlannedMonthlyEntriesForCycle(supabase, userId, cycleId),
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
   const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const goalTargetRows = (goalTargets ?? []) as OverviewGoalTargetRow[]
   const debtRows = (debts ?? []) as Debt[]
+  const fixedTotal = monthlyStorage.plannedTotal
+  const plannedMonthlyEntries = monthlyStorage.plannedEntries
+  const monthlyReminders = monthlyStorage.reminderEntries
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NEXT_PUBLIC_DEBUG_OVERVIEW === 'true') {
     const fixedTxnDebug = transactionRows
       .filter((txn) => txn.category_type === 'fixed' || txn.category_type === 'subscription')
       .map((txn) => ({
@@ -603,9 +597,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   const incomeTotal = deriveIncomeTotal(incomeRow)
   const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
   const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
-  // Financial totals are protected: total_monthly is written by the monthly
-  // storage adapter from entry_type === 'planned' rows only.
-  const fixedTotal = Number(fixedExpenses?.total_monthly ?? 0)
+  // Financial totals are protected by the monthly storage adapter:
+  // only entry_type === 'planned' rows are included here.
   const budgetTotal = Number(spendingBudgetData?.total_budget ?? 0)
   const hasStartedCycleData =
     incomeTotal > 0 ||

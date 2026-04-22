@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 
 describe('targets actions', () => {
   beforeEach(() => {
@@ -19,7 +19,7 @@ describe('targets actions', () => {
 
   it('saveTargets upserts only completed positive targets', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null })
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ upsert })),
     })
 
@@ -40,7 +40,7 @@ describe('targets actions', () => {
 
   it('saveTargets skips writes when the flow is incomplete', async () => {
     const upsert = vi.fn()
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ upsert })),
     })
 

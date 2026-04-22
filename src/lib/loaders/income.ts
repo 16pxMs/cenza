@@ -1,6 +1,9 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
-import { loadPlannedMonthlyEntriesForCycle, type PlannedMonthlyEntry } from '@/lib/monthly-reminders/storage'
+import {
+  loadMonthlyStorageSnapshotForCycle,
+  type PlannedMonthlyEntry,
+} from '@/lib/monthly-reminders/storage'
 import type { UserProfile } from '@/types/database'
 
 interface IncomeEntryRow {
@@ -10,7 +13,7 @@ interface IncomeEntryRow {
 }
 
 interface FixedExpenseRow {
-  total_monthly: number | string | null
+  monthlyTotal: number
   entries: PlannedMonthlyEntry[] | null
 }
 
@@ -24,11 +27,10 @@ interface SpendingHistoryRow {
   amount: number | string
 }
 
-function toPlannedFixedExpenseRow(row: unknown, entries: PlannedMonthlyEntry[]): FixedExpenseRow | null {
-  if (!row) return null
-  const fixedRow = row as FixedExpenseRow
+function toPlannedFixedExpenseRow(monthlyTotal: number, entries: PlannedMonthlyEntry[]): FixedExpenseRow | null {
+  if (monthlyTotal <= 0 && entries.length === 0) return null
   return {
-    ...fixedRow,
+    monthlyTotal,
     entries,
   }
 }
@@ -104,19 +106,11 @@ export async function loadFixedExpensesSetupPageData(
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
-  const [{ data }, plannedEntries] = await Promise.all([
-    (supabase.from('fixed_expenses') as any)
-    .select('total_monthly')
-    .eq('user_id', userId)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-    ,
-    loadPlannedMonthlyEntriesForCycle(supabase, userId, cycleId),
-  ])
+  const monthlyStorage = await loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId)
 
   return {
     currency: profile.currency ?? 'KES',
-    fixedExpenses: toPlannedFixedExpenseRow(data ?? null, plannedEntries),
+    fixedExpenses: toPlannedFixedExpenseRow(monthlyStorage.plannedTotal, monthlyStorage.plannedEntries),
   }
 }
 
@@ -160,14 +154,9 @@ export async function loadIncomePageData(userId: string, profile: UserProfile): 
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
 
-  const [incomeRes, fixedRes, budgetRes, txnsRes, plannedEntries] = await Promise.all([
+  const [incomeRes, budgetRes, txnsRes, monthlyStorage] = await Promise.all([
     (supabase.from('income_entries') as any)
       .select('*')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
-    (supabase.from('fixed_expenses') as any)
-      .select('total_monthly')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
@@ -183,7 +172,7 @@ export async function loadIncomePageData(userId: string, profile: UserProfile): 
           .eq('cycle_id', prevCycleId)
           .eq('category_type', 'everyday')
       : Promise.resolve({ data: [] }),
-    loadPlannedMonthlyEntriesForCycle(supabase, userId, cycleId),
+    loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
   ])
 
   const spendingHistory: Record<string, number> = {}
@@ -195,7 +184,7 @@ export async function loadIncomePageData(userId: string, profile: UserProfile): 
     currency: profile.currency ?? 'KES',
     incomeType: profile.income_type ?? null,
     incomeData: (incomeRes.data ?? null) as IncomeEntryRow | null,
-    fixedExpenses: toPlannedFixedExpenseRow(fixedRes.data ?? null, plannedEntries),
+    fixedExpenses: toPlannedFixedExpenseRow(monthlyStorage.plannedTotal, monthlyStorage.plannedEntries),
     spendingBudget: (budgetRes.data ?? null) as SpendingBudgetRow | null,
     spendingHistory,
   }

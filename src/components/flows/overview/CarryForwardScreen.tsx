@@ -37,7 +37,7 @@ export interface CarryForwardData {
     total:        number
   }
   expenses: {
-    total_monthly: number
+    monthlyTotal: number
     entries:       any[]
   } | null
   budgets: {

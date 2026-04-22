@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 const getCurrentCycleId = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/cycles-db', () => ({ getCurrentCycleId }))
 
 function makeSupabase(existingRow: { id: string } | null) {
@@ -47,7 +47,7 @@ describe('app actions', () => {
 
   it('confirmReceivedIncome updates received fields without overwriting saved income row', async () => {
     const { supabase, update, upsert } = makeSupabase({ id: 'income-row-1' })
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { confirmReceivedIncome } = await import('./actions')
     await confirmReceivedIncome(45000)
@@ -63,7 +63,7 @@ describe('app actions', () => {
 
   it('confirmReceivedIncome inserts a new cycle row only when none exists', async () => {
     const { supabase, upsert } = makeSupabase(null)
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { confirmReceivedIncome } = await import('./actions')
     await confirmReceivedIncome(12000)
@@ -81,4 +81,3 @@ describe('app actions', () => {
     )
   })
 })
-

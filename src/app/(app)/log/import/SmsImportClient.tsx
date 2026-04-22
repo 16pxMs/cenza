@@ -193,6 +193,10 @@ export function SmsImportClient() {
 
   const selectedCount = rows.length
   const savedRows = rows
+  const monthlyReminderKeySet = useMemo(
+    () => new Set(monthlyReminderKeys),
+    [monthlyReminderKeys]
+  )
   const hasClientValidationErrors = useMemo(
     () => rows.some((row) => validateRow(row).length > 0),
     [rows]
@@ -211,7 +215,7 @@ export function SmsImportClient() {
   ) => {
     if (input.categoryType !== 'everyday' && input.categoryType !== 'fixed') return false
     const canonicalKey = recurringExpenseKey(input.categoryType, slugify(input.categoryKey || input.label))
-    return monthlyReminderKeys.includes(canonicalKey)
+    return monthlyReminderKeySet.has(canonicalKey)
   }
 
   const applyRowsChange = (

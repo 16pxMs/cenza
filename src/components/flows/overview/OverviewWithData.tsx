@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
@@ -156,12 +156,12 @@ export function OverviewWithData({
     return `in ${weeks} weeks`
   }
 
-  const prioritizedDebtReminders = [...debtReminderCandidates].sort((a, b) => {
+  const prioritizedDebtReminders = useMemo(() => [...debtReminderCandidates].sort((a, b) => {
     const rank = { overdue: 0, due: 1, upcoming: 2 } as const
     const byState = rank[a.state] - rank[b.state]
     if (byState !== 0) return byState
     return a.dueDate.localeCompare(b.dueDate)
-  })
+  }), [debtReminderCandidates])
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
@@ -504,7 +504,7 @@ const reference = receivedConfirmed
       ? 'Almost out this month'
       : 'Left this month'
 
-  const obligationPreviewItems = overviewObligations
+  const obligationPreviewItems = useMemo(() => overviewObligations
     .filter((item) => (
       item.status === 'overdue' ||
       item.status === 'today' ||
@@ -520,7 +520,7 @@ const reference = receivedConfirmed
 
       return b.amount - a.amount
     })
-    .slice(0, 3)
+    .slice(0, 3), [overviewObligations])
 
   const snapshotCard = (
     <div style={{ marginTop: 16, ...fade(0.12) }}>

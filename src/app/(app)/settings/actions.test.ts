@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 const createAdminClient = vi.fn()
 const clearPinDeviceState = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient }))
 vi.mock('@/lib/actions/pin', () => ({ clearPinDeviceState }))
 
@@ -30,7 +30,7 @@ describe('settings actions', () => {
   it('saveCurrency updates the user profile and revalidates dependent routes', async () => {
     const eq = vi.fn().mockResolvedValue({ error: null })
     const update = vi.fn(() => ({ eq }))
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ update })),
     })
 
@@ -47,7 +47,7 @@ describe('settings actions', () => {
   it('savePaySchedule updates schedule type and days', async () => {
     const eq = vi.fn().mockResolvedValue({ error: null })
     const update = vi.fn(() => ({ eq }))
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ update })),
     })
 

@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -45,11 +45,17 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [filter, setFilter] = useState<'all' | 'everyday' | 'fixed' | 'debt'>('all')
 
   const entries = data.entries
-  const totalLogged = entries.reduce((sum, entry) => sum + entry.amount, 0)
+  const totalLogged = useMemo(
+    () => entries.reduce((sum, entry) => sum + entry.amount, 0),
+    [entries]
+  )
   const totalEntries = entries.length
-  const visibleEntries = filter === 'all'
-    ? entries
-    : entries.filter(entry => entry.categoryType === filter || (filter === 'fixed' && entry.categoryType === 'essentials'))
+  const visibleEntries = useMemo(
+    () => filter === 'all'
+      ? entries
+      : entries.filter(entry => entry.categoryType === filter || (filter === 'fixed' && entry.categoryType === 'essentials')),
+    [entries, filter]
+  )
 
   const filterEmptyMessage: Record<typeof filter, string> = {
     all: 'No expenses logged yet for this cycle.',
@@ -72,7 +78,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     if (!cleaned) return fallback
     return cleaned.replace(/\b\w/g, c => c.toUpperCase())
   }
-  const topCategories = (() => {
+  const topCategories = useMemo(() => {
     const sums = new Map<string, { name: string; amount: number }>()
     for (const entry of entries) {
       const existing = sums.get(entry.categoryKey)
@@ -83,7 +89,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
       })
     }
     return Array.from(sums.values()).sort((a, b) => b.amount - a.amount).slice(0, 3)
-  })()
+  }, [entries])
 
   const logOther = () => {
     router.push('/log/new?isOther=true&returnTo=/log')

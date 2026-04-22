@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 const deleteTransactionsForCycleDateByCategory = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/transactions-db', () => ({ deleteTransactionsForCycleDateByCategory }))
 
 describe('goal actions', () => {
@@ -21,7 +21,7 @@ describe('goal actions', () => {
 
   it('saveGoalTarget upserts the target amount for the current user', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null })
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ upsert })),
     })
 
@@ -38,7 +38,7 @@ describe('goal actions', () => {
   it('archiveGoal removes the goal from the profile and clears current-cycle transactions', async () => {
     const eq = vi.fn().mockResolvedValue({ error: null })
     const update = vi.fn(() => ({ eq }))
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ update })),
     })
 
@@ -57,7 +57,7 @@ describe('goal actions', () => {
     const update = vi.fn(() => ({ eq: profileEq }))
     const del = vi.fn(() => ({ eq: targetEqUser }))
 
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn((table: string) => {
         if (table === 'user_profiles') return { update }
         if (table === 'goal_targets') return { delete: del }

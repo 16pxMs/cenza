@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { loadPlannedMonthlyTotalForCycle } from '@/lib/monthly-reminders/storage'
 import type { UserProfile } from '@/types/database'
 
 interface PlanIncomeRow {
@@ -9,10 +10,6 @@ interface PlanIncomeRow {
 
 interface PlanGoalTargetRow {
   amount: number | string | null
-}
-
-interface PlanFixedExpensesRow {
-  total_monthly: number | string | null
 }
 
 interface PlanSpendingBudgetRow {
@@ -33,7 +30,7 @@ export async function loadPlanPageData(userId: string, profile: UserProfile): Pr
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
-  const [incomeRes, targetsRes, expensesRes, budgetsRes] = await Promise.all([
+  const [incomeRes, targetsRes, fixedMonthly, budgetsRes] = await Promise.all([
     (supabase.from('income_entries') as any)
       .select('salary, extra_income')
       .eq('user_id', userId)
@@ -42,11 +39,7 @@ export async function loadPlanPageData(userId: string, profile: UserProfile): Pr
     (supabase.from('goal_targets') as any)
       .select('amount')
       .eq('user_id', userId),
-    (supabase.from('fixed_expenses') as any)
-      .select('total_monthly')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
+    loadPlannedMonthlyTotalForCycle(supabase, userId, cycleId),
     (supabase.from('spending_budgets') as any)
       .select('total_budget')
       .eq('user_id', userId)
@@ -56,7 +49,6 @@ export async function loadPlanPageData(userId: string, profile: UserProfile): Pr
 
   const incomeRow = (incomeRes.data ?? null) as PlanIncomeRow | null
   const targetRows = (targetsRes.data ?? []) as PlanGoalTargetRow[]
-  const expensesRow = (expensesRes.data ?? null) as PlanFixedExpensesRow | null
   const budgetsRow = (budgetsRes.data ?? null) as PlanSpendingBudgetRow | null
 
   const income = incomeRow
@@ -76,7 +68,7 @@ export async function loadPlanPageData(userId: string, profile: UserProfile): Pr
     income,
     goalTotal,
     goalCount: targetRows.length,
-    fixedMonthly: expensesRow ? Number(expensesRow.total_monthly ?? 0) : null,
+    fixedMonthly,
     spendingTotal: budgetsRow ? Number(budgetsRow.total_budget ?? 0) : null,
   }
 }

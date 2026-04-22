@@ -1,10 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import {
   readMonthlyReminderEntries,
   readPlannedMonthlyEntries,
+  loadMonthlyStorageSnapshotForCycle,
   saveMonthlyReminderEntryForCycle,
   savePlannedMonthlyEntriesForCycle,
 } from './storage'
+
+function walkFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const fullPath = join(dir, name)
+    if (statSync(fullPath).isDirectory()) return walkFiles(fullPath)
+    return fullPath
+  })
+}
 
 function makeSupabase(existingEntries: unknown[]) {
   const upsert = vi.fn().mockResolvedValue({ error: null })
@@ -23,10 +34,36 @@ function makeSupabase(existingEntries: unknown[]) {
     }),
   }
 
-  return { supabase, upsert }
+  return { supabase, select, upsert }
 }
 
 describe('monthly reminder storage adapter', () => {
+  it('keeps fixed_expenses access isolated to the storage adapter', () => {
+    const srcRoot = join(process.cwd(), 'src')
+    const allowed = new Set([
+      'lib/monthly-reminders/storage.ts',
+      'types/database.ts',
+    ])
+    const forbidden = [
+      'fixed_' + 'expenses',
+      'total_' + 'monthly',
+      "select('entries'",
+      'select("entries"',
+    ]
+
+    const offenders = walkFiles(srcRoot)
+      .filter((file) => /\.(ts|tsx)$/.test(file))
+      .filter((file) => !/\.test\.(ts|tsx)$/.test(file))
+      .map((file) => relative(srcRoot, file))
+      .filter((file) => !allowed.has(file))
+      .filter((file) => {
+        const contents = readFileSync(join(srcRoot, file), 'utf8')
+        return forbidden.some((pattern) => contents.includes(pattern))
+      })
+
+    expect(offenders).toEqual([])
+  })
+
   it('marks legacy untyped rows as planned and excludes reminders from planned reads', () => {
     const entries = [
       { key: 'rent', label: 'Rent', monthly: 1000 },
@@ -46,6 +83,31 @@ describe('monthly reminder storage adapter', () => {
         priority: 'core',
       },
     ])
+  })
+
+  it('loads planned entries, reminder entries, and planned total with one storage read', async () => {
+    const { supabase, select } = makeSupabase([
+      { key: 'rent', label: 'Rent', monthly: 1000 },
+      { key: 'spending_groceries', label: 'Groceries', monthly: 200, reminder: true },
+    ])
+
+    await expect(loadMonthlyStorageSnapshotForCycle(supabase, 'user-1', '2026-04-01')).resolves.toEqual({
+      plannedEntries: [
+        { key: 'rent', label: 'Rent', monthly: 1000, entry_type: 'planned', priority: 'core' },
+      ],
+      reminderEntries: [
+        {
+          key: 'spending_groceries',
+          label: 'Groceries',
+          monthly: 200,
+          reminder: true,
+          entry_type: 'monthly_reminder',
+          priority: 'core',
+        },
+      ],
+      plannedTotal: 1000,
+    })
+    expect(select).toHaveBeenCalledTimes(1)
   })
 
   it('creating a monthly reminder does not change financial totals', async () => {

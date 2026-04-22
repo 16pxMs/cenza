@@ -30,12 +30,12 @@ describe('getPostAuthDestination', () => {
     })).toBe('/onboarding/pin')
   })
 
-  it('sends incomplete users with a PIN to /pin', () => {
+  it('sends incomplete users with a PIN to the next missing onboarding step', () => {
     expect(getPostAuthDestination({
       onboardingComplete: false,
       hasPin: true,
       next: '/app',
-    })).toBe('/pin')
+    })).toBe('/onboarding/name')
   })
 
   it('sends returning users with a PIN to /pin', () => {
