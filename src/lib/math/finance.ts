@@ -72,8 +72,7 @@ export function calculateTotalIncome(income: {
 }
 
 /**
- * Sum all transaction amounts. Filters non-goal transactions when
- * a `categoryType` field is present (pass raw txns directly).
+ * Sum all transaction amounts.
  */
 export function calculateTotalSpent(txns: { amount: unknown }[]): number {
   return sumAmounts(txns ?? [])

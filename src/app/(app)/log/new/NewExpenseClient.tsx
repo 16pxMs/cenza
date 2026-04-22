@@ -78,7 +78,7 @@ const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: 
   },
   debt: {
     title: 'Debt',
-    helper: 'Money you owe and are paying back',
+    helper: 'Debt is tracked separately with balances and repayments',
   },
 }
 
@@ -92,7 +92,6 @@ const DEFAULT_COMMON_ITEMS: Array<{ label: string; categoryType: Exclude<Categor
   { label: 'Electricity', categoryType: 'fixed' },
   { label: 'Water', categoryType: 'fixed' },
   { label: 'Netflix', categoryType: 'fixed' },
-  { label: 'Debt', categoryType: 'debt' },
 ]
 const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
 
@@ -139,7 +138,6 @@ function formatDisplayLabel(value: string) {
 function suggestType(label: string): CategoryType | null {
   const l = label.toLowerCase()
   if (['rent', 'netflix', 'subscription', 'internet', 'wifi', 'water', 'power', 'electricity'].some(k => l.includes(k))) return 'fixed'
-  if (['loan', 'debt', 'credit', 'borrow'].some(k => l.includes(k))) return 'debt'
   return null
 }
 
@@ -151,6 +149,7 @@ function buildPendingItem(
   const cleanLabel = label.trim()
   const normalized = normalizeLabel(cleanLabel)
   const rememberedCategoryType = dictEntry && dictEntry.usageCount >= 2
+    && dictEntry.categoryType !== 'debt'
     ? dictEntry.categoryType
     : null
 
@@ -208,6 +207,15 @@ export function NewExpenseClient() {
   const isOther = params.get('isOther') === 'true'
   const returnTo = params.get('returnTo') || '/log'
   const paramType = normalizeCategoryType(rawParamType)
+  const buildDebtCreateHref = (prefillName?: string, prefillAmount?: string) => {
+    const target = new URLSearchParams({ returnTo })
+    const cleanedName = prefillName?.trim()
+    const cleanedAmount = prefillAmount?.replace(/,/g, '').trim()
+    if (cleanedName) target.set('name', cleanedName)
+    if (cleanedAmount) target.set('amount', cleanedAmount)
+    return `/history/debt/new?${target.toString()}`
+  }
+  const debtCreateHref = buildDebtCreateHref()
 
   const hasInitialKnownItem = !isOther && Boolean(paramLabel)
   const [step, setStep] = useState<Step>(
@@ -280,6 +288,12 @@ export function NewExpenseClient() {
     ? groupedLabelsInOrder.findIndex((label) => label === activeLabelNormalized)
     : -1
 
+  useEffect(() => {
+    if (paramType === 'debt') {
+      router.replace(debtCreateHref)
+    }
+  }, [debtCreateHref, paramType, router])
+
   const rankedCommonItems = useMemo(() => {
     const visible = commonItems.slice(0, 10)
     const visibleSet = new Set(visible.map((item) => normalizeLabel(item.label)))
@@ -315,8 +329,11 @@ export function NewExpenseClient() {
         const items: DictEntry[] = []
 
         for (const row of data) {
+          const normalizedCategoryType = normalizeCategoryType(row.category_type)
+          if (normalizedCategoryType === 'debt') continue
+
           const entry: DictEntry = {
-            categoryType: normalizeCategoryType(row.category_type) ?? 'everyday',
+            categoryType: normalizedCategoryType ?? 'everyday',
             label: row.label,
             key: row.category_key,
             usageCount: 0,
@@ -338,6 +355,7 @@ export function NewExpenseClient() {
         for (const row of recentRows ?? []) {
           const normalized = normalizeLabel(row.category_label ?? '')
           const categoryType = normalizeCategoryType(row.category_type)
+          if (categoryType === 'debt') continue
           if (normalized && categoryType) {
             const counts = categoryCountsByLabel.get(normalized) ?? new Map<CategoryType, number>()
             counts.set(categoryType, (counts.get(categoryType) ?? 0) + 1)
@@ -375,6 +393,7 @@ export function NewExpenseClient() {
           const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0)
           if (total < 2 || counts.size !== 1) continue
           const categoryType = Array.from(counts.keys())[0]
+          if (categoryType === 'debt') continue
           const existing = dict[normalized]
           if (existing) {
             existing.categoryType = categoryType
@@ -543,6 +562,10 @@ export function NewExpenseClient() {
 
   const handleContinueToReview = () => {
     if (queue.length === 0) return
+    if (queue.some((item) => item.categoryType === 'debt')) {
+      router.push(debtCreateHref)
+      return
+    }
     if (!quickEntryStatus.hasIncome && queue.length > remainingQuickEntries) {
       setQueueNotice('Add income to continue logging more expenses.')
       return
@@ -613,6 +636,12 @@ export function NewExpenseClient() {
       if (queue.some((item) => !item.categoryType)) {
         setSaveError('Choose a category for each expense before saving.')
         setSaving(false)
+        return
+      }
+      if (queue.some((item) => item.categoryType === 'debt')) {
+        setSaveError('Debt is tracked separately. Create it from the debt flow.')
+        setSaving(false)
+        router.push(debtCreateHref)
         return
       }
       if (queue.some((item) => !item.label.trim())) {
@@ -744,6 +773,7 @@ export function NewExpenseClient() {
               canContinue={canReviewContinue}
               goalMatchLabel={goalMatchLabel}
               onGoToGoals={() => router.push('/goals')}
+              onGoToDebt={() => router.push(buildDebtCreateHref(newItemName))}
             />
           ) : step === 'done' ? (
             <DoneStep
@@ -883,6 +913,7 @@ function QueueStep({
   canContinue,
   goalMatchLabel,
   onGoToGoals,
+  onGoToDebt,
 }: {
   newItemName: string
   setNewItemName: (value: string) => void
@@ -897,6 +928,7 @@ function QueueStep({
   canContinue: boolean
   goalMatchLabel: string | null
   onGoToGoals: () => void
+  onGoToDebt: () => void
 }) {
   const addInputRef = useRef<HTMLInputElement | null>(null)
   const selectedSet = new Set(queue.map((item) => normalizeLabel(item.label)))
@@ -1072,6 +1104,36 @@ function QueueStep({
         </p>
       )}
 
+      <div style={{
+        margin: '0 0 12px',
+        padding: 'var(--space-md)',
+        borderRadius: 'var(--radius-md)',
+        border: `1px solid ${T.borderSubtle}`,
+        background: T.grey50,
+      }}>
+        <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+          Need to track money owed?
+        </p>
+        <p style={{ margin: 'var(--space-2xs) 0 var(--space-xs)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+          We’ll help you set up the balance and repayments in the debt flow.
+        </p>
+        <button
+          type="button"
+          onClick={onGoToDebt}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            color: T.brandDark,
+            fontWeight: 'var(--weight-semibold)',
+            cursor: 'pointer',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          Continue to debt setup
+        </button>
+      </div>
+
       {/* CTA */}
       <PrimaryBtn
         size="lg"
@@ -1208,7 +1270,7 @@ function ReviewStep({
         />
         {item.categoryType === 'debt' && (
           <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-            Use a clear name. If money is paid back later, record it from this debt&apos;s log.
+            Debt is tracked separately with balances and repayments.
           </p>
         )}
         {groupCount > 1 && (
@@ -1346,9 +1408,9 @@ function ReviewStep({
         <TypeChips
           selected={item.categoryType}
           onSelect={onTypeSelect}
-          types={['everyday', 'fixed', 'debt']}
+          types={['everyday', 'fixed']}
         />
-        {(item.categoryType === 'everyday' || item.categoryType === 'fixed' || item.categoryType === 'debt') && (
+        {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
           <p style={{
             margin: 'var(--space-sm) 0 0',
             fontSize: 'var(--text-sm)',

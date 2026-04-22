@@ -8,6 +8,10 @@ import {
   readPlannedMonthlyEntries,
   type MonthlyReminderEntry,
 } from '@/lib/monthly-reminders/storage'
+import {
+  deriveOutflowCategoryRows,
+  deriveOutflowTotalFromCategories,
+} from '@/lib/transactions/outflow'
 import type { Debt, GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
@@ -538,7 +542,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   ] = (() => {
     const nextCategorySpend: Record<string, number> = {}
     const nextGoalSavedMap: Record<string, number> = {}
-    const nextTotalSpent = transactionRows.reduce((sum, txn) => sum + Number(txn.amount), 0)
+    const outflowRows = deriveOutflowCategoryRows(transactionRows)
+    const nextTotalSpent = deriveOutflowTotalFromCategories(outflowRows)
 
     for (const txn of transactionRows) {
       if (txn.category_type === 'goal') {

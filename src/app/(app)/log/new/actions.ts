@@ -115,6 +115,16 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
 
     const hasIncomeForCurrentCycle = hasIncomeForCycle(incomeRow)
 
+    if (items.some((item) => item.categoryType === 'debt')) {
+      return {
+        ok: false,
+        error: {
+          kind: 'validation',
+          message: 'Debt is tracked separately. Create it from the debt flow.',
+        },
+      }
+    }
+
     const existingExpenseCount = (cycleTxns ?? []).filter((txn: any) => txn.category_type !== 'goal').length
     const netNewEntries = items.reduce((sum, input) => {
       const isReplacement = input.mode === 'update' && Boolean(input.priorEntryId)

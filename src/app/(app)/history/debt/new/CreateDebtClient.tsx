@@ -13,6 +13,8 @@ interface Props {
   currency: string
   returnTo: string
   activeDebtNames: string[]
+  initialName?: string
+  initialAmount?: string
 }
 
 type FormErrors = {
@@ -331,13 +333,19 @@ function StepDebtOptionalDetails({
   )
 }
 
-export default function CreateDebtClient({ currency, returnTo, activeDebtNames }: Props) {
+export default function CreateDebtClient({
+  currency,
+  returnTo,
+  activeDebtNames,
+  initialName = '',
+  initialAmount = '',
+}: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [step, setStep] = useState<Step>(1)
   const [trackingChoice, setTrackingChoice] = useState<DebtTrackingChoice | null>(null)
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState('')
+  const [name, setName] = useState(initialName)
+  const [amount, setAmount] = useState(initialAmount)
   const [dueDate, setDueDate] = useState('')
   const [note, setNote] = useState('')
   const [errors, setErrors] = useState<FormErrors>({})

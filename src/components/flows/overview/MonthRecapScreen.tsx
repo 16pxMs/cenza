@@ -51,8 +51,6 @@ export function LastCycleRecapSection({
   const prevLabel       = data.prevCycleLabel
   const totalOut        = data.totalSpent + data.fixedTotal
   const saved           = data.incomeTotal - totalOut
-  const hasSaved        = data.incomeTotal > 0 && saved > 0
-  const savedPct        = data.incomeTotal > 0 ? Math.round((saved / data.incomeTotal) * 100) : 0
   const catsWithBudget  = data.categories.filter(c => c.budgeted > 0)
   const underCount      = catsWithBudget.filter(c => c.spent <= c.budgeted).length
 
@@ -105,11 +103,6 @@ export function LastCycleRecapSection({
           }}>
             {fmt(data.totalSpent, currency)}
           </p>
-          {hasSaved && (
-            <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--green-dark)' }}>
-              You kept {fmt(saved, currency)} — {savedPct}% of your income
-            </p>
-          )}
         </div>
 
         {data.incomeTotal > 0 && (

@@ -10,9 +10,10 @@ interface Props {
   debtId: string
   debtName: string
   currentDueDate: string | null
+  compact?: boolean
 }
 
-export function EditStandardDebtDueDateSheet({ debtId, debtName, currentDueDate }: Props) {
+export function EditStandardDebtDueDateSheet({ debtId, debtName, currentDueDate, compact = false }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
@@ -43,9 +44,29 @@ export function EditStandardDebtDueDateSheet({ debtId, debtName, currentDueDate 
 
   return (
     <>
-      <SecondaryBtn size="sm" onClick={() => setOpen(true)}>
-        {currentDueDate ? 'Edit due date' : 'Add due date'}
-      </SecondaryBtn>
+      {compact ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          style={{
+            minHeight: 36,
+            padding: '0 var(--space-xs)',
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--brand-dark)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 'var(--weight-semibold)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {currentDueDate ? 'Change' : 'Set'}
+        </button>
+      ) : (
+        <SecondaryBtn size="sm" onClick={() => setOpen(true)}>
+          {currentDueDate ? 'Edit due date' : 'Add due date'}
+        </SecondaryBtn>
+      )}
 
       <Sheet
         open={open}
@@ -71,7 +92,7 @@ export function EditStandardDebtDueDateSheet({ debtId, debtName, currentDueDate 
                 color: 'var(--text-3)',
               }}
             >
-              Set an optional due date so this debt can appear in reminders.
+              We&apos;ll use this to surface the debt when it needs attention.
             </p>
           </div>
 

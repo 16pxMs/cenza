@@ -588,7 +588,7 @@ const reference = receivedConfirmed
                   color: 'var(--text-muted)',
                 }}
               >
-                Spent
+                Outflow
               </span>
               <span
                 style={{

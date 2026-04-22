@@ -14,16 +14,21 @@ import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
 import type { LogEntry } from '@/lib/loaders/log'
 import {
+  createTrackedDebtFromLogEntry,
   deleteLogEntry,
+  linkLogEntryToExistingDebt,
+  loadActiveDebtsForLog,
   recordRefund,
   removeMonthlyReminder,
   setMonthlyReminder,
   updateLogEntry,
+  type ActiveDebtOption,
 } from '../actions'
 import {
   deleteDebtTransactionForDebt,
   updateDebtTransactionForDebt,
 } from '../../history/debt/[id]/actions'
+import type { DebtDirection } from '@/types/database'
 
 const CATEGORY_LABEL: Record<string, string> = {
   everyday: 'Spending',
@@ -74,7 +79,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const { isDesktop } = useBreakpoint()
   const { toast } = useToast()
 
-  const [activeFlow, setActiveFlow] = useState<'edit' | 'refund' | 'confirm' | 'track' | 'debtEdit' | null>(null)
+  const [activeFlow, setActiveFlow] = useState<'edit' | 'refund' | 'confirm' | 'track' | 'debtEdit' | 'createDebt' | 'linkDebt' | null>(null)
 
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
@@ -97,6 +102,16 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const [debtEditNote, setDebtEditNote] = useState('')
   const [debtEditError, setDebtEditError] = useState<string | null>(null)
   const [savingDebtEdit, setSavingDebtEdit] = useState(false)
+  const [createDebtName, setCreateDebtName] = useState('')
+  const [createDebtDirection, setCreateDebtDirection] = useState<DebtDirection | null>(null)
+  const [savingCreateDebt, setSavingCreateDebt] = useState(false)
+  const [createDebtError, setCreateDebtError] = useState<string | null>(null)
+  const [activeDebts, setActiveDebts] = useState<ActiveDebtOption[]>([])
+  const [loadingActiveDebts, setLoadingActiveDebts] = useState(false)
+  const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null)
+  const [linkDebtRole, setLinkDebtRole] = useState<'balance' | 'payment' | null>(null)
+  const [savingLinkDebt, setSavingLinkDebt] = useState(false)
+  const [linkDebtError, setLinkDebtError] = useState<string | null>(null)
 
   const [savingMonthlyReminder, setSavingMonthlyReminder] = useState(false)
   const [monthlyReminderAmount, setMonthlyReminderAmount] = useState('')
@@ -108,7 +123,11 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const isDebtEntry = entry.categoryType === 'debt'
   const isGoalEntry = entry.categoryType === 'goal'
   const hasLinkedDebt = isDebtEntry && !!entry.debtId && !!entry.debtTransactionId
-  const debtHref = entry.debtId ? `/history/debt/${entry.debtId}` : '/history/debt'
+  const entryReturnTo = `/log/${entry.id}`
+  const debtHref = entry.debtId
+    ? `/history/debt/${entry.debtId}?returnTo=${encodeURIComponent(entryReturnTo)}`
+    : '/history/debt'
+  const isUnlinkedDebtEntry = isDebtEntry && !hasLinkedDebt
   const debtEntryLabel = entry.debtEntryType === 'principal_increase'
     ? 'opening balance'
     : 'entry'
@@ -140,6 +159,28 @@ export function EntryActionsClient({ entry, currency }: Props) {
     setActiveFlow('debtEdit')
   }
 
+  const openCreateDebt = () => {
+    setCreateDebtName(entry.name)
+    setCreateDebtDirection(null)
+    setCreateDebtError(null)
+    setActiveFlow('createDebt')
+  }
+
+  const openLinkDebt = async () => {
+    setSelectedDebtId(null)
+    setLinkDebtRole(null)
+    setLinkDebtError(null)
+    setActiveFlow('linkDebt')
+    setLoadingActiveDebts(true)
+    try {
+      setActiveDebts(await loadActiveDebtsForLog())
+    } catch {
+      setLinkDebtError('Could not load your debts')
+    } finally {
+      setLoadingActiveDebts(false)
+    }
+  }
+
   const editIsDirty =
     activeFlow === 'edit' &&
     (
@@ -168,6 +209,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
     if (!editLabel.trim()) nextErrors.label = 'Add a name'
     if (!editAmount.trim() || !(parseFloat(editAmount) > 0)) nextErrors.amount = 'Add an amount'
     if (!editCategoryType) nextErrors.category = 'Choose a category'
+    if (!isDebtEntry && editCategoryType === 'debt') {
+      nextErrors.category = 'Debt entries need to be linked to a tracked debt.'
+    }
     setEditErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -289,6 +333,64 @@ export function EntryActionsClient({ entry, currency }: Props) {
       setDebtEditError(isGoalEntry ? 'Could not update goal entry' : 'Could not update debt entry')
     } finally {
       setSavingDebtEdit(false)
+    }
+  }
+
+  const handleCreateTrackedDebt = async () => {
+    if (!entry.id) return
+    if (!createDebtName.trim()) {
+      setCreateDebtError('Add a debt name')
+      return
+    }
+    if (!createDebtDirection) {
+      setCreateDebtError('Choose who owes this')
+      return
+    }
+
+    setSavingCreateDebt(true)
+    setCreateDebtError(null)
+    try {
+      const result = await createTrackedDebtFromLogEntry({
+        transactionId: entry.id,
+        name: createDebtName,
+        direction: createDebtDirection,
+      })
+      toast('Debt is now tracked')
+      router.push(`/history/debt/${result.debtId}?returnTo=${encodeURIComponent(entryReturnTo)}`)
+      router.refresh()
+    } catch (caught) {
+      setCreateDebtError(caught instanceof Error ? caught.message : 'Could not create debt')
+    } finally {
+      setSavingCreateDebt(false)
+    }
+  }
+
+  const handleLinkDebt = async () => {
+    if (!entry.id) return
+    if (!selectedDebtId) {
+      setLinkDebtError('Choose a debt')
+      return
+    }
+    if (!linkDebtRole) {
+      setLinkDebtError('Choose how this entry affects the debt')
+      return
+    }
+
+    setSavingLinkDebt(true)
+    setLinkDebtError(null)
+    try {
+      const result = await linkLogEntryToExistingDebt({
+        transactionId: entry.id,
+        debtId: selectedDebtId,
+        entryRole: linkDebtRole,
+      })
+      toast('Entry connected to debt')
+      router.push(`/history/debt/${result.debtId}?returnTo=${encodeURIComponent(entryReturnTo)}`)
+      router.refresh()
+    } catch (caught) {
+      setLinkDebtError(caught instanceof Error ? caught.message : 'Could not link debt')
+    } finally {
+      setSavingLinkDebt(false)
     }
   }
 
@@ -441,33 +543,23 @@ export function EntryActionsClient({ entry, currency }: Props) {
       <div style={{ padding: `0 ${pageX}`, display: 'grid', gap: 'var(--space-sm)' }}>
         {isDebtEntry ? (
           <>
-            <div style={{
-              background: T.white,
-              border: `1px solid ${T.border}`,
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-            }}>
-              <button
-                onClick={() => router.push(debtHref)}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: 'var(--space-md)',
-                  background: T.white,
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
+            {isUnlinkedDebtEntry && (
+              <div style={{
+                background: 'var(--grey-50)',
+                border: `1px solid ${T.border}`,
+                borderRadius: 'var(--radius-lg)',
+                padding: 'var(--space-md)',
+              }}>
                 <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                  {entry.debtId ? 'Open debt' : 'Go to debts'}
+                  Not linked to a tracked debt
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                  View this in Things to pay
+                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 4, lineHeight: 1.45 }}>
+                  This entry is marked as Debt, but it does not have a balance or repayment history yet.
                 </div>
-              </button>
-            </div>
+              </div>
+            )}
 
-            {entry.debtId && (
+            {hasLinkedDebt ? (
               <div style={{
                 background: T.white,
                 border: `1px solid ${T.border}`,
@@ -475,7 +567,89 @@ export function EntryActionsClient({ entry, currency }: Props) {
                 overflow: 'hidden',
               }}>
                 <button
-                  onClick={() => router.push(`${debtHref}?action=add-payment`)}
+                  onClick={() => router.push(debtHref)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: 'var(--space-md)',
+                    background: T.white,
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                    Open debt
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                    View this in Things to pay
+                  </div>
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  background: T.white,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 'var(--radius-lg)',
+                  overflow: 'hidden',
+                }}>
+                  <button
+                    onClick={openCreateDebt}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: 'var(--space-md)',
+                      background: T.white,
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                      Track as new debt
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                      Start a debt record with this amount
+                    </div>
+                  </button>
+                </div>
+
+                <div style={{
+                  background: T.white,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 'var(--radius-lg)',
+                  overflow: 'hidden',
+                }}>
+                  <button
+                    onClick={openLinkDebt}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: 'var(--space-md)',
+                      background: T.white,
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                      Connect to a debt
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                      Use this entry on a debt you already track
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {entry.debtId && (
+              <div style={{
+                background: T.white,
+                border: `1px solid ${T.border}`,
+                borderRadius: 'var(--radius-lg)',
+                overflow: 'hidden',
+                }}>
+                <button
+                  onClick={() => router.push(`${debtHref}&action=add-payment`)}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -518,6 +692,34 @@ export function EntryActionsClient({ entry, currency }: Props) {
                   </div>
                   <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
                     Update the debt {debtEntryLabel}
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {isUnlinkedDebtEntry && (
+              <div style={{
+                background: T.white,
+                border: `1px solid ${T.border}`,
+                borderRadius: 'var(--radius-lg)',
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={openEdit}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: 'var(--space-md)',
+                    background: T.white,
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                    Edit entry
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
+                    Change the category if this is not really debt
                   </div>
                 </button>
               </div>
@@ -699,6 +901,209 @@ export function EntryActionsClient({ entry, currency }: Props) {
 
       {/* Sub-flow sheets */}
       <Sheet
+        open={activeFlow === 'createDebt'}
+        onClose={() => setActiveFlow(null)}
+        title="Track as new debt"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <Input
+            label="Debt name"
+            value={createDebtName}
+            onChange={(value) => {
+              setCreateDebtName(value)
+              setCreateDebtError(null)
+            }}
+            error={createDebtError ?? undefined}
+          />
+
+          <div>
+            <p style={{
+              margin: '0 0 var(--space-xs)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.text2,
+              letterSpacing: '0.2px',
+            }}>
+              Who owes the money?
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+              {([
+                { value: 'owed_by_me', label: 'I owe someone' },
+                { value: 'owed_to_me', label: 'Someone owes me' },
+              ] as const).map((option) => (
+                <SingleSelectChip
+                  key={option.value}
+                  label={option.label}
+                  selected={createDebtDirection === option.value}
+                  fill
+                  onClick={() => {
+                    setCreateDebtDirection(option.value)
+                    setCreateDebtError(null)
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div style={{
+            padding: 'var(--space-md)',
+            borderRadius: 'var(--radius-md)',
+            border: `1px solid ${T.borderSubtle}`,
+            background: T.pageBg,
+          }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+              This amount starts the debt
+            </p>
+            <p style={{ margin: 'var(--space-2xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+              {fmt(entry.amount, currency)} · {entry.date ? formatDate(entry.date) : 'Date unavailable'}
+            </p>
+          </div>
+
+          {createDebtError ? (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--red-dark)', lineHeight: 1.45 }}>
+              {createDebtError}
+            </p>
+          ) : null}
+
+          <PrimaryBtn
+            size="lg"
+            onClick={handleCreateTrackedDebt}
+            disabled={savingCreateDebt}
+          >
+            {savingCreateDebt ? 'Creating…' : 'Create debt'}
+          </PrimaryBtn>
+          <TertiaryBtn size="lg" onClick={() => setActiveFlow(null)} disabled={savingCreateDebt}>
+            Cancel
+          </TertiaryBtn>
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={activeFlow === 'linkDebt'}
+        onClose={() => setActiveFlow(null)}
+        title="Connect to a debt"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <div>
+            <p style={{
+              margin: '0 0 var(--space-xs)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.text2,
+              letterSpacing: '0.2px',
+            }}>
+              Choose debt
+            </p>
+            {loadingActiveDebts ? (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3 }}>
+                Loading debts…
+              </p>
+            ) : activeDebts.length > 0 ? (
+              <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                {activeDebts.map((debt) => {
+                  const selected = selectedDebtId === debt.id
+                  return (
+                    <button
+                      key={debt.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDebtId(debt.id)
+                        setLinkDebtError(null)
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: 'var(--space-sm) var(--space-md)',
+                        borderRadius: 'var(--radius-md)',
+                        border: selected ? '1px solid transparent' : `1px solid ${T.border}`,
+                        background: selected ? 'var(--brand-light)' : T.white,
+                        color: selected ? 'var(--brand-dark)' : T.text1,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)' }}>
+                        {debt.name}
+                      </div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: selected ? 'var(--brand-dark)' : T.text3, marginTop: 2 }}>
+                        {debt.direction === 'owed_by_me' ? 'You owe' : 'Owed to you'} · {fmt(debt.currentBalance, debt.currency)}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+                No active debts found. Create a tracked debt from this entry instead.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p style={{
+              margin: '0 0 var(--space-xs)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.text2,
+              letterSpacing: '0.2px',
+            }}>
+              What did this entry do?
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+              {([
+                { value: 'balance', label: 'Increased debt' },
+                { value: 'payment', label: 'Reduced debt' },
+              ] as const).map((option) => (
+                <SingleSelectChip
+                  key={option.value}
+                  label={option.label}
+                  selected={linkDebtRole === option.value}
+                  fill
+                  onClick={() => {
+                    setLinkDebtRole(option.value)
+                    setLinkDebtError(null)
+                  }}
+                />
+              ))}
+            </div>
+            <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+              Choose increased debt if this entry added money owed. Choose reduced debt if it was a payment.
+            </p>
+          </div>
+
+          <div style={{
+            padding: 'var(--space-md)',
+            borderRadius: 'var(--radius-md)',
+            border: `1px solid ${T.borderSubtle}`,
+            background: T.pageBg,
+          }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+              This entry
+            </p>
+            <p style={{ margin: 'var(--space-2xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+              {entry.name} · {fmt(entry.amount, currency)}
+            </p>
+          </div>
+
+          {linkDebtError ? (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--red-dark)', lineHeight: 1.45 }}>
+              {linkDebtError}
+            </p>
+          ) : null}
+
+          <PrimaryBtn
+            size="lg"
+            onClick={handleLinkDebt}
+            disabled={savingLinkDebt || loadingActiveDebts || activeDebts.length === 0}
+          >
+            {savingLinkDebt ? 'Connecting…' : 'Connect entry'}
+          </PrimaryBtn>
+          <TertiaryBtn size="lg" onClick={() => setActiveFlow(null)} disabled={savingLinkDebt}>
+            Cancel
+          </TertiaryBtn>
+        </div>
+      </Sheet>
+
+      <Sheet
         open={activeFlow === 'track'}
         onClose={() => setActiveFlow(null)}
         title="Monthly reminder"
@@ -862,7 +1267,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                   {([
                     { value: 'everyday', label: 'Spending' },
                     { value: 'fixed', label: 'Fixed' },
-                    { value: 'debt', label: 'Debt' },
+                    ...(isDebtEntry ? [{ value: 'debt', label: 'Debt' } as const] : []),
                   ] as const).map((option) => {
                     const selected = editCategoryType === option.value
                     return (

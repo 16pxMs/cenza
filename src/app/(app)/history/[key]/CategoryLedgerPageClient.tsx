@@ -191,6 +191,68 @@ export default function CategoryLedgerPageClient({
   const spendCount = data.txns.filter(txn => txn.amount > 0).length
   const pad = isDesktop ? '0 32px' : '0 16px'
   const normalizedCategoryLabel = categoryLabel.trim().toLowerCase()
+  const isTopLevelOutflowBucket =
+    (categoryType === 'fixed' && categoryKey === 'fixed') ||
+    (categoryType === 'everyday' && categoryKey === 'everyday') ||
+    (categoryType === 'goal' && categoryKey === 'goal') ||
+    (categoryType === 'debt' && (categoryKey === 'debt' || categoryKey === 'debt-entries'))
+  const drilldownCopy = (() => {
+    const entryWord = spendCount === 1 ? 'entry' : 'entries'
+
+    if (!isTopLevelOutflowBucket) {
+      return {
+        subtitle: null,
+        totalLabel: 'Spent',
+        summary: overBudget
+          ? `${fmt(data.totalSpent - planned, data.currency)} over budget`
+          : planned > 0 && pct === 100
+            ? `Exactly on budget · ${spendCount} ${entryWord}`
+            : planned > 0
+              ? `${fmt(planned - data.totalSpent, data.currency)} remaining · ${spendCount} ${entryWord}`
+              : `${spendCount} ${entryWord}`,
+        emptyTitle: 'Nothing logged here yet.',
+        emptyBody: null,
+      }
+    }
+
+    if (categoryType === 'debt') {
+      return {
+        subtitle: 'Debt outflow this cycle',
+        totalLabel: 'Outflow',
+        summary: `${spendCount} debt-related ${entryWord} in this cycle. Debt balances are tracked in Debts.`,
+        emptyTitle: 'No debt outflow this cycle.',
+        emptyBody: 'Debt balances are tracked in Debts. This page only shows debt entries from the selected cycle.',
+      }
+    }
+
+    if (categoryType === 'fixed') {
+      return {
+        subtitle: 'Outflow this cycle',
+        totalLabel: 'Outflow',
+        summary: `${spendCount} ${entryWord} in Fixed this cycle. Includes fixed costs, subscriptions, and older Essentials entries.`,
+        emptyTitle: 'No Fixed outflow this cycle.',
+        emptyBody: 'Fixed includes fixed costs, subscriptions, and older Essentials entries.',
+      }
+    }
+
+    if (categoryType === 'goal') {
+      return {
+        subtitle: 'Outflow this cycle',
+        totalLabel: 'Outflow',
+        summary: `${spendCount} goal ${entryWord} in this cycle.`,
+        emptyTitle: 'No Goals outflow this cycle.',
+        emptyBody: 'Goal contributions in the selected cycle will appear here.',
+      }
+    }
+
+    return {
+      subtitle: 'Outflow this cycle',
+      totalLabel: 'Outflow',
+      summary: `${spendCount} spending ${entryWord} in this cycle. Includes everyday and uncategorized outflow.`,
+      emptyTitle: 'No Spending outflow this cycle.',
+      emptyBody: 'Everyday and uncategorized outflow in the selected cycle will appear here.',
+    }
+  })()
 
   const openEntryMenu = (txn: LedgerTransaction) => {
     setActiveEntry(txn)
@@ -238,6 +300,11 @@ export default function CategoryLedgerPageClient({
         <h1 style={{ margin: 0, fontSize: isDesktop ? 'var(--text-2xl)' : 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', lineHeight: 1.08, letterSpacing: '-0.035em', color: T.text1 }}>
           {categoryLabel}
         </h1>
+        {drilldownCopy.subtitle && (
+          <p style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+            {drilldownCopy.subtitle}
+          </p>
+        )}
       </div>
 
       <div style={{ padding: pad, marginBottom: 28 }}>
@@ -251,7 +318,7 @@ export default function CategoryLedgerPageClient({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
               <div>
                 <p style={{ margin: '0 0 6px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                  Spent
+                  {drilldownCopy.totalLabel}
                 </p>
                 <p style={{ margin: 0, fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-bold)', color: overBudget ? T.red : T.text1, lineHeight: 1, letterSpacing: '-0.04em' }}>
                   {fmt(data.totalSpent, data.currency)}
@@ -291,13 +358,7 @@ export default function CategoryLedgerPageClient({
               }}
             >
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
-                {overBudget
-                  ? `${fmt(data.totalSpent - planned, data.currency)} over budget`
-                  : planned > 0 && pct === 100
-                    ? `Exactly on budget · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
-                    : planned > 0
-                      ? `${fmt(planned - data.totalSpent, data.currency)} remaining · ${spendCount} ${spendCount === 1 ? 'entry' : 'entries'}`
-                      : `${spendCount} entries`}
+                {drilldownCopy.summary}
               </p>
 
             </div>
@@ -314,9 +375,14 @@ export default function CategoryLedgerPageClient({
             border: '1px solid var(--border)',
             borderRadius: 16,
           }}>
-            <div style={{ fontSize: 'var(--text-sm)', color: T.textMuted }}>
-              Nothing logged here yet.
+            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, marginBottom: drilldownCopy.emptyBody ? 6 : 0 }}>
+              {drilldownCopy.emptyTitle}
             </div>
+            {drilldownCopy.emptyBody && (
+              <div style={{ fontSize: 'var(--text-sm)', color: T.textMuted, lineHeight: 1.45 }}>
+                {drilldownCopy.emptyBody}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>

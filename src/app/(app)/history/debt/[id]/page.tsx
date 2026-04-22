@@ -8,13 +8,26 @@ import { deleteDebt, getDebt, getDebtTransactions, type Debt, type DebtTransacti
 import { IconBack } from '@/components/ui/Icons'
 import { AddOpeningBalanceSheet } from './AddOpeningBalanceSheet'
 import { AddRepaymentSheet } from './AddRepaymentSheet'
-import { DebtTransactionDeleteButton } from './DebtTransactionDeleteButton'
-import { EditDebtTransactionSheet } from './EditDebtTransactionSheet'
+import { DebtOptionsMenu } from './DebtOptionsMenu'
+import { DebtTransactionList } from './DebtTransactionList'
 import { EditStandardDebtDueDateSheet } from './EditStandardDebtDueDateSheet'
 
 interface PageProps {
   params: Promise<{ id: string }>
   searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+function firstSearchParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
+}
+
+function resolveDebtBackHref(value: string | string[] | undefined) {
+  const candidate = firstSearchParam(value)?.trim()
+  if (!candidate) return '/history/debt'
+  if (!candidate.startsWith('/') || candidate.startsWith('//')) return '/history/debt'
+  if (candidate.includes('\\')) return '/history/debt'
+  return candidate
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -56,10 +69,20 @@ function formatDebtStatus(status: Debt['status']) {
   }
 }
 
+function formatDebtSummaryLine(direction: Debt['direction'], status: Debt['status']) {
+  if (status === 'cleared') {
+    return direction === 'owed_by_me' ? 'You paid this off' : 'Paid back to you'
+  }
+  if (status === 'cancelled') {
+    return 'Cancelled'
+  }
+  return direction === 'owed_by_me' ? 'You owe this' : 'Owed to you'
+}
+
 function formatDebtTransactionLabel(entryType: DebtTransaction['entry_type']) {
   switch (entryType) {
     case 'principal_increase':
-      return 'Initial amount'
+      return 'Starting balance'
     case 'payment_in':
       return 'Payment received'
     case 'payment_out':
@@ -145,6 +168,7 @@ function toDisplayDebt(debt: Debt, fallbackId: string) {
     name: debt.name.trim() || fallbackId,
     direction: formatDebtDirection(debt.direction),
     status: formatDebtStatus(debt.status),
+    summaryLine: formatDebtSummaryLine(debt.direction, debt.status),
     balance: debt.current_balance,
     currency: debt.currency.trim() || 'KES',
     debtKind: debt.debt_kind,
@@ -183,7 +207,8 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
 
   const { id } = await params
   const resolvedSearchParams = searchParams ? await searchParams : {}
-  const shouldOpenAddPayment = resolvedSearchParams.action === 'add-payment'
+  const shouldOpenAddPayment = firstSearchParam(resolvedSearchParams.action) === 'add-payment'
+  const backHref = resolveDebtBackHref(resolvedSearchParams.returnTo)
   const [debt, transactions] = await Promise.all([
     getDebt(id),
     getDebtTransactions(id),
@@ -202,6 +227,7 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
   const detail = toDisplayDebt(debt, id)
   const items = transactions.map((txn, index) => toDisplayTransaction(txn, index, detail.currency))
   const hasTransactions = items.length > 0
+  const canAddPayment = hasTransactions && debt.status === 'active' && detail.balance > 0
 
   return (
     <main style={{
@@ -211,8 +237,8 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
     }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <Link
-          href="/history/debt"
-          aria-label="Back to debts"
+          href={backHref}
+          aria-label="Back"
           style={{
             width: 44,
             height: 44,
@@ -233,16 +259,30 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
           borderRadius: 'var(--radius-lg)',
           padding: 'var(--space-lg)',
         }}>
-          <h1 style={{
-            margin: 0,
-            fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--weight-medium)',
-            color: 'var(--text-1)',
-            lineHeight: 1.15,
-            letterSpacing: '-0.02em',
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 'var(--space-md)',
           }}>
-            {detail.name}
-          </h1>
+            <h1 style={{
+              margin: 0,
+              fontSize: 'var(--text-xl)',
+              fontWeight: 'var(--weight-medium)',
+              color: 'var(--text-1)',
+              lineHeight: 1.15,
+              letterSpacing: '-0.02em',
+              minWidth: 0,
+            }}>
+              {detail.name}
+            </h1>
+            <DebtOptionsMenu
+              debtId={detail.id}
+              debtName={detail.name}
+              debtKind={detail.debtKind}
+              currentDueDate={detail.standardDueDate}
+            />
+          </div>
 
           <div style={{
             display: 'flex',
@@ -251,6 +291,16 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
             marginTop: 'calc(var(--space-sm) + var(--space-xs))',
           }}>
             <div>
+              <p style={{
+                margin: '0 0 var(--space-xs)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.07em',
+                fontWeight: 'var(--weight-semibold)',
+              }}>
+                Remaining balance
+              </p>
               <p style={{
                 margin: 0,
                 fontSize: 'var(--text-2xl)',
@@ -263,52 +313,54 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                 {fmt(detail.balance, detail.currency)}
               </p>
               <p style={{
-                margin: 'var(--space-2xs) 0 0',
+                margin: 'var(--space-xs) 0 0',
                 fontSize: 'var(--text-sm)',
                 color: 'var(--text-3)',
+                lineHeight: 1.4,
               }}>
-                {detail.direction} · {detail.status}
+                {detail.summaryLine}
               </p>
             </div>
 
-            <div style={{ marginTop: 'calc(var(--space-md) + var(--space-xs))' }}>
-              {hasTransactions ? (
-                <AddRepaymentSheet
-                  debtId={detail.id}
-                  debtName={detail.name}
-                  currency={detail.currency}
-                  currentBalance={detail.balance}
-                  emphasized={detail.isOverdue}
-                  initialOpen={shouldOpenAddPayment}
-                />
-              ) : (
-                <AddOpeningBalanceSheet
-                  debtId={detail.id}
-                  debtName={detail.name}
-                  currency={detail.currency}
-                />
-              )}
-            </div>
+            {canAddPayment || !hasTransactions ? (
+              <div style={{ marginTop: 'var(--space-sm)' }}>
+                {canAddPayment ? (
+                  <AddRepaymentSheet
+                    debtId={detail.id}
+                    debtName={detail.name}
+                    currency={detail.currency}
+                    currentBalance={detail.balance}
+                    emphasized={detail.isOverdue}
+                    initialOpen={shouldOpenAddPayment}
+                  />
+                ) : (
+                  <AddOpeningBalanceSheet
+                    debtId={detail.id}
+                    debtName={detail.name}
+                    currency={detail.currency}
+                  />
+                )}
+              </div>
+            ) : null}
 
             {detail.debtKind === 'standard' ? (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 'var(--space-md)',
-                flexWrap: 'wrap',
-                padding: '14px 16px',
-                borderRadius: 'var(--radius-md)',
-                border: `1px solid ${detail.standardDueDateState === 'overdue' ? '#F1B5AF' : 'var(--border)'}`,
-                background: detail.standardDueDateState === 'overdue' ? '#FFF4F2' : 'var(--grey-50)',
+                gap: 'var(--space-sm)',
+                paddingTop: 'var(--space-md)',
+                marginTop: 'var(--space-xs)',
+                borderTop: 'var(--border-width) solid var(--border-subtle)',
               }}>
                 <div style={{ minWidth: 0 }}>
                   <p style={{
-                    margin: '0 0 4px',
+                    margin: '0 0 var(--space-2xs)',
                     fontSize: 'var(--text-xs)',
                     color: 'var(--text-muted)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.07em',
+                    fontWeight: 'var(--weight-semibold)',
                   }}>
                     Due date
                   </p>
@@ -317,9 +369,9 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                       margin: 0,
                       fontSize: 'var(--text-base)',
                       fontWeight: 'var(--weight-medium)',
-                      color: 'var(--text-1)',
+                      color: detail.standardDueDate ? 'var(--text-1)' : 'var(--text-3)',
                     }}>
-                      {detail.standardDueDate ? formatDate(detail.standardDueDate) : 'No due date set'}
+                      {detail.standardDueDate ? formatDate(detail.standardDueDate) : 'None set'}
                     </p>
                     {detail.standardDueDateState === 'overdue' ? (
                       <span style={{
@@ -337,19 +389,12 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                       </span>
                     ) : null}
                   </div>
-                  <p style={{
-                    margin: '6px 0 0',
-                    fontSize: 'var(--text-sm)',
-                    color: 'var(--text-3)',
-                    lineHeight: 1.45,
-                  }}>
-                    Shows on your reminders.
-                  </p>
                 </div>
                 <EditStandardDebtDueDateSheet
                   debtId={detail.id}
                   debtName={detail.name}
                   currentDueDate={detail.standardDueDate}
+                  compact
                 />
               </div>
             ) : null}
@@ -529,82 +574,15 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
               </p>
             </div>
           ) : (
-            <div style={{
-              background: 'var(--white)',
-              border: 'var(--border-width) solid var(--border)',
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-            }}>
-              {items.map((item, index) => {
-                const isLockedFinancingPrincipal =
-                  detail.debtKind === 'financing' &&
-                  detail.financingPrincipalTxId != null &&
-                  item.id === detail.financingPrincipalTxId
-
-                return (
-                  <div
-                    key={item.id}
-                    style={{
-                      padding: '12px var(--space-md)',
-                      borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 'var(--space-md)',
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{
-                        margin: 0,
-                        fontSize: 'var(--text-base)',
-                        color: 'var(--text-1)',
-                        fontWeight: 'var(--weight-regular)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {item.primary}
-                      </p>
-                      <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
-                        {item.date ? formatDate(item.date) : 'Date unavailable'}
-                      </p>
-                    </div>
-                    <div style={{
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-sm)',
-                    }}>
-                      <span style={{
-                        fontSize: 'var(--text-base)',
-                        fontWeight: 'var(--weight-medium)',
-                        color: 'var(--text-1)',
-                        whiteSpace: 'nowrap',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}>
-                        {fmt(item.amount, item.currency)}
-                      </span>
-                      {!isLockedFinancingPrincipal && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <EditDebtTransactionSheet
-                            debtId={detail.id}
-                            transactionId={item.id}
-                            amount={item.amount}
-                            date={item.date}
-                            note={item.note}
-                          />
-                          <DebtTransactionDeleteButton
-                            debtId={detail.id}
-                            transactionId={item.id}
-                            deletesEntireDebt={items.length === 1}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <DebtTransactionList
+              debtId={detail.id}
+              items={items}
+              lockedTransactionId={
+                detail.debtKind === 'financing'
+                  ? detail.financingPrincipalTxId
+                  : null
+              }
+            />
           )}
         </section>
       </div>

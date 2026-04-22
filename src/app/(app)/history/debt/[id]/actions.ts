@@ -182,6 +182,10 @@ interface DeleteDebtTransactionResult {
   redirectTo: string | null
 }
 
+interface DeleteDebtResult {
+  redirectTo: string
+}
+
 export async function deleteDebtTransactionForDebt(
   input: DeleteDebtTransactionInput
 ): Promise<DeleteDebtTransactionResult> {
@@ -234,6 +238,32 @@ export async function deleteDebtTransactionForDebt(
   return {
     deletedDebt,
     redirectTo: deletedDebt ? '/history/debt' : null,
+  }
+}
+
+export async function deleteDebtForDebtDetail(debtIdInput: string): Promise<DeleteDebtResult> {
+  const { user } = await getAppSession()
+  if (!user) throw new Error('Not authenticated')
+
+  const debtId = debtIdInput.trim()
+  if (!debtId) throw new Error('Debt id is required')
+
+  const transactions = await getDebtTransactions(debtId)
+  for (const transaction of transactions) {
+    if (transaction.linked_transaction_id && isMirrorableDebtEntryType(transaction.entry_type)) {
+      await deleteDebtMirrorTransaction(transaction.linked_transaction_id, user.id)
+    }
+  }
+
+  await deleteDebt(debtId, user.id)
+
+  revalidatePath('/history/debt')
+  revalidatePath('/history')
+  revalidatePath('/app')
+  revalidatePath('/log')
+
+  return {
+    redirectTo: '/history/debt',
   }
 }
 

@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { formatCycleLabel, getCurrentCycle, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
+import { normalizeOutflowCategoryType, type OutflowCategoryType } from '@/lib/transactions/outflow'
 import type { CategoryType, UserProfile } from '@/types/database'
 
 export interface LedgerTransaction {
@@ -17,6 +18,17 @@ export interface HistoryLedgerPageData {
   currency: string
   txns: LedgerTransaction[]
   totalSpent: number
+}
+
+function resolveOutflowBucketType(
+  categoryKey: string,
+  categoryType?: CategoryType,
+): OutflowCategoryType | null {
+  if (categoryType === 'fixed' && categoryKey === 'fixed') return 'fixed'
+  if (categoryType === 'everyday' && categoryKey === 'everyday') return 'everyday'
+  if (categoryType === 'goal' && categoryKey === 'goal') return 'goal'
+  if (categoryType === 'debt' && (categoryKey === 'debt' || categoryKey === 'debt-entries')) return 'debt'
+  return null
 }
 
 export async function loadHistoryLedgerPageData(
@@ -39,14 +51,16 @@ export async function loadHistoryLedgerPageData(
     .eq('cycle_id', cycleId)
 
   let scopedQuery = baseQuery
+  const outflowBucketType =
+    scope === 'key'
+      ? resolveOutflowBucketType(categoryKey, categoryType)
+      : null
 
   if (scope === 'label' && categoryLabel) {
     scopedQuery = scopedQuery
       .eq('category_type', categoryType ?? 'everyday')
       .eq('category_label', categoryLabel)
-  } else if (categoryType === 'debt' && categoryKey === 'debt') {
-    scopedQuery = scopedQuery.eq('category_type', 'debt')
-  } else {
+  } else if (!outflowBucketType) {
     scopedQuery = scopedQuery.eq('category_key', categoryKey)
   }
 
@@ -54,7 +68,11 @@ export async function loadHistoryLedgerPageData(
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
-  const txns: LedgerTransaction[] = (data ?? []).map((row: any) => ({
+  const filteredRows = outflowBucketType
+    ? (data ?? []).filter((row: any) => normalizeOutflowCategoryType(row.category_type) === outflowBucketType)
+    : (data ?? [])
+
+  const txns: LedgerTransaction[] = filteredRows.map((row: any) => ({
     id: row.id,
     date: row.date,
     note: row.note ?? null,

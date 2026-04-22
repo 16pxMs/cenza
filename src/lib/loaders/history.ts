@@ -9,8 +9,12 @@ import {
 } from '@/lib/cycles'
 import {
   loadMonthlyStorageCycleIdsForUser,
-  loadPlannedMonthlyTotalForCycle,
 } from '@/lib/monthly-reminders/storage'
+import {
+  deriveOutflowCategoryRows,
+  deriveOutflowTotalFromCategories,
+  type OutflowCategoryRow,
+} from '@/lib/transactions/outflow'
 import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
@@ -23,29 +27,14 @@ export interface HistoryTransaction {
   note: string | null
 }
 
-export interface HistoryCategoryRow {
-  key: string
-  label: string
-  type: 'fixed' | 'goal' | 'everyday' | 'debt' | 'subscription'
-  planned: number
-  spent: number
-  transactions: HistoryTransaction[]
-}
-
-export interface HistoryBreakdownItem {
-  label: 'Fixed' | 'Goals' | 'Daily' | 'Debts'
-  amount: number
-  accent: boolean
-}
+export type HistoryCategoryRow = OutflowCategoryRow
 
 export interface HistoryPageData {
   cycleLabel: string
   currency: string
   rows: HistoryCategoryRow[]
-  totalBudget: number
   totalSpent: number
   totalIncome: number
-  breakdown: HistoryBreakdownItem[]
   availableCycleIds: string[]
 }
 
@@ -57,40 +46,6 @@ interface HistoryIncomeRow {
   opening_balance?: number | string | null
 }
 
-function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
-  const byType: Record<HistoryCategoryRow['type'], HistoryTransaction[]> = {
-    fixed: [],
-    debt: [],
-    everyday: [],
-    goal: [],
-    subscription: [],
-  }
-
-  for (const txn of txns) {
-    const normalizedType = txn.category_type === 'essentials' ? 'fixed' : txn.category_type
-    const type = (normalizedType as HistoryCategoryRow['type']) in byType
-      ? normalizedType as HistoryCategoryRow['type']
-      : 'everyday'
-    byType[type].push(txn)
-  }
-
-  return Object.entries(byType)
-    .filter(([, transactions]) => transactions.length > 0)
-    .map(([type, transactions]) => ({
-      key: type,
-      type: type as HistoryCategoryRow['type'],
-      label:
-        type === 'fixed' ? 'Fixed spending' :
-        type === 'debt' ? 'Debt' :
-        type === 'goal' ? 'Goals' :
-        type === 'subscription' ? 'Subscriptions' :
-        'Daily',
-      planned: 0,
-      spent: transactions.reduce((sum, txn) => sum + txn.amount, 0),
-      transactions,
-    }))
-}
-
 export async function loadHistoryPageData(userId: string, profile: UserProfile, targetDate?: Date): Promise<HistoryPageData> {
   const supabase = await createServerSupabaseClient()
   const cycleId = targetDate
@@ -99,8 +54,6 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
 
   const [
     { data: txnRows },
-    fixedMonthly,
-    { data: budgets },
     { data: income },
     { data: txnCycles },
     { data: incomeCycles },
@@ -113,12 +66,6 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .eq('cycle_id', cycleId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false }),
-    loadPlannedMonthlyTotalForCycle(supabase, userId, cycleId),
-    (supabase.from('spending_budgets') as any)
-      .select('total_budget, categories')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
     (supabase.from('income_entries') as any)
       .select('salary, extra_income, total, cycle_start_mode, opening_balance')
       .eq('user_id', userId)
@@ -140,22 +87,9 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     ...row,
     amount: Number(row.amount),
   }))
-  const categoryRows = toRows(rows)
+  const categoryRows = deriveOutflowCategoryRows(rows)
 
-  const totalSpent = rows
-    .filter(txn => txn.category_type !== 'goal')
-    .reduce((sum, txn) => sum + txn.amount, 0)
-
-  const fixedSpent = categoryRows.filter(row => row.type === 'fixed').reduce((sum, row) => sum + row.spent, 0)
-  const goalsSpent = categoryRows.filter(row => row.type === 'goal').reduce((sum, row) => sum + row.spent, 0)
-  const dailySpent = categoryRows.filter(row => row.type === 'everyday').reduce((sum, row) => sum + row.spent, 0)
-  const debtSpent = categoryRows.filter(row => row.type === 'debt').reduce((sum, row) => sum + row.spent, 0)
-  const breakdown = ([
-    { label: 'Fixed', amount: fixedSpent, accent: false },
-    { label: 'Goals', amount: goalsSpent, accent: false },
-    { label: 'Daily', amount: dailySpent, accent: false },
-    { label: 'Debts', amount: debtSpent, accent: debtSpent > 0 },
-  ] as HistoryBreakdownItem[]).filter(item => item.amount > 0)
+  const totalSpent = deriveOutflowTotalFromCategories(categoryRows)
 
   const availableCycleIds = Array.from(new Set(
     [
@@ -175,10 +109,8 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
     cycleLabel: formatCycleLabel(cycle),
     currency: profile.currency ?? 'KES',
     rows: categoryRows,
-    totalBudget: fixedMonthly + Number(budgets?.total_budget ?? 0),
     totalSpent,
     totalIncome: deriveIncomeTotal((income ?? null) as HistoryIncomeRow | null),
-    breakdown,
     availableCycleIds,
   }
 }

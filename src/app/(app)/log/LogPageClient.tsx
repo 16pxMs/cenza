@@ -115,8 +115,8 @@ export default function LogPageClient({ data }: LogPageClientProps) {
     const savedAt = formatSavedAt(entry.createdAt)
     const entryHref = entry.categoryType === 'debt'
       ? entry.debtId
-        ? `/history/debt/${entry.debtId}`
-        : '/history/debt'
+        ? `/history/debt/${entry.debtId}?returnTo=${encodeURIComponent('/log')}`
+        : `/log/${entry.id}`
       : `/log/${entry.id}`
 
     return (
