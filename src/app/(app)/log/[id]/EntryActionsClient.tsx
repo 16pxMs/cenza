@@ -27,7 +27,8 @@ import {
 
 const CATEGORY_LABEL: Record<string, string> = {
   everyday: 'Spending',
-  fixed: 'Essentials',
+  essentials: 'Fixed',
+  fixed: 'Fixed',
   debt: 'Debt',
   goal: 'Goal',
 }
@@ -41,7 +42,13 @@ const CATEGORY_HELPER: Record<EditableCategory, string> = {
 type EditableCategory = 'everyday' | 'fixed' | 'debt'
 
 function isEditableCategory(value: string | null | undefined): value is EditableCategory {
-  return value === 'everyday' || value === 'fixed' || value === 'debt'
+  return value === 'everyday' || value === 'fixed' || value === 'essentials' || value === 'debt'
+}
+
+function toEditableCategory(value: string | null | undefined): EditableCategory {
+  if (value === 'essentials' || value === 'fixed') return 'fixed'
+  if (value === 'debt') return 'debt'
+  return 'everyday'
 }
 
 const T = {
@@ -111,7 +118,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     setEditDate(entry.date)
     setEditNote(entry.note ?? '')
     setEditLabel(entry.name)
-    setEditCategoryType(isEditableCategory(entry.categoryType) ? entry.categoryType : 'everyday')
+    setEditCategoryType(isEditableCategory(entry.categoryType) ? toEditableCategory(entry.categoryType) : 'everyday')
     setEditErrors({})
     setEditDialog(null)
     setActiveFlow('edit')
@@ -324,7 +331,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
   }
 
   const handleToggleEssentialTracking = async () => {
-    if (entry.categoryType !== 'fixed') return
+    if (entry.categoryType !== 'everyday' && entry.categoryType !== 'fixed') return
 
     setTrackingEssential(true)
     try {
@@ -335,6 +342,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
         toast('Removed from recurring')
       } else {
         await trackEssential({
+          categoryType: entry.categoryType as 'everyday' | 'fixed',
           categoryKey: entry.categoryKey,
           categoryLabel: entry.name,
           amount: parseFloat(trackMonthlyAmount),
@@ -597,7 +605,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
           </div>
         )}
 
-        {!isDebtEntry && !isGoalEntry && entry.categoryType === 'fixed' && (
+        {!isDebtEntry && !isGoalEntry && (entry.categoryType === 'everyday' || entry.categoryType === 'fixed') && (
           <div style={{
             background: T.white,
             border: `1px solid ${T.border}`,
@@ -629,8 +637,8 @@ export function EntryActionsClient({ entry, currency }: Props) {
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
                 {entry.trackedEssential
-                  ? 'You won’t get reminders for this'
-                  : 'We’ll remind you before it’s due'}
+                  ? 'This will no longer be monthly'
+                  : 'Track this as monthly'}
               </div>
             </button>
           </div>
@@ -708,7 +716,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             error={trackError ?? undefined}
           />
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-            We’ll remind you before it’s due.
+            This will be tracked as monthly.
           </p>
           <PrimaryBtn
             size="lg"
@@ -853,7 +861,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                 <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
                   {([
                     { value: 'everyday', label: 'Spending' },
-                    { value: 'fixed', label: 'Essentials' },
+                    { value: 'fixed', label: 'Fixed' },
                     { value: 'debt', label: 'Debt' },
                   ] as const).map((option) => {
                     const selected = editCategoryType === option.value

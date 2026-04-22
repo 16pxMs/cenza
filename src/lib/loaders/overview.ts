@@ -4,7 +4,6 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import {
-  deriveTrackedFixedExpenseDueState,
   readTrackedFixedExpenseEntries,
   type TrackedFixedExpenseEntry,
 } from '@/lib/fixed-bills/tracking'
@@ -102,7 +101,7 @@ export interface DebtReminderCandidate {
 }
 
 export type ObligationStatus = 'overdue' | 'today' | 'soon' | 'upcoming'
-export type ObligationSource = 'debt' | 'subscription' | 'recurring_bill'
+export type ObligationSource = 'debt' | 'subscription'
 
 export type OverviewObligation = {
   id: string
@@ -252,25 +251,6 @@ function deriveOverviewObligations(input: {
     }]
   })
 
-  const recurringBillObligations = input.trackedFixedExpenses.flatMap((entry) => {
-    const dueState = deriveTrackedFixedExpenseDueState(entry, input.cycleTransactions, today)
-    if (!dueState) return []
-    if (dueState.isSettledForCurrentPeriod) return []
-    if (dueState.amountDue <= 0) return []
-
-    return [{
-      id: entry.key,
-      source: 'recurring_bill' as const,
-      name: entry.label.trim() || titleFromKey(entry.key),
-      amount: dueState.amountDue,
-      currency: input.currency,
-      dueDate: dueState.dueDate,
-      daysUntilDue: dueState.daysUntilDue,
-      status: dueState.status,
-      actionHref: '/income/fixed',
-    }]
-  })
-
   const statusRank: Record<ObligationStatus, number> = {
     overdue: 0,
     today: 1,
@@ -278,16 +258,7 @@ function deriveOverviewObligations(input: {
     upcoming: 3,
   }
 
-  const priorityRank = (obligation: OverviewObligation) => {
-    if (obligation.source !== 'recurring_bill') return 0
-    const recurring = input.trackedFixedExpenses.find((entry) => entry.key === obligation.id)
-    return recurring?.priority === 'flex' ? 1 : 0
-  }
-
-  return [...debtObligations, ...recurringBillObligations].sort((a, b) => {
-    const byPriority = priorityRank(a) - priorityRank(b)
-    if (byPriority !== 0) return byPriority
-
+  return debtObligations.sort((a, b) => {
     const byStatus = statusRank[a.status] - statusRank[b.status]
     if (byStatus !== 0) return byStatus
 

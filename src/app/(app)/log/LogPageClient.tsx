@@ -12,7 +12,8 @@ import type { LogEntry, LogPageData } from '@/lib/loaders/log'
 
 const CATEGORY_LABEL: Record<string, string> = {
   everyday: 'Spending',
-  fixed: 'Essentials',
+  essentials: 'Fixed',
+  fixed: 'Fixed',
   debt: 'Debt',
 }
 
@@ -48,7 +49,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const totalEntries = entries.length
   const visibleEntries = filter === 'all'
     ? entries
-    : entries.filter(entry => entry.categoryType === filter)
+    : entries.filter(entry => entry.categoryType === filter || (filter === 'fixed' && entry.categoryType === 'essentials'))
 
   const filterEmptyMessage: Record<typeof filter, string> = {
     all: 'No expenses logged yet for this cycle.',

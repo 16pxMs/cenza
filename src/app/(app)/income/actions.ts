@@ -7,7 +7,6 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { FixedEntry } from '@/components/flows/plan/EditFixedExpensesSheet'
 import type { BudgetCategory } from '@/components/flows/plan/EditSpendingBudgetSheet'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
-import { readTrackedFixedExpenseEntries } from '@/lib/fixed-bills/tracking'
 
 interface SaveIncomeInput {
   income: number
@@ -133,33 +132,12 @@ export async function saveFixedExpenses(entries: FixedEntry[]): Promise<void> {
 
   const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const { data: existingFixedExpenses, error: fixedExpensesReadError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', user.id)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesReadError) {
-    throw new Error(`Failed to load fixed expenses: ${fixedExpensesReadError.message}`)
-  }
-
-  const existingByKey = new Map(
-    readTrackedFixedExpenseEntries(existingFixedExpenses?.entries ?? null).map((entry) => [entry.key, entry])
-  )
-
   // Canonicalize keys so "Home WiFi", "Fibre", "KPLC", etc. collapse into
   // known canonical keys (internet, electricity, ...). Labels stay as-is.
   const canonicalEntries: FixedEntry[] = entries.map((entry) => ({
     ...entry,
     key: canonicalizeFixedBillKey(entry.key),
-    due_day:
-      entry.due_day ??
-      existingByKey.get(canonicalizeFixedBillKey(entry.key))?.due_day ??
-      null,
-    priority:
-      entry.priority ??
-      existingByKey.get(canonicalizeFixedBillKey(entry.key))?.priority ??
-      'core',
+    priority: entry.priority ?? 'core',
   }))
   const totalMonthly = canonicalEntries.reduce((sum, entry) => sum + entry.monthly, 0)
 

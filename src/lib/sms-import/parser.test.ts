@@ -29,6 +29,7 @@ describe('sms import parser', () => {
             label: 'Rent',
             categoryType: 'fixed',
             categoryKey: 'rent',
+            usageCount: 2,
           },
         ],
       }

@@ -799,11 +799,11 @@ const reference = receivedConfirmed
           onClose={() => {
             setManageEssentialsOpen(false)
           }}
-          title="Manage essentials"
+          title="Manage fixed costs"
         >
           <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-              Recurring essentials for this month.
+              Recurring fixed costs for this month.
             </p>
             {trackedEssentials.length > 0 ? (
               <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
@@ -862,7 +862,7 @@ const reference = receivedConfirmed
               </div>
             ) : (
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-                No recurring essentials yet.
+                No recurring fixed costs yet.
               </p>
             )}
           </div>

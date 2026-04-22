@@ -5,7 +5,7 @@ import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { CategoryType } from '@/types/database'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import {
   readTrackedFixedExpenseEntries,
@@ -34,6 +34,7 @@ interface UpdateLogEntryInput {
 }
 
 interface TrackEssentialInput {
+  categoryType: CategoryType
   categoryKey: string
   categoryLabel: string
   amount: number
@@ -227,7 +228,10 @@ export async function deleteLogEntry(id: string, recurringCategoryKey?: string |
     : null
   const removalCycleId = txn.cycle_id || currentCycleId
   const explicitRecurringKey = recurringCategoryKey?.trim() || null
-  const derivedRecurringKey = canonicalizeFixedBillKey(String(txn.category_key ?? '').trim())
+  const derivedRecurringKey = recurringExpenseKey(
+    String(txn.category_type ?? '').trim(),
+    String(txn.category_key ?? '').trim()
+  )
 
   if (process.env.NODE_ENV !== 'production') {
     console.info(
@@ -318,7 +322,7 @@ export async function trackEssential(input: TrackEssentialInput): Promise<void> 
   if (fixedExpensesError) throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
 
   const nextEntries = upsertTrackedFixedExpense(fixedExpenses?.entries ?? null, {
-    key: canonicalizeFixedBillKey(input.categoryKey),
+    key: recurringExpenseKey(input.categoryType, input.categoryKey),
     label: input.categoryLabel,
     monthly: amount,
   })

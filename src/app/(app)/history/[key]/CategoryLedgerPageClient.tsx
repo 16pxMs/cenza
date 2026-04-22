@@ -37,7 +37,7 @@ const T = {
 
 const EDIT_TYPE_OPTIONS: Array<{ value: Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>; label: string; helper: string }> = [
   { value: 'everyday', label: 'Spending', helper: 'For everyday spending like food, transport, or going out' },
-  { value: 'fixed', label: 'Essentials', helper: 'For fixed costs like rent, bills, or subscriptions' },
+  { value: 'fixed', label: 'Fixed', helper: 'For fixed costs like rent, bills, or subscriptions' },
   { value: 'debt', label: 'Debt', helper: 'Money you owe and are paying back' },
 ]
 
@@ -87,7 +87,13 @@ export default function CategoryLedgerPageClient({
     setEditDate(txn.date)
     setEditNote(txn.note ?? '')
     setEditLabel(getEntryTitle(txn))
-    setEditCategoryType((txn.categoryType === 'everyday' || txn.categoryType === 'fixed' || txn.categoryType === 'debt') ? txn.categoryType : 'everyday')
+    setEditCategoryType(
+      (txn.categoryType as string) === 'essentials'
+        ? 'fixed'
+        : (txn.categoryType === 'everyday' || txn.categoryType === 'fixed' || txn.categoryType === 'debt')
+          ? txn.categoryType
+          : 'everyday'
+    )
     setEditIsSmsMeta((txn.note ?? '').trim().toLowerCase() === 'imported from sms')
     setFocusedField('label')
     setTimeout(() => labelRef.current?.focus(), 80)
@@ -177,7 +183,7 @@ export default function CategoryLedgerPageClient({
   const pct = planned > 0 ? Math.min(100, (data.totalSpent / planned) * 100) : 0
   const barColor = overBudget
     ? T.red
-    : categoryType === 'fixed'
+    : categoryType === 'fixed' || (categoryType as string) === 'essentials'
       ? 'var(--green)'
       : categoryType === 'goal'
         ? T.brandDark

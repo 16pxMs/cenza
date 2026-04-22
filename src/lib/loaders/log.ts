@@ -2,7 +2,7 @@ import { formatCycleLabel, getCycleByDate, profileToPaySchedule } from '@/lib/cy
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { readTrackedFixedExpenseEntries } from '@/lib/fixed-bills/tracking'
 
 export interface LogSubItem {
@@ -48,6 +48,10 @@ export interface LogPageData {
 
 function titleCase(value: string) {
   return value.replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function normalizeCategoryType(value: string | null | undefined) {
+  return value === 'essentials' ? 'fixed' : value
 }
 
 async function loadDebtMirrorMetadata(
@@ -127,14 +131,15 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const entries: LogEntry[] = txRows
     .filter((txn) => txn.category_type !== 'goal')
     .map((txn) => {
+      const categoryType = normalizeCategoryType(txn.category_type)
       const trackedEssentialKey =
-        txn.category_type === 'fixed'
-          ? canonicalizeFixedBillKey(txn.category_key)
+        categoryType === 'everyday' || categoryType === 'fixed'
+          ? recurringExpenseKey(categoryType, txn.category_key)
           : null
       const trackedEntry = trackedEssentialKey
         ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
         : null
-      const debtMetadata = txn.category_type === 'debt'
+      const debtMetadata = categoryType === 'debt'
         ? debtMetadataByLinkedTransactionId.get(txn.id) ?? null
         : null
 
@@ -142,7 +147,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
         id: txn.id,
         name: txn.category_label || titleCase(txn.category_key),
         categoryKey: txn.category_key,
-        categoryType: txn.category_type,
+        categoryType: categoryType ?? 'other',
         amount: Number(txn.amount),
         date: txn.date,
         note: txn.note ?? null,
@@ -191,9 +196,10 @@ export async function loadEntryById(
     trackedFixedEntries.map((entry) => [entry.key, entry] as const)
   )
 
+  const normalizedCategoryType = normalizeCategoryType(txn.category_type)
   const trackedEssentialKey =
-    txn.category_type === 'fixed'
-      ? canonicalizeFixedBillKey(txn.category_key)
+    normalizedCategoryType === 'everyday' || normalizedCategoryType === 'fixed'
+      ? recurringExpenseKey(normalizedCategoryType, txn.category_key)
       : null
   const trackedEntry = trackedEssentialKey
     ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
@@ -201,9 +207,9 @@ export async function loadEntryById(
   const debtMetadataByLinkedTransactionId = await loadDebtMirrorMetadata(
     supabase,
     userId,
-    txn.category_type === 'debt' ? [txn.id] : []
+    normalizedCategoryType === 'debt' ? [txn.id] : []
   )
-  const debtMetadata = txn.category_type === 'debt'
+  const debtMetadata = normalizedCategoryType === 'debt'
     ? debtMetadataByLinkedTransactionId.get(txn.id) ?? null
     : null
 
@@ -211,7 +217,7 @@ export async function loadEntryById(
     id: txn.id,
     name: txn.category_label || titleCase(txn.category_key),
     categoryKey: txn.category_key,
-    categoryType: txn.category_type,
+    categoryType: normalizedCategoryType ?? 'other',
     amount: Number(txn.amount),
     date: txn.date,
     note: txn.note ?? null,

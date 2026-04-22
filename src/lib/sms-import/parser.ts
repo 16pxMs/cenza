@@ -8,6 +8,7 @@ export interface ImportDictionaryEntry {
   label: string
   categoryType: ImportCategoryType
   categoryKey: string
+  usageCount?: number
 }
 
 export interface ParsedSmsExpense {
@@ -247,12 +248,15 @@ function resolveDictionary(
   const normalized = normalize(label)
   if (!normalized) return null
 
-  if (dictionary[normalized]) return dictionary[normalized]
+  if (dictionary[normalized] && (dictionary[normalized].usageCount ?? 0) >= 2) {
+    return dictionary[normalized]
+  }
 
   if (normalized.length < 4) return null
   const entries = Object.values(dictionary)
   const containsMatch = entries.find((entry) =>
-    normalized.includes(entry.nameNormalized) || entry.nameNormalized.includes(normalized)
+    (entry.usageCount ?? 0) >= 2 &&
+    (normalized.includes(entry.nameNormalized) || entry.nameNormalized.includes(normalized))
   )
 
   return containsMatch ?? null
@@ -374,7 +378,7 @@ export function parseSmsBlob(
       currency: amountMatch.currency || options.defaultCurrency,
       date: parseDate(line),
       include: true,
-      confidence: dict ? 'high' : amountMatch.confidence,
+      confidence: dict ? 'high' : 'medium',
       sourceHash: hashSmsLine(line),
     })
   })

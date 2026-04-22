@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import {
   canonicalizeFixedBillKey,
   isKnownFixedBillKey,
@@ -42,13 +42,19 @@ export interface FixedEntry {
   label:      string
   monthly:    number
   confidence: string
-  due_day?:   number | null
   priority?:  'core' | 'flex'
 }
 
 interface Row extends FixedEntry {
   _id:     number
   _amount: string  // formatted display value
+}
+
+interface EditDraft {
+  _id: number | null
+  label: string
+  amount: string
+  priority: 'core' | 'flex'
 }
 
 interface Props {
@@ -83,15 +89,12 @@ function withCommas(s: string) {
   return dec !== undefined ? `${formatted}.${dec}` : formatted
 }
 
-function normalizeDueDay(value: unknown): number | null {
-  if (value == null || value === '') return null
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) return null
-  return parsed
-}
-
 function normalizePriority(value: unknown): 'core' | 'flex' {
   return value === 'core' ? 'core' : 'flex'
+}
+
+function priorityLabel(value: unknown) {
+  return normalizePriority(value) === 'core' ? 'Required' : 'Flexible'
 }
 
 let _id = 0
@@ -119,11 +122,7 @@ export function FixedExpensesEditor({
   saving,
 }: EditorProps) {
   const [rows, setRows]           = useState<Row[]>([])
-  const [addLabel, setAddLabel]   = useState('')
-  const [addAmount, setAddAmount] = useState('')
-  const [addDueDay, setAddDueDay] = useState('')
-  const [addPriority, setAddPriority] = useState<'core' | 'flex'>('flex')
-  const [showAdd, setShowAdd]     = useState(false)
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null)
 
   useEffect(() => {
     setRows(
@@ -131,67 +130,65 @@ export function FixedExpensesEditor({
         .filter(e => e.monthly > 0)
         .map(e => ({
           ...e,
-          due_day: normalizeDueDay(e.due_day),
           priority: e.priority === 'flex' ? 'flex' : 'core',
           _id: nextId(),
           _amount: fmt(e.monthly),
         }))
     )
-    setShowAdd(false)
-    setAddLabel('')
-    setAddAmount('')
-    setAddDueDay('')
-    setAddPriority('flex')
+    setEditDraft(null)
   }, [initialEntries])
 
-  const updateAmount = (_id: number, raw: string) => {
-    const val = withCommas(raw)
-    setRows(prev => prev.map(r => r._id === _id ? { ...r, _amount: val } : r))
+  const openEdit = (row: Row) => {
+    setEditDraft({
+      _id: row._id,
+      label: EXPENSE_LABELS[row.key] ?? row.label,
+      amount: row._amount,
+      priority: normalizePriority(row.priority),
+    })
   }
 
-  const removeRow = (_id: number) => {
-    setRows(prev => prev.filter(r => r._id !== _id))
+  const openNew = () => {
+    setEditDraft({
+      _id: null,
+      label: '',
+      amount: '',
+      priority: 'flex',
+    })
   }
 
-  const updateDueDay = (_id: number, raw: string) => {
-    const dueDay = normalizeDueDay(raw)
-    setRows(prev => prev.map(r => r._id === _id ? { ...r, due_day: dueDay } : r))
+  const closeEdit = () => {
+    setEditDraft(null)
   }
 
-  const addRow = () => {
-    const amount = parseFloat(stripCommas(addAmount))
-    if (!addLabel.trim() || !amount || amount <= 0) return
-    const trimmed = addLabel.trim()
+  const saveDraft = () => {
+    if (!editDraft) return
+    const amount = parseFloat(stripCommas(editDraft.amount))
+    const existing = editDraft._id == null ? null : rows.find(row => row._id === editDraft._id) ?? null
+    const trimmed = (editDraft.label.trim() || existing?.label || '').trim()
+    if (!trimmed || !amount || amount <= 0) return
+
     const slug = slugifyBillLabel(trimmed)
-    // Known labels ("Home WiFi", "KPLC", "Fibre") collapse to a canonical key
-    // so Bills left to pay can match them against logged payments. Unknown
-    // labels keep a timestamped slug to stay unique across custom rows.
-    const key = isKnownFixedBillKey(trimmed)
-      ? canonicalizeFixedBillKey(trimmed)
-      : `${slug || 'item'}_${Date.now()}`
-    setRows(prev => [...prev, {
-      _id:        nextId(),
+    const key = existing
+      ? existing.key
+      : isKnownFixedBillKey(trimmed)
+        ? canonicalizeFixedBillKey(trimmed)
+        : `${slug || 'item'}_${Date.now()}`
+
+    const nextRow: Row = {
+      _id:        existing?._id ?? nextId(),
       key,
       label:      trimmed,
       monthly:    amount,
-      confidence: 'known',
-      due_day:    normalizeDueDay(addDueDay),
-      priority:   addPriority,
+      confidence: existing?.confidence ?? 'known',
+      priority:   normalizePriority(editDraft.priority),
       _amount:    fmt(amount),
-    }])
-    setAddLabel('')
-    setAddAmount('')
-    setAddDueDay('')
-    setAddPriority('flex')
-    setShowAdd(false)
-  }
+    }
 
-  const closeAdd = () => {
-    setShowAdd(false)
-    setAddLabel('')
-    setAddAmount('')
-    setAddDueDay('')
-    setAddPriority('flex')
+    setRows(prev => existing
+      ? prev.map(row => row._id === existing._id ? nextRow : row)
+      : [...prev, nextRow]
+    )
+    setEditDraft(null)
   }
 
   const handleSave = () => {
@@ -201,7 +198,6 @@ export function FixedExpensesEditor({
         label:      EXPENSE_LABELS[r.key] ?? r.label,
         monthly:    parseFloat(stripCommas(r._amount)) || 0,
         confidence: r.confidence,
-        due_day:    normalizeDueDay(r.due_day),
         priority:   normalizePriority(r.priority),
       }))
       .filter(e => e.monthly > 0)
@@ -209,150 +205,78 @@ export function FixedExpensesEditor({
   }
 
   const total = rows.reduce((s, r) => s + (parseFloat(stripCommas(r._amount)) || 0), 0)
+  const draftAmount = editDraft ? parseFloat(stripCommas(editDraft.amount)) || 0 : 0
+  const canSaveDraft = Boolean(editDraft && editDraft.label.trim() && draftAmount > 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
       {/* Rows */}
-      {rows.length === 0 && !showAdd && (
+      {rows.length === 0 && (
         <p style={{ fontSize: 14, color: T.textMuted, textAlign: 'center', padding: '24px 0' }}>
           No fixed expenses. Add one below.
         </p>
       )}
 
       {rows.map((row) => (
-        <div key={row._id} style={{
-          display: 'grid', gap: 10,
-          padding: '12px 0',
-          borderBottom: `1px solid ${T.border}`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          key={row._id}
+          type="button"
+          onClick={() => openEdit(row)}
+          style={{
+            width: '100%',
+            display: 'grid',
+            gap: 2,
+            padding: '12px 0',
+            border: 'none',
+            borderBottom: `1px solid ${T.border}`,
+            background: 'transparent',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
             <span style={{ fontSize: 20, width: 28, textAlign: 'center', flexShrink: 0 }}>
               {EXPENSE_ICONS[row.key] ?? '📋'}
             </span>
-            <span style={{ flex: 1, fontSize: 14, color: T.text2 }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {EXPENSE_LABELS[row.key] ?? row.label}
             </span>
-            <div style={{
-              display: 'flex', alignItems: 'center',
-              background: T.pageBg, border: `1px solid ${T.border}`,
-              borderRadius: 10, padding: '0 10px', height: 38, width: 110,
-            }}>
-              <span style={{ fontSize: 11, color: T.textMuted, marginRight: 4, flexShrink: 0 }}>{currency}</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={row._amount}
-                onChange={e => updateAmount(row._id, e.target.value)}
-                style={{
-                  flex: 1, border: 'none', background: 'transparent',
-                  fontSize: 14, fontWeight: 600, color: T.text1, outline: 'none',
-                  textAlign: 'right', minWidth: 0,
-                }}
-              />
-            </div>
-            <button
-              onClick={() => removeRow(row._id)}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: 4, color: T.textMuted, flexShrink: 0,
-                fontSize: 16, lineHeight: 1,
-              }}
-              aria-label="Remove"
-            >
-              ✕
-            </button>
+            <span style={{ fontSize: 15, fontWeight: 700, color: T.text1, flexShrink: 0 }}>
+              {currency} {row._amount}
+            </span>
           </div>
-
-          <div style={{ paddingLeft: 40 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              <label style={{ display: 'grid', gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: T.text3 }}>Due day</span>
-                <select
-                  value={row.due_day ?? ''}
-                  onChange={(e) => updateDueDay(row._id, e.target.value)}
-                  style={{
-                    width: 120,
-                    height: 36,
-                    borderRadius: 10,
-                    border: `1px solid ${T.border}`,
-                    background: T.white,
-                    padding: '0 10px',
-                    fontSize: 14,
-                    color: T.text1,
-                    outline: 'none',
-                  }}
-                >
-                  <option value="">Not set</option>
-                  {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
-                    <option key={day} value={day}>
-                      {day}
-                    </option>
-                  ))}
-                </select>
-                <span style={{ fontSize: 12, color: T.textMuted }}>
-                  Day of the month this is usually due
-                </span>
-              </label>
-
-              <label style={{ display: 'grid', gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: T.text3 }}>Type</span>
-                <select
-                  value={row.priority ?? 'core'}
-                  onChange={(e) => {
-                    const priority = normalizePriority(e.target.value)
-                    setRows(prev => prev.map(r => r._id === row._id ? { ...r, priority } : r))
-                  }}
-                  style={{
-                    width: 120,
-                    height: 36,
-                    borderRadius: 10,
-                    border: `1px solid ${T.border}`,
-                    background: T.white,
-                    padding: '0 10px',
-                    fontSize: 14,
-                    color: T.text1,
-                    outline: 'none',
-                  }}
-                >
-                  <option value="core">Core</option>
-                  <option value="flex">Flexible</option>
-                </select>
-              </label>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 40, fontSize: 12, color: T.text3, lineHeight: 1.4 }}>
+            <span>{priorityLabel(row.priority)}</span>
           </div>
-        </div>
+        </button>
       ))}
 
       {/* Add row */}
-      {!showAdd && (
-        <button
-          onClick={() => setShowAdd(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '14px 0', background: 'none', border: 'none',
-            cursor: 'pointer', fontSize: 14, color: T.brandDark, fontWeight: 500,
-          }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-          Add expense
-        </button>
-      )}
+      <button
+        onClick={openNew}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '14px 0', background: 'none', border: 'none',
+          borderBottom: `1px solid ${T.border}`,
+          cursor: 'pointer', fontSize: 14, color: T.brandDark, fontWeight: 600,
+        }}
+      >
+        <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+        Add expense
+      </button>
 
       {/* Total */}
-      {rows.length > 0 && (
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '14px 0 4px',
-          borderTop: `1px solid ${T.border}`,
-          marginTop: 4,
-        }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Total</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: T.text1 }}>
-            {currency} {total.toLocaleString()}<span style={{ fontSize: 12, fontWeight: 400, color: T.text3 }}>/mo</span>
-          </span>
-        </div>
-      )}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '14px 0 4px',
+        marginTop: 4,
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.7px' }}>Total</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: T.text1 }}>
+          {currency} {total.toLocaleString()} <span style={{ fontSize: 12, fontWeight: 400, color: T.text3 }}>/ month</span>
+        </span>
+      </div>
 
       {/* Save */}
       <button
@@ -366,29 +290,27 @@ export function FixedExpensesEditor({
           opacity: saving ? 0.7 : 1,
         }}
       >
-        {saving ? 'Saving…' : 'Save changes'}
+        {saving ? 'Saving…' : 'Save'}
       </button>
 
-      <Sheet open={showAdd} onClose={closeAdd} title="Custom fixed expense">
-        <p style={{ margin: '0 0 16px', fontSize: 14, color: T.text3, lineHeight: 1.6 }}>
-          Use this for recurring costs that are not already listed, like gym membership, parking, or maintenance.
-        </p>
-
+      <Sheet open={!!editDraft} onClose={closeEdit} title={editDraft?._id == null ? 'Add fixed cost' : 'Edit fixed cost'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input
-            type="text"
-            placeholder="Expense name"
-            value={addLabel}
-            onChange={e => setAddLabel(e.target.value)}
-            autoFocus
-            onKeyDown={e => { if (e.key === 'Enter' && addLabel.trim() && parseFloat(stripCommas(addAmount))) addRow() }}
-            style={{
-              width: '100%', height: 44, borderRadius: 10,
-              border: `1px solid ${T.border}`, background: T.white,
-              padding: '0 12px', fontSize: 14, color: T.text1, outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
+          {editDraft?._id == null && (
+            <input
+              type="text"
+              placeholder="Expense name"
+              value={editDraft?.label ?? ''}
+              onChange={e => setEditDraft(prev => prev ? { ...prev, label: e.target.value } : prev)}
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter' && canSaveDraft) saveDraft() }}
+              style={{
+                width: '100%', height: 44, borderRadius: 10,
+                border: `1px solid ${T.border}`, background: T.white,
+                padding: '0 12px', fontSize: 14, color: T.text1, outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          )}
           <div style={{
             display: 'flex', alignItems: 'center',
             background: T.white, border: `1px solid ${T.border}`,
@@ -400,9 +322,9 @@ export function FixedExpensesEditor({
               type="text"
               inputMode="decimal"
               placeholder="0"
-              value={addAmount}
-              onChange={e => setAddAmount(withCommas(e.target.value))}
-              onKeyDown={e => { if (e.key === 'Enter' && addLabel.trim() && parseFloat(stripCommas(addAmount))) addRow() }}
+              value={editDraft?.amount ?? ''}
+              onChange={e => setEditDraft(prev => prev ? { ...prev, amount: withCommas(e.target.value) } : prev)}
+              onKeyDown={e => { if (e.key === 'Enter' && canSaveDraft) saveDraft() }}
               style={{
                 flex: 1, border: 'none', background: 'transparent',
                 fontSize: 14, fontWeight: 600, color: T.text1, outline: 'none',
@@ -411,39 +333,10 @@ export function FixedExpensesEditor({
             />
           </div>
           <label style={{ display: 'grid', gap: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: T.text3 }}>Due day</span>
-            <select
-              value={addDueDay}
-              onChange={e => setAddDueDay(e.target.value)}
-              style={{
-                width: '100%',
-                height: 44,
-                borderRadius: 10,
-                border: `1px solid ${T.border}`,
-                background: T.white,
-                padding: '0 12px',
-                fontSize: 14,
-                color: T.text1,
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            >
-              <option value="">Not set</option>
-              {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
-                <option key={day} value={day}>
-                  {day}
-                </option>
-              ))}
-            </select>
-            <span style={{ fontSize: 12, color: T.textMuted }}>
-              Day of the month this is usually due
-            </span>
-          </label>
-          <label style={{ display: 'grid', gap: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: T.text3 }}>Type</span>
             <select
-              value={addPriority}
-              onChange={(e) => setAddPriority(normalizePriority(e.target.value))}
+              value={editDraft?.priority ?? 'flex'}
+              onChange={(e) => setEditDraft(prev => prev ? { ...prev, priority: normalizePriority(e.target.value) } : prev)}
               style={{
                 width: '100%',
                 height: 44,
@@ -457,36 +350,38 @@ export function FixedExpensesEditor({
                 boxSizing: 'border-box',
               }}
             >
-              <option value="core">Core</option>
+              <option value="core">Required</option>
               <option value="flex">Flexible</option>
             </select>
           </label>
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <SecondaryBtn
-            size="md"
-            onClick={closeAdd}
-            style={{
-              flex: 1,
-              borderColor: T.border,
-              color: T.text3,
-            }}
-          >
-            Cancel
-          </SecondaryBtn>
+          {editDraft?._id != null && (
+            <TertiaryBtn
+              size="md"
+              onClick={() => {
+                const id = editDraft._id
+                setRows(prev => prev.filter(r => r._id !== id))
+                setEditDraft(null)
+              }}
+              style={{ flex: 1, color: T.red }}
+            >
+              Remove
+            </TertiaryBtn>
+          )}
           <PrimaryBtn
             size="md"
-            onClick={addRow}
-            disabled={!addLabel.trim() || !parseFloat(stripCommas(addAmount))}
+            onClick={saveDraft}
+            disabled={!canSaveDraft}
             style={{
               flex: 1,
               background: T.brandDark,
               color: 'var(--text-inverse)',
-              opacity: (!addLabel.trim() || !parseFloat(stripCommas(addAmount))) ? 0.5 : 1,
+              opacity: canSaveDraft ? 1 : 0.5,
             }}
           >
-            Add
+            Done
           </PrimaryBtn>
         </div>
       </Sheet>

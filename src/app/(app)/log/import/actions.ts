@@ -14,7 +14,7 @@ import {
   type ParsedSmsExpense,
 } from '@/lib/sms-import/parser'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import {
   readTrackedFixedExpenseEntries,
   sumTrackedFixedExpenses,
@@ -31,8 +31,7 @@ interface ParsedRowInput {
   amount: number
   date: string
   sourceHash: string
-  trackAsEssential?: boolean
-  trackedMonthlyAmount?: number | null
+  repeatsMonthly?: boolean
   debtId?: string | null
 }
 
@@ -74,6 +73,12 @@ export async function loadActiveDebts(): Promise<ActionResult<ActiveDebtOption[]
 
 function normalize(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function normalizeCategoryType(value: string | null | undefined): ImportCategoryType | null {
+  if (value === 'essentials' || value === 'fixed') return 'fixed'
+  if (value === 'everyday' || value === 'debt') return value
+  return null
 }
 
 async function rememberDictionaryItems(
@@ -309,9 +314,10 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     const [
       { data: dictionaryRows, error: dictionaryError },
       { data: fixedExpensesRow, error: fixedExpensesError },
+      { data: recentRows, error: recentRowsError },
     ] = await Promise.all([
       (supabase.from('item_dictionary') as any)
-        .select('name_normalized,label,category_type,category_key')
+        .select('name_normalized,label,category_type,category_key,usage_count')
         .eq('user_id', user.id)
         .limit(300),
       (supabase.from('fixed_expenses') as any)
@@ -319,6 +325,11 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         .eq('user_id', user.id)
         .eq('cycle_id', cycleId)
         .maybeSingle(),
+      (supabase.from('transactions') as any)
+        .select('category_label,category_type')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .limit(300),
     ])
 
     if (dictionaryError) {
@@ -327,17 +338,43 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     if (fixedExpensesError) {
       throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
     }
+    if (recentRowsError) {
+      throw new Error(`Failed to load recent transactions: ${recentRowsError.message}`)
+    }
 
     const trackedFixedKeys = readTrackedFixedExpenseEntries(fixedExpensesRow?.entries ?? null).map((entry) => entry.key)
+    const categoryCountsByLabel = new Map<string, Map<ImportCategoryType, number>>()
+    for (const row of recentRows ?? []) {
+      const normalized = normalize(row.category_label ?? '')
+      const categoryType = normalizeCategoryType(row.category_type)
+      if (!normalized || !categoryType) continue
+
+      const counts = categoryCountsByLabel.get(normalized) ?? new Map<ImportCategoryType, number>()
+      counts.set(categoryType, (counts.get(categoryType) ?? 0) + 1)
+      categoryCountsByLabel.set(normalized, counts)
+    }
+
+    const trustedDictionaryRows = (dictionaryRows ?? []).flatMap((row: any) => {
+      const normalized = normalize(row.name_normalized ?? '')
+      const counts = categoryCountsByLabel.get(normalized)
+      if (!counts) return []
+
+      const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0)
+      if (total < 2 || counts.size !== 1) return []
+
+      const categoryType = Array.from(counts.keys())[0]
+      return [{
+        nameNormalized: normalized,
+        label: row.label,
+        categoryType,
+        categoryKey: row.category_key,
+        usageCount: total,
+      }]
+    })
 
     const parsed = parseSmsBlob(input, {
       defaultCurrency: profile.currency || 'USD',
-      dictionary: (dictionaryRows ?? []).map((row: any) => ({
-        nameNormalized: row.name_normalized,
-        label: row.label,
-        categoryType: row.category_type,
-        categoryKey: row.category_key,
-      })),
+      dictionary: trustedDictionaryRows,
     })
 
     // Fallback: when the SMS parser finds nothing in non-empty input, try a
@@ -722,14 +759,14 @@ export async function saveParsedSmsExpenses(
 
   const trackingRowsByCycle = new Map<string, Array<{ key: string; label: string; monthly: number }>>()
   for (const { row, cycleId, persistedKey } of persistedRows) {
-    if (row.categoryType !== 'fixed' || row.trackAsEssential !== true) continue
+    if (row.categoryType === 'debt' || row.repeatsMonthly !== true) continue
 
-    const monthly = Number(row.trackedMonthlyAmount ?? row.amount)
+    const monthly = Number(row.amount)
     if (!Number.isFinite(monthly) || monthly <= 0) continue
 
     const items = trackingRowsByCycle.get(cycleId) ?? []
     items.push({
-      key: persistedKey,
+      key: recurringExpenseKey(row.categoryType, persistedKey),
       label: row.label,
       monthly,
     })

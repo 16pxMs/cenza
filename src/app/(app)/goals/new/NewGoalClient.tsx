@@ -468,7 +468,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
                     {fmt(suggestion.amount, data.currency)}
                   </div>
                   <div style={{ fontSize: 11, color: T.text3, marginTop: 4, lineHeight: 1.45 }}>
-                    {`Covers ${suggestion.label} of essentials`}
+                    {`Covers ${suggestion.label} of fixed costs`}
                   </div>
                 </button>
               )

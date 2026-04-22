@@ -63,8 +63,9 @@ function toRows(txns: HistoryTransaction[]): HistoryCategoryRow[] {
   }
 
   for (const txn of txns) {
-    const type = (txn.category_type as HistoryCategoryRow['type']) in byType
-      ? txn.category_type as HistoryCategoryRow['type']
+    const normalizedType = txn.category_type === 'essentials' ? 'fixed' : txn.category_type
+    const type = (normalizedType as HistoryCategoryRow['type']) in byType
+      ? normalizedType as HistoryCategoryRow['type']
       : 'everyday'
     byType[type].push(txn)
   }

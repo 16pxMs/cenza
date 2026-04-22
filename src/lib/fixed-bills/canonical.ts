@@ -80,6 +80,11 @@ export function canonicalizeFixedBillKey(rawKey: string): string {
   return FIXED_BILL_SYNONYMS[cleaned] ?? cleaned
 }
 
+export function recurringExpenseKey(categoryType: string | null | undefined, rawKey: string): string {
+  const canonicalKey = canonicalizeFixedBillKey(rawKey)
+  return categoryType === 'fixed' ? canonicalKey : `spending_${canonicalKey}`
+}
+
 export function isKnownFixedBillKey(rawKey: string): boolean {
   const cleaned = slugifyBillLabel(rawKey)
   if (!cleaned) return false

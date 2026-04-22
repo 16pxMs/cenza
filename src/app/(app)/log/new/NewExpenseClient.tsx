@@ -7,9 +7,9 @@ import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
-import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { IconBack, IconCheck, IconPlus } from '@/components/ui/Icons'
-import { saveExpenseBatch, saveRecurringSetup } from './actions'
+import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
+import { saveExpenseBatch } from './actions'
 import { GOAL_META } from '@/constants/goals'
 import type { GoalId } from '@/types/database'
 
@@ -34,8 +34,7 @@ interface PendingExpenseItem {
   amount: string
   note: string
   source: QueueSource
-  trackAsEssential: boolean
-  trackedMonthlyAmount: string
+  repeatsMonthly: boolean
 }
 
 interface RecentLoggedEntry {
@@ -74,7 +73,7 @@ const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: 
     helper: 'For everyday spending like food, transport, or going out',
   },
   fixed: {
-    title: 'Essentials',
+    title: 'Fixed',
     helper: 'For fixed costs like rent, bills, or subscriptions',
   },
   debt: {
@@ -111,6 +110,19 @@ function normalizeLabel(value: string) {
   return value.trim().toLowerCase()
 }
 
+function normalizeCategoryType(value: string | null | undefined): CategoryType | null {
+  if (value === 'essentials' || value === 'fixed') return 'fixed'
+  if (value === 'everyday' || value === 'debt' || value === 'goal') return value
+  return null
+}
+
+function categoryFromPriorEntries(items: PendingExpenseItem[]): CategoryType | null {
+  if (items.length < 2) return null
+  const firstType = items[0]?.categoryType
+  if (!firstType) return null
+  return items.every((item) => item.categoryType === firstType) ? firstType : null
+}
+
 function makePendingId(label: string, source: QueueSource) {
   const normalized = normalizeLabel(label) || source
   return `${normalized}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -131,36 +143,27 @@ function suggestType(label: string): CategoryType | null {
   return null
 }
 
-function getDefaultTypeForCommonLabel(label: string): Exclude<CategoryType, 'goal'> | null {
-  const normalized = normalizeLabel(label)
-  const match = DEFAULT_COMMON_ITEMS.find((item) => normalizeLabel(item.label) === normalized)
-  return match?.categoryType ?? null
-}
-
 function buildPendingItem(
   label: string,
   source: QueueSource,
   dictEntry?: DictEntry | null,
-  preferredType?: CategoryType | null,
 ): PendingExpenseItem {
   const cleanLabel = label.trim()
   const normalized = normalizeLabel(cleanLabel)
-  const rememberedCategoryType = dictEntry && (dictEntry.usageCount > 0 || Boolean(dictEntry.lastUsed))
+  const rememberedCategoryType = dictEntry && dictEntry.usageCount >= 2
     ? dictEntry.categoryType
     : null
-  const fallbackCategoryType = preferredType ?? suggestType(cleanLabel)
 
   return {
     id: makePendingId(cleanLabel, source),
     label: cleanLabel,
-    categoryType: rememberedCategoryType ?? fallbackCategoryType,
-    categorySource: rememberedCategoryType ? 'remembered' : fallbackCategoryType ? 'manual' : null,
+    categoryType: rememberedCategoryType,
+    categorySource: rememberedCategoryType ? 'remembered' : null,
     categoryKey: dictEntry?.key ?? normalized.replace(/\s+/g, '_'),
     amount: '',
     note: '',
     source,
-    trackAsEssential: false,
-    trackedMonthlyAmount: '',
+    repeatsMonthly: false,
   }
 }
 
@@ -204,9 +207,7 @@ export function NewExpenseClient() {
   const rawParamType = params.get('type')
   const isOther = params.get('isOther') === 'true'
   const returnTo = params.get('returnTo') || '/log'
-  const paramType = rawParamType === 'everyday' || rawParamType === 'fixed' || rawParamType === 'debt' || rawParamType === 'goal'
-    ? rawParamType
-    : null
+  const paramType = normalizeCategoryType(rawParamType)
 
   const hasInitialKnownItem = !isOther && Boolean(paramLabel)
   const [step, setStep] = useState<Step>(
@@ -229,8 +230,7 @@ export function NewExpenseClient() {
         amount: paramAmount ?? '',
         note: '',
         source: 'known',
-        trackAsEssential: false,
-        trackedMonthlyAmount: '',
+        repeatsMonthly: false,
       }]
     }
 
@@ -316,10 +316,10 @@ export function NewExpenseClient() {
 
         for (const row of data) {
           const entry: DictEntry = {
-            categoryType: row.category_type as CategoryType,
+            categoryType: normalizeCategoryType(row.category_type) ?? 'everyday',
             label: row.label,
             key: row.category_key,
-            usageCount: Number(row.usage_count ?? 0),
+            usageCount: 0,
             lastUsed: null,
           }
           dict[row.name_normalized] = entry
@@ -330,12 +330,20 @@ export function NewExpenseClient() {
           .select('id, category_label, category_type, category_key, amount, date')
           .eq('user_id', user.id)
           .order('date', { ascending: false })
-          .limit(60)
+          .limit(300)
 
         const recentSeen = new Set<string>()
         const recentMap: Record<string, RecentLoggedEntry> = {}
+        const categoryCountsByLabel = new Map<string, Map<CategoryType, number>>()
         for (const row of recentRows ?? []) {
           const normalized = normalizeLabel(row.category_label ?? '')
+          const categoryType = normalizeCategoryType(row.category_type)
+          if (normalized && categoryType) {
+            const counts = categoryCountsByLabel.get(normalized) ?? new Map<CategoryType, number>()
+            counts.set(categoryType, (counts.get(categoryType) ?? 0) + 1)
+            categoryCountsByLabel.set(normalized, counts)
+          }
+
           if (!normalized || recentSeen.has(normalized)) continue
           recentSeen.add(normalized)
 
@@ -344,7 +352,7 @@ export function NewExpenseClient() {
             existing.lastUsed = row.date ?? null
           } else {
             const entry: DictEntry = {
-              categoryType: (row.category_type as CategoryType) ?? suggestType(row.category_label ?? '') ?? 'everyday',
+              categoryType: categoryType ?? suggestType(row.category_label ?? '') ?? 'everyday',
               label: row.category_label,
               key: row.category_key ?? normalized.replace(/\s+/g, '_'),
               usageCount: 0,
@@ -360,6 +368,17 @@ export function NewExpenseClient() {
             label: row.category_label,
             amount: Math.abs(Number(row.amount ?? 0)),
             date: row.date,
+          }
+        }
+
+        for (const [normalized, counts] of categoryCountsByLabel) {
+          const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0)
+          if (total < 2 || counts.size !== 1) continue
+          const categoryType = Array.from(counts.keys())[0]
+          const existing = dict[normalized]
+          if (existing) {
+            existing.categoryType = categoryType
+            existing.usageCount = total
           }
         }
 
@@ -471,8 +490,7 @@ export function NewExpenseClient() {
     }
 
     const dictEntry = dictionary[normalized] ?? null
-    const preferredType = getDefaultTypeForCommonLabel(label)
-    setQueue((current) => [...current, buildPendingItem(label, 'common', dictEntry, preferredType)])
+    setQueue((current) => [...current, buildPendingItem(label, 'common', dictEntry)])
     setQueueNotice(null)
   }
 
@@ -557,13 +575,19 @@ export function NewExpenseClient() {
       return
     }
 
+    const previousSameLabelEntries = [
+      ...queue.filter((item, index) => index < activeIndex && normalizeLabel(item.label) === normalizeLabel(activeItem.label)),
+      activeItem,
+    ]
+    const learnedCategoryType = categoryFromPriorEntries(previousSameLabelEntries)
     const duplicate: PendingExpenseItem = {
       ...activeItem,
       id: makePendingId(activeItem.label, activeItem.source),
+      categoryType: learnedCategoryType,
+      categorySource: learnedCategoryType ? 'remembered' : null,
       amount: '',
       note: '',
-      trackAsEssential: false,
-      trackedMonthlyAmount: '',
+      repeatsMonthly: false,
     }
 
     setQueue((current) => {
@@ -606,11 +630,7 @@ export function NewExpenseClient() {
         amount: parseFloat(item.amount.replace(/,/g, '')) || 0,
         note: item.note.trim() || null,
         rememberItem: true,
-        trackAsEssential: item.categoryType === 'fixed' ? item.trackAsEssential : false,
-        trackedMonthlyAmount:
-          item.categoryType === 'fixed' && item.trackAsEssential
-            ? (parseFloat(item.trackedMonthlyAmount.replace(/,/g, '')) || 0)
-            : null,
+        repeatsMonthly: item.categoryType === 'everyday' || item.categoryType === 'fixed' ? item.repeatsMonthly : false,
       })))
 
       if (!result.ok) {
@@ -727,29 +747,8 @@ export function NewExpenseClient() {
             />
           ) : step === 'done' ? (
             <DoneStep
-              savedCount={savedCount}
               items={savedItems}
               currency={currency}
-              returnTo={returnTo}
-              onSaveRecurringSetup={async (dueDay) => {
-                const recurringCandidate = savedItems.length === 1 ? savedItems[0] : null
-                if (!recurringCandidate) {
-                  throw new Error('No saved item available for recurring setup.')
-                }
-
-                const result = await saveRecurringSetup({
-                  label: recurringCandidate.label,
-                  amount: parseFloat(recurringCandidate.amount.replace(/,/g, '')) || 0,
-                  dueDay: Number(dueDay),
-                  priority: 'flex',
-                })
-
-                if (!result.ok) {
-                  throw new Error(result.error.message)
-                }
-
-                router.refresh()
-              }}
               onLogMore={() => {
                 setQueue([])
                 setActiveIndex(0)
@@ -759,9 +758,7 @@ export function NewExpenseClient() {
                 setSavedItems([])
                 setStep('queue')
               }}
-              onGoToRecap={() => { router.refresh(); router.push('/log') }}
               onGoToOverview={() => { router.refresh(); router.push('/app') }}
-              onGoToDebtReview={() => router.push(`/history/debt?label=Debt&type=debt&returnTo=${encodeURIComponent(returnTo)}`)}
             />
           ) : activeItem ? (
             <ReviewStep
@@ -786,7 +783,9 @@ export function NewExpenseClient() {
               onTypeSelect={(type) => updateActiveItem({
                 categoryType: type,
                 categorySource: 'manual',
+                repeatsMonthly: type === 'everyday' || type === 'fixed' ? activeItem.repeatsMonthly : false,
               })}
+              onRepeatsMonthlyChange={(checked) => updateActiveItem({ repeatsMonthly: checked })}
               onNoteChange={(value) => updateActiveItem({ note: value })}
               onPrevious={handlePrevious}
               onNext={handleNext}
@@ -827,260 +826,44 @@ function MethodStep({
 }
 
 function DoneStep({
-  savedCount,
   items,
   currency,
-  returnTo,
-  onSaveRecurringSetup,
   onLogMore,
-  onGoToRecap,
   onGoToOverview,
-  onGoToDebtReview,
 }: {
-  savedCount: number
   items: PendingExpenseItem[]
   currency: string
-  returnTo: string
-  onSaveRecurringSetup: (dueDay: string) => Promise<void>
   onLogMore: () => void
-  onGoToRecap: () => void
   onGoToOverview: () => void
-  onGoToDebtReview: () => void
 }) {
-  const [recurringPromptDismissed, setRecurringPromptDismissed] = useState(false)
-  const [recurringSetupOpen, setRecurringSetupOpen] = useState(false)
-  const recurringCandidate = items.length === 1 && items[0] && items[0].categoryType !== 'debt' && items[0].categoryType !== 'goal' && !items[0].trackAsEssential
-    ? items[0]
-    : null
-  const [recurringDueDay, setRecurringDueDay] = useState('')
-  const [recurringSaving, setRecurringSaving] = useState(false)
-  const [recurringError, setRecurringError] = useState<string | null>(null)
-  const [recurringSaved, setRecurringSaved] = useState(false)
-  const cameFromOverview = returnTo.startsWith('/app')
-  const hasDebtItems = items.some((item) => item.categoryType === 'debt')
-
   const formatSummaryAmount = (value: string) => {
     const amount = parseFloat(value.replace(/,/g, '')) || 0
     return `${currency} ${amount.toLocaleString()}`
   }
 
-  useEffect(() => {
-    setRecurringPromptDismissed(false)
-    setRecurringSetupOpen(false)
-    setRecurringSaving(false)
-    setRecurringError(null)
-    setRecurringSaved(false)
-    setRecurringDueDay('')
-  }, [recurringCandidate?.id, recurringCandidate?.label, recurringCandidate?.amount])
+  const todayLabel = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const successEntries: ExpenseAddedSuccessEntry[] = items.map((item) => {
+    const categoryLabel = item.categoryType === 'goal'
+      ? 'Goal'
+      : item.categoryType
+        ? TYPE_COPY[item.categoryType]?.title ?? 'Uncategorized'
+        : 'Uncategorized'
+
+    return {
+      id: item.id,
+      name: formatDisplayLabel(item.label),
+      amountLabel: formatSummaryAmount(item.amount),
+      metaLabel: `${categoryLabel} · ${todayLabel}`,
+    }
+  })
 
   return (
     <div>
-      <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, lineHeight: 1.15 }}>
-        {savedCount} {savedCount === 1 ? 'expense added' : 'expenses added'}
-      </p>
-      <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-base)', color: T.text2, lineHeight: 1.5 }}>
-        Your expense log is up to date.
-      </p>
-
-      <div style={{ marginBottom: 'var(--space-lg)', borderTop: `${T.borderWidth} solid ${T.borderSubtle}`, borderBottom: `${T.borderWidth} solid ${T.borderSubtle}` }}>
-        {items.map((item, index) => (
-          <div
-            key={item.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: 'var(--space-md)',
-              padding: 'var(--space-md) 0',
-              borderBottom: index < items.length - 1 ? `${T.borderWidth} solid ${T.borderSubtle}` : 'none',
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
-                {formatDisplayLabel(item.label)}
-              </p>
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.4 }}>
-                {item.categoryType === 'goal'
-                  ? 'Goal'
-                  : item.categoryType
-                    ? TYPE_COPY[item.categoryType]?.title ?? 'Uncategorized'
-                    : 'Uncategorized'}
-              </p>
-            </div>
-            <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, textAlign: 'right', minWidth: 0 }}>
-              {formatSummaryAmount(item.amount)}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {recurringCandidate && !recurringPromptDismissed && !recurringSaved && (
-        <div
-          style={{
-            marginBottom: 'var(--space-lg)',
-            padding: 'var(--space-md)',
-            borderRadius: 'var(--radius-sm)',
-            background: T.grey50,
-          }}
-        >
-          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-            Does this repeat each month?
-          </p>
-          <p style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-            We’ll remind you each month.
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-            <TertiaryBtn
-              size="md"
-              onClick={() => {
-                setRecurringError(null)
-                setRecurringSetupOpen(true)
-              }}
-              style={{ color: T.text1, fontWeight: 'var(--weight-medium)', paddingInline: 0 }}
-            >
-              Make it monthly
-            </TertiaryBtn>
-            <TertiaryBtn
-              size="md"
-              onClick={() => setRecurringPromptDismissed(true)}
-              style={{ color: T.text3 }}
-            >
-              Not now
-            </TertiaryBtn>
-          </div>
-        </div>
-      )}
-
-      {recurringSaved && (
-        <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-          Monthly payment added
-        </p>
-      )}
-
-      <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-        <PrimaryBtn
-          size="lg"
-          onClick={onLogMore}
-        >
-          Log more
-        </PrimaryBtn>
-        {hasDebtItems && (
-          <SecondaryBtn
-            size="lg"
-            onClick={onGoToDebtReview}
-            style={{
-              borderColor: T.border,
-              color: T.text1,
-            }}
-          >
-            View debt progress
-          </SecondaryBtn>
-        )}
-        <SecondaryBtn
-          size="lg"
-          onClick={cameFromOverview ? onGoToOverview : onGoToRecap}
-          style={{
-            borderColor: T.border,
-            color: T.text1,
-          }}
-        >
-          {cameFromOverview ? 'Back to overview' : 'View expense log'}
-        </SecondaryBtn>
-      </div>
-
-      {recurringSetupOpen && recurringCandidate && (
-        <Sheet
-          open={true}
-          onClose={() => {
-            if (recurringSaving) return
-            setRecurringSetupOpen(false)
-          }}
-          title="Make it monthly"
-        >
-          <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-              We’ll remind you each month.
-            </p>
-            <label style={{ display: 'grid', gap: 'var(--space-xs)' }}>
-              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
-                Due day
-              </span>
-              <span style={{ fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                Day of the month this is usually due
-              </span>
-              <select
-                value={recurringDueDay}
-                onChange={(event) => {
-                  setRecurringDueDay(event.target.value)
-                  setRecurringError(null)
-                }}
-                style={{
-                  width: '100%',
-                  height: 48,
-                  borderRadius: 'var(--radius-sm)',
-                  border: `${T.borderWidth} solid ${T.border}`,
-                  padding: '0 var(--space-md)',
-                  fontSize: 'var(--text-base)',
-                  color: T.text1,
-                  background: T.white,
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  fontFamily: 'inherit',
-                }}
-              >
-                <option value="">Choose a day</option>
-                {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
-                  <option key={day} value={day}>
-                    {day}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {recurringError && (
-              <p style={{
-                margin: 0,
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-sm)',
-                background: T.redLight,
-                border: `${T.borderWidth} solid ${T.redBorder}`,
-                fontSize: 'var(--text-sm)',
-                color: T.redDark,
-                lineHeight: 1.5,
-              }}>
-                {recurringError}
-              </p>
-            )}
-            <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-              <PrimaryBtn
-                size="lg"
-                onClick={async () => {
-                  setRecurringSaving(true)
-                  setRecurringError(null)
-                  try {
-                    await onSaveRecurringSetup(recurringDueDay)
-                    setRecurringSaving(false)
-                    setRecurringSaved(true)
-                    setRecurringPromptDismissed(true)
-                    setRecurringSetupOpen(false)
-                  } catch (error) {
-                    setRecurringSaving(false)
-                    setRecurringError(error instanceof Error ? error.message : 'Failed to save recurring setup.')
-                  }
-                }}
-              >
-                {recurringSaving ? 'Saving…' : 'Save'}
-              </PrimaryBtn>
-              <SecondaryBtn
-                size="lg"
-                onClick={() => setRecurringSetupOpen(false)}
-                style={{ borderColor: T.border, color: T.text1 }}
-              >
-                Cancel
-              </SecondaryBtn>
-            </div>
-          </div>
-        </Sheet>
-      )}
+      <ExpenseAddedSuccess
+        entries={successEntries}
+        onBack={onGoToOverview}
+        onAddAnother={onLogMore}
+      />
     </div>
   )
 }
@@ -1324,6 +1107,7 @@ function ReviewStep({
   onAmountChange,
   onLabelChange,
   onTypeSelect,
+  onRepeatsMonthlyChange,
   onNoteChange,
   onPrevious,
   onNext,
@@ -1350,6 +1134,7 @@ function ReviewStep({
   onAmountChange: (value: string) => void
   onLabelChange: (value: string) => void
   onTypeSelect: (type: CategoryType | null) => void
+  onRepeatsMonthlyChange: (checked: boolean) => void
   onNoteChange: (value: string) => void
   onPrevious: () => void
   onNext: () => void
@@ -1577,6 +1362,34 @@ function ReviewStep({
               {TYPE_COPY[item.categoryType].helper}
             </p>
           )}
+        </div>
+      )}
+
+      {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
+        <div style={{
+          marginBottom: 'var(--space-lg)',
+          padding: 'var(--space-md)',
+          borderRadius: 'var(--radius-sm)',
+          border: `${T.borderWidth} solid ${T.borderSubtle}`,
+          background: T.grey50,
+        }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-sm)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 'var(--weight-medium)',
+            color: T.text1,
+            cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={item.repeatsMonthly}
+              onChange={(event) => onRepeatsMonthlyChange(event.target.checked)}
+              style={{ width: 18, height: 18, accentColor: T.brandDark }}
+            />
+            <span>Repeat every month</span>
+          </label>
         </div>
       )}
 

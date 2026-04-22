@@ -6,10 +6,10 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
+import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { parseSmsImport, saveParsedSmsExpenses, loadActiveDebts, type ActiveDebtOption } from './actions'
 import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
-import { saveRecurringSetup } from '@/app/(app)/log/new/actions'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
 
@@ -24,8 +24,7 @@ interface EditableRow {
   date: string
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
-  trackAsEssential: boolean
-  trackedMonthlyAmount: number | null
+  repeatsMonthly: boolean
   debtId: string | null
   debtName: string | null
 }
@@ -62,7 +61,7 @@ function slugify(value: string) {
 
 function categoryLabel(value: ImportCategoryType | null) {
   if (!value) return 'Not set'
-  if (value === 'fixed') return 'Essentials'
+  if (value === 'fixed') return 'Fixed'
   if (value === 'debt') return 'Debt'
   return 'Spending'
 }
@@ -162,13 +161,6 @@ export function SmsImportClient() {
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
-  const [savedWithOverride, setSavedWithOverride] = useState(false)
-  const [recurringPromptDismissed, setRecurringPromptDismissed] = useState(false)
-  const [recurringSetupOpen, setRecurringSetupOpen] = useState(false)
-  const [recurringDueDay, setRecurringDueDay] = useState('')
-  const [recurringSaving, setRecurringSaving] = useState(false)
-  const [recurringError, setRecurringError] = useState<string | null>(null)
-  const [recurringSaved, setRecurringSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
   const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
@@ -178,8 +170,7 @@ export function SmsImportClient() {
     label: string
     amount: string
     categoryType: ImportCategoryType | null
-    trackAsEssential: boolean
-    trackedMonthlyAmount: string
+    repeatsMonthly: boolean
     debtId: string | null
   } | null>(null)
   const [editDeleteConfirmOpen, setEditDeleteConfirmOpen] = useState(false)
@@ -187,7 +178,6 @@ export function SmsImportClient() {
     label?: string
     amount?: string
     category?: string
-    trackedMonthlyAmount?: string
     debtId?: string
   }>({})
   const [activeDebts, setActiveDebts] = useState<ActiveDebtOption[]>([])
@@ -219,39 +209,10 @@ export function SmsImportClient() {
   const isRowAlreadyTracked = (
     input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
   ) => {
-    if (input.categoryType !== 'fixed') return false
-    const canonicalKey = canonicalizeFixedBillKey(slugify(input.categoryKey || input.label))
+    if (input.categoryType !== 'everyday' && input.categoryType !== 'fixed') return false
+    const canonicalKey = recurringExpenseKey(input.categoryType, slugify(input.categoryKey || input.label))
     return trackedFixedKeys.includes(canonicalKey)
   }
-
-  const recurringCandidate =
-    savedRows.length === 1 &&
-    savedRows[0] &&
-    savedRows[0].categoryType !== 'debt' &&
-    !isRowAlreadyTracked(savedRows[0])
-      ? savedRows[0]
-      : null
-  const alreadyTrackedRecurringItem =
-    savedRows.length === 1 &&
-    savedRows[0] &&
-    savedRows[0].categoryType === 'fixed' &&
-    isRowAlreadyTracked(savedRows[0])
-      ? savedRows[0]
-      : null
-  const recurringDueDayNumber = Number(recurringDueDay)
-  const hasValidRecurringDueDay =
-    Number.isInteger(recurringDueDayNumber) &&
-    recurringDueDayNumber >= 1 &&
-    recurringDueDayNumber <= 28
-
-  useEffect(() => {
-    setRecurringPromptDismissed(false)
-    setRecurringSetupOpen(false)
-    setRecurringDueDay('')
-    setRecurringSaving(false)
-    setRecurringError(null)
-    setRecurringSaved(false)
-  }, [savedCount, recurringCandidate?.id])
 
   const applyRowsChange = (
     mutator: (current: EditableRow[]) => EditableRow[]
@@ -358,11 +319,7 @@ export function SmsImportClient() {
       label: row.label,
       amount: String(row.amount),
       categoryType: row.categoryType,
-      trackAsEssential: row.trackAsEssential,
-      trackedMonthlyAmount:
-        row.trackAsEssential && row.trackedMonthlyAmount != null
-          ? String(row.trackedMonthlyAmount)
-          : '',
+      repeatsMonthly: row.repeatsMonthly,
       debtId: row.debtId,
     })
     setEditErrors({})
@@ -382,7 +339,7 @@ export function SmsImportClient() {
   const saveEditRow = () => {
     if (!editingRowId || !editDraft) return
 
-    const nextErrors: { label?: string; amount?: string; category?: string; trackedMonthlyAmount?: string; debtId?: string } = {}
+    const nextErrors: { label?: string; amount?: string; category?: string; debtId?: string } = {}
     const trimmedLabel = editDraft.label.trim()
     const amount = Number(editDraft.amount)
     const nextCategoryType = editDraft.categoryType
@@ -394,7 +351,6 @@ export function SmsImportClient() {
     if (nextCategoryType === 'debt' && !editDraft.debtId) {
       nextErrors.debtId = 'Select which debt this payment is for.'
     }
-
     if (Object.keys(nextErrors).length > 0) {
       setEditErrors(nextErrors)
       return
@@ -409,14 +365,10 @@ export function SmsImportClient() {
       amount,
       categoryType: nextCategoryType,
       categoryKey: slugify(trimmedLabel),
-      trackAsEssential:
-        nextCategoryType === 'fixed'
-          ? (existingRow?.trackAsEssential ?? false)
+      repeatsMonthly:
+        nextCategoryType === 'everyday' || nextCategoryType === 'fixed'
+          ? editDraft.repeatsMonthly
           : false,
-      trackedMonthlyAmount:
-        nextCategoryType === 'fixed'
-          ? (existingRow?.trackedMonthlyAmount ?? null)
-          : null,
       debtId: selectedDebt ? selectedDebt.id : null,
       debtName: selectedDebt ? selectedDebt.name : null,
     })
@@ -448,8 +400,7 @@ export function SmsImportClient() {
         data.rows.map((row) => ({
           ...row,
           categoryType: row.confidence === 'high' ? row.categoryType : null,
-          trackAsEssential: false,
-          trackedMonthlyAmount: null,
+          repeatsMonthly: false,
           debtId: null,
           debtName: null,
         }))
@@ -457,7 +408,6 @@ export function SmsImportClient() {
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
       setRowErrors({})
       setRowWarnings({})
-      setSavedWithOverride(false)
       if (data.rows.length === 0) {
         setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
       }
@@ -489,7 +439,6 @@ export function SmsImportClient() {
         setRowErrors(nextRowErrors)
         setRowWarnings({})
         setError('Review rows marked with issues before saving.')
-        setSavedWithOverride(false)
         setSaving(false)
         logClientSaveTiming('pre-submit-validation', performance.now() - preSubmitStartedAt, {
           rows: rows.length,
@@ -506,12 +455,10 @@ export function SmsImportClient() {
         amount: Number(row.amount),
         date: row.date,
         sourceHash: row.sourceHash,
-        trackAsEssential:
-          row.categoryType === 'fixed' && !isRowAlreadyTracked(row) ? row.trackAsEssential : false,
-        trackedMonthlyAmount:
-          row.categoryType === 'fixed' && !isRowAlreadyTracked(row) && row.trackAsEssential
-            ? Number(row.trackedMonthlyAmount ?? row.amount)
-            : null,
+        repeatsMonthly:
+          (row.categoryType === 'everyday' || row.categoryType === 'fixed') && !isRowAlreadyTracked(row)
+            ? row.repeatsMonthly
+            : false,
         debtId: row.categoryType === 'debt' ? row.debtId : null,
       }))
       logClientSaveTiming('pre-submit-processing', performance.now() - preSubmitStartedAt, {
@@ -542,7 +489,6 @@ export function SmsImportClient() {
         const hasHardErrors = Object.keys(data.rowErrors ?? {}).length > 0
         setRowErrors(data.rowErrors ?? {})
         setRowWarnings(data.rowWarnings ?? {})
-        setSavedWithOverride(false)
         if (hasHardErrors) {
           setError('Some messages were already added. Remove them to continue.')
         } else if (data.duplicates > 0) {
@@ -562,7 +508,6 @@ export function SmsImportClient() {
         return
       }
       setSavedCount(data.saved)
-      setSavedWithOverride(data.overridden === true)
       setRowWarnings({})
       logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
         outcome: data.overridden ? 'overridden' : 'success',
@@ -580,231 +525,24 @@ export function SmsImportClient() {
   }
 
   if (savedCount > 0) {
+    const savedDateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const successEntries: ExpenseAddedSuccessEntry[] = savedRows.map((row) => ({
+      id: row.id,
+      name: row.label,
+      amountLabel: `${row.currency} ${row.amount.toLocaleString()}`,
+      metaLabel: `${categoryLabel(row.categoryType)} · ${savedDateLabel(row.date)}`,
+    }))
+
     return (
       <div style={{ minHeight: '100vh', background: T.pageBg }}>
         <div style={{ maxWidth: 560, margin: '0 auto', padding: '24px 16px' }}>
-          <div style={{
-            background: T.white,
-            border: `1px solid ${T.border}`,
-            borderRadius: 20,
-            padding: 20,
-          }}>
-            <p style={{ margin: '0 0 8px', fontSize: 30, color: T.text1, fontWeight: 700, letterSpacing: '-0.02em' }}>
-              {savedCount} {savedCount === 1 ? 'expense added' : 'expenses added'}
-            </p>
-            <p style={{ margin: '0 0 16px', fontSize: 14, color: T.text2, lineHeight: 1.5 }}>
-              {savedWithOverride ? 'Saved anyway.' : 'Your expense log is up to date.'}
-            </p>
-
-            {savedRows.length > 0 && (
-              <div
-                style={{
-                  marginBottom: 16,
-                  borderTop: `1px solid ${T.borderSubtle}`,
-                  borderBottom: `1px solid ${T.borderSubtle}`,
-                }}
-              >
-                {savedRows.map((row, index) => (
-                  <div
-                    key={`saved-${row.id}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      justifyContent: 'space-between',
-                      gap: 12,
-                      padding: '12px 0',
-                      borderBottom: index < savedRows.length - 1 ? `1px solid ${T.borderSubtle}` : 'none',
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600, color: T.text1, lineHeight: 1.3 }}>
-                        {row.label}
-                      </p>
-                      <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.4 }}>
-                        {categoryLabel(row.categoryType)} · {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </p>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text1, textAlign: 'right', minWidth: 0 }}>
-                      {row.currency} {row.amount.toLocaleString()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {recurringSaved ? (
-              <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                Saved as monthly
-              </p>
-            ) : alreadyTrackedRecurringItem ? (
-              <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                Already set as monthly
-              </p>
-            ) : recurringCandidate && !recurringPromptDismissed ? (
-              <div
-                style={{
-                  marginBottom: 16,
-                  padding: 16,
-                  borderRadius: 16,
-                  background: 'var(--grey-50)',
-                }}
-              >
-                <p style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
-                  Does this repeat each month?
-                </p>
-                <p style={{ margin: '0 0 12px', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-                  We’ll keep it on your list each month.
-                </p>
-                <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                  <TertiaryBtn
-                    size="md"
-                    onClick={() => {
-                      setRecurringError(null)
-                      setRecurringSetupOpen(true)
-                    }}
-                    style={{ color: T.text1, fontWeight: 'var(--weight-medium)', paddingInline: 0 }}
-                  >
-                    Make it monthly
-                  </TertiaryBtn>
-                  <TertiaryBtn
-                    size="md"
-                    onClick={() => setRecurringPromptDismissed(true)}
-                    style={{ color: T.text3 }}
-                  >
-                    Not now
-                  </TertiaryBtn>
-                </div>
-              </div>
-            ) : null}
-
-            <PrimaryBtn size="lg" onClick={() => router.push('/app')}>
-              Back to overview
-            </PrimaryBtn>
-            <SecondaryBtn size="lg" onClick={() => router.push('/log/new?returnTo=/app')} style={{ marginTop: 10 }}>
-              Add another expense
-            </SecondaryBtn>
-          </div>
+          <ExpenseAddedSuccess
+            entries={successEntries}
+            onBack={() => { router.refresh(); router.push('/app') }}
+            onAddAnother={() => router.push('/log/new?returnTo=/app')}
+          />
         </div>
 
-        {recurringSetupOpen && recurringCandidate && (
-          <Sheet
-            open={true}
-            onClose={() => {
-              if (recurringSaving) return
-              setRecurringSetupOpen(false)
-            }}
-            title="Make it monthly"
-          >
-            <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-                We’ll keep it on your list each month.
-              </p>
-
-              <label style={{ display: 'grid', gap: 'var(--space-xs)' }}>
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
-                  Due day
-                </span>
-                <span style={{ fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                  Day of the month this is usually due
-                </span>
-                <select
-                  value={recurringDueDay}
-                  onChange={(event) => {
-                    setRecurringDueDay(event.target.value)
-                    setRecurringError(null)
-                  }}
-                  style={{
-                    width: '100%',
-                    height: 48,
-                    borderRadius: 'var(--radius-sm)',
-                    border: `var(--border-width) solid ${T.border}`,
-                    padding: '0 var(--space-md)',
-                    fontSize: 'var(--text-base)',
-                    color: T.text1,
-                    background: T.white,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  <option value="">Choose a day</option>
-                  {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
-                    <option key={day} value={day}>
-                      {day}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {recurringError && (
-                <p style={{
-                  margin: 0,
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: T.redLight,
-                  border: `var(--border-width) solid ${T.redBorder}`,
-                  fontSize: 'var(--text-sm)',
-                  color: T.redDark,
-                  lineHeight: 1.5,
-                }}>
-                  {recurringError}
-                </p>
-              )}
-
-              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                <PrimaryBtn
-                  size="lg"
-                  onClick={async () => {
-                    if (!hasValidRecurringDueDay) {
-                      setRecurringError('Choose a due day to continue.')
-                      return
-                    }
-                    setRecurringSaving(true)
-                    setRecurringError(null)
-                    try {
-                      const result = await saveRecurringSetup({
-                        label: recurringCandidate.label,
-                        amount: recurringCandidate.amount,
-                        dueDay: recurringDueDayNumber,
-                        priority: 'flex',
-                      })
-
-                      if (!result.ok) {
-                        throw new Error(result.error.message)
-                      }
-
-                      setRecurringSaving(false)
-                      setRecurringSaved(true)
-                      setRecurringPromptDismissed(true)
-                      setRecurringSetupOpen(false)
-                      setTrackedFixedKeys((current) => {
-                        const nextKey = canonicalizeFixedBillKey(slugify(recurringCandidate.categoryKey || recurringCandidate.label))
-                        return current.includes(nextKey) ? current : [...current, nextKey]
-                      })
-                    } catch (caught) {
-                      setRecurringSaving(false)
-                      setRecurringError(caught instanceof Error ? caught.message : 'Failed to save recurring setup.')
-                    }
-                  }}
-                  disabled={recurringSaving || !hasValidRecurringDueDay}
-                >
-                  {recurringSaving ? 'Saving…' : 'Save'}
-                </PrimaryBtn>
-                <SecondaryBtn
-                  size="lg"
-                  onClick={() => {
-                    setRecurringError(null)
-                    setRecurringSetupOpen(false)
-                  }}
-                  style={{ borderColor: T.border, color: T.text1 }}
-                  disabled={recurringSaving}
-                >
-                  Cancel
-                </SecondaryBtn>
-              </div>
-            </div>
-          </Sheet>
-        )}
       </div>
     )
   }
@@ -1247,7 +985,7 @@ export function SmsImportClient() {
                       <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
                         {([
                           { value: 'everyday', label: 'Spending' },
-                          { value: 'fixed', label: 'Essentials' },
+                          { value: 'fixed', label: 'Fixed' },
                           { value: 'debt', label: 'Debt' },
                         ] as const).map((option) => {
                           const selected = editDraft.categoryType === option.value
@@ -1259,9 +997,8 @@ export function SmsImportClient() {
                                 setEditDraft((current) => {
                                   if (!current) return current
                                   const next = { ...current, categoryType: option.value }
-                                  if (option.value !== 'fixed') {
-                                    next.trackAsEssential = false
-                                    next.trackedMonthlyAmount = ''
+                                  if (option.value !== 'everyday' && option.value !== 'fixed') {
+                                    next.repeatsMonthly = false
                                   }
                                   if (option.value !== 'debt') {
                                     next.debtId = null
@@ -1310,6 +1047,40 @@ export function SmsImportClient() {
                         </p>
                       )}
                     </div>
+
+                    {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (
+                      <div style={{
+                        border: `var(--border-width) solid ${T.borderSubtle}`,
+                        borderRadius: 'var(--radius-md)',
+                        padding: '12px',
+                        background: 'var(--grey-50)',
+                        display: 'grid',
+                        gap: 'var(--space-sm)',
+                      }}>
+                        <label style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 'var(--space-sm)',
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 'var(--weight-medium)',
+                          color: T.text1,
+                          cursor: 'pointer',
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={editDraft.repeatsMonthly}
+                            onChange={(event) => {
+                              setEditDraft((current) => current ? {
+                                ...current,
+                                repeatsMonthly: event.target.checked,
+                              } : current)
+                            }}
+                            style={{ width: 18, height: 18, accentColor: T.brandDark }}
+                          />
+                          <span>Repeat every month</span>
+                        </label>
+                      </div>
+                    )}
 
                     {editDraft.categoryType === 'debt' && (
                       <div style={{ marginTop: 'var(--space-md)' }}>
