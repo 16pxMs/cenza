@@ -16,10 +16,9 @@ import {
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import {
-  readTrackedFixedExpenseEntries,
-  sumTrackedFixedExpenses,
-  upsertTrackedFixedExpense,
-} from '@/lib/fixed-bills/tracking'
+  loadMonthlyReminderEntriesForCycle,
+  saveMonthlyReminderEntriesForCycle,
+} from '@/lib/monthly-reminders/storage'
 import { deriveCurrentCycleId, getCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { addDebtTransaction, getDebt, getDebtTransactions } from '@/lib/supabase/debt-db'
 
@@ -262,7 +261,7 @@ export interface ParseSmsImportData {
   scanned: number
   skippedCredits: number
   hasLowConfidence: boolean
-  trackedFixedKeys: string[]
+  monthlyReminderKeys: string[]
   // True when rows came from the plain-language fallback parser. Used only
   // to surface a short clarifier in the review UI; no business-logic impact.
   usedFallback: boolean
@@ -304,7 +303,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         scanned: 0,
         skippedCredits: 0,
         hasLowConfidence: false,
-        trackedFixedKeys: [],
+        monthlyReminderKeys: [],
         usedFallback: false,
       })
     }
@@ -313,18 +312,12 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     const cycleId = deriveCurrentCycleId(profile)
     const [
       { data: dictionaryRows, error: dictionaryError },
-      { data: fixedExpensesRow, error: fixedExpensesError },
       { data: recentRows, error: recentRowsError },
     ] = await Promise.all([
       (supabase.from('item_dictionary') as any)
         .select('name_normalized,label,category_type,category_key,usage_count')
         .eq('user_id', user.id)
         .limit(300),
-      (supabase.from('fixed_expenses') as any)
-        .select('entries')
-        .eq('user_id', user.id)
-        .eq('cycle_id', cycleId)
-        .maybeSingle(),
       (supabase.from('transactions') as any)
         .select('category_label,category_type')
         .eq('user_id', user.id)
@@ -335,14 +328,11 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     if (dictionaryError) {
       throw new Error(`Failed to load dictionary: ${dictionaryError.message}`)
     }
-    if (fixedExpensesError) {
-      throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-    }
     if (recentRowsError) {
       throw new Error(`Failed to load recent transactions: ${recentRowsError.message}`)
     }
 
-    const trackedFixedKeys = readTrackedFixedExpenseEntries(fixedExpensesRow?.entries ?? null).map((entry) => entry.key)
+    const monthlyReminderKeys = (await loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId)).map((entry) => entry.key)
     const categoryCountsByLabel = new Map<string, Map<ImportCategoryType, number>>()
     for (const row of recentRows ?? []) {
       const normalized = normalize(row.category_label ?? '')
@@ -390,7 +380,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
           scanned: parsed.scanned,
           skippedCredits: parsed.skippedCredits,
           hasLowConfidence: computeHasLowConfidence(fallbackRows),
-          trackedFixedKeys,
+          monthlyReminderKeys,
           usedFallback: true,
         })
       }
@@ -399,7 +389,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     return ok({
       ...parsed,
       hasLowConfidence: computeHasLowConfidence(parsed.rows),
-      trackedFixedKeys,
+      monthlyReminderKeys,
       usedFallback: false,
     })
   })
@@ -775,32 +765,7 @@ export async function saveParsedSmsExpenses(
 
   if (trackingRowsByCycle.size > 0) {
     for (const [cycleId, trackingRows] of trackingRowsByCycle.entries()) {
-      const { data: existingFixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-        .select('entries')
-        .eq('user_id', user.id)
-        .eq('cycle_id', cycleId)
-        .maybeSingle()
-
-      if (fixedExpensesError) {
-        throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-      }
-
-      let nextEntries = existingFixedExpenses?.entries ?? null
-      for (const trackingRow of trackingRows) {
-        nextEntries = upsertTrackedFixedExpense(nextEntries, trackingRow)
-      }
-
-      const normalizedEntries = readTrackedFixedExpenseEntries(nextEntries)
-      const { error: fixedExpensesUpsertError } = await (supabase.from('fixed_expenses') as any).upsert({
-        user_id: user.id,
-        cycle_id: cycleId,
-        total_monthly: sumTrackedFixedExpenses(normalizedEntries),
-        entries: normalizedEntries,
-      }, { onConflict: 'user_id,cycle_id' })
-
-      if (fixedExpensesUpsertError) {
-        throw new Error(`Failed to track essential: ${fixedExpensesUpsertError.message}`)
-      }
+      await saveMonthlyReminderEntriesForCycle(supabase, user.id, cycleId, trackingRows)
     }
   }
   mark('db-write-fixed-expenses')

@@ -3,7 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
-import { readTrackedFixedExpenseEntries } from '@/lib/fixed-bills/tracking'
+import { loadMonthlyReminderEntriesForCycle } from '@/lib/monthly-reminders/storage'
 
 export interface LogSubItem {
   key: string
@@ -18,9 +18,9 @@ export interface LogSubItem {
   singleEntryDate?: string | null
   singleEntryNote?: string | null
   scope?: 'key' | 'label'
-  trackedEssential?: boolean
-  trackedEssentialKey?: string | null
-  trackedMonthlyAmount?: number | null
+  hasMonthlyReminder?: boolean
+  monthlyReminderKey?: string | null
+  monthlyAmount?: number | null
 }
 
 export interface LogEntry {
@@ -32,9 +32,9 @@ export interface LogEntry {
   date: string
   note: string | null
   createdAt: string
-  trackedEssential: boolean
-  trackedEssentialKey: string | null
-  trackedMonthlyAmount: number | null
+  hasMonthlyReminder: boolean
+  monthlyReminderKey: string | null
+  monthlyAmount: number | null
   debtId: string | null
   debtTransactionId: string | null
   debtEntryType: string | null
@@ -93,17 +93,13 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const cycleId = deriveCurrentCycleId(profile)
   const schedule = profileToPaySchedule(profile)
 
-  const [{ data: txns }, { data: fixedExpenses }] = await Promise.all([
+  const [{ data: txns }, monthlyReminderEntries] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, category_key, category_label, category_type, amount, date, note, created_at')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .order('created_at', { ascending: false }),
-    (supabase.from('fixed_expenses') as any)
-      .select('entries')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
+    loadMonthlyReminderEntriesForCycle(supabase, userId, cycleId),
   ])
 
   const currency = profile.currency ?? 'KES'
@@ -118,9 +114,8 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     created_at: string
   }>
 
-  const trackedFixedEntries = readTrackedFixedExpenseEntries((fixedExpenses?.entries ?? null) as unknown[] | null)
-  const trackedFixedEntriesByKey = new Map(
-    trackedFixedEntries.map((entry) => [entry.key, entry] as const)
+  const monthlyReminderEntriesByKey = new Map(
+    monthlyReminderEntries.map((entry) => [entry.key, entry] as const)
   )
   const debtMetadataByLinkedTransactionId = await loadDebtMirrorMetadata(
     supabase,
@@ -132,12 +127,12 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     .filter((txn) => txn.category_type !== 'goal')
     .map((txn) => {
       const categoryType = normalizeCategoryType(txn.category_type)
-      const trackedEssentialKey =
+      const monthlyReminderKey =
         categoryType === 'everyday' || categoryType === 'fixed'
           ? recurringExpenseKey(categoryType, txn.category_key)
           : null
-      const trackedEntry = trackedEssentialKey
-        ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
+      const monthlyReminderEntry = monthlyReminderKey
+        ? monthlyReminderEntriesByKey.get(monthlyReminderKey) ?? null
         : null
       const debtMetadata = categoryType === 'debt'
         ? debtMetadataByLinkedTransactionId.get(txn.id) ?? null
@@ -152,9 +147,9 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
         date: txn.date,
         note: txn.note ?? null,
         createdAt: txn.created_at,
-        trackedEssential: !!trackedEntry,
-        trackedEssentialKey: trackedEntry?.key ?? null,
-        trackedMonthlyAmount: trackedEntry?.monthly ?? null,
+        hasMonthlyReminder: !!monthlyReminderEntry,
+        monthlyReminderKey: monthlyReminderEntry?.key ?? null,
+        monthlyAmount: monthlyReminderEntry?.monthly ?? null,
         debtId: debtMetadata?.debtId ?? null,
         debtTransactionId: debtMetadata?.debtTransactionId ?? null,
         debtEntryType: debtMetadata?.debtEntryType ?? null,
@@ -176,33 +171,28 @@ export async function loadEntryById(
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
 
-  const [{ data: txn }, { data: fixedExpenses }] = await Promise.all([
+  const [{ data: txn }, monthlyReminderEntries] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, category_key, category_label, category_type, amount, date, note, created_at')
       .eq('id', entryId)
       .eq('user_id', userId)
       .maybeSingle(),
-    (supabase.from('fixed_expenses') as any)
-      .select('entries')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
+    loadMonthlyReminderEntriesForCycle(supabase, userId, cycleId),
   ])
 
   if (!txn) return null
 
-  const trackedFixedEntries = readTrackedFixedExpenseEntries((fixedExpenses?.entries ?? null) as unknown[] | null)
-  const trackedFixedEntriesByKey = new Map(
-    trackedFixedEntries.map((entry) => [entry.key, entry] as const)
+  const monthlyReminderEntriesByKey = new Map(
+    monthlyReminderEntries.map((entry) => [entry.key, entry] as const)
   )
 
   const normalizedCategoryType = normalizeCategoryType(txn.category_type)
-  const trackedEssentialKey =
+  const monthlyReminderKey =
     normalizedCategoryType === 'everyday' || normalizedCategoryType === 'fixed'
       ? recurringExpenseKey(normalizedCategoryType, txn.category_key)
       : null
-  const trackedEntry = trackedEssentialKey
-    ? trackedFixedEntriesByKey.get(trackedEssentialKey) ?? null
+  const monthlyReminderEntry = monthlyReminderKey
+    ? monthlyReminderEntriesByKey.get(monthlyReminderKey) ?? null
     : null
   const debtMetadataByLinkedTransactionId = await loadDebtMirrorMetadata(
     supabase,
@@ -222,9 +212,9 @@ export async function loadEntryById(
     date: txn.date,
     note: txn.note ?? null,
     createdAt: txn.created_at,
-    trackedEssential: !!trackedEntry,
-    trackedEssentialKey: trackedEntry?.key ?? null,
-    trackedMonthlyAmount: trackedEntry?.monthly ?? null,
+    hasMonthlyReminder: !!monthlyReminderEntry,
+    monthlyReminderKey: monthlyReminderEntry?.key ?? null,
+    monthlyAmount: monthlyReminderEntry?.monthly ?? null,
     debtId: debtMetadata?.debtId ?? null,
     debtTransactionId: debtMetadata?.debtTransactionId ?? null,
     debtEntryType: debtMetadata?.debtEntryType ?? null,

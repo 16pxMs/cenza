@@ -18,8 +18,8 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
 import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
-import { stopTrackingEssential, updateTrackedEssential } from '@/app/(app)/log/actions'
-import type { TrackedFixedExpenseEntry } from '@/lib/fixed-bills/tracking'
+import { removeMonthlyReminder, updateMonthlyReminder } from '@/app/(app)/log/actions'
+import type { MonthlyReminderEntry } from '@/lib/monthly-reminders/storage'
 import type { OverviewObligation } from '@/lib/loaders/overview'
 
 const OVERVIEW_UPCOMING_PAYMENT_WINDOW_DAYS = 14
@@ -87,7 +87,7 @@ interface Props {
   categorySpend?: Record<string, number>
   recentActivity?: Array<{ id: string; label: string; amount: number; date: string }>
   lastCycleRecurringTop?: { label: string; amount: number; total: number } | null
-  trackedEssentials?: TrackedFixedExpenseEntry[]
+  monthlyReminders?: MonthlyReminderEntry[]
   billsLeftToPay?: {
     items: Array<{ key: string; label: string; expected: number; paid: number; leftToPay: number }>
     totalLeftToPay: number
@@ -108,17 +108,17 @@ interface Props {
 export function OverviewWithData({
   name, currency, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
-  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, trackedEssentials = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
+  totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, monthlyReminders = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [activeGoalContrib, setActiveGoalContrib] = useState<string | null>(null)
-  const [manageEssentialsOpen, setManageEssentialsOpen] = useState(false)
-  const [activeTrackedBill, setActiveTrackedBill] = useState<TrackedFixedExpenseEntry | null>(null)
-  const [trackedBillLabel, setTrackedBillLabel] = useState('')
-  const [trackedBillMonthlyAmount, setTrackedBillMonthlyAmount] = useState('')
-  const [trackedBillErrors, setTrackedBillErrors] = useState<{ label?: string; monthlyAmount?: string }>({})
-  const [savingTrackedBill, setSavingTrackedBill] = useState(false)
+  const [manageRemindersOpen, setManageRemindersOpen] = useState(false)
+  const [activeMonthlyReminder, setActiveMonthlyReminder] = useState<MonthlyReminderEntry | null>(null)
+  const [monthlyReminderLabel, setMonthlyReminderLabel] = useState('')
+  const [monthlyReminderAmount, setMonthlyReminderAmount] = useState('')
+  const [monthlyReminderErrors, setMonthlyReminderErrors] = useState<{ label?: string; monthlyAmount?: string }>({})
+  const [savingMonthlyReminder, setSavingMonthlyReminder] = useState(false)
 
   const formatReminderRelativeTime = (dueDate: string, state: 'upcoming' | 'due' | 'overdue') => {
     const today = new Date()
@@ -793,21 +793,21 @@ const reference = receivedConfirmed
         )
       })()}
 
-      {manageEssentialsOpen && (
+      {manageRemindersOpen && (
         <Sheet
           open={true}
           onClose={() => {
-            setManageEssentialsOpen(false)
+            setManageRemindersOpen(false)
           }}
-          title="Manage fixed costs"
+          title="Manage reminders"
         >
           <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-              Recurring fixed costs for this month.
+              Monthly reminders for this month.
             </p>
-            {trackedEssentials.length > 0 ? (
+            {monthlyReminders.length > 0 ? (
               <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                {trackedEssentials.map((item) => (
+                {monthlyReminders.map((item) => (
                   <div
                     key={item.key}
                     style={{
@@ -831,11 +831,11 @@ const reference = receivedConfirmed
                       <SecondaryBtn
                         size="sm"
                         onClick={() => {
-                          setManageEssentialsOpen(false)
-                          setActiveTrackedBill(item)
-                          setTrackedBillLabel(item.label)
-                          setTrackedBillMonthlyAmount(String(item.monthly))
-                          setTrackedBillErrors({})
+                          setManageRemindersOpen(false)
+                          setActiveMonthlyReminder(item)
+                          setMonthlyReminderLabel(item.label)
+                          setMonthlyReminderAmount(String(item.monthly))
+                          setMonthlyReminderErrors({})
                         }}
                         style={{ width: 'auto' }}
                       >
@@ -845,16 +845,16 @@ const reference = receivedConfirmed
                         size="sm"
                         onClick={async () => {
                           try {
-                            await stopTrackingEssential({ categoryKey: item.key })
-                            setManageEssentialsOpen(false)
+                            await removeMonthlyReminder({ categoryKey: item.key })
+                            setManageRemindersOpen(false)
                             router.refresh()
                           } catch (error) {
-                            console.error('[overview] stopTrackingEssential failed', error)
+                            console.error('[overview] removeMonthlyReminder failed', error)
                           }
                         }}
                         style={{ width: 'auto', color: 'var(--red-dark)' }}
                       >
-                        Remove from recurring
+                        Remove monthly reminder
                       </TertiaryBtn>
                     </div>
                   </div>
@@ -862,46 +862,46 @@ const reference = receivedConfirmed
               </div>
             ) : (
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-                No recurring fixed costs yet.
+                No monthly reminders yet.
               </p>
             )}
           </div>
         </Sheet>
       )}
 
-      {activeTrackedBill && (
+      {activeMonthlyReminder && (
         <Sheet
           open={true}
           onClose={() => {
-            setActiveTrackedBill(null)
-            setTrackedBillLabel('')
-            setTrackedBillMonthlyAmount('')
-            setTrackedBillErrors({})
+            setActiveMonthlyReminder(null)
+            setMonthlyReminderLabel('')
+            setMonthlyReminderAmount('')
+            setMonthlyReminderErrors({})
           }}
-          title={activeTrackedBill.label}
+          title={activeMonthlyReminder.label}
         >
           <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
             <Input
               label="Name"
-              value={trackedBillLabel}
+              value={monthlyReminderLabel}
               onChange={(value) => {
-                setTrackedBillLabel(value)
-                setTrackedBillErrors((current) => ({ ...current, label: undefined }))
+                setMonthlyReminderLabel(value)
+                setMonthlyReminderErrors((current) => ({ ...current, label: undefined }))
               }}
-              error={trackedBillErrors.label}
+              error={monthlyReminderErrors.label}
             />
             <Input
               label="Monthly amount"
               type="number"
-              value={trackedBillMonthlyAmount}
+              value={monthlyReminderAmount}
               onChange={(value) => {
-                setTrackedBillMonthlyAmount(value)
-                setTrackedBillErrors((current) => ({ ...current, monthlyAmount: undefined }))
+                setMonthlyReminderAmount(value)
+                setMonthlyReminderErrors((current) => ({ ...current, monthlyAmount: undefined }))
               }}
-              error={trackedBillErrors.monthlyAmount}
+              error={monthlyReminderErrors.monthlyAmount}
             />
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
-              This will be included in your monthly expenses.
+              This amount is used for your monthly reminder.
             </p>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
               Reminders will use your pay schedule by default.
@@ -909,8 +909,8 @@ const reference = receivedConfirmed
             <PrimaryBtn
               size="lg"
               onClick={async () => {
-                const label = trackedBillLabel.trim()
-                const monthlyAmount = parseFloat(trackedBillMonthlyAmount)
+                const label = monthlyReminderLabel.trim()
+                const monthlyAmount = parseFloat(monthlyReminderAmount)
                 const nextErrors: { label?: string; monthlyAmount?: string } = {}
                 if (!label) {
                   nextErrors.label = 'Add a name'
@@ -919,44 +919,44 @@ const reference = receivedConfirmed
                   nextErrors.monthlyAmount = 'Add a monthly amount'
                 }
                 if (Object.keys(nextErrors).length > 0) {
-                  setTrackedBillErrors(nextErrors)
+                  setMonthlyReminderErrors(nextErrors)
                   return
                 }
 
-                setSavingTrackedBill(true)
+                setSavingMonthlyReminder(true)
                 try {
-                  await updateTrackedEssential({
-                    categoryKey: activeTrackedBill.key,
+                  await updateMonthlyReminder({
+                    categoryKey: activeMonthlyReminder.key,
                     label,
                     monthlyAmount,
                   })
-                  setActiveTrackedBill(null)
-                  setManageEssentialsOpen(false)
+                  setActiveMonthlyReminder(null)
+                  setManageRemindersOpen(false)
                   router.refresh()
                 } finally {
-                  setSavingTrackedBill(false)
+                  setSavingMonthlyReminder(false)
                 }
               }}
-              disabled={savingTrackedBill}
+              disabled={savingMonthlyReminder}
             >
-              {savingTrackedBill ? 'Saving…' : 'Save changes'}
+              {savingMonthlyReminder ? 'Saving…' : 'Save changes'}
             </PrimaryBtn>
             <SecondaryBtn
               size="lg"
               onClick={async () => {
-                setSavingTrackedBill(true)
+                setSavingMonthlyReminder(true)
                 try {
-                  await stopTrackingEssential({ categoryKey: activeTrackedBill.key })
-                  setActiveTrackedBill(null)
-                  setManageEssentialsOpen(false)
+                  await removeMonthlyReminder({ categoryKey: activeMonthlyReminder.key })
+                  setActiveMonthlyReminder(null)
+                  setManageRemindersOpen(false)
                   router.refresh()
                 } finally {
-                  setSavingTrackedBill(false)
+                  setSavingMonthlyReminder(false)
                 }
               }}
-              disabled={savingTrackedBill}
+              disabled={savingMonthlyReminder}
             >
-              Remove from recurring
+              Remove monthly reminder
             </SecondaryBtn>
           </div>
         </Sheet>

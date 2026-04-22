@@ -4,9 +4,11 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import {
-  readTrackedFixedExpenseEntries,
-  type TrackedFixedExpenseEntry,
-} from '@/lib/fixed-bills/tracking'
+  loadMonthlyReminderEntriesForCycle,
+  loadPlannedMonthlyEntriesForCycle,
+  readPlannedMonthlyEntries,
+  type MonthlyReminderEntry,
+} from '@/lib/monthly-reminders/storage'
 import type { Debt, GoalId, UserProfile } from '@/types/database'
 
 interface ExtraIncomeItem {
@@ -119,10 +121,10 @@ export function deriveBillsLeftToPay(
   fixedEntries: unknown[] | null | undefined,
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
 ): BillsLeftToPay {
-  const expectedEntries = readTrackedFixedExpenseEntries(fixedEntries).map((entry) => ({
+  const expectedEntries = readPlannedMonthlyEntries<{ key: string; label?: string; monthly?: number | string }>(fixedEntries).map((entry) => ({
     key: entry.key,
     expected: Number(entry.monthly ?? 0),
-    label: entry.label.trim() || titleFromKey(entry.key),
+    label: entry.label?.trim() || titleFromKey(entry.key),
   }))
 
   const expectedKeys = new Set(expectedEntries.map((entry) => entry.key))
@@ -191,7 +193,7 @@ export interface OverviewPageData {
     amount: number
     total: number
   } | null
-  trackedEssentials: TrackedFixedExpenseEntry[]
+  monthlyReminders: MonthlyReminderEntry[]
   billsLeftToPay: BillsLeftToPay
   debtReminderCandidates: DebtReminderCandidate[]
   overviewObligations: OverviewObligation[]
@@ -219,7 +221,6 @@ function deriveObligationStatus(daysUntil: number): ObligationStatus {
 function deriveOverviewObligations(input: {
   debts: Debt[]
   currency: string
-  trackedFixedExpenses: TrackedFixedExpenseEntry[]
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
 }): OverviewObligation[] {
   const today = parseDate(new Date().toISOString().slice(0, 10))
@@ -431,6 +432,8 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     { data: debts },
     { data: prevCycleRecurringRows },
     { data: goalContributionRows },
+    monthlyReminders,
+    plannedMonthlyEntries,
   ] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, amount, category_key, category_type, category_label, date')
@@ -442,7 +445,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
     (supabase.from('fixed_expenses') as any)
-      .select('total_monthly, entries')
+      .select('total_monthly')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
@@ -465,6 +468,8 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
           .eq('user_id', userId)
           .eq('category_type', 'goal')
           .in('category_key', goals),
+    loadMonthlyReminderEntriesForCycle(supabase, userId, cycleId),
+    loadPlannedMonthlyEntriesForCycle(supabase, userId, cycleId),
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
@@ -488,7 +493,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       `[overview] bills-left-to-pay debug
 cycleId: ${cycleId}
 fixedExpensesRow.entries:
-${JSON.stringify((fixedExpenses?.entries ?? null) as unknown[] | null, null, 2)}
+${JSON.stringify(plannedMonthlyEntries, null, 2)}
 fixedCycleTransactions:
 ${JSON.stringify(fixedTxnDebug, null, 2)}`
     )
@@ -598,6 +603,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   const incomeTotal = deriveIncomeTotal(incomeRow)
   const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
   const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
+  // Financial totals are protected: total_monthly is written by the monthly
+  // storage adapter from entry_type === 'planned' rows only.
   const fixedTotal = Number(fixedExpenses?.total_monthly ?? 0)
   const budgetTotal = Number(spendingBudgetData?.total_budget ?? 0)
   const hasStartedCycleData =
@@ -638,7 +645,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
 
   const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
   const debtReminderCandidates = deriveDebtReminderCandidates(debtRows)
-  const trackedEssentials = readTrackedFixedExpenseEntries(fixedExpenses?.entries ?? null)
   const selectedGoal = selectOverviewGoal({
     goals,
     goalTargets: goalTargetsMap,
@@ -651,7 +657,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   const overviewObligations = deriveOverviewObligations({
     debts: debtRows,
     currency: profile.currency ?? 'KES',
-    trackedFixedExpenses: trackedEssentials,
     cycleTransactions: transactionRows,
   })
 
@@ -689,9 +694,9 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     goalLabels,
     selectedGoal,
     lastCycleRecurringTop,
-    trackedEssentials,
+    monthlyReminders,
     billsLeftToPay: deriveBillsLeftToPay(
-      (fixedExpenses?.entries ?? null) as unknown[] | null,
+      plannedMonthlyEntries,
       transactionRows
     ),
     debtReminderCandidates,

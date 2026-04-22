@@ -854,6 +854,7 @@ function DoneStep({
       name: formatDisplayLabel(item.label),
       amountLabel: formatSummaryAmount(item.amount),
       metaLabel: `${categoryLabel} · ${todayLabel}`,
+      hasMonthlyReminder: item.repeatsMonthly,
     }
   })
 
@@ -1338,44 +1339,35 @@ function ReviewStep({
       </div>
       </div>
 
-      {item.categoryType !== 'debt' && (
-        <div style={{ marginBottom: 'var(--space-lg)' }}>
-          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Category
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Category
+        </p>
+        <TypeChips
+          selected={item.categoryType}
+          onSelect={onTypeSelect}
+          types={['everyday', 'fixed', 'debt']}
+        />
+        {(item.categoryType === 'everyday' || item.categoryType === 'fixed' || item.categoryType === 'debt') && (
+          <p style={{
+            margin: 'var(--space-sm) 0 0',
+            fontSize: 'var(--text-sm)',
+            color: T.text3,
+            lineHeight: 1.5,
+          }}>
+            {TYPE_COPY[item.categoryType].helper}
           </p>
-          <TypeChips
-            selected={item.categoryType}
-            onSelect={onTypeSelect}
-            types={
-              suggestType(item.label) === 'debt'
-                ? ['everyday', 'fixed', 'debt']
-                : ['everyday', 'fixed']
-            }
-          />
-          {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
-            <p style={{
-              margin: 'var(--space-sm) 0 0',
-              fontSize: 'var(--text-sm)',
-              color: T.text3,
-              lineHeight: 1.5,
-            }}>
-              {TYPE_COPY[item.categoryType].helper}
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
-        <div style={{
-          marginBottom: 'var(--space-lg)',
-          padding: 'var(--space-md)',
-          borderRadius: 'var(--radius-sm)',
-          border: `${T.borderWidth} solid ${T.borderSubtle}`,
-          background: T.grey50,
-        }}>
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Reminder
+          </p>
           <label style={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             gap: 'var(--space-sm)',
             fontSize: 'var(--text-sm)',
             fontWeight: 'var(--weight-medium)',
@@ -1386,10 +1378,46 @@ function ReviewStep({
               type="checkbox"
               checked={item.repeatsMonthly}
               onChange={(event) => onRepeatsMonthlyChange(event.target.checked)}
-              style={{ width: 18, height: 18, accentColor: T.brandDark }}
+              style={{ width: 18, height: 18, marginTop: 2, accentColor: T.brandDark }}
             />
-            <span>Repeat every month</span>
+            <span>
+              <span style={{ display: 'block', color: T.text1 }}>
+                Remind me about this every month
+              </span>
+              <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-regular)', color: T.text3, lineHeight: 1.4 }}>
+                We’ll remind you before it’s due
+              </span>
+            </span>
           </label>
+
+          {item.repeatsMonthly && (
+            <div style={{
+              marginTop: 'var(--space-md)',
+              display: 'grid',
+              gap: 'var(--space-xs)',
+              justifyItems: 'start',
+            }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+                ✓ Monthly reminder set
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                We’ll remind you before it’s due
+              </div>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--brand-light)',
+                color: T.brandDark,
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-medium)',
+                lineHeight: 1.2,
+              }}>
+                Monthly reminder
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -1493,22 +1521,22 @@ function TypeChips({ selected, onSelect, types }: {
           <button
             key={value}
             onClick={() => onSelect(selected === value ? null : value)}
-            style={{
-              height: '40px',
-              padding: '0 var(--space-md)',
-              borderRadius: 'var(--radius-full)',
-              border: selected === value
-                ? `${T.borderWidth} solid ${T.brandMid}`
-                : `${T.borderWidth} solid ${T.grey200}`,
-              background: selected === value ? T.brandSoft : T.grey50,
-              cursor: 'pointer',
-              display: 'flex',
+	            style={{
+	              height: '40px',
+	              padding: '0 var(--space-md)',
+	              borderRadius: 'var(--radius-full)',
+	              border: selected === value
+	                ? `${T.borderWidth} solid transparent`
+	                : `${T.borderWidth} solid ${T.borderSubtle}`,
+	              background: selected === value ? 'var(--brand-light)' : 'transparent',
+	              cursor: 'pointer',
+	              display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               whiteSpace: 'nowrap',
             }}
           >
-            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: selected === value ? T.brandDark : T.text1 }}>
+	            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: selected === value ? T.brandDark : T.textMuted }}>
               {copy.title}
             </div>
           </button>

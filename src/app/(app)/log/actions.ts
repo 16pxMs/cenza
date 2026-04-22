@@ -8,11 +8,10 @@ import type { CategoryType } from '@/types/database'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import {
-  readTrackedFixedExpenseEntries,
-  removeTrackedFixedExpense,
-  sumTrackedFixedExpenses,
-  upsertTrackedFixedExpense,
-} from '@/lib/fixed-bills/tracking'
+  loadMonthlyReminderEntriesForCycle,
+  removeMonthlyReminderEntryForCycle,
+  saveMonthlyReminderEntryForCycle,
+} from '@/lib/monthly-reminders/storage'
 
 interface RecordRefundInput {
   categoryType: CategoryType
@@ -30,85 +29,61 @@ interface UpdateLogEntryInput {
   label?: string
   categoryKey?: string
   categoryType?: CategoryType
-  removeRecurringCategoryKey?: string
+  removeMonthlyReminderKey?: string
 }
 
-interface TrackEssentialInput {
+interface SetMonthlyReminderInput {
   categoryType: CategoryType
   categoryKey: string
   categoryLabel: string
   amount: number
 }
 
-interface StopTrackingEssentialInput {
+interface RemoveMonthlyReminderInput {
   categoryKey: string
 }
 
-interface UpdateTrackedEssentialMonthlyAmountInput {
+interface UpdateMonthlyReminderAmountInput {
   categoryKey: string
   monthlyAmount: number
 }
 
-interface UpdateTrackedEssentialInput {
+interface UpdateMonthlyReminderInput {
   categoryKey: string
   label: string
   monthlyAmount: number
 }
 
-async function removeRecurringEntryForCurrentCycle(
+async function removeMonthlyReminderForCurrentCycle(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string,
   profile: NonNullable<Awaited<ReturnType<typeof getAppSession>>['profile']>,
   categoryKey: string
 ): Promise<void> {
   const cycleId = await getCurrentCycleId(supabase as any, userId, profile)
-  await removeRecurringEntryForCycle(supabase, userId, cycleId, categoryKey)
+  await removeMonthlyReminderForCycle(supabase, userId, cycleId, categoryKey)
 }
 
-async function removeRecurringEntryForCycle(
+async function removeMonthlyReminderForCycle(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string,
   cycleId: string,
   categoryKey: string
 ): Promise<void> {
-  const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', userId)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesError) {
-    throw new Error(`Failed to load recurring essentials: ${fixedExpensesError.message}`)
-  }
-
-  const nextEntries = removeTrackedFixedExpense(
-    fixedExpenses?.entries ?? null,
-    canonicalizeFixedBillKey(categoryKey)
-  )
+  const monthlyReminderEntries = await loadMonthlyReminderEntriesForCycle(supabase, userId, cycleId)
 
   if (process.env.NODE_ENV !== 'production') {
     console.info(
-      `[log.delete] recurring-remove
+      `[log.delete] monthly-reminder-remove
 cycleId: ${cycleId}
 requestedKey: ${categoryKey}
 canonicalKey: ${canonicalizeFixedBillKey(categoryKey)}
-before:
-${JSON.stringify(readTrackedFixedExpenseEntries(fixedExpenses?.entries ?? null), null, 2)}
-after:
-${JSON.stringify(nextEntries, null, 2)}`
+monthlyReminderEntries:
+${JSON.stringify(monthlyReminderEntries, null, 2)}`
     )
   }
 
-  const { error: recurringError } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: userId,
-    cycle_id: cycleId,
-    total_monthly: sumTrackedFixedExpenses(nextEntries),
-    entries: nextEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (recurringError) {
-    throw new Error(`Failed to update recurring essentials: ${recurringError.message}`)
-  }
+  await removeMonthlyReminderEntryForCycle(supabase, userId, cycleId, categoryKey)
 }
 
 function slugifyCategoryKey(value: string) {
@@ -192,13 +167,13 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
 
   if (error) throw new Error(`Failed to update entry: ${error.message}`)
 
-  if (input.removeRecurringCategoryKey?.trim()) {
-    if (!profile) throw new Error('Profile is required to update recurring state')
-    await removeRecurringEntryForCurrentCycle(
+  if (input.removeMonthlyReminderKey?.trim()) {
+    if (!profile) throw new Error('Profile is required to update monthly reminder')
+    await removeMonthlyReminderForCurrentCycle(
       supabase,
       user.id,
       profile,
-      input.removeRecurringCategoryKey
+      input.removeMonthlyReminderKey
     )
   }
 
@@ -208,7 +183,7 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   revalidatePath('/goals')
 }
 
-export async function deleteLogEntry(id: string, recurringCategoryKey?: string | null): Promise<void> {
+export async function deleteLogEntry(id: string, monthlyReminderKey?: string | null): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
   if (!id.trim()) throw new Error('Entry id is required')
@@ -227,8 +202,8 @@ export async function deleteLogEntry(id: string, recurringCategoryKey?: string |
     ? await getCurrentCycleId(supabase as any, user.id, profile)
     : null
   const removalCycleId = txn.cycle_id || currentCycleId
-  const explicitRecurringKey = recurringCategoryKey?.trim() || null
-  const derivedRecurringKey = recurringExpenseKey(
+  const explicitMonthlyReminderKey = monthlyReminderKey?.trim() || null
+  const derivedMonthlyReminderKey = recurringExpenseKey(
     String(txn.category_type ?? '').trim(),
     String(txn.category_key ?? '').trim()
   )
@@ -237,7 +212,7 @@ export async function deleteLogEntry(id: string, recurringCategoryKey?: string |
     console.info(
       `[log.delete] request
 transactionId: ${id}
-receivedRecurringKey: ${explicitRecurringKey}
+receivedMonthlyReminderKey: ${explicitMonthlyReminderKey}
 transaction:
 ${JSON.stringify({
   id: txn.id,
@@ -246,7 +221,7 @@ ${JSON.stringify({
   category_type: txn.category_type,
   cycle_id: txn.cycle_id,
 }, null, 2)}
-derivedRecurringKey: ${derivedRecurringKey}
+derivedMonthlyReminderKey: ${derivedMonthlyReminderKey}
 currentCycleId: ${currentCycleId}`
     )
   }
@@ -259,38 +234,28 @@ currentCycleId: ${currentCycleId}`
   if (error) throw new Error(`Failed to delete entry: ${error.message}`)
 
   if (removalCycleId) {
-    const { data: fixedExpensesAfterDelete, error: fixedExpensesLookupError } = await (supabase.from('fixed_expenses') as any)
-      .select('entries')
-      .eq('user_id', user.id)
-      .eq('cycle_id', removalCycleId)
-      .maybeSingle()
-
-    if (fixedExpensesLookupError) {
-      throw new Error(`Failed to load recurring essentials after delete: ${fixedExpensesLookupError.message}`)
-    }
-
-    const trackedEntries = readTrackedFixedExpenseEntries(fixedExpensesAfterDelete?.entries ?? null)
-    const matchedRecurringKey =
-      explicitRecurringKey ||
-      trackedEntries.find((entry) => entry.key === derivedRecurringKey)?.key ||
+    const monthlyReminderEntries = await loadMonthlyReminderEntriesForCycle(supabase, user.id, removalCycleId)
+    const matchedMonthlyReminderKey =
+      explicitMonthlyReminderKey ||
+      monthlyReminderEntries.find((entry) => entry.key === derivedMonthlyReminderKey)?.key ||
       null
 
     if (process.env.NODE_ENV !== 'production') {
       console.info(
-        `[log.delete] recurring-match
+        `[log.delete] monthly-reminder-match
 cycleId: ${removalCycleId}
-trackedEntries:
-${JSON.stringify(trackedEntries, null, 2)}
-matchedRecurringKey: ${matchedRecurringKey}`
+monthlyReminderEntries:
+${JSON.stringify(monthlyReminderEntries, null, 2)}
+matchedMonthlyReminderKey: ${matchedMonthlyReminderKey}`
       )
     }
 
-    if (matchedRecurringKey) {
-      await removeRecurringEntryForCycle(
+    if (matchedMonthlyReminderKey) {
+      await removeMonthlyReminderForCycle(
         supabase,
         user.id,
         removalCycleId,
-        matchedRecurringKey
+        matchedMonthlyReminderKey
       )
     }
   }
@@ -302,7 +267,7 @@ matchedRecurringKey: ${matchedRecurringKey}`
   revalidatePath('/goals')
 }
 
-export async function trackEssential(input: TrackEssentialInput): Promise<void> {
+export async function setMonthlyReminder(input: SetMonthlyReminderInput): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
 
@@ -313,28 +278,11 @@ export async function trackEssential(input: TrackEssentialInput): Promise<void> 
 
   const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', user.id)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesError) throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-
-  const nextEntries = upsertTrackedFixedExpense(fixedExpenses?.entries ?? null, {
+  await saveMonthlyReminderEntryForCycle(supabase, user.id, cycleId, {
     key: recurringExpenseKey(input.categoryType, input.categoryKey),
     label: input.categoryLabel,
     monthly: amount,
   })
-
-  const { error } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: user.id,
-    cycle_id: cycleId,
-    total_monthly: sumTrackedFixedExpenses(nextEntries),
-    entries: nextEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (error) throw new Error(`Failed to track essential: ${error.message}`)
 
   revalidatePath('/app')
   revalidatePath('/log')
@@ -342,31 +290,14 @@ export async function trackEssential(input: TrackEssentialInput): Promise<void> 
   revalidatePath('/history')
 }
 
-export async function stopTrackingEssential(input: StopTrackingEssentialInput): Promise<void> {
+export async function removeMonthlyReminder(input: RemoveMonthlyReminderInput): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
   if (!input.categoryKey.trim()) throw new Error('Category key is required')
 
   const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', user.id)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesError) throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-
-  const nextEntries = removeTrackedFixedExpense(fixedExpenses?.entries ?? null, input.categoryKey)
-
-  const { error } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: user.id,
-    cycle_id: cycleId,
-    total_monthly: sumTrackedFixedExpenses(nextEntries),
-    entries: nextEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (error) throw new Error(`Failed to stop tracking essential: ${error.message}`)
+  await removeMonthlyReminderEntryForCycle(supabase, user.id, cycleId, input.categoryKey)
 
   revalidatePath('/app')
   revalidatePath('/log')
@@ -374,8 +305,8 @@ export async function stopTrackingEssential(input: StopTrackingEssentialInput): 
   revalidatePath('/history')
 }
 
-export async function updateTrackedEssentialMonthlyAmount(
-  input: UpdateTrackedEssentialMonthlyAmountInput
+export async function updateMonthlyReminderAmount(
+  input: UpdateMonthlyReminderAmountInput
 ): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
@@ -388,35 +319,17 @@ export async function updateTrackedEssentialMonthlyAmount(
 
   const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', user.id)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesError) throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-
-  const existingEntries = readTrackedFixedExpenseEntries(fixedExpenses?.entries ?? null)
   const canonicalKey = canonicalizeFixedBillKey(input.categoryKey)
-  const existingEntry = existingEntries.find((entry) => entry.key === canonicalKey)
+  const existingEntry = (await loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId)).find((entry) => entry.key === canonicalKey)
   if (!existingEntry) {
-    throw new Error('Tracked essential not found')
+    throw new Error('Monthly reminder not found')
   }
 
-  const nextEntries = upsertTrackedFixedExpense(existingEntries, {
+  await saveMonthlyReminderEntryForCycle(supabase, user.id, cycleId, {
     key: canonicalKey,
     label: existingEntry.label,
     monthly: monthlyAmount,
   })
-
-  const { error } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: user.id,
-    cycle_id: cycleId,
-    total_monthly: sumTrackedFixedExpenses(nextEntries),
-    entries: nextEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (error) throw new Error(`Failed to update tracked essential: ${error.message}`)
 
   revalidatePath('/app')
   revalidatePath('/log')
@@ -424,8 +337,8 @@ export async function updateTrackedEssentialMonthlyAmount(
   revalidatePath('/history')
 }
 
-export async function updateTrackedEssential(
-  input: UpdateTrackedEssentialInput
+export async function updateMonthlyReminder(
+  input: UpdateMonthlyReminderInput
 ): Promise<void> {
   const { user, profile } = await getAppSession()
   if (!user || !profile) throw new Error('Not authenticated')
@@ -440,35 +353,17 @@ export async function updateTrackedEssential(
 
   const supabase = await createServerSupabaseClient()
   const cycleId = await getCurrentCycleId(supabase as any, user.id, profile)
-  const { data: fixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', user.id)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesError) throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-
-  const existingEntries = readTrackedFixedExpenseEntries(fixedExpenses?.entries ?? null)
   const canonicalKey = canonicalizeFixedBillKey(input.categoryKey)
-  const existingEntry = existingEntries.find((entry) => entry.key === canonicalKey)
+  const existingEntry = (await loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId)).find((entry) => entry.key === canonicalKey)
   if (!existingEntry) {
-    throw new Error('Tracked essential not found')
+    throw new Error('Monthly reminder not found')
   }
 
-  const nextEntries = upsertTrackedFixedExpense(existingEntries, {
+  await saveMonthlyReminderEntryForCycle(supabase, user.id, cycleId, {
     key: canonicalKey,
     label,
     monthly: monthlyAmount,
   })
-
-  const { error } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: user.id,
-    cycle_id: cycleId,
-    total_monthly: sumTrackedFixedExpenses(nextEntries),
-    entries: nextEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (error) throw new Error(`Failed to update tracked essential: ${error.message}`)
 
   revalidatePath('/app')
   revalidatePath('/log')

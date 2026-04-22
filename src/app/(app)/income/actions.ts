@@ -7,6 +7,9 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { FixedEntry } from '@/components/flows/plan/EditFixedExpensesSheet'
 import type { BudgetCategory } from '@/components/flows/plan/EditSpendingBudgetSheet'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import {
+  savePlannedMonthlyEntriesForCycle,
+} from '@/lib/monthly-reminders/storage'
 
 interface SaveIncomeInput {
   income: number
@@ -139,18 +142,12 @@ export async function saveFixedExpenses(entries: FixedEntry[]): Promise<void> {
     key: canonicalizeFixedBillKey(entry.key),
     priority: entry.priority ?? 'core',
   }))
-  const totalMonthly = canonicalEntries.reduce((sum, entry) => sum + entry.monthly, 0)
-
-  const { error } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: user.id,
-    cycle_id: cycleId,
-    total_monthly: totalMonthly,
-    entries: canonicalEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (error) {
-    throw new Error(`Failed to save fixed expenses: ${error.message}`)
-  }
+  await savePlannedMonthlyEntriesForCycle(
+    supabase as any,
+    user.id,
+    cycleId,
+    canonicalEntries
+  )
 
   revalidatePath('/income')
   revalidatePath('/plan')

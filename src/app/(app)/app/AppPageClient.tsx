@@ -46,7 +46,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         categorySpend={overview.categorySpend}
         recentActivity={overview.recentActivity}
         lastCycleRecurringTop={overview.lastCycleRecurringTop}
-        trackedEssentials={overview.trackedEssentials}
+        monthlyReminders={overview.monthlyReminders}
         billsLeftToPay={overview.billsLeftToPay}
         overviewObligations={overview.overviewObligations}
         debtReminderCandidates={overview.debtReminderCandidates}

@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 const getCurrentCycleId = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/cycles-db', () => ({ getCurrentCycleId }))
 
 function makeSupabase() {
@@ -16,12 +16,16 @@ function makeSupabase() {
 
   const incomeUpsert = vi.fn().mockResolvedValue({ error: null })
   const fixedUpsert = vi.fn().mockResolvedValue({ error: null })
+  const fixedMaybeSingle = vi.fn().mockResolvedValue({ data: { entries: [] }, error: null })
+  const fixedEqCycle = vi.fn(() => ({ maybeSingle: fixedMaybeSingle }))
+  const fixedEqUser = vi.fn(() => ({ eq: fixedEqCycle }))
+  const fixedSelect = vi.fn(() => ({ eq: fixedEqUser }))
   const budgetUpsert = vi.fn().mockResolvedValue({ error: null })
 
   const supabase = {
     from: vi.fn((table: string) => {
       if (table === 'income_entries') return { upsert: incomeUpsert }
-      if (table === 'fixed_expenses') return { upsert: fixedUpsert }
+      if (table === 'fixed_expenses') return { select: fixedSelect, upsert: fixedUpsert }
       if (table === 'spending_budgets') return { upsert: budgetUpsert }
       if (table === 'user_profiles') return { update }
       throw new Error(`Unexpected table ${table}`)
@@ -43,7 +47,7 @@ describe('income actions', () => {
 
   it('saveIncome writes the cycle-scoped income row and persists first-time income type', async () => {
     const { supabase, incomeUpsert, update } = makeSupabase()
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { saveIncome } = await import('./actions')
 
@@ -59,6 +63,7 @@ describe('income actions', () => {
       cycle_id: '2026-04-01',
       salary: 1000,
       extra_income: [{ id: 'bonus', label: 'Bonus', amount: 200 }],
+      total: 1200,
       cycle_start_mode: 'full_month',
       opening_balance: null,
     }, { onConflict: 'user_id,cycle_id' })
@@ -80,7 +85,7 @@ describe('income actions', () => {
 
   it('saveIncome persists payday for salaried users', async () => {
     const { supabase, update } = makeSupabase()
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { saveIncome } = await import('./actions')
 
@@ -101,7 +106,7 @@ describe('income actions', () => {
 
   it('saveIncome infers salaried when payday is provided without income type', async () => {
     const { supabase, update } = makeSupabase()
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { saveIncome } = await import('./actions')
 
@@ -121,7 +126,7 @@ describe('income actions', () => {
 
   it('saveIncome supports mid-month start with opening balance', async () => {
     const { supabase, incomeUpsert } = makeSupabase()
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { saveIncome } = await import('./actions')
 
@@ -140,6 +145,7 @@ describe('income actions', () => {
       cycle_id: '2026-04-01',
       salary: 0,
       extra_income: [],
+      total: 1200,
       cycle_start_mode: 'mid_month',
       opening_balance: 1200,
     }, { onConflict: 'user_id,cycle_id' })
@@ -147,7 +153,7 @@ describe('income actions', () => {
 
   it('saveFixedExpenses writes monthly totals for the current cycle', async () => {
     const { supabase, fixedUpsert } = makeSupabase()
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { saveFixedExpenses } = await import('./actions')
 
@@ -161,15 +167,15 @@ describe('income actions', () => {
       cycle_id: '2026-04-01',
       total_monthly: 850,
       entries: [
-        { key: 'rent', label: 'Rent', monthly: 800, confidence: 'known' },
-        { key: 'internet', label: 'Internet', monthly: 50, confidence: 'known' },
+        { key: 'rent', label: 'Rent', monthly: 800, confidence: 'known', entry_type: 'planned', priority: 'core' },
+        { key: 'internet', label: 'Internet', monthly: 50, confidence: 'known', entry_type: 'planned', priority: 'core' },
       ],
     }, { onConflict: 'user_id,cycle_id' })
   })
 
   it('saveSpendingBudget writes the total budget for the current cycle', async () => {
     const { supabase, budgetUpsert } = makeSupabase()
-    createClient.mockResolvedValue(supabase)
+    createServerSupabaseClient.mockResolvedValue(supabase)
 
     const { saveSpendingBudget } = await import('./actions')
 

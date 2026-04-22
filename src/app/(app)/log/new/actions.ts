@@ -8,7 +8,7 @@ import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
-import { sumTrackedFixedExpenses, upsertTrackedFixedExpense } from '@/lib/fixed-bills/tracking'
+import { saveMonthlyReminderEntryForCycle } from '@/lib/monthly-reminders/storage'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
@@ -27,34 +27,13 @@ interface SaveExpenseInput {
 interface SaveExpenseBatchItem extends SaveExpenseInput {}
 const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
 
-async function upsertLightweightRecurringItem(
+async function saveMonthlyReminder(
   supabase: any,
   userId: string,
   cycleId: string,
   input: { key: string; label: string; monthly: number }
 ) {
-  const { data: existingFixedExpenses, error: fixedExpensesError } = await (supabase.from('fixed_expenses') as any)
-    .select('entries')
-    .eq('user_id', userId)
-    .eq('cycle_id', cycleId)
-    .maybeSingle()
-
-  if (fixedExpensesError) {
-    throw new Error(`Failed to load tracked essentials: ${fixedExpensesError.message}`)
-  }
-
-  const nextEntries = upsertTrackedFixedExpense(existingFixedExpenses?.entries ?? null, input)
-
-  const { error: fixedExpensesUpsertError } = await (supabase.from('fixed_expenses') as any).upsert({
-    user_id: userId,
-    cycle_id: cycleId,
-    total_monthly: sumTrackedFixedExpenses(nextEntries),
-    entries: nextEntries,
-  }, { onConflict: 'user_id,cycle_id' })
-
-  if (fixedExpensesUpsertError) {
-    throw new Error(`Failed to track essential: ${fixedExpensesUpsertError.message}`)
-  }
+  await saveMonthlyReminderEntryForCycle(supabase, userId, cycleId, input)
 }
 
 async function rememberDictionaryItem(
@@ -196,7 +175,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
         savedCount += 1
 
         if (input.categoryType !== 'debt' && input.repeatsMonthly) {
-          await upsertLightweightRecurringItem(supabase, user.id, cycleId, {
+          await saveMonthlyReminder(supabase, user.id, cycleId, {
             key: recurringExpenseKey(input.categoryType, persistedKey),
             label: input.categoryLabel,
             monthly: Number(input.amount),

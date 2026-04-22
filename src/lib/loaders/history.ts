@@ -110,7 +110,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .order('date', { ascending: false })
       .order('created_at', { ascending: false }),
     (supabase.from('fixed_expenses') as any)
-      .select('total_monthly, entries')
+      .select('total_monthly')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .maybeSingle(),

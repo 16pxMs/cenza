@@ -157,7 +157,7 @@ export function SmsImportClient() {
   const [rawText, setRawText] = useState('')
   const [rows, setRows] = useState<EditableRow[]>([])
   const [parseMeta, setParseMeta] = useState<{ scanned: number; skippedCredits: number }>({ scanned: 0, skippedCredits: 0 })
-  const [trackedFixedKeys, setTrackedFixedKeys] = useState<string[]>([])
+  const [monthlyReminderKeys, setMonthlyReminderKeys] = useState<string[]>([])
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
@@ -206,12 +206,12 @@ export function SmsImportClient() {
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const hasHardBlockedRows = Object.keys(rowErrors).length > 0
 
-  const isRowAlreadyTracked = (
+  const hasExistingMonthlyReminder = (
     input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
   ) => {
     if (input.categoryType !== 'everyday' && input.categoryType !== 'fixed') return false
     const canonicalKey = recurringExpenseKey(input.categoryType, slugify(input.categoryKey || input.label))
-    return trackedFixedKeys.includes(canonicalKey)
+    return monthlyReminderKeys.includes(canonicalKey)
   }
 
   const applyRowsChange = (
@@ -395,7 +395,7 @@ export function SmsImportClient() {
         return
       }
       const data = result.data
-      setTrackedFixedKeys(data.trackedFixedKeys ?? [])
+      setMonthlyReminderKeys(data.monthlyReminderKeys ?? [])
       setRows(
         data.rows.map((row) => ({
           ...row,
@@ -456,7 +456,7 @@ export function SmsImportClient() {
         date: row.date,
         sourceHash: row.sourceHash,
         repeatsMonthly:
-          (row.categoryType === 'everyday' || row.categoryType === 'fixed') && !isRowAlreadyTracked(row)
+          (row.categoryType === 'everyday' || row.categoryType === 'fixed') && !hasExistingMonthlyReminder(row)
             ? row.repeatsMonthly
             : false,
         debtId: row.categoryType === 'debt' ? row.debtId : null,
@@ -531,6 +531,7 @@ export function SmsImportClient() {
       name: row.label,
       amountLabel: `${row.currency} ${row.amount.toLocaleString()}`,
       metaLabel: `${categoryLabel(row.categoryType)} · ${savedDateLabel(row.date)}`,
+      hasMonthlyReminder: row.repeatsMonthly,
     }))
 
     return (
@@ -830,7 +831,7 @@ export function SmsImportClient() {
                   size="lg"
                   onClick={() => {
                     setRows([])
-                    setTrackedFixedKeys([])
+                    setMonthlyReminderKeys([])
                     setRowErrors({})
                     setRowWarnings({})
                     setError(null)
@@ -1018,11 +1019,11 @@ export function SmsImportClient() {
                                 height: 'var(--button-height-md)',
                                 padding: '0 var(--space-md)',
                                 borderRadius: 'var(--radius-full)',
-                                border: selected
-                                  ? `var(--border-width) solid var(--brand-mid)`
-                                  : `var(--border-width) solid var(--grey-300)`,
-                                background: selected ? 'var(--brand-mid)' : 'var(--grey-100)',
-                                color: selected ? T.brandDark : T.text2,
+	                                border: selected
+	                                  ? `var(--border-width) solid transparent`
+	                                  : `var(--border-width) solid ${T.borderSubtle}`,
+	                                background: selected ? 'var(--brand-light)' : 'transparent',
+	                                color: selected ? T.brandDark : T.textMuted,
                                 fontSize: 'var(--text-sm)',
                                 fontWeight: 'var(--weight-medium)',
                                 display: 'inline-flex',
@@ -1041,28 +1042,30 @@ export function SmsImportClient() {
                           {editErrors.category}
                         </p>
                       )}
-                      {editDraft.categoryType && (
-                        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
-                          {CATEGORY_HELPER[editDraft.categoryType]}
-                        </p>
-                      )}
-                    </div>
+	                      {editDraft.categoryType && (
+	                        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+	                          {CATEGORY_HELPER[editDraft.categoryType]}
+	                        </p>
+	                      )}
+	                    </div>
 
-                    {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (
-                      <div style={{
-                        border: `var(--border-width) solid ${T.borderSubtle}`,
-                        borderRadius: 'var(--radius-md)',
-                        padding: '12px',
-                        background: 'var(--grey-50)',
-                        display: 'grid',
-                        gap: 'var(--space-sm)',
-                      }}>
-                        <label style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 'var(--space-sm)',
-                          fontSize: 'var(--text-sm)',
-                          fontWeight: 'var(--weight-medium)',
+	                    {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (
+	                      <div style={{ marginTop: 'var(--space-md)' }}>
+	                        <p style={{
+	                          margin: '0 0 6px',
+	                          fontSize: 12.5,
+	                          fontWeight: 600,
+	                          color: T.text2,
+	                          letterSpacing: '0.2px',
+	                        }}>
+	                          Reminder
+	                        </p>
+	                        <label style={{
+	                          display: 'flex',
+	                          alignItems: 'flex-start',
+	                          gap: 'var(--space-sm)',
+	                          fontSize: 'var(--text-sm)',
+	                          fontWeight: 'var(--weight-medium)',
                           color: T.text1,
                           cursor: 'pointer',
                         }}>
@@ -1073,14 +1076,49 @@ export function SmsImportClient() {
                               setEditDraft((current) => current ? {
                                 ...current,
                                 repeatsMonthly: event.target.checked,
-                              } : current)
-                            }}
-                            style={{ width: 18, height: 18, accentColor: T.brandDark }}
-                          />
-                          <span>Repeat every month</span>
-                        </label>
-                      </div>
-                    )}
+	                              } : current)
+	                            }}
+	                            style={{ width: 18, height: 18, marginTop: 2, accentColor: T.brandDark }}
+	                          />
+	                          <span>
+	                            <span style={{ display: 'block', color: T.text1 }}>
+	                              Remind me about this every month
+	                            </span>
+	                            <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-regular)', color: T.text3, lineHeight: 1.4 }}>
+	                              We’ll remind you before it’s due
+	                            </span>
+	                          </span>
+	                        </label>
+	                        {editDraft.repeatsMonthly && (
+	                          <div style={{
+	                            marginTop: 'var(--space-md)',
+	                            display: 'grid',
+	                            gap: 'var(--space-xs)',
+	                            justifyItems: 'start',
+	                          }}>
+	                            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+	                              ✓ Monthly reminder set
+	                            </div>
+	                            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+	                              We’ll remind you before it’s due
+	                            </div>
+	                            <span style={{
+	                              display: 'inline-flex',
+	                              alignItems: 'center',
+	                              padding: '4px 10px',
+	                              borderRadius: 'var(--radius-full)',
+	                              background: 'var(--brand-light)',
+	                              color: T.brandDark,
+	                              fontSize: 'var(--text-xs)',
+	                              fontWeight: 'var(--weight-medium)',
+	                              lineHeight: 1.2,
+	                            }}>
+	                              Monthly reminder
+	                            </span>
+	                          </div>
+	                        )}
+	                      </div>
+	                    )}
 
                     {editDraft.categoryType === 'debt' && (
                       <div style={{ marginTop: 'var(--space-md)' }}>

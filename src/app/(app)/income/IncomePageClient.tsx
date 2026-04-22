@@ -3,6 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { deriveIncomeTotal } from '@/lib/income/derived'
+import { readPlannedMonthlyEntries } from '@/lib/monthly-reminders/storage'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -73,7 +74,8 @@ export default function IncomePageClient({
   const subtleAmt: React.CSSProperties = { fontSize: 12, fontWeight: 400, color: T.textMuted, marginLeft: 1 }
 
   const hasIncome = !!data.incomeData && !preview
-  const hasFixed = !!(data.fixedExpenses && (data.fixedExpenses.entries ?? []).some((entry: any) => entry.confidence !== 'unsure' && entry.monthly > 0))
+  const plannedFixedEntries = readPlannedMonthlyEntries<any>(data.fixedExpenses?.entries ?? null)
+  const hasFixed = plannedFixedEntries.some((entry: any) => entry.confidence !== 'unsure' && entry.monthly > 0)
   const hasBudget = !!(data.spendingBudget && (data.spendingBudget.categories as any[]).some((category: any) => category.budget > 0))
   const isNegative = available < 0
   const fixedPct = incomeTotal > 0 ? Math.round((fixedTotal / incomeTotal) * 100) : 0
@@ -223,7 +225,7 @@ export default function IncomePageClient({
           </div>
 
           {hasFixed ? (() => {
-            const entries = (data.fixedExpenses?.entries as any[]).filter((entry: any) => entry.confidence !== 'unsure' && entry.monthly > 0)
+            const entries = plannedFixedEntries.filter((entry: any) => entry.confidence !== 'unsure' && entry.monthly > 0)
             return (
               <div style={sectionCard}>
                 <div style={sectionHead}>

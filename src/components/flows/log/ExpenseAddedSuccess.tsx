@@ -7,6 +7,7 @@ export interface ExpenseAddedSuccessEntry {
   name: string
   amountLabel: string
   metaLabel: string
+  hasMonthlyReminder?: boolean
 }
 
 interface ExpenseAddedSuccessProps {
@@ -19,8 +20,29 @@ const T = {
   text1: 'var(--text-1)',
   text3: 'var(--text-3)',
   textMuted: 'var(--text-muted)',
+  brandLight: 'var(--brand-light)',
   brandDark: 'var(--brand-dark)',
   borderSubtle: 'var(--border-subtle)',
+}
+
+function MonthlyReminderChip() {
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      width: 'fit-content',
+      marginTop: 'var(--space-xs)',
+      padding: '4px 10px',
+      borderRadius: 'var(--radius-full)',
+      background: T.brandLight,
+      color: T.brandDark,
+      fontSize: 'var(--text-xs)',
+      fontWeight: 'var(--weight-medium)',
+      lineHeight: 1.2,
+    }}>
+      Monthly reminder
+    </span>
+  )
 }
 
 export function ExpenseAddedSuccess({
@@ -44,7 +66,7 @@ export function ExpenseAddedSuccess({
         Expense added
       </p>
 
-      <div style={{ marginBottom: 'var(--space-xxl)' }}>
+      <div style={{ marginTop: 'var(--space-xl)', marginBottom: 'var(--space-2xl)' }}>
         {singleEntry ? (
           <>
             <p style={{
@@ -78,6 +100,7 @@ export function ExpenseAddedSuccess({
             }}>
               {singleEntry.metaLabel}
             </p>
+            {singleEntry.hasMonthlyReminder && <MonthlyReminderChip />}
           </>
         ) : (
           <>
@@ -91,8 +114,8 @@ export function ExpenseAddedSuccess({
             }}>
               {entries.length} expenses added
             </p>
-            <div style={{ display: 'grid', gap: 'var(--space-sm)', textAlign: 'left' }}>
-              {entries.map((entry) => (
+            <div style={{ textAlign: 'left' }}>
+              {entries.map((entry, index) => (
                 <div
                   key={entry.id}
                   style={{
@@ -100,8 +123,8 @@ export function ExpenseAddedSuccess({
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
                     gap: 'var(--space-md)',
-                    padding: '0 0 var(--space-sm)',
-                    borderBottom: `var(--border-width) solid ${T.borderSubtle}`,
+                    padding: '16px 0',
+                    borderBottom: index < entries.length - 1 ? `var(--border-width) solid ${T.borderSubtle}` : 'none',
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
@@ -120,6 +143,7 @@ export function ExpenseAddedSuccess({
                     <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.35 }}>
                       {entry.metaLabel}
                     </p>
+                    {entry.hasMonthlyReminder && <MonthlyReminderChip />}
                   </div>
                   <p style={{
                     margin: 0,
@@ -139,7 +163,7 @@ export function ExpenseAddedSuccess({
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-md)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', marginTop: 'var(--space-2xl)' }}>
         <PrimaryBtn size="lg" onClick={onBack}>
           Back to overview
         </PrimaryBtn>
@@ -154,6 +178,7 @@ export function ExpenseAddedSuccess({
             fontWeight: 'var(--weight-medium)',
             cursor: 'pointer',
             padding: 'var(--space-xs) 0',
+            marginTop: 12,
           }}
         >
           Add another expense

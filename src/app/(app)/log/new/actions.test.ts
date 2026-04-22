@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 const createCycleTransaction = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/transactions-db', () => ({ createCycleTransaction }))
 
 describe('log/new actions', () => {
@@ -19,14 +19,31 @@ describe('log/new actions', () => {
     })
   })
 
+  function makeReadQuery(data: unknown) {
+    const maybeSingle = vi.fn().mockResolvedValue({ data, error: null })
+    const eqCycle = vi.fn(() => ({ maybeSingle }))
+    const eqUser = vi.fn(() => ({ eq: eqCycle }))
+    return { select: vi.fn(() => ({ eq: eqUser })) }
+  }
+
+  function makeTransactionTable(deleteBuilder: ReturnType<typeof vi.fn>) {
+    const eqCycle = vi.fn().mockResolvedValue({ data: [], error: null })
+    const eqUser = vi.fn(() => ({ eq: eqCycle }))
+    return {
+      delete: deleteBuilder,
+      select: vi.fn(() => ({ eq: eqUser })),
+    }
+  }
+
   it('saveExpense writes a cycle-aware transaction using the provided category key', async () => {
     const deleteEq = vi.fn().mockResolvedValue({ error: null })
     const deleteBuilder = vi.fn(() => ({ eq: deleteEq }))
     const upsert = vi.fn().mockResolvedValue({ error: null })
 
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn((table: string) => {
-        if (table === 'transactions') return { delete: deleteBuilder }
+        if (table === 'income_entries') return makeReadQuery({ total: 1000, opening_balance: null, received: true })
+        if (table === 'transactions') return makeTransactionTable(deleteBuilder)
         if (table === 'item_dictionary') return { upsert }
         throw new Error(`Unexpected table ${table}`)
       }),
@@ -70,9 +87,10 @@ describe('log/new actions', () => {
     const deleteEq = vi.fn().mockResolvedValue({ error: null })
     const deleteBuilder = vi.fn(() => ({ eq: deleteEq }))
 
-    createClient.mockResolvedValue({
+    createServerSupabaseClient.mockResolvedValue({
       from: vi.fn((table: string) => {
-        if (table === 'transactions') return { delete: deleteBuilder }
+        if (table === 'income_entries') return makeReadQuery({ total: 1000, opening_balance: null, received: true })
+        if (table === 'transactions') return makeTransactionTable(deleteBuilder)
         if (table === 'item_dictionary') return { upsert: vi.fn() }
         throw new Error(`Unexpected table ${table}`)
       }),

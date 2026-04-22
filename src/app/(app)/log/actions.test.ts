@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
-const createClient = vi.fn()
+const createServerSupabaseClient = vi.fn()
 const createCycleRefundTransaction = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
-vi.mock('@/lib/supabase/server', () => ({ createClient }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/transactions-db', () => ({
   createCycleRefundTransaction,
 }))
@@ -19,7 +19,7 @@ describe('log actions', () => {
       user: { id: 'user-1' },
       profile: { pay_schedule_type: 'monthly', pay_schedule_days: [25] },
     })
-    createClient.mockResolvedValue({})
+    createServerSupabaseClient.mockResolvedValue({})
   })
 
   it('recordRefund validates amount and delegates to the cycle-aware refund writer', async () => {

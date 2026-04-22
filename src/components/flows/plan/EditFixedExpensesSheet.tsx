@@ -13,6 +13,7 @@ import {
   isKnownFixedBillKey,
   slugifyBillLabel,
 } from '@/lib/fixed-bills/canonical'
+import { readPlannedMonthlyEntries } from '@/lib/monthly-reminders/storage'
 
 const T = {
   white:     '#FFFFFF',
@@ -126,7 +127,7 @@ export function FixedExpensesEditor({
 
   useEffect(() => {
     setRows(
-      initialEntries
+      readPlannedMonthlyEntries<FixedEntry>(initialEntries)
         .filter(e => e.monthly > 0)
         .map(e => ({
           ...e,

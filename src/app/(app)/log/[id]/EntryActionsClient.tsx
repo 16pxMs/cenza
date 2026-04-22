@@ -16,8 +16,8 @@ import type { LogEntry } from '@/lib/loaders/log'
 import {
   deleteLogEntry,
   recordRefund,
-  stopTrackingEssential,
-  trackEssential,
+  removeMonthlyReminder,
+  setMonthlyReminder,
   updateLogEntry,
 } from '../actions'
 import {
@@ -90,7 +90,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     amount?: string
     category?: string
   }>({})
-  const [editDialog, setEditDialog] = useState<'delete' | 'discard' | 'recurring' | null>(null)
+  const [editDialog, setEditDialog] = useState<'delete' | 'discard' | 'monthlyReminder' | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
   const [debtEditAmount, setDebtEditAmount] = useState('')
   const [debtEditDate, setDebtEditDate] = useState('')
@@ -98,9 +98,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const [debtEditError, setDebtEditError] = useState<string | null>(null)
   const [savingDebtEdit, setSavingDebtEdit] = useState(false)
 
-  const [trackingEssential, setTrackingEssential] = useState(false)
-  const [trackMonthlyAmount, setTrackMonthlyAmount] = useState('')
-  const [trackError, setTrackError] = useState<string | null>(null)
+  const [savingMonthlyReminder, setSavingMonthlyReminder] = useState(false)
+  const [monthlyReminderAmount, setMonthlyReminderAmount] = useState('')
+  const [monthlyReminderError, setMonthlyReminderError] = useState<string | null>(null)
 
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
 
@@ -172,7 +172,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     return Object.keys(nextErrors).length === 0
   }
 
-  const performSaveEdit = async (removeRecurring: boolean) => {
+  const performSaveEdit = async (removeReminder: boolean) => {
     if (!entry.id || !editCategoryType) return
     const amount = parseFloat(editAmount)
     if (!amount || amount <= 0 || !editDate || !editCategoryType) return
@@ -184,7 +184,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
 
     setSavingEdit(true)
     try {
-      if (transactionDirty || removeRecurring) {
+      if (transactionDirty || removeReminder) {
         await updateLogEntry({
           id: entry.id,
           amount,
@@ -193,8 +193,8 @@ export function EntryActionsClient({ entry, currency }: Props) {
           label: editLabel,
           categoryKey: entry.categoryKey,
           categoryType: editCategoryType,
-          removeRecurringCategoryKey: removeRecurring
-            ? (entry.trackedEssentialKey ?? entry.categoryKey)
+          removeMonthlyReminderKey: removeReminder
+            ? (entry.monthlyReminderKey ?? entry.categoryKey)
             : undefined,
         })
       }
@@ -213,12 +213,12 @@ export function EntryActionsClient({ entry, currency }: Props) {
     if (!validateEdit()) return
 
     if (
-      entry.trackedEssential &&
-      entry.categoryType === 'fixed' &&
+      entry.hasMonthlyReminder &&
       editCategoryType &&
+      editCategoryType !== 'everyday' &&
       editCategoryType !== 'fixed'
     ) {
-      setEditDialog('recurring')
+      setEditDialog('monthlyReminder')
       return
     }
 
@@ -310,15 +310,15 @@ export function EntryActionsClient({ entry, currency }: Props) {
       if (process.env.NODE_ENV !== 'production') {
         console.info('[log.delete] client', {
           transactionId: entry.id,
-          trackedEssential: entry.trackedEssential,
-          trackedEssentialKey: entry.trackedEssentialKey,
+          hasMonthlyReminder: entry.hasMonthlyReminder,
+          monthlyReminderKey: entry.monthlyReminderKey,
           categoryKey: entry.categoryKey,
           categoryLabel: entry.name,
         })
       }
       await deleteLogEntry(
         entry.id,
-        entry.trackedEssential ? (entry.trackedEssentialKey ?? entry.categoryKey) : null
+        entry.hasMonthlyReminder ? (entry.monthlyReminderKey ?? entry.categoryKey) : null
       )
       toast('Entry removed')
       router.push('/log')
@@ -330,31 +330,31 @@ export function EntryActionsClient({ entry, currency }: Props) {
     }
   }
 
-  const handleToggleEssentialTracking = async () => {
+  const handleToggleMonthlyReminder = async () => {
     if (entry.categoryType !== 'everyday' && entry.categoryType !== 'fixed') return
 
-    setTrackingEssential(true)
+    setSavingMonthlyReminder(true)
     try {
-      if (entry.trackedEssential) {
-        await stopTrackingEssential({
-          categoryKey: entry.trackedEssentialKey ?? entry.categoryKey,
+      if (entry.hasMonthlyReminder) {
+        await removeMonthlyReminder({
+          categoryKey: entry.monthlyReminderKey ?? entry.categoryKey,
         })
-        toast('Removed from recurring')
+        toast('Monthly reminder removed')
       } else {
-        await trackEssential({
+        await setMonthlyReminder({
           categoryType: entry.categoryType as 'everyday' | 'fixed',
           categoryKey: entry.categoryKey,
           categoryLabel: entry.name,
-          amount: parseFloat(trackMonthlyAmount),
+          amount: parseFloat(monthlyReminderAmount),
         })
-        toast('Marked as recurring')
+        toast('Monthly reminder set')
       }
       router.push('/log')
       router.refresh()
     } catch {
-      toast('Could not update recurring status')
+      toast('Could not update monthly reminder')
     } finally {
-      setTrackingEssential(false)
+      setSavingMonthlyReminder(false)
     }
   }
 
@@ -416,7 +416,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             </>
           )}
         </div>
-        {entry.trackedEssential && (
+        {entry.hasMonthlyReminder && (
           <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
             <span style={{
               display: 'inline-flex',
@@ -431,7 +431,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
               color: T.textMuted,
               letterSpacing: '0.02em',
             }}>
-              Recurring
+              Monthly reminder
             </span>
           </div>
         )}
@@ -614,31 +614,31 @@ export function EntryActionsClient({ entry, currency }: Props) {
           }}>
             <button
               onClick={
-                entry.trackedEssential
-                  ? handleToggleEssentialTracking
+                entry.hasMonthlyReminder
+                  ? handleToggleMonthlyReminder
                   : () => {
-                      setTrackMonthlyAmount(String(entry.amount))
-                      setTrackError(null)
+                      setMonthlyReminderAmount(String(entry.amount))
+                      setMonthlyReminderError(null)
                       setActiveFlow('track')
                     }
               }
-              disabled={trackingEssential}
+              disabled={savingMonthlyReminder}
               style={{
                 width: '100%',
                 textAlign: 'left',
                 padding: 'var(--space-md)',
                 background: T.white,
                 border: 'none',
-                cursor: trackingEssential ? 'default' : 'pointer',
+                cursor: savingMonthlyReminder ? 'default' : 'pointer',
               }}
             >
               <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                {entry.trackedEssential ? 'Remove from recurring' : 'Set as recurring'}
+                {entry.hasMonthlyReminder ? 'Remove monthly reminder' : 'Remind me about this every month'}
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                {entry.trackedEssential
-                  ? 'This will no longer be monthly'
-                  : 'Track this as monthly'}
+                {entry.hasMonthlyReminder
+                  ? 'We’ll stop reminding you before it’s due'
+                  : 'We’ll remind you before it’s due'}
               </div>
             </button>
           </div>
@@ -701,35 +701,35 @@ export function EntryActionsClient({ entry, currency }: Props) {
       <Sheet
         open={activeFlow === 'track'}
         onClose={() => setActiveFlow(null)}
-        title="Set as recurring"
+        title="Monthly reminder"
       >
         <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
           <Input
             label="Monthly amount"
             prefix={currency}
             type="number"
-            value={trackMonthlyAmount}
+            value={monthlyReminderAmount}
             onChange={(value) => {
-              setTrackMonthlyAmount(value)
-              setTrackError(null)
+              setMonthlyReminderAmount(value)
+              setMonthlyReminderError(null)
             }}
-            error={trackError ?? undefined}
+            error={monthlyReminderError ?? undefined}
           />
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-            This will be tracked as monthly.
+            We’ll remind you before it’s due.
           </p>
           <PrimaryBtn
             size="lg"
             onClick={() => {
-              if (!(parseFloat(trackMonthlyAmount) > 0)) {
-                setTrackError('Add a monthly amount')
+              if (!(parseFloat(monthlyReminderAmount) > 0)) {
+                setMonthlyReminderError('Add a monthly amount')
                 return
               }
-              handleToggleEssentialTracking()
+              handleToggleMonthlyReminder()
             }}
-            disabled={trackingEssential}
+            disabled={savingMonthlyReminder}
           >
-            {trackingEssential ? 'Saving…' : 'Save'}
+            {savingMonthlyReminder ? 'Saving…' : 'Save'}
           </PrimaryBtn>
         </div>
       </Sheet>
@@ -959,11 +959,11 @@ export function EntryActionsClient({ entry, currency }: Props) {
                 }}>
                   {editDialog === 'delete'
                     ? 'Delete this entry?'
-                    : editDialog === 'recurring'
-                      ? 'Keep this as recurring?'
+                    : editDialog === 'monthlyReminder'
+                      ? 'Keep monthly reminder?'
                       : 'Discard changes?'}
                 </p>
-                {(editDialog === 'delete' || editDialog === 'recurring') && (
+                {(editDialog === 'delete' || editDialog === 'monthlyReminder') && (
                   <p style={{
                     margin: 'var(--space-sm) 0 0',
                     fontSize: 'var(--text-sm)',
@@ -1000,7 +1000,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                         {deletingKey === entry.id ? 'Deleting…' : 'Delete'}
                       </PrimaryBtn>
                     </>
-                  ) : editDialog === 'recurring' ? (
+                  ) : editDialog === 'monthlyReminder' ? (
                     <>
                       <SecondaryBtn
                         size="lg"
@@ -1010,7 +1010,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                         }}
                         disabled={savingEdit}
                       >
-                        Keep recurring
+                        Keep monthly reminder
                       </SecondaryBtn>
                       <PrimaryBtn
                         size="lg"
@@ -1020,7 +1020,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                         }}
                         disabled={savingEdit}
                       >
-                        {savingEdit ? 'Saving…' : 'Remove from recurring'}
+                        {savingEdit ? 'Saving…' : 'Remove monthly reminder'}
                       </PrimaryBtn>
                     </>
                   ) : (
