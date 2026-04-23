@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconMore } from '@/components/ui/Icons'
+import { useToast } from '@/lib/context/ToastContext'
 import { deleteDebtForDebtDetail, updateStandardDebtDueDateAction } from './actions'
 
 interface Props {
@@ -18,6 +19,7 @@ type MenuMode = 'menu' | 'dueDate' | 'delete'
 
 export function DebtOptionsMenu({ debtId, debtName, debtKind, currentDueDate }: Props) {
   const router = useRouter()
+  const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<MenuMode>('menu')
   const [dueDate, setDueDate] = useState(currentDueDate ?? '')
@@ -55,14 +57,16 @@ export function DebtOptionsMenu({ debtId, debtName, debtKind, currentDueDate }: 
   }
 
   const handleDeleteDebt = () => {
+    if (isPending) return
     setError(null)
     startTransition(async () => {
       try {
         const result = await deleteDebtForDebtDetail(debtId)
+        toast('Debt removed')
         router.replace(result.redirectTo)
         router.refresh()
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Failed to delete debt')
+      } catch {
+        setError("We couldn't delete this debt. Try again.")
       }
     })
   }
