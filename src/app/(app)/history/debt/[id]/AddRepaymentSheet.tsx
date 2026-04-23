@@ -103,7 +103,7 @@ export function AddRepaymentSheet({
             justifyContent: 'center',
           }}
         >
-          Add payment
+          Record payment
         </PrimaryBtn>
       ) : (
         <SecondaryBtn
@@ -114,11 +114,11 @@ export function AddRepaymentSheet({
             justifyContent: 'center',
           }}
         >
-          Add payment
+          Record payment
         </SecondaryBtn>
       )}
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Add payment">
+      <Sheet open={open} onClose={() => setOpen(false)} title="Record payment">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <p style={{

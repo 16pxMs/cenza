@@ -53,7 +53,7 @@ function parseDate(value: string | null) {
 }
 
 function formatDebtDirection(direction: Debt['direction']) {
-  return direction === 'owed_by_me' ? 'You owe' : 'Owed to you'
+  return direction === 'owed_by_me' ? 'You owe' : 'They owe you'
 }
 
 function formatDebtStatus(status: Debt['status']) {
@@ -76,7 +76,7 @@ function formatDebtSummaryLine(direction: Debt['direction'], status: Debt['statu
   if (status === 'cancelled') {
     return 'Cancelled'
   }
-  return direction === 'owed_by_me' ? 'You owe this' : 'Owed to you'
+  return direction === 'owed_by_me' ? 'You owe this' : 'They owe you'
 }
 
 function formatDebtTransactionLabel(entryType: DebtTransaction['entry_type']) {
@@ -268,7 +268,7 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
             <h1 style={{
               margin: 0,
               fontSize: 'var(--text-xl)',
-              fontWeight: 'var(--weight-medium)',
+              fontWeight: 'var(--weight-semibold)',
               color: 'var(--text-1)',
               lineHeight: 1.15,
               letterSpacing: '-0.02em',
@@ -286,9 +286,40 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
 
           <div style={{
             display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-xs)',
+            flexWrap: 'wrap',
+            marginTop: 'var(--space-xs)',
+          }}>
+            <span style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-2)',
+              lineHeight: 1.4,
+              fontWeight: 'var(--weight-medium)',
+            }}>
+              {detail.direction}
+            </span>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              minHeight: 24,
+              padding: '0 10px',
+              borderRadius: 999,
+              background: 'var(--grey-100)',
+              color: 'var(--text-3)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              letterSpacing: '0.02em',
+            }}>
+              {detail.status}
+            </span>
+          </div>
+
+          <div style={{
+            display: 'flex',
             flexDirection: 'column',
-            gap: 'var(--space-md)',
-            marginTop: 'calc(var(--space-sm) + var(--space-xs))',
+            gap: 'var(--space-lg)',
+            marginTop: 'var(--space-lg)',
           }}>
             <div>
               <p style={{
@@ -312,18 +343,20 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
               }}>
                 {fmt(detail.balance, detail.currency)}
               </p>
-              <p style={{
-                margin: 'var(--space-xs) 0 0',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--text-3)',
-                lineHeight: 1.4,
-              }}>
-                {detail.summaryLine}
-              </p>
+              {detail.status !== 'Active' ? (
+                <p style={{
+                  margin: 'var(--space-xs) 0 0',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-3)',
+                  lineHeight: 1.4,
+                }}>
+                  {detail.summaryLine}
+                </p>
+              ) : null}
             </div>
 
             {canAddPayment || !hasTransactions ? (
-              <div style={{ marginTop: 'var(--space-sm)' }}>
+              <div>
                 {canAddPayment ? (
                   <AddRepaymentSheet
                     debtId={detail.id}
@@ -349,13 +382,12 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 'var(--space-sm)',
-                paddingTop: 'var(--space-md)',
-                marginTop: 'var(--space-xs)',
+                paddingTop: 'var(--space-sm)',
                 borderTop: 'var(--border-width) solid var(--border-subtle)',
               }}>
                 <div style={{ minWidth: 0 }}>
                   <p style={{
-                    margin: '0 0 var(--space-2xs)',
+                    margin: 0,
                     fontSize: 'var(--text-xs)',
                     color: 'var(--text-muted)',
                     textTransform: 'uppercase',
@@ -364,10 +396,11 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                   }}>
                     Due date
                   </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
                     <p style={{
                       margin: 0,
-                      fontSize: 'var(--text-base)',
+                      fontSize: 'var(--text-sm)',
                       fontWeight: 'var(--weight-medium)',
                       color: detail.standardDueDate ? 'var(--text-1)' : 'var(--text-3)',
                     }}>
@@ -388,14 +421,13 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                         Overdue
                       </span>
                     ) : null}
-                  </div>
+                  <EditStandardDebtDueDateSheet
+                    debtId={detail.id}
+                    debtName={detail.name}
+                    currentDueDate={detail.standardDueDate}
+                    compact
+                  />
                 </div>
-                <EditStandardDebtDueDateSheet
-                  debtId={detail.id}
-                  debtName={detail.name}
-                  currentDueDate={detail.standardDueDate}
-                  compact
-                />
               </div>
             ) : null}
           </div>
