@@ -103,6 +103,7 @@ interface Props {
     kind: 'financing_target' | 'standard_due'
     expectedMonthly?: number
   }>
+  secondaryLoaded?: boolean
   isDesktop?: boolean
 }
 
@@ -110,6 +111,7 @@ export function OverviewWithData({
   name, currency, hasStartedCycleData = false, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, monthlyReminders = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
+  secondaryLoaded = false,
 }: Props) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -170,11 +172,21 @@ export function OverviewWithData({
   }, [])
 
   useEffect(() => {
-    // Warm likely next routes so taps feel immediate.
-    router.prefetch('/log/new')
-    router.prefetch('/log')
-    router.prefetch('/income/new')
-    router.prefetch('/goals/new')
+    // Warm the most likely next routes after first paint so the initial
+    // overview load is not competing with route prefetch work.
+    const prefetch = () => {
+      router.prefetch('/log/new')
+      router.prefetch('/log')
+    }
+
+    const idleCallback = globalThis.requestIdleCallback
+    if (typeof idleCallback === 'function') {
+      const idleId = idleCallback(() => prefetch())
+      return () => globalThis.cancelIdleCallback?.(idleId)
+    }
+
+    const timeoutId = window.setTimeout(prefetch, 250)
+    return () => window.clearTimeout(timeoutId)
   }, [router])
 
   // ── Income ──────────────────────────────────────────────────
@@ -706,10 +718,10 @@ const reference = receivedConfirmed
         <>
           {priorityCard}
           {snapshotCard}
-          {obligationsPreviewCard}
-          {goalsPreviewCard}
+          {secondaryLoaded ? obligationsPreviewCard : null}
+          {secondaryLoaded ? goalsPreviewCard : null}
 
-          {pendingGoals > 0 && (
+          {secondaryLoaded && pendingGoals > 0 && (
             <div
               onClick={() => router.push('/targets')}
               style={{

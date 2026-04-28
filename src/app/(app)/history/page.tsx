@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { loadHistoryPageData } from '@/lib/loaders/history'
+import { loadHistoryAvailableCycleIdsForUser, loadHistoryPageData } from '@/lib/loaders/history'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import HistoryPageClient from './HistoryPageClient'
 
@@ -57,8 +57,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const cycleParam = isValidCycleParam(rawCycleParam) ? rawCycleParam : undefined
 
   const currentCycleId = deriveCurrentCycleId(profile)
-  const currentData = await loadHistoryPageData(user.id, profile)
-  const resolvedCycle = resolveRequestedCycle(cycleParam, currentData.availableCycleIds, currentCycleId)
+  const availableCycleIds = await loadHistoryAvailableCycleIdsForUser(user.id)
+  const resolvedCycle = resolveRequestedCycle(cycleParam, availableCycleIds, currentCycleId)
 
   if (rawCycleParam && cycleParam !== rawCycleParam) {
     redirect('/history')
@@ -70,7 +70,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
   const targetDate = resolvedCycle ? new Date(`${resolvedCycle}T00:00:00`) : undefined
 
-  const data = targetDate ? await loadHistoryPageData(user.id, profile, targetDate) : currentData
+  const data = await loadHistoryPageData(user.id, profile, targetDate, availableCycleIds)
 
   return <HistoryPageClient data={data} targetCycleId={resolvedCycle} currentCycleId={currentCycleId} />
 }

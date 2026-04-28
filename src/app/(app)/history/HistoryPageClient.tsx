@@ -56,11 +56,35 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
 
   const activeCycleId = targetCycleId ?? currentCycleId
   const activeIndex = data.availableCycleIds.indexOf(activeCycleId)
+  const currentCycleIndex = data.availableCycleIds.indexOf(currentCycleId)
   const canGoPrev = activeIndex > 0
   const canGoNext = activeIndex >= 0 && activeIndex < data.availableCycleIds.length - 1
   const currentCycleRoute = activeCycleId === currentCycleId ? '/history' : `/history?cycle=${activeCycleId}`
   const remaining = data.totalIncome - data.totalSpent
   const canShowSegmentedBar = data.totalSpent > 0 && data.rows.every((row) => row.spent > 0)
+  const periodContext = (() => {
+    if (activeCycleId === currentCycleId) {
+      return {
+        label: 'This period',
+        hint: 'This is your current period so far.',
+        showContinueAction: false,
+      }
+    }
+
+    if (currentCycleIndex >= 0 && activeIndex === currentCycleIndex - 1) {
+      return {
+        label: 'Last period',
+        hint: 'This is a summary of your previous period. You’re now in a new month.',
+        showContinueAction: true,
+      }
+    }
+
+    return {
+      label: 'Earlier period',
+      hint: 'This is a summary from an earlier period.',
+      showContinueAction: false,
+    }
+  })()
 
   function navToCycle(cycleId: string) {
     router.push(cycleId === currentCycleId ? '/history' : `/history?cycle=${cycleId}`)
@@ -83,6 +107,9 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
       <AppSubpageHeader title="Recap" backHref="/menu" ariaLabel="Back to More" />
 
       <div style={{ marginBottom: 'var(--space-card-md)' }}>
+        <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          {periodContext.label}
+        </p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
             {data.cycleLabel}
@@ -146,6 +173,28 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
               </span>
             </div>
           </div>
+
+          <p style={{ margin: 'var(--space-md) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+            {periodContext.hint}
+          </p>
+          {periodContext.showContinueAction && (
+            <button
+              type="button"
+              onClick={() => router.push('/app')}
+              style={{
+                marginTop: 'var(--space-sm)',
+                padding: 0,
+                background: 'none',
+                border: 'none',
+                color: 'var(--brand-dark)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-semibold)',
+                cursor: 'pointer',
+              }}
+            >
+              Continue this month
+            </button>
+          )}
         </div>
 
         {data.rows.length > 0 && (

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { loadOverviewPageData } from '@/lib/loaders/overview'
+import { loadOverviewCriticalData } from '@/lib/loaders/overview'
 import AppPageClient from './AppPageClient'
 
 export default async function AppPage() {
@@ -12,7 +12,7 @@ export default async function AppPage() {
     redirect('/')
   }
 
-  const overview = await loadOverviewPageData(user.id, profile)
+  const overview = await loadOverviewCriticalData(user.id, profile)
 
   return <AppPageClient overview={overview} />
 }

@@ -276,6 +276,22 @@ export async function loadMonthlyStorageCycleIdsForUser(
     .filter((cycleId: string | null): cycleId is string => !!cycleId)
 }
 
+export async function hasMonthlyStorageForUser(
+  supabase: SupabaseLike,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await (supabase.from('fixed_expenses') as any)
+    .select('cycle_id')
+    .eq('user_id', userId)
+    .limit(1)
+
+  if (error) {
+    throw new Error(`Failed to check monthly storage: ${error.message}`)
+  }
+
+  return (data?.length ?? 0) > 0
+}
+
 export async function deleteMonthlyStorageForUser(
   supabase: SupabaseLike,
   userId: string

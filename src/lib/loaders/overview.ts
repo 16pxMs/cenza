@@ -5,7 +5,7 @@ import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-d
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import {
   loadMonthlyStorageSnapshotForCycle,
-  loadMonthlyStorageCycleIdsForUser,
+  hasMonthlyStorageForUser,
   readPlannedMonthlyEntries,
   type MonthlyReminderEntry,
 } from '@/lib/monthly-reminders/storage'
@@ -200,6 +200,52 @@ export interface OverviewPageData {
   monthlyReminders: MonthlyReminderEntry[]
   billsLeftToPay: BillsLeftToPay
   debtReminderCandidates: DebtReminderCandidate[]
+  overviewObligations: OverviewObligation[]
+}
+
+export interface OverviewCriticalData {
+  name: string
+  currency: string
+  incomeType: 'salaried' | 'variable' | null
+  paydayDay: number | null
+  hasStartedCycleData: boolean
+  incomeData: IncomeData
+  totalSpent: number
+  debtReminderCandidates: DebtReminderCandidate[]
+}
+
+export interface OverviewSecondaryData {
+  goals: GoalId[]
+  activeDebts: Debt[]
+  debtTotal: number
+  fixedTotal: number
+  spendingBudget: SpendingBudgetData | null
+  categorySpend: Record<string, number>
+  recentActivity: Array<{
+    id: string
+    label: string
+    amount: number
+    date: string
+  }>
+  goalTargets: Record<string, number>
+  goalSaved: Record<string, number>
+  goalLabels: Record<string, string>
+  selectedGoal: {
+    id: GoalId
+    label: string
+    target: number | null
+    totalSaved: number
+    createdAt: string
+    lastContributionAt: string | null
+    contributionCount: number
+  } | null
+  lastCycleRecurringTop: {
+    label: string
+    amount: number
+    total: number
+  } | null
+  monthlyReminders: MonthlyReminderEntry[]
+  billsLeftToPay: BillsLeftToPay
   overviewObligations: OverviewObligation[]
 }
 
@@ -415,6 +461,125 @@ function selectOverviewGoal(input: {
 }
 
 export async function loadOverviewPageData(userId: string, profile: UserProfile): Promise<OverviewPageData> {
+  const [critical, secondary] = await Promise.all([
+    loadOverviewCriticalData(userId, profile),
+    loadOverviewSecondaryData(userId, profile),
+  ])
+
+  return {
+    ...critical,
+    ...secondary,
+  }
+}
+
+export async function loadOverviewCriticalData(userId: string, profile: UserProfile): Promise<OverviewCriticalData> {
+  const supabase = await createServerSupabaseClient()
+  const cycleId = deriveCurrentCycleId(profile)
+
+  const [
+    { data: txns },
+    { data: income },
+    hasMonthlyStorage,
+    { data: activeDebtRows },
+    { data: historicalTransactionRow },
+    { data: historicalIncomeRow },
+    { data: historicalDebtRow },
+    { data: goalTargetExistsRow },
+  ] = await Promise.all([
+    (supabase.from('transactions') as any)
+      .select('amount, category_type')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId),
+    (supabase.from('income_entries') as any)
+      .select('salary, extra_income, total, cycle_start_mode, opening_balance, received, received_confirmed_at')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    hasMonthlyStorageForUser(supabase, userId),
+    (supabase.from('debts') as any)
+      .select('id, name, status, current_balance, debt_kind, standard_due_date, financing_target_date, currency')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .gt('current_balance', 0),
+    (supabase.from('transactions') as any)
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle(),
+    (supabase.from('income_entries') as any)
+      .select('cycle_id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle(),
+    (supabase.from('debts') as any)
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle(),
+    (supabase.from('goal_targets') as any)
+      .select('goal_id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const transactionRows = (txns ?? []) as Array<Pick<OverviewTransactionRow, 'amount' | 'category_type'>>
+  const incomeRow = (income ?? null) as OverviewIncomeRow | null
+  const debtRows = (activeDebtRows ?? []) as Debt[]
+
+  const totalSpent = (() => {
+    const outflowRows = deriveOutflowCategoryRows(transactionRows)
+    return deriveOutflowTotalFromCategories(outflowRows)
+  })()
+
+  const incomeTotal = deriveIncomeTotal(incomeRow)
+  const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
+  const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
+  // This flag is for true onboarding only. It answers:
+  // "Has this account ever created meaningful app data?"
+  // It must not reset just because a new month has not started yet.
+  const hasStartedCycleData =
+    !!historicalIncomeRow ||
+    !!historicalTransactionRow ||
+    !!historicalDebtRow ||
+    ((profile.goals?.length ?? 0) > 0) ||
+    !!goalTargetExistsRow ||
+    hasMonthlyStorage
+
+  const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
+  const debtReminderCandidates = deriveDebtReminderCandidates(debtRows)
+
+  return {
+    name: displayFirstName,
+    currency: profile.currency ?? 'KES',
+    incomeType: profile.income_type ?? null,
+    paydayDay:
+      profile.income_type === 'salaried' &&
+      Array.isArray(profile.pay_schedule_days) &&
+      profile.pay_schedule_days.length > 0 &&
+      Number.isFinite(Number(profile.pay_schedule_days[0]))
+        ? Number(profile.pay_schedule_days[0])
+        : null,
+    hasStartedCycleData,
+    incomeData: {
+      income: Number(incomeRow?.salary ?? 0),
+      extraIncome: (incomeRow?.extra_income ?? []).map((item, index) => ({
+        id: String(item?.id ?? index),
+        label: String(item?.label ?? 'Extra income'),
+        amount: Number(item?.amount ?? 0),
+      })),
+      total: incomeTotal,
+      cycleStartMode,
+      openingBalance,
+      received: incomeRow?.received != null ? Number(incomeRow.received) : null,
+      receivedConfirmedAt: incomeRow?.received_confirmed_at ?? null,
+    },
+    totalSpent,
+    debtReminderCandidates,
+  }
+}
+
+export async function loadOverviewSecondaryData(userId: string, profile: UserProfile): Promise<OverviewSecondaryData> {
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
@@ -429,28 +594,18 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
 
   const [
     { data: txns },
-    { data: income },
     monthlyStorage,
-    monthlyStorageCycleIds,
     { data: spendingBudget },
     { data: goalTargets },
-    { data: debts },
+    { data: debtRowsRaw },
     { data: prevCycleRecurringRows },
     { data: goalContributionRows },
-    { data: historicalTransactionRows },
-    { data: historicalIncomeRows },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, amount, category_key, category_type, category_label, date')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
-    (supabase.from('income_entries') as any)
-      .select('salary, extra_income, total, cycle_start_mode, opening_balance, received, received_confirmed_at')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
     loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
-    loadMonthlyStorageCycleIdsForUser(supabase, userId),
     (supabase.from('spending_budgets') as any)
       .select('total_budget, categories')
       .eq('user_id', userId)
@@ -460,7 +615,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .select('goal_id, amount, added_at, created_at, destination')
       .eq('user_id', userId),
     (supabase.from('debts') as any)
-      .select('*')
+      .select('id, name, status, current_balance, debt_kind, standard_due_date, financing_target_date, currency')
       .eq('user_id', userId),
     prevCycleRecurringPromise,
     goals.length === 0
@@ -470,20 +625,11 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
           .eq('user_id', userId)
           .eq('category_type', 'goal')
           .in('category_key', goals),
-    (supabase.from('transactions') as any)
-      .select('id')
-      .eq('user_id', userId)
-      .limit(1),
-    (supabase.from('income_entries') as any)
-      .select('cycle_id')
-      .eq('user_id', userId)
-      .limit(1),
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
-  const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const goalTargetRows = (goalTargets ?? []) as OverviewGoalTargetRow[]
-  const debtRows = (debts ?? []) as Debt[]
+  const debtRows = (debtRowsRaw ?? []) as Debt[]
   const fixedTotal = monthlyStorage.plannedTotal
   const plannedMonthlyEntries = monthlyStorage.plannedEntries
   const monthlyReminders = monthlyStorage.reminderEntries
@@ -509,6 +655,7 @@ fixedCycleTransactions:
 ${JSON.stringify(fixedTxnDebug, null, 2)}`
     )
   }
+
   const goalTargetsMap: Record<string, number> = {}
   const goalLabels: Record<string, string> = {}
   const goalAddedAtMap: Record<string, string> = {}
@@ -548,15 +695,9 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     }
   }
 
-  const [
-    totalSpent,
-    categorySpend,
-    goalSavedMap,
-  ] = (() => {
+  const [categorySpend, goalSavedMap] = (() => {
     const nextCategorySpend: Record<string, number> = {}
     const nextGoalSavedMap: Record<string, number> = {}
-    const outflowRows = deriveOutflowCategoryRows(transactionRows)
-    const nextTotalSpent = deriveOutflowTotalFromCategories(outflowRows)
 
     for (const txn of transactionRows) {
       if (txn.category_type === 'goal') {
@@ -571,7 +712,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
       }
     }
 
-    return [nextTotalSpent, nextCategorySpend, nextGoalSavedMap] as const
+    return [nextCategorySpend, nextGoalSavedMap] as const
   })()
 
   const activeDebts = debtRows.filter(
@@ -595,12 +736,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
       date: txn.date,
     }))
 
-  const extraIncome = (incomeRow?.extra_income ?? []).map((item, index) => ({
-    id: String(item?.id ?? index),
-    label: String(item?.label ?? 'Extra income'),
-    amount: Number(item?.amount ?? 0),
-  }))
-
   const spendingBudgetData = spendingBudget
     ? {
         total_budget: Number(spendingBudget.total_budget ?? 0),
@@ -611,20 +746,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
         })),
       }
     : null
-
-  const incomeTotal = deriveIncomeTotal(incomeRow)
-  const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
-  const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
-  // This flag is for true onboarding only. It answers:
-  // "Has this account ever created meaningful app data?"
-  // It must not reset just because a new month has not started yet.
-  const hasStartedCycleData =
-    (historicalIncomeRows?.length ?? 0) > 0 ||
-    (historicalTransactionRows?.length ?? 0) > 0 ||
-    debtRows.length > 0 ||
-    goals.length > 0 ||
-    goalTargetRows.length > 0 ||
-    monthlyStorageCycleIds.length > 0
 
   const lastCycleRecurringTop = (() => {
     const rows = (prevCycleRecurringRows ?? []) as OverviewPrevCycleTransactionRow[]
@@ -655,8 +776,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     }
   })()
 
-  const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
-  const debtReminderCandidates = deriveDebtReminderCandidates(debtRows)
   const selectedGoal = selectOverviewGoal({
     goals,
     goalTargets: goalTargetsMap,
@@ -673,29 +792,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   })
 
   return {
-    name: displayFirstName,
-    currency: profile.currency ?? 'KES',
-    incomeType: profile.income_type ?? null,
-    paydayDay:
-      profile.income_type === 'salaried' &&
-      Array.isArray(profile.pay_schedule_days) &&
-      profile.pay_schedule_days.length > 0 &&
-      Number.isFinite(Number(profile.pay_schedule_days[0]))
-        ? Number(profile.pay_schedule_days[0])
-        : null,
     goals,
     activeDebts,
-    hasStartedCycleData,
-    incomeData: {
-      income: Number(incomeRow?.salary ?? 0),
-      extraIncome,
-      total: incomeTotal,
-      cycleStartMode,
-      openingBalance,
-      received: incomeRow?.received != null ? Number(incomeRow.received) : null,
-      receivedConfirmedAt: incomeRow?.received_confirmed_at ?? null,
-    },
-    totalSpent,
     debtTotal,
     fixedTotal,
     spendingBudget: spendingBudgetData,
@@ -711,7 +809,6 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
       plannedMonthlyEntries,
       transactionRows
     ),
-    debtReminderCandidates,
     overviewObligations,
   }
 }

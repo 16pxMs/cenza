@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
+import { loadOverviewSecondaryData } from '@/lib/loaders/overview'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
@@ -92,4 +93,10 @@ export async function confirmReceivedIncome(received: number, receivedDate?: str
   revalidatePath('/app')
   revalidatePath('/income')
   revalidatePath('/plan')
+}
+
+export async function loadOverviewSecondary(): Promise<Awaited<ReturnType<typeof loadOverviewSecondaryData>>> {
+  const { user, profile } = await getAppSession()
+  if (!user || !profile) throw new Error('Not authenticated')
+  return loadOverviewSecondaryData(user.id, profile)
 }

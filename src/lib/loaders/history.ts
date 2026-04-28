@@ -18,13 +18,8 @@ import {
 import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
-  id: string
-  date: string
   category_type: string
-  category_key: string
-  category_label: string
   amount: number
-  note: string | null
 }
 
 export type HistoryCategoryRow = OutflowCategoryRow
@@ -46,31 +41,16 @@ interface HistoryIncomeRow {
   opening_balance?: number | string | null
 }
 
-export async function loadHistoryPageData(userId: string, profile: UserProfile, targetDate?: Date): Promise<HistoryPageData> {
-  const supabase = await createServerSupabaseClient()
-  const cycleId = targetDate
-    ? deriveCycleIdForDate(profile, targetDate)
-    : deriveCurrentCycleId(profile)
-
+async function loadHistoryAvailableCycleIds(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  userId: string
+): Promise<string[]> {
   const [
-    { data: txnRows },
-    { data: income },
     { data: txnCycles },
     { data: incomeCycles },
     expenseCycles,
     { data: budgetCycles },
   ] = await Promise.all([
-    (supabase.from('transactions') as any)
-      .select('id, date, category_type, category_key, category_label, amount, note')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false }),
-    (supabase.from('income_entries') as any)
-      .select('salary, extra_income, total, cycle_start_mode, opening_balance')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
     (supabase.from('transactions') as any)
       .select('cycle_id')
       .eq('user_id', userId),
@@ -83,15 +63,7 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .eq('user_id', userId),
   ])
 
-  const rows: HistoryTransaction[] = (txnRows ?? []).map((row: any) => ({
-    ...row,
-    amount: Number(row.amount),
-  }))
-  const categoryRows = deriveOutflowCategoryRows(rows)
-
-  const totalSpent = deriveOutflowTotalFromCategories(categoryRows)
-
-  const availableCycleIds = Array.from(new Set(
+  return Array.from(new Set(
     [
       ...(txnCycles ?? []),
       ...(incomeCycles ?? []),
@@ -101,6 +73,50 @@ export async function loadHistoryPageData(userId: string, profile: UserProfile, 
       .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id : null)
       .filter((cycleId): cycleId is string => !!cycleId)
   )).sort()
+}
+
+export async function loadHistoryAvailableCycleIdsForUser(userId: string): Promise<string[]> {
+  const supabase = await createServerSupabaseClient()
+  return loadHistoryAvailableCycleIds(supabase, userId)
+}
+
+export async function loadHistoryPageData(
+  userId: string,
+  profile: UserProfile,
+  targetDate?: Date,
+  availableCycleIdsOverride?: string[]
+): Promise<HistoryPageData> {
+  const supabase = await createServerSupabaseClient()
+  const cycleId = targetDate
+    ? deriveCycleIdForDate(profile, targetDate)
+    : deriveCurrentCycleId(profile)
+
+  const [
+    { data: txnRows },
+    { data: income },
+    availableCycleIds,
+  ] = await Promise.all([
+    (supabase.from('transactions') as any)
+      .select('category_type, amount')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId),
+    (supabase.from('income_entries') as any)
+      .select('salary, extra_income, total, cycle_start_mode, opening_balance')
+      .eq('user_id', userId)
+      .eq('cycle_id', cycleId)
+      .maybeSingle(),
+    availableCycleIdsOverride
+      ? Promise.resolve(availableCycleIdsOverride)
+      : loadHistoryAvailableCycleIds(supabase, userId),
+  ])
+
+  const rows: HistoryTransaction[] = (txnRows ?? []).map((row: any) => ({
+    ...row,
+    amount: Number(row.amount),
+  }))
+  const categoryRows = deriveOutflowCategoryRows(rows)
+
+  const totalSpent = deriveOutflowTotalFromCategories(categoryRows)
 
   const schedule = profileToPaySchedule(profile)
   const cycle = targetDate ? getCycleByDate(targetDate, schedule) : getCurrentCycle(schedule)
