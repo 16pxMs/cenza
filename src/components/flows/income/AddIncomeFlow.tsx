@@ -36,6 +36,7 @@ interface Props {
     opening_balance?: number | string | null
   } | null
   currency: string
+  flowMode?: 'new' | 'returning' | 'edit'
   onSave: (data: IncomeData) => void
   onBack?: () => void
   step?: 'type' | 'amount' | 'cycle' | 'payday'
@@ -66,13 +67,14 @@ export function AddIncomeFlow({
   paydayDay = null,
   initialIncomeData = null,
   currency,
+  flowMode = 'edit',
   onSave,
   onBack,
   step: controlledStep,
   onStepChange,
   showInnerBack = true,
 }: Props) {
-  const isFirstTime = incomeType == null
+  const isFirstTime = flowMode === 'new'
   const initialCycleStartMode = initialIncomeData?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month'
   const initialSalaryValue = (() => {
     if (!initialIncomeData) return ''
@@ -178,6 +180,10 @@ export function AddIncomeFlow({
       setActiveStep('cycle')
       return
     }
+    if (flowMode === 'returning' && (!needsPayday || !!selectedPayday)) {
+      handleSave()
+      return
+    }
     setActiveStep('payday')
   }
 
@@ -253,14 +259,8 @@ export function AddIncomeFlow({
             error={error ?? undefined}
           />
 
-          {activeType !== 'variable' && !isMidMonth && extras.map((x, i) => (
+          {activeType !== 'variable' && !isMidMonth && extras.map((x) => (
             <div key={x.id} className="income-extra-row">
-              <div className="income-extra-row__header">
-                <span className="income-extra-row__label">Extra income {i + 1}</span>
-                <button className="income-extra-row__remove" onClick={() => removeExtra(x.id)}>
-                  <IconTrash size={14} />
-                </button>
-              </div>
               <Input
                 label="Source"
                 value={x.label}
@@ -276,47 +276,36 @@ export function AddIncomeFlow({
                 type="number"
                 autoFocus={false}
               />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'calc(var(--space-2xs) * -1)' }}>
+                <button
+                  type="button"
+                  className="income-extra-row__remove"
+                  onClick={() => removeExtra(x.id)}
+                  aria-label="Remove extra income"
+                >
+                  <IconTrash size={12} />
+                  <span style={{ marginLeft: 4 }}>Remove</span>
+                </button>
+              </div>
             </div>
           ))}
 
           {activeType !== 'variable' && !isMidMonth && (
-            extras.length === 0 ? (
-              <TertiaryBtn
-                size="sm"
-                onClick={addExtra}
-                style={{
-                  margin: '4px 0 16px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  fontSize: 'var(--text-sm)',
-                }}
-              >
-                <IconPlus color="var(--text-brand)" size={13} />
-                Add extra income source (optional)
-              </TertiaryBtn>
-            ) : (
-              <TertiaryBtn
-                size="sm"
-                onClick={addExtra}
-                style={{
-                  width: '100%',
-                  height: 42,
-                  borderRadius: 10,
-                  border: '1.5px dashed var(--border-strong)',
-                  background: 'transparent',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  marginBottom: 20,
-                  fontSize: 13,
-                }}
-              >
-                <IconPlus color="var(--text-brand)" size={13} />
-                Add another income source
-              </TertiaryBtn>
-            )
+            <TertiaryBtn
+              size="sm"
+              onClick={addExtra}
+              style={{
+                margin: '2px 0 var(--space-sm)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 'var(--text-sm)',
+                paddingInline: 0,
+              }}
+            >
+              <IconPlus color="var(--text-brand)" size={13} />
+              {extras.length === 0 ? 'Add extra income source (optional)' : 'Add another income source'}
+            </TertiaryBtn>
           )}
 
           {total > 0 && (
@@ -326,9 +315,43 @@ export function AddIncomeFlow({
             </div>
           )}
 
+          {flowMode === 'returning' && activeType === 'salaried' && selectedPayday && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: 'var(--space-sm)',
+                padding: '6px 0',
+                marginBottom: 'var(--space-md)',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                <span style={{ fontWeight: 'var(--weight-medium)', color: 'var(--text-2)' }}>Payday</span>
+                <span aria-hidden="true" style={{ margin: '0 6px' }}>·</span>
+                <span>Day {selectedPayday} each month</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveStep('payday')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--brand-dark)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 'var(--weight-medium)',
+                  padding: '2px 0',
+                }}
+              >
+                Change
+              </button>
+            </div>
+          )}
+
           {activeType === 'salaried' ? (
             <PrimaryBtn size="lg" onClick={handleContinueFromAmount} disabled={!canProceedFromAmount}>
-              Continue
+              {flowMode === 'returning' && selectedPayday ? 'Save income' : 'Continue'}
             </PrimaryBtn>
           ) : (
             <PrimaryBtn
@@ -426,7 +449,9 @@ export function AddIncomeFlow({
               What day do you usually get paid?
             </p>
             <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
-              Pick the day your salary normally comes in.
+              {flowMode === 'returning'
+                ? 'We prefilled your usual payday. Change it only if this month is different.'
+                : 'Pick the day your salary normally comes in.'}
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
               {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {

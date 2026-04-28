@@ -5,6 +5,7 @@ import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-d
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import {
   loadMonthlyStorageSnapshotForCycle,
+  loadMonthlyStorageCycleIdsForUser,
   readPlannedMonthlyEntries,
   type MonthlyReminderEntry,
 } from '@/lib/monthly-reminders/storage'
@@ -430,11 +431,14 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
     { data: txns },
     { data: income },
     monthlyStorage,
+    monthlyStorageCycleIds,
     { data: spendingBudget },
     { data: goalTargets },
     { data: debts },
     { data: prevCycleRecurringRows },
     { data: goalContributionRows },
+    { data: historicalTransactionRows },
+    { data: historicalIncomeRows },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
       .select('id, amount, category_key, category_type, category_label, date')
@@ -446,6 +450,7 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
       .eq('cycle_id', cycleId)
       .maybeSingle(),
     loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
+    loadMonthlyStorageCycleIdsForUser(supabase, userId),
     (supabase.from('spending_budgets') as any)
       .select('total_budget, categories')
       .eq('user_id', userId)
@@ -465,6 +470,14 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
           .eq('user_id', userId)
           .eq('category_type', 'goal')
           .in('category_key', goals),
+    (supabase.from('transactions') as any)
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1),
+    (supabase.from('income_entries') as any)
+      .select('cycle_id')
+      .eq('user_id', userId)
+      .limit(1),
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
@@ -602,15 +615,16 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   const incomeTotal = deriveIncomeTotal(incomeRow)
   const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
   const cycleStartMode = (incomeRow?.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month') as 'full_month' | 'mid_month'
-  // Financial totals are protected by the monthly storage adapter:
-  // only entry_type === 'planned' rows are included here.
-  const budgetTotal = Number(spendingBudgetData?.total_budget ?? 0)
+  // This flag is for true onboarding only. It answers:
+  // "Has this account ever created meaningful app data?"
+  // It must not reset just because a new month has not started yet.
   const hasStartedCycleData =
-    incomeTotal > 0 ||
-    (cycleStartMode === 'mid_month' && (openingBalance ?? 0) > 0) ||
-    totalSpent > 0 ||
-    fixedTotal > 0 ||
-    budgetTotal > 0
+    (historicalIncomeRows?.length ?? 0) > 0 ||
+    (historicalTransactionRows?.length ?? 0) > 0 ||
+    debtRows.length > 0 ||
+    goals.length > 0 ||
+    goalTargetRows.length > 0 ||
+    monthlyStorageCycleIds.length > 0
 
   const lastCycleRecurringTop = (() => {
     const rows = (prevCycleRecurringRows ?? []) as OverviewPrevCycleTransactionRow[]

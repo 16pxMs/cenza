@@ -209,7 +209,7 @@ export default function IncomePageClient({
                 <p style={{ margin: '0 0 1px', fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Income</p>
                 <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text1 }}>{fmt(incomeTotal, data.currency)}</p>
               </div>
-              <button onClick={() => router.push('/income/new?returnTo=/app')} style={editBtnStyle}>Edit</button>
+              <button onClick={() => router.push('/income/new?returnTo=/app&mode=edit')} style={editBtnStyle}>Edit</button>
             </div>
             <div style={itemRow(extras.length > 0)}>
               <span style={{ fontSize: 14, color: T.text2 }}>Salary</span>

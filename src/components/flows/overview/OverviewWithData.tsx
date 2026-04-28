@@ -60,6 +60,7 @@ interface IncomeData {
 interface Props {
   name: string
   currency: string
+  hasStartedCycleData?: boolean
   incomeType?: 'salaried' | 'variable' | null
   paydayDay?: number | null
   goals: string[]
@@ -106,7 +107,7 @@ interface Props {
 }
 
 export function OverviewWithData({
-  name, currency, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
+  name, currency, hasStartedCycleData = false, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, monthlyReminders = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
 }: Props) {
@@ -197,9 +198,6 @@ export function OverviewWithData({
   // ── Spending card ─────────────────────────────────────────────
   const receivedConfirmed =
   incomeData?.received != null && incomeData.received > 0
-  const isVariableIncome = incomeType === 'variable'
-  const isSalariedIncome = incomeType === 'salaried'
-
 const reference = receivedConfirmed
   ? Number(incomeData?.received ?? 0)
   : totalIncome
@@ -209,72 +207,11 @@ const reference = receivedConfirmed
     ? Number(incomeData?.openingBalance ?? 0)
     : reference
 
-  const getDaysSinceRecentPayday = (dayOfMonth: number) => {
-    const now = new Date()
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
-    const clamp = (year: number, month: number, day: number) => {
-      const maxDay = new Date(year, month + 1, 0).getDate()
-      return Math.min(Math.max(day, 1), maxDay)
-    }
-
-    const thisMonthPayday = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      clamp(today.getFullYear(), today.getMonth(), dayOfMonth)
-    )
-
-    const recentPayday = today >= thisMonthPayday
-      ? thisMonthPayday
-      : new Date(
-          today.getFullYear(),
-          today.getMonth() - 1,
-          clamp(today.getFullYear(), today.getMonth() - 1, dayOfMonth)
-        )
-
-    return Math.floor((today.getTime() - recentPayday.getTime()) / (1000 * 60 * 60 * 24))
-  }
-
-  const shouldShowIncomeConfirmPrompt = (() => {
-    if (isMidMonthStart) return false
-    if (receivedConfirmed || !onConfirmIncome) return false
-    if (totalIncome <= 0) return false
-
-    if (isVariableIncome) {
-      return true
-    }
-
-    if (!isSalariedIncome) {
-      return totalSpent > 0
-    }
-
-    if (!paydayDay || paydayDay <= 0) return false
-    const daysSincePayday = getDaysSinceRecentPayday(paydayDay)
-    const cadenceTrigger = daysSincePayday === 0 || daysSincePayday === 2
-    const contextualTrigger = totalSpent > 0
-
-    return cadenceTrigger || contextualTrigger
-  })()
-
-  const incomeConfirmPromptText = (() => {
-    if (isVariableIncome) {
-      return totalSpent > 0
-        ? 'You have spending logged. Confirm money received so your balance stays accurate.'
-        : 'Log money received as it comes in so your balance stays real.'
-    }
-
-    if (isSalariedIncome) {
-      if (!paydayDay || paydayDay <= 0) return 'Set your pay day in Settings to enable monthly check-ins.'
-      const daysSincePayday = getDaysSinceRecentPayday(paydayDay)
-      if (daysSincePayday === 0) return "It's payday. Confirm income to start this month clean."
-      if (daysSincePayday === 2) return "Quick reminder: confirm this month's income."
-      return 'You have spending logged. Confirm income so your remaining amount stays accurate.'
-    }
-
-    return "Confirm this month's income."
-  })()
-
-  const isCanonicalEmpty = totalIncome <= 0 && !hasLogged && !receivedConfirmed && !isMidMonthStart
+  const shouldShowIncomeConfirmationCard =
+    !isMidMonthStart &&
+    !receivedConfirmed &&
+    !!onConfirmIncome &&
+    totalIncome > 0
 
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
   const daysLeft    = daysInMonth - new Date().getDate()
@@ -331,17 +268,6 @@ const reference = receivedConfirmed
         subtitle: `${dueSoon.label} · due in ${days} ${days === 1 ? 'day' : 'days'}`,
         href: `/history/debt/${dueSoon.debtId}`,
         tone: 'warning' as const,
-      }
-    }
-
-    // 4. Setup blocker (income not confirmed)
-    if (shouldShowIncomeConfirmPrompt) {
-      return {
-        kind: 'setup' as const,
-        title: 'Set your income',
-        subtitle: "Your monthly summary isn't ready yet",
-        href: '/income/new?returnTo=/app',
-        tone: 'neutral' as const,
       }
     }
 
@@ -467,8 +393,14 @@ const reference = receivedConfirmed
     )
   })()
 
+  const hasIncomeConfigured = totalIncome > 0 || isMidMonthStart
+  const snapshotState = !hasIncomeConfigured
+    ? 'add_income'
+    : shouldShowIncomeConfirmationCard
+      ? 'confirm_income'
+      : 'balance'
   const snapshotReference =
-    totalIncome > 0 || isMidMonthStart
+    hasIncomeConfigured
       ? referenceBase
       : 0
   const snapshotRemaining =
@@ -477,7 +409,7 @@ const reference = receivedConfirmed
       : hasLogged
         ? -totalSpent
         : referenceBase
-  const hasIncome = snapshotReference > 0
+  const hasIncome = snapshotState === 'balance' && snapshotReference > 0
   const snapshotRemainingRatio = hasIncome
     ? Math.max(0, Math.min(1, snapshotRemaining / snapshotReference))
     : 0
@@ -532,107 +464,137 @@ const reference = receivedConfirmed
           padding: '16px',
         }}
       >
-        {/* Eyebrow */}
-        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-          This month
-        </p>
+        {snapshotState === 'add_income' ? (
+          <>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              This month
+            </p>
+            <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+              Add your income
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+              We&apos;ll take it from there
+            </p>
+            <div style={{ marginTop: 12 }}>
+              <PrimaryBtn size="md" onClick={() => router.push('/income/new?returnTo=/app')} style={{ width: '100%' }}>
+                Add income
+              </PrimaryBtn>
+            </div>
+          </>
+        ) : snapshotState === 'confirm_income' ? (
+          <>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              This month
+            </p>
+            <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+              Have you received your income?
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+              Confirm it to start this month
+            </p>
+            <div style={{ marginTop: 12 }}>
+              <PrimaryBtn size="md" onClick={onConfirmIncome} style={{ width: '100%' }}>
+                Confirm income
+              </PrimaryBtn>
+            </div>
+          </>
+        ) : (
+          <>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              This month
+            </p>
+            <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+              You&apos;re set for this month
+            </p>
+            <p style={{ margin: '4px 0 12px', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+              Here&apos;s what you have to work with
+            </p>
+            {/* Main amount */}
+            <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotIsOverspent ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
+              {snapshotMainCopy}
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', color: 'var(--text-muted)' }}>
+              {snapshotSupportingCopy}
+            </p>
 
-        {/* Main amount */}
-        <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotIsOverspent ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
-          {snapshotMainCopy}
-        </p>
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', color: 'var(--text-muted)' }}>
-          {snapshotSupportingCopy}
-        </p>
+            {/* Progress bar */}
+            {hasIncome && (
+              <div style={{ marginTop: 12 }}>
+                <div
+                  style={{
+                    height: 8,
+                    background: snapshotProgressTrack,
+                    borderRadius: 'var(--radius-full)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: mounted ? `${snapshotProgressPercent}%` : '0%',
+                      background: snapshotProgressFill,
+                      borderRadius: 'var(--radius-full)',
+                      transition: 'width 300ms ease-out',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
-        {/* Progress bar */}
-        {hasIncome && (
-          <div style={{ marginTop: 12 }}>
-            <div
-              style={{
-                height: 8,
-                background: snapshotProgressTrack,
-                borderRadius: 'var(--radius-full)',
-                overflow: 'hidden',
-              }}
-            >
+            {/* Stat row */}
+            {hasIncome ? (
               <div
                 style={{
-                  height: '100%',
-                  width: mounted ? `${snapshotProgressPercent}%` : '0%',
-                  background: snapshotProgressFill,
-                  borderRadius: 'var(--radius-full)',
-                  transition: 'width 300ms ease-out',
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Stat row */}
-        {hasIncome ? (
-          <div
-            style={{
-              marginTop: 12,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: 12,
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-medium)',
-                  color: 'var(--text-muted)',
+                  marginTop: 12,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 12,
                 }}
               >
-                Outflow
-              </span>
-              <span
-                style={{
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--weight-medium)',
-                  color: 'var(--text-1)',
-                }}
-              >
-                {formatAmount(totalSpent, { currency, variant: 'compact' })}
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-              <span
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-medium)',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                Income
-              </span>
-              <span
-                style={{
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--weight-medium)',
-                  color: 'var(--text-1)',
-                }}
-              >
-                {formatAmount(snapshotReference, { currency, variant: 'compact' })}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <p style={{ margin: 0, marginTop: 12, fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
-            Add your income to see how much you have left.
-          </p>
-        )}
-
-        {!hasIncome && (
-          <div style={{ marginTop: 12 }}>
-            <TertiaryBtn size="sm" onClick={() => router.push('/income')} style={{ width: 'auto', padding: 0 }}>
-              Set up income
-            </TertiaryBtn>
-          </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    Outflow
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: 'var(--text-1)',
+                    }}
+                  >
+                    {formatAmount(totalSpent, { currency, variant: 'compact' })}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <span
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    Income
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: 'var(--text-1)',
+                    }}
+                  >
+                    {formatAmount(snapshotReference, { currency, variant: 'compact' })}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </div>
@@ -736,7 +698,7 @@ const reference = receivedConfirmed
         </button>
       </div>
 
-      {isCanonicalEmpty ? (
+      {!hasStartedCycleData ? (
         <OverviewEmptyState
           onCreateGoal={() => router.push('/goals/new?from=overview')}
         />

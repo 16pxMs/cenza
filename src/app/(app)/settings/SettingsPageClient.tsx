@@ -210,7 +210,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             scheduleConfigured ? initialScheduleType : null,
             scheduleConfigured ? initialScheduleDays : []
           ).replace('Monthly ·', 'Paid monthly ·').replace('Twice a month ·', 'Paid twice a month ·')}
-          onClick={() => router.push('/income/new?returnTo=/settings')}
+          onClick={() => router.push('/income/new?returnTo=/settings&mode=edit')}
           isLast
         />
       </>)}

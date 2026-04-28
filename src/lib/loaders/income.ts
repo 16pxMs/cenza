@@ -49,6 +49,8 @@ export interface IncomeSetupPageData {
   incomeType: 'salaried' | 'variable' | null
   paydayDay: number | null
   incomeData: IncomeEntryRow | null
+  hasHistoricalIncome: boolean
+  hasCurrentCycleIncome: boolean
 }
 
 export interface FixedExpensesSetupPageData {
@@ -72,6 +74,7 @@ export async function loadIncomeSetupPageData(userId: string, profile: UserProfi
     .eq('cycle_id', cycleId)
     .maybeSingle()
 
+  const hasCurrentCycleIncome = !!currentIncome
   let incomeData = (currentIncome ?? null) as IncomeEntryRow | null
 
   if (!incomeData) {
@@ -96,6 +99,8 @@ export async function loadIncomeSetupPageData(userId: string, profile: UserProfi
         ? Number(profile.pay_schedule_days[0])
         : null,
     incomeData,
+    hasHistoricalIncome: !!incomeData,
+    hasCurrentCycleIncome,
   }
 }
 

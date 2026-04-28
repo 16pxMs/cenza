@@ -19,8 +19,13 @@ interface Props {
     cycle_start_mode?: 'full_month' | 'mid_month' | null
     opening_balance?: number | string | null
   } | null
+  hasHistoricalIncome: boolean
+  hasCurrentCycleIncome: boolean
+  modeHint: string | null
   returnTo: string
 }
+
+type IncomeFlowMode = 'new' | 'returning' | 'edit'
 
 function resolveReturnPath(returnTo: string): string {
   const trimmed = (returnTo || '').trim()
@@ -35,43 +40,52 @@ function resolveReturnPath(returnTo: string): string {
   return trimmed
 }
 
-export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, incomeData, returnTo }: Props) {
+export default function IncomeFlowPageClient({
+  currency,
+  incomeType,
+  paydayDay,
+  incomeData,
+  hasHistoricalIncome,
+  hasCurrentCycleIncome,
+  modeHint,
+  returnTo,
+}: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const { isDesktop } = useBreakpoint()
   const [saving, setSaving] = useState(false)
-  const [flowStep, setFlowStep] = useState<'type' | 'amount' | 'cycle' | 'payday'>(incomeType == null ? 'type' : 'amount')
   const nextPath = resolveReturnPath(returnTo)
-  const isFirstTime = incomeType == null
+  const resolvedMode: IncomeFlowMode = (() => {
+    if (modeHint === 'edit') return 'edit'
+    if (!hasHistoricalIncome) return 'new'
+    if (!hasCurrentCycleIncome) return 'returning'
+    return 'edit'
+  })()
+  const needsTypeSelection = incomeType == null
+  const [flowStep, setFlowStep] = useState<'type' | 'amount' | 'cycle' | 'payday'>(needsTypeSelection ? 'type' : 'amount')
 
   const copyOverride = (() => {
-    if (!isFirstTime) return undefined
-
-    if (flowStep === 'amount') {
+    if (resolvedMode === 'new') {
       return {
-        eyebrow: 'Step 1 of 3',
-        title: 'Set your income',
-        subtitle: 'Enter your regular take-home pay.',
+        eyebrow: 'Income',
+        title: 'Set up your income',
+        subtitle: 'Add your salary and any extra income',
       }
     }
 
-    if (flowStep === 'cycle') {
+    if (resolvedMode === 'returning') {
       return {
-        eyebrow: 'Step 2 of 3',
-        title: '',
-        subtitle: '',
+        eyebrow: 'Income',
+        title: 'Add your income',
+        subtitle: 'Set what you expect this month',
       }
     }
 
-    if (flowStep === 'payday') {
-      return {
-        eyebrow: 'Step 3 of 3',
-        title: '',
-        subtitle: '',
-      }
+    return {
+      eyebrow: 'Income',
+      title: 'Update your income',
+      subtitle: 'Change your salary or income details',
     }
-
-    return undefined
   })()
 
   const handleBack = () => {
@@ -89,7 +103,7 @@ export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, 
       return
     }
 
-    if (incomeType == null && flowStep === 'amount') {
+    if (needsTypeSelection && flowStep === 'amount') {
       setFlowStep('type')
       return
     }
@@ -113,7 +127,7 @@ export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, 
 
   return (
     <SetupFlowPage
-      pageKey={incomeType == null ? 'income_new' : 'income_edit'}
+      pageKey={resolvedMode === 'edit' ? 'income_edit' : 'income_new'}
       onBack={handleBack}
       isDesktop={isDesktop}
       isSaving={saving}
@@ -124,8 +138,9 @@ export default function IncomeFlowPageClient({ currency, incomeType, paydayDay, 
         paydayDay={paydayDay}
         initialIncomeData={incomeData}
         currency={currency}
+        flowMode={resolvedMode}
         onSave={handleSave}
-        onBack={incomeType == null ? undefined : () => router.push(nextPath)}
+        onBack={needsTypeSelection ? undefined : () => router.push(nextPath)}
         step={flowStep}
         onStepChange={setFlowStep}
         showInnerBack={false}

@@ -26,6 +26,7 @@ export default async function IncomeFlowPage({ searchParams }: IncomeFlowPagePro
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const returnTo = readSearchParam(resolvedSearchParams, 'returnTo') ?? '/income'
+  const mode = readSearchParam(resolvedSearchParams, 'mode')
   const data = await loadIncomeSetupPageData(user.id, profile)
 
   return (
@@ -34,6 +35,9 @@ export default async function IncomeFlowPage({ searchParams }: IncomeFlowPagePro
       incomeType={data.incomeType}
       paydayDay={data.paydayDay}
       incomeData={data.incomeData}
+      hasHistoricalIncome={data.hasHistoricalIncome}
+      hasCurrentCycleIncome={data.hasCurrentCycleIncome}
+      modeHint={mode}
       returnTo={returnTo}
     />
   )
