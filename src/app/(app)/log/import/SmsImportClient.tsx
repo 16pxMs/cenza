@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
+import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
@@ -995,9 +996,10 @@ export function SmsImportClient() {
                         ] as const).map((option) => {
                           const selected = editDraft.categoryType === option.value
                           return (
-                            <button
+                            <SingleSelectChip
                               key={option.value}
-                              type="button"
+                              label={option.label}
+                              selected={selected}
                               onClick={() => {
                                 setEditDraft((current) => {
                                   if (!current) return current
@@ -1019,25 +1021,7 @@ export function SmsImportClient() {
                                   ensureDebtsLoaded()
                                 }
                               }}
-                              style={{
-                                height: 'var(--button-height-md)',
-                                padding: '0 var(--space-md)',
-                                borderRadius: 'var(--radius-full)',
-	                                border: selected
-	                                  ? `var(--border-width) solid transparent`
-	                                  : `var(--border-width) solid ${T.borderSubtle}`,
-	                                background: selected ? 'var(--brand-light)' : 'transparent',
-	                                color: selected ? T.brandDark : T.textMuted,
-                                fontSize: 'var(--text-sm)',
-                                fontWeight: 'var(--weight-medium)',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {option.label}
-                            </button>
+                            />
                           )
                         })}
                       </div>
@@ -1184,31 +1168,15 @@ export function SmsImportClient() {
                                   { value: 'owed_by_me', label: 'I owe this' },
                                   { value: 'owed_to_me', label: 'Owed to me' },
                                 ] as const).map((option) => {
-                                  const selected = createDebtDraft.direction === option.value
                                   return (
-                                    <button
+                                    <SingleSelectChip
                                       key={option.value}
-                                      type="button"
+                                      label={option.label}
+                                      selected={createDebtDraft.direction === option.value}
                                       onClick={() =>
                                         setCreateDebtDraft((current) => ({ ...current, direction: option.value }))
                                       }
-                                      style={{
-                                        height: 'var(--button-height-md)',
-                                        padding: '0 var(--space-md)',
-                                        borderRadius: 'var(--radius-full)',
-                                        border: selected
-                                          ? `var(--border-width) solid var(--brand-mid)`
-                                          : `var(--border-width) solid var(--grey-300)`,
-                                        background: selected ? 'var(--brand-mid)' : 'var(--white)',
-                                        color: selected ? T.brandDark : T.text2,
-                                        fontSize: 'var(--text-sm)',
-                                        fontWeight: 'var(--weight-medium)',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap',
-                                      }}
-                                    >
-                                      {option.label}
-                                    </button>
+                                    />
                                   )
                                 })}
                               </div>

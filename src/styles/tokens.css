@@ -48,6 +48,16 @@
   --text-inverse:  var(--grey-0);   /* inverse — text on dark surfaces */
   --text-brand:    var(--brand-dark); /* brand — accents, links, CTAs */
 
+  /* Chips
+     Rule: active chips keep the same pill shape as default chips and use
+     a tinted selected state instead of a heavy filled state. */
+  --chip-bg:            var(--white);
+  --chip-border:        var(--border);
+  --chip-text:          var(--text-2);
+  --chip-selected-bg:   color-mix(in srgb, var(--brand) 28%, transparent);
+  --chip-selected-border: color-mix(in srgb, var(--brand-mid) 55%, transparent);
+  --chip-selected-text: var(--brand-dark);
+
   /* Progress */
   --progress-fill:  var(--grey-400);
   --progress-track: var(--grey-200);

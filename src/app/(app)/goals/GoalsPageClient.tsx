@@ -4,19 +4,16 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
-import { useToast } from '@/lib/context/ToastContext'
 import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
 import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { Input } from '@/components/ui/Input/Input'
-import { PrimaryBtn, PrimaryLink } from '@/components/ui/Button/Button'
+import { PrimaryLink } from '@/components/ui/Button/Button'
 import { GOAL_META } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
 import type { GoalsPageData, GoalsPageGoalData } from '@/lib/loaders/goals'
-import { archiveGoal, removeGoal, saveGoalTarget } from './actions'
 
 const T = {
   pageBg: '#F8F9FA',
@@ -262,16 +259,10 @@ interface GoalsPageClientProps {
 export default function GoalsPageClient({ data }: GoalsPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
-  const { toast } = useToast()
 
   const [celebGoal, setCelebGoal] = useState<GoalId | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
   const [celebSeen, setCelebSeen] = useState<Set<string>>(new Set())
-  const [editGoal, setEditGoal] = useState<GoalId | null>(null)
-  const [editAmount, setEditAmount] = useState('')
-  const [editSaving, setEditSaving] = useState(false)
-  const [deleteGoalId, setDeleteGoalId] = useState<GoalId | null>(null)
-  const [deleteStep, setDeleteStep] = useState<'reason' | 'done' | 'used' | 'leaving'>('reason')
 
   useEffect(() => {
     for (const goal of data.goalDataList) {
@@ -283,58 +274,6 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
       }
     }
   }, [celebSeen, data.goalDataList])
-
-  const openEdit = (goalId: GoalId) => {
-    setEditGoal(goalId)
-    setEditAmount(data.targets[goalId] != null ? String(data.targets[goalId]) : '')
-  }
-
-  const handleSaveTarget = async () => {
-    if (!editGoal) return
-    setEditSaving(true)
-    try {
-      await saveGoalTarget(editGoal, parseFloat(editAmount) || null)
-      toast('Target updated')
-      setEditGoal(null)
-      router.refresh()
-    } catch {
-      toast('Failed to update target')
-    } finally {
-      setEditSaving(false)
-    }
-  }
-
-  const openDelete = () => {
-    if (!editGoal) return
-    const id = editGoal
-    setEditGoal(null)
-    setDeleteStep('reason')
-    setDeleteGoalId(id)
-  }
-
-  const handleArchiveGoal = async () => {
-    if (!deleteGoalId) return
-    try {
-      await archiveGoal(deleteGoalId)
-      toast('Goal archived')
-      setDeleteGoalId(null)
-      router.refresh()
-    } catch {
-      toast('Failed to archive goal')
-    }
-  }
-
-  const handleRemoveGoal = async () => {
-    if (!deleteGoalId) return
-    try {
-      await removeGoal(deleteGoalId)
-      toast('Goal removed')
-      setDeleteGoalId(null)
-      router.refresh()
-    } catch {
-      toast('Failed to remove goal')
-    }
-  }
 
   const content = (
     <AppSubpageLayout maxWidth={600}>
@@ -400,7 +339,7 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
           {data.goalDataList.map(goal => (
-            <GoalCard key={goal.id} goal={goal} currency={data.currency} onTap={() => openEdit(goal.id)} />
+            <GoalCard key={goal.id} goal={goal} currency={data.currency} onTap={() => router.push(`/goals/${goal.id}`)} />
           ))}
         </div>
       )}
@@ -433,231 +372,6 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
           />
         </Sheet>
       )}
-
-      {editGoal && (
-        <Sheet
-          open={true}
-          onClose={() => setEditGoal(null)}
-          title={GOAL_META[editGoal].label}
-        >
-          <p style={{ fontSize: 13, color: T.text3, margin: '0 0 20px', lineHeight: 1.5 }}>
-            {GOAL_META[editGoal].tip}
-          </p>
-          <Input
-            label="Target amount"
-            value={editAmount}
-            onChange={value => setEditAmount(value)}
-            prefix={data.currency}
-            placeholder="e.g. 500,000"
-            type="number"
-          />
-          <div style={{ height: 12 }} />
-          <PrimaryBtn size="lg" onClick={handleSaveTarget} disabled={editSaving}>
-            {editSaving ? 'Saving…' : 'Save target'}
-          </PrimaryBtn>
-          <button
-            onClick={openDelete}
-            style={{
-              marginTop: 12,
-              width: '100%',
-              padding: '12px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 14,
-              color: T.textMuted,
-            }}
-          >
-            Remove this goal
-          </button>
-        </Sheet>
-      )}
-
-      {deleteGoalId && (
-        <Sheet
-          open={true}
-          onClose={() => setDeleteGoalId(null)}
-          title={deleteStep === 'reason' ? 'What happened?' : ''}
-        >
-          {deleteStep === 'reason' && (() => {
-            const meta = GOAL_META[deleteGoalId]
-            return (
-              <div>
-                <p style={{ fontSize: 14, color: T.text2, margin: '0 0 20px', lineHeight: 1.6 }}>
-                  You're removing <strong>{meta.label}</strong>. Help us understand why. We'll handle it the right way.
-                </p>
-                <div style={{
-                  background: T.white,
-                  border: '1px solid var(--border)',
-                  borderRadius: 18,
-                  overflow: 'hidden',
-                }}>
-                  {[
-                    { label: 'Reached this goal', sub: 'Celebrate and keep the history', step: 'done' as const },
-                    { label: 'Used the money', sub: 'Acknowledge it and archive', step: 'used' as const },
-                    { label: 'Changed my mind', sub: 'Remove it cleanly', step: 'leaving' as const },
-                  ].map((option, index, options) => (
-                    <button
-                      key={option.step}
-                      onClick={() => setDeleteStep(option.step)}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '14px 16px',
-                        background: T.white,
-                        border: 'none',
-                        borderBottom: index < options.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{option.label}</div>
-                        <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>{option.sub}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-          })()}
-
-          {deleteStep === 'done' && deleteGoalId && (() => {
-            const meta = GOAL_META[deleteGoalId]
-            return (
-              <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
-                <div style={{ fontSize: 56, marginBottom: 12, lineHeight: 1 }}>🏆</div>
-                <div style={{ fontSize: 21, fontWeight: 600, color: T.text1, marginBottom: 8 }}>
-                  You actually did it.
-                </div>
-                <div style={{
-                  display: 'inline-block',
-                  margin: '0 0 16px',
-                  background: meta.light,
-                  border: `1px solid ${meta.border}`,
-                  borderRadius: 10,
-                  padding: '6px 18px',
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: meta.dark,
-                }}>
-                  {meta.label} ✓
-                </div>
-                <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 24px' }}>
-                  We'll keep your savings history so you can look back on this.
-                  Genuinely well done.
-                </p>
-                <button
-                  onClick={handleArchiveGoal}
-                  style={{
-                    width: '100%',
-                    padding: '14px',
-                    borderRadius: 14,
-                    background: meta.dark,
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: 15,
-                    fontWeight: 600,
-                    color: '#fff',
-                  }}
-                >
-                  Archive this goal 🎉
-                </button>
-              </div>
-            )
-          })()}
-
-          {deleteStep === 'used' && deleteGoalId && (() => {
-            const meta = GOAL_META[deleteGoalId]
-            const isEmergency = deleteGoalId === 'emergency'
-            return (
-              <div style={{ padding: '4px 0' }}>
-                <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>💛</div>
-                <div style={{ fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 10 }}>
-                  Life happens.
-                </div>
-                <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 16px' }}>
-                  You saved for <strong>{meta.label}</strong> and you needed to use it. That's exactly what savings are for.
-                </p>
-                {isEmergency && (
-                  <div style={{
-                    background: '#FFFBEA',
-                    border: '1px solid #FDE68A',
-                    borderRadius: 12,
-                    padding: '12px 14px',
-                    marginBottom: 16,
-                  }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>
-                      Consider restarting
-                    </div>
-                    <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.5 }}>
-                      Emergency funds are worth rebuilding. When you're ready, add it back and start fresh.
-                    </div>
-                  </div>
-                )}
-                <p style={{ fontSize: 13, color: T.text3, margin: '0 0 20px' }}>
-                  We'll archive the goal and keep your history.
-                </p>
-                <button
-                  onClick={handleArchiveGoal}
-                  style={{
-                    width: '100%',
-                    padding: '14px',
-                    borderRadius: 14,
-                    background: T.brandDark,
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: 15,
-                    fontWeight: 600,
-                    color: '#fff',
-                  }}
-                >
-                  Archive this goal
-                </button>
-              </div>
-            )
-          })()}
-
-          {deleteStep === 'leaving' && deleteGoalId && (
-            <div style={{ padding: '4px 0' }}>
-              <div style={{ fontSize: 40, marginBottom: 12, lineHeight: 1 }}>👋</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 10 }}>
-                No worries.
-              </div>
-              <p style={{ fontSize: 14, color: T.text2, lineHeight: 1.6, margin: '0 0 24px' }}>
-                Goals change. We'll remove <strong>{GOAL_META[deleteGoalId].label}</strong> and clear the target you set.
-                Any transactions you logged will still show in history.
-              </p>
-              <button
-                onClick={handleRemoveGoal}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: 14,
-                  background: '#D93025',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: '#fff',
-                }}
-              >
-                Yes, remove it
-              </button>
-              <TertiaryBtn
-                size="md"
-                onClick={() => setDeleteStep('reason')}
-                style={{
-                  marginTop: 10,
-                  padding: '12px',
-                }}
-              >
-                Go back
-              </TertiaryBtn>
-            </div>
-          )}
-        </Sheet>
-      )}
     </>
   )
 }
-import { TertiaryBtn } from '@/components/ui/Button/Button'

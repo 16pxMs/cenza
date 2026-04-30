@@ -4,8 +4,10 @@ import { useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { deriveGoalTargetDateFromMonths, getGoalMonthlySavingSuggestion } from '@/lib/goals/deadlines'
+import { validateGoalMilestones, type GoalMilestoneInput } from '@/lib/goals/milestones'
 import { SetupFlowPage } from '@/components/layout/SetupFlowPage/SetupFlowPage'
-import { PrimaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
 import { GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
@@ -67,6 +69,10 @@ interface NewGoalClientProps {
   from: string | null
 }
 
+function createEmptyMilestone(): GoalMilestoneInput {
+  return { name: '', amount: null, targetDate: null }
+}
+
 function feasibility(pct: number): { label: string; color: string; bg: string } {
   if (pct === 0) return { label: '', color: T.textMuted, bg: T.grey100 }
   if (pct <= 15) return { label: 'Very achievable', color: T.green, bg: T.greenBg }
@@ -80,7 +86,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   const { isDesktop } = useBreakpoint()
   const { toast } = useToast()
 
-  type Step = 'pick' | 'name' | 'destination' | 'target'
+  type Step = 'pick' | 'name' | 'destination' | 'target' | 'milestones'
   const initialStep: Step = initialGoalType
     ? initialGoalType === 'other'
       ? 'name'
@@ -94,13 +100,16 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   const [customName, setCustomName] = useState('')
   const [destination, setDestination] = useState('')
   const [targetAmount, setTargetAmount] = useState('')
-  const [selectedMonths, setSelectedMonths] = useState(12)
+  const [selectedMonths, setSelectedMonths] = useState<number | null>(null)
+  const [targetDate, setTargetDate] = useState('')
   const [showEmergencyInfo, setShowEmergencyInfo] = useState(false)
+  const [milestones, setMilestones] = useState<GoalMilestoneInput[]>([createEmptyMilestone()])
+  const [milestoneError, setMilestoneError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const target = parseFloat(targetAmount) || 0
   const remaining = Math.max(0, target - data.alreadySaved)
-  const monthlyRequired = selectedMonths > 0 && remaining > 0 ? Math.ceil(remaining / selectedMonths) : 0
+  const monthlyRequired = getGoalMonthlySavingSuggestion(data.alreadySaved, target > 0 ? target : null, targetDate || null) ?? 0
   const incomePercent = data.totalIncome > 0 && monthlyRequired > 0 ? (monthlyRequired / data.totalIncome) * 100 : 0
   const signal = feasibility(incomePercent)
 
@@ -127,6 +136,11 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   })()
 
   const goBack = () => {
+    if (step === 'milestones') {
+      setStep('target')
+      return
+    }
+
     if (step === 'target' && selectedGoal === 'other') {
       setStep('name')
       return
@@ -141,6 +155,8 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
       setStep('pick')
       setSelectedGoal(null)
       setTargetAmount('')
+      setTargetDate('')
+      setSelectedMonths(null)
       setDestination('')
       return
     }
@@ -151,7 +167,11 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
   const selectGoal = (goalId: GoalId) => {
     setSelectedGoal(goalId)
     setTargetAmount('')
+    setTargetDate('')
+    setSelectedMonths(null)
     setDestination('')
+    setMilestones([createEmptyMilestone()])
+    setMilestoneError(null)
 
     if (goalId === 'other') {
       setStep('name')
@@ -166,7 +186,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
     setStep('target')
   }
 
-  const handleSave = async (withTarget = true) => {
+  const handleSave = async (withTarget = true, milestoneRows = milestones) => {
     if (!selectedGoal) return
     if (withTarget && target <= 0) return
 
@@ -179,10 +199,24 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
         : null
 
     try {
+      const resolvedTargetDate = targetDate.trim() || null
+      const validation = validateGoalMilestones(
+        milestoneRows,
+        withTarget && target > 0 ? target : null,
+        resolvedTargetDate
+      )
+      if (validation.error) {
+        setSaving(false)
+        setMilestoneError(validation.error)
+        return
+      }
+
       await saveNewGoal({
         goalId: selectedGoal,
         targetAmount: withTarget && target > 0 ? target : null,
+        targetDate: resolvedTargetDate,
         destination: customLabel,
+        milestones: validation.milestones,
       })
 
       toast('Goal added')
@@ -197,10 +231,12 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
     step === 'pick'
       ? 'goal_pick'
       : step === 'name'
-        ? 'goal_name'
+          ? 'goal_name'
         : step === 'destination'
           ? 'goal_destination'
-          : 'goal_target'
+          : step === 'milestones'
+            ? 'goal_milestones'
+            : 'goal_target'
 
   const targetCopyOverride = (() => {
     if (step !== 'target' || !selectedGoal) return undefined
@@ -512,13 +548,19 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
           <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: T.text2 }}>
             How fast do you want to get there?
           </p>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: T.text3, lineHeight: 1.55 }}>
+            Add a target date if you want a pace to aim for. You can also leave it open.
+          </p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
             {TIMELINE_OPTIONS.map(option => {
               const active = selectedMonths === option.months
               return (
                 <button
                   key={option.months}
-                  onClick={() => setSelectedMonths(option.months)}
+                  onClick={() => {
+                    setSelectedMonths(option.months)
+                    setTargetDate(deriveGoalTargetDateFromMonths(option.months) ?? '')
+                  }}
                   style={{
                     flex: 1, padding: '9px 0', borderRadius: 99,
                     border: active ? `1px solid ${T.brandMid}` : `1px solid ${T.border}`,
@@ -534,10 +576,35 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
             })}
           </div>
 
+          <Input
+            label="Target date"
+            value={targetDate}
+            onChange={(value) => {
+              setTargetDate(value)
+              setSelectedMonths(null)
+            }}
+            placeholder="Optional"
+            type="date"
+          />
+          {targetDate ? (
+            <div style={{ marginTop: 10 }}>
+              <TertiaryBtn
+                size="sm"
+                onClick={() => {
+                  setTargetDate('')
+                  setSelectedMonths(null)
+                }}
+              >
+                No target date
+              </TertiaryBtn>
+            </div>
+          ) : null}
+
           {monthlyRequired > 0 && (
             <div style={{
               padding: '14px 16px', borderRadius: 16,
               background: T.white, border: `1px solid ${T.borderSubtle}`,
+              marginTop: 16,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
@@ -562,7 +629,7 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
                 </div>
               ) : (
                 <div style={{ marginTop: 8, fontSize: 13, color: T.text3 }}>
-                  To reach your target in {selectedMonths < 12 ? `${selectedMonths} months` : selectedMonths === 12 ? '1 year' : `${selectedMonths / 12} years`}
+                  To stay on pace for that date
                 </div>
               )}
               {incomePercent > 45 && data.totalIncome > 0 && (
@@ -578,15 +645,124 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
       <div style={{ marginTop: 32 }}>
         <PrimaryBtn
           size="lg"
-          onClick={() => handleSave()}
+          onClick={() => {
+            setMilestoneError(null)
+            setStep('milestones')
+          }}
           disabled={target <= 0 || saving}
           style={{
             background: target > 0 ? T.brandDark : T.border,
             color: target > 0 ? '#fff' : T.textMuted,
           }}
         >
-          {saving ? 'Saving…' : 'Add to my plan'}
+          Continue
         </PrimaryBtn>
+      </div>
+    </div>
+  )
+
+  const updateMilestone = (index: number, patch: Partial<GoalMilestoneInput>) => {
+    setMilestoneError(null)
+    setMilestones(current => current.map((milestone, currentIndex) => (
+      currentIndex === index
+        ? {
+            name: patch.name ?? milestone.name,
+            amount: patch.amount !== undefined ? patch.amount : milestone.amount,
+            targetDate: patch.targetDate !== undefined ? patch.targetDate : milestone.targetDate,
+          }
+        : milestone
+    )))
+  }
+
+  const removeMilestone = (index: number) => {
+    setMilestoneError(null)
+    setMilestones(current => {
+      const next = current.filter((_, currentIndex) => currentIndex !== index)
+      return next.length > 0 ? next : [createEmptyMilestone()]
+    })
+  }
+
+  const stepMilestones = (
+    <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+        {milestones.map((milestone, index) => (
+          <div
+            key={index}
+            style={{
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              background: T.white,
+              padding: 'var(--space-md)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)', marginBottom: 'var(--space-sm)' }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-2)' }}>
+                Milestone {index + 1}
+              </div>
+              {milestones.length > 1 ? (
+                <TertiaryBtn size="sm" onClick={() => removeMilestone(index)}>
+                  Remove
+                </TertiaryBtn>
+              ) : null}
+            </div>
+
+            <Input
+              label="Milestone name"
+              value={milestone.name}
+              onChange={(value) => updateMilestone(index, { name: value })}
+              placeholder="e.g. First 50k"
+            />
+            <div style={{ height: 12 }} />
+            <Input
+              label="Target amount"
+              value={milestone.amount != null ? String(milestone.amount) : ''}
+              onChange={(value) => updateMilestone(index, { amount: value.trim() ? Number(value) : null })}
+              prefix={data.currency}
+              placeholder="e.g. 50,000"
+              type="number"
+            />
+            <div style={{ height: 12 }} />
+            <Input
+              label="Target date"
+              value={milestone.targetDate ?? ''}
+              onChange={(value) => updateMilestone(index, { targetDate: value.trim() || null })}
+              placeholder="Optional"
+              type="date"
+            />
+          </div>
+        ))}
+      </div>
+
+      {milestoneError ? (
+        <p style={{ margin: 'var(--space-md) 0 0', fontSize: 'var(--text-sm)', color: 'var(--red-dark)', lineHeight: 1.5 }}>
+          {milestoneError}
+        </p>
+      ) : null}
+
+      <div style={{ marginTop: 'var(--space-lg)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <SecondaryBtn
+          size="lg"
+          onClick={() => setMilestones(current => [...current, createEmptyMilestone()])}
+        >
+          Add milestone
+        </SecondaryBtn>
+        <PrimaryBtn
+          size="lg"
+          onClick={() => handleSave()}
+          disabled={saving}
+        >
+          {saving ? 'Saving…' : 'Save goal'}
+        </PrimaryBtn>
+        <TertiaryBtn
+          size="md"
+          onClick={() => {
+            setMilestoneError(null)
+            handleSave(true, [])
+          }}
+          disabled={saving}
+        >
+          Skip milestones
+        </TertiaryBtn>
       </div>
     </div>
   )
@@ -600,7 +776,15 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
       copyOverride={targetCopyOverride}
       surface={step === 'pick' ? 'plain' : 'card'}
     >
-      {step === 'pick' ? step1 : step === 'destination' ? stepDestination : step === 'name' ? step2 : step3}
+      {step === 'pick'
+        ? step1
+        : step === 'destination'
+          ? stepDestination
+          : step === 'name'
+            ? step2
+            : step === 'milestones'
+              ? stepMilestones
+              : step3}
     </SetupFlowPage>
   )
 }

@@ -440,13 +440,27 @@ const reference = receivedConfirmed
     ? 'var(--red-light)'
     : 'var(--progress-track)'
   const snapshotMainCopy = snapshotRemaining < 0
-    ? `-${formatAmount(Math.abs(snapshotRemaining), { currency, variant: 'full' })}`
+    ? formatAmount(Math.abs(snapshotRemaining), { currency, variant: 'full' })
     : formatAmount(snapshotRemaining, { currency, variant: 'full' })
-  const snapshotSupportingCopy = snapshotRemaining <= 0
-    ? 'No money left this month'
-    : snapshotIsAlmostOut
-      ? 'Almost out this month'
-      : 'Left this month'
+  const snapshotIncomeOnly = snapshotState === 'balance' && hasIncome && totalSpent <= 0
+  const snapshotTitle =
+    snapshotIncomeOnly
+      ? formatAmount(snapshotReference, { currency, variant: 'full' })
+      : snapshotMainCopy
+  const snapshotSupportingLabel =
+    snapshotIncomeOnly
+      ? 'available this month'
+      : snapshotRemaining < 0
+        ? 'over this month'
+        : 'left this month'
+  const snapshotDetailCopy =
+    snapshotIncomeOnly
+      ? 'You haven’t logged any spending yet.'
+      : snapshotRemaining < 0
+        ? `You’ve used ${formatAmount(totalSpent, { currency, variant: 'full' })} against ${formatAmount(snapshotReference, { currency, variant: 'full' })} income.`
+        : snapshotIsAlmostOut
+          ? 'You’re close to your limit.'
+          : `You’ve used ${formatAmount(totalSpent, { currency, variant: 'full' })} of ${formatAmount(snapshotReference, { currency, variant: 'full' })} income.`
 
   const obligationPreviewItems = useMemo(() => overviewObligations
     .filter((item) => (
@@ -485,7 +499,7 @@ const reference = receivedConfirmed
               Add your income
             </p>
             <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
-              We&apos;ll take it from there
+              to see what you have this month
             </p>
             <div style={{ marginTop: 12 }}>
               <PrimaryBtn size="md" onClick={() => router.push('/income/new?returnTo=/app')} style={{ width: '100%' }}>
@@ -515,18 +529,15 @@ const reference = receivedConfirmed
             <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
               This month
             </p>
-            <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
-              You&apos;re set for this month
-            </p>
-            <p style={{ margin: '4px 0 12px', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
-              Here&apos;s what you have to work with
-            </p>
             {/* Main amount */}
             <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotIsOverspent ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
-              {snapshotMainCopy}
+              {snapshotTitle}
             </p>
-            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', color: 'var(--text-muted)' }}>
-              {snapshotSupportingCopy}
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', color: 'var(--text-muted)', textTransform: 'lowercase' }}>
+              {snapshotSupportingLabel}
+            </p>
+            <p style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+              {snapshotDetailCopy}
             </p>
 
             {/* Progress bar */}

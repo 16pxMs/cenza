@@ -7,6 +7,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData } from '@/lib/loaders/log'
 
@@ -287,26 +288,18 @@ export default function LogPageClient({ data }: LogPageClientProps) {
         {FILTER_OPTIONS.map(option => {
           const selected = filter === option.value
           return (
-            <button
+            <SingleSelectChip
               key={option.value}
+              label={option.label}
+              selected={selected}
               onClick={() => setFilter(option.value)}
               style={{
                 height: 30,
                 padding: '0 12px',
-                borderRadius: 'var(--radius-full)',
-                border: selected
-                  ? '1px solid transparent'
-                  : `1px solid ${T.border}`,
-                background: selected ? 'var(--brand)' : 'transparent',
-                color: selected ? T.brandDark : T.text3,
                 fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-medium)',
-                cursor: 'pointer',
                 lineHeight: 1,
               }}
-            >
-              {option.label}
-            </button>
+            />
           )
         })}
       </div>

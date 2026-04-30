@@ -4,9 +4,20 @@ import type { GoalId, UserProfile } from '@/types/database'
 export interface GoalsPageGoalData {
   id: GoalId
   target: number | null
+  targetDate: string | null
+  addedAt: string | null
   totalSaved: number
   monthlyAvg: number
   destination: string | null
+  milestones: GoalMilestoneData[]
+}
+
+export interface GoalMilestoneData {
+  id: string
+  name: string
+  amount: number
+  targetDate: string | null
+  sortOrder: number
 }
 
 export interface GoalsPageData {
@@ -22,6 +33,7 @@ export interface GoalsPageData {
 interface GoalTargetRow {
   goal_id: GoalId
   amount: number | string | null
+  target_date: string | null
   added_at: string
   destination: string | null
 }
@@ -32,24 +44,55 @@ interface GoalTransactionRow {
   date: string
 }
 
+interface GoalMilestoneRow {
+  id: string
+  goal_id: GoalId
+  name: string
+  amount: number | string
+  target_date: string | null
+  sort_order: number | null
+}
+
+function isMissingColumnError(error: { message?: string } | null | undefined, column: string) {
+  return (error?.message ?? '').toLowerCase().includes(column.toLowerCase())
+}
+
 export async function loadGoalsPageData(userId: string, profile: UserProfile): Promise<GoalsPageData> {
   const supabase = await createServerSupabaseClient()
 
   const goals = (profile.goals ?? []) as GoalId[]
-  const { data: targetsData } = await (supabase.from('goal_targets') as any)
-    .select('goal_id, amount, added_at, destination')
-    .eq('user_id', userId)
+  const [targetsRes, milestonesRes] = await Promise.all([
+    loadGoalTargetRows(supabase, userId),
+    goals.length === 0
+      ? Promise.resolve({ data: [] })
+      : loadGoalMilestoneRows(supabase, userId),
+  ])
 
-  const targetRows = (targetsData ?? []) as GoalTargetRow[]
+  const targetRows = (targetsRes.data ?? []) as GoalTargetRow[]
+  const milestoneRows = (milestonesRes.data ?? []) as GoalMilestoneRow[]
 
   const targets: Record<string, number | null> = {}
+  const targetDates: Record<string, string | null> = {}
   const destinations: Record<string, string | null> = {}
   const addedAtMap: Record<string, string> = {}
+  const milestonesByGoal: Record<string, GoalMilestoneData[]> = {}
 
   for (const row of targetRows) {
     targets[row.goal_id] = row.amount != null ? Number(row.amount) : null
+    targetDates[row.goal_id] = row.target_date ?? null
     destinations[row.goal_id] = row.destination ?? null
     addedAtMap[row.goal_id] = row.added_at
+  }
+
+  for (const row of milestoneRows) {
+    if (!milestonesByGoal[row.goal_id]) milestonesByGoal[row.goal_id] = []
+    milestonesByGoal[row.goal_id].push({
+      id: row.id,
+      name: row.name,
+      amount: Number(row.amount),
+      targetDate: row.target_date,
+      sortOrder: row.sort_order ?? 0,
+    })
   }
 
   const trackedGoalIds = goals.filter(id => id in addedAtMap || targets[id] != null)
@@ -88,9 +131,12 @@ export async function loadGoalsPageData(userId: string, profile: UserProfile): P
   const goalDataList: GoalsPageGoalData[] = goals.map(id => ({
     id,
     target: targets[id] ?? null,
+    targetDate: targetDates[id] ?? null,
+    addedAt: addedAtMap[id] ?? null,
     totalSaved: savedByGoal[id] ?? 0,
     monthlyAvg: monthlyAvg[id] ?? 0,
     destination: destinations[id] ?? null,
+    milestones: milestonesByGoal[id] ?? [],
   }))
 
   const totalSaved = Object.values(savedByGoal).reduce((sum, value) => sum + value, 0)
@@ -105,4 +151,60 @@ export async function loadGoalsPageData(userId: string, profile: UserProfile): P
     totalSaved,
     totalTargets,
   }
+}
+
+async function loadGoalTargetRows(supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>, userId: string) {
+  const primary = await (supabase.from('goal_targets') as any)
+    .select('goal_id, amount, target_date, added_at, destination')
+    .eq('user_id', userId)
+
+  if (!primary.error || !isMissingColumnError(primary.error, 'target_date')) {
+    return primary
+  }
+
+  const fallback = await (supabase.from('goal_targets') as any)
+    .select('goal_id, amount, added_at, destination')
+    .eq('user_id', userId)
+
+  if (!fallback.error) {
+    return {
+      data: (fallback.data ?? []).map((row: Omit<GoalTargetRow, 'target_date'>) => ({
+        ...row,
+        target_date: null,
+      })),
+      error: null,
+    }
+  }
+
+  return fallback
+}
+
+async function loadGoalMilestoneRows(supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>, userId: string) {
+  const primary = await (supabase.from('goal_milestones') as any)
+    .select('id, goal_id, name, amount, target_date, sort_order')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+    .order('amount', { ascending: true })
+
+  if (!primary.error || !isMissingColumnError(primary.error, 'target_date')) {
+    return primary
+  }
+
+  const fallback = await (supabase.from('goal_milestones') as any)
+    .select('id, goal_id, name, amount, sort_order')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+    .order('amount', { ascending: true })
+
+  if (!fallback.error) {
+    return {
+      data: (fallback.data ?? []).map((row: Omit<GoalMilestoneRow, 'target_date'>) => ({
+        ...row,
+        target_date: null,
+      })),
+      error: null,
+    }
+  }
+
+  return fallback
 }

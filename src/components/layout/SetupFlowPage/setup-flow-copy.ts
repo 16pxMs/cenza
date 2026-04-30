@@ -7,6 +7,7 @@ export type SetupPageCopyKey =
   | 'goal_name'
   | 'goal_destination'
   | 'goal_target'
+  | 'goal_milestones'
 
 export interface SetupPageCopy {
   eyebrow: string
@@ -62,6 +63,12 @@ export const SETUP_PAGE_COPY: Record<SetupPageCopyKey, SetupPageCopy> = {
     eyebrow: '',
     title: 'Set a target',
     subtitle: 'Pick the amount you want to work toward.',
+    savingText: 'Saving your goal…',
+  },
+  goal_milestones: {
+    eyebrow: 'New goal',
+    title: 'Milestones',
+    subtitle: 'Break your goal into smaller checkpoints.',
     savingText: 'Saving your goal…',
   },
 }

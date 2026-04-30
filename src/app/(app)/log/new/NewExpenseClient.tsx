@@ -7,6 +7,7 @@ import { useUser } from '@/lib/context/UserContext'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { hasIncomeForCycle } from '@/lib/income/derived'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack, IconCheck, IconPlus } from '@/components/ui/Icons'
 import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
 import { saveExpenseBatch } from './actions'
@@ -1580,28 +1581,12 @@ function TypeChips({ selected, onSelect, types }: {
   return (
     <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
       {entries.map(([value, copy]) => (
-          <button
-            key={value}
-            onClick={() => onSelect(selected === value ? null : value)}
-	            style={{
-	              height: '40px',
-	              padding: '0 var(--space-md)',
-	              borderRadius: 'var(--radius-full)',
-	              border: selected === value
-	                ? `${T.borderWidth} solid transparent`
-	                : `${T.borderWidth} solid ${T.borderSubtle}`,
-	              background: selected === value ? 'var(--brand-light)' : 'transparent',
-	              cursor: 'pointer',
-	              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              whiteSpace: 'nowrap',
-            }}
-          >
-	            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: selected === value ? T.brandDark : T.textMuted }}>
-              {copy.title}
-            </div>
-          </button>
+        <SingleSelectChip
+          key={value}
+          label={copy.title}
+          selected={selected === value}
+          onClick={() => onSelect(selected === value ? null : value)}
+        />
       ))}
     </div>
   )

@@ -119,8 +119,21 @@ export interface GoalTarget {
   user_id: string
   goal_id: GoalId
   amount: number | null
+  target_date: string | null
   destination: string | null   // travel goal only
   added_at: string             // when this goal instance was (re)activated
+  created_at: string
+  updated_at: string
+}
+
+export interface GoalMilestone {
+  id: string
+  user_id: string
+  goal_id: GoalId
+  name: string
+  amount: number
+  target_date: string | null
+  sort_order: number
   created_at: string
   updated_at: string
 }
@@ -196,6 +209,7 @@ export interface Database {
       spending_budgets:    { Row: SpendingBudget;     Insert: Omit<SpendingBudget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<SpendingBudget> }
       subscriptions:       { Row: Subscription;       Insert: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Subscription> }
       goal_targets:        { Row: GoalTarget;         Insert: Omit<GoalTarget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<GoalTarget> }
+      goal_milestones:     { Row: GoalMilestone;      Insert: Omit<GoalMilestone, 'id' | 'created_at' | 'updated_at'>; Update: Partial<GoalMilestone> }
       transactions:        { Row: Transaction;        Insert: Omit<Transaction, 'id' | 'created_at'>; Update: Partial<Transaction> }
       item_dictionary:     { Row: ItemDictionary;     Insert: Omit<ItemDictionary, 'id' | 'created_at' | 'updated_at'>; Update: Partial<ItemDictionary> }
       debts:               { Row: Debt;               Insert: Omit<Debt, 'id' | 'created_at' | 'updated_at' | 'current_balance' | 'status'>; Update: Partial<Debt> }

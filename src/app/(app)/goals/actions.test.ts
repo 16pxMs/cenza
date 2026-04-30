@@ -19,7 +19,7 @@ describe('goal actions', () => {
     })
   })
 
-  it('saveGoalTarget upserts the target amount for the current user', async () => {
+  it('saveGoalTarget upserts the target amount and date for the current user', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null })
     createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ upsert })),
@@ -27,10 +27,10 @@ describe('goal actions', () => {
 
     const { saveGoalTarget } = await import('./actions')
 
-    await saveGoalTarget('emergency', 5000)
+    await saveGoalTarget('emergency', { amount: 5000, targetDate: '2026-12-30' })
 
     expect(upsert).toHaveBeenCalledWith(
-      { user_id: 'user-1', goal_id: 'emergency', amount: 5000 },
+      { user_id: 'user-1', goal_id: 'emergency', amount: 5000, target_date: '2026-12-30' },
       { onConflict: 'user_id,goal_id' }
     )
   })
@@ -52,15 +52,19 @@ describe('goal actions', () => {
 
   it('removeGoal deletes the target row and clears current-cycle transactions', async () => {
     const profileEq = vi.fn().mockResolvedValue({ error: null })
+    const milestoneEqGoal = vi.fn().mockResolvedValue({ error: null })
+    const milestoneEqUser = vi.fn(() => ({ eq: milestoneEqGoal }))
     const targetEqGoal = vi.fn().mockResolvedValue({ error: null })
     const targetEqUser = vi.fn(() => ({ eq: targetEqGoal }))
     const update = vi.fn(() => ({ eq: profileEq }))
     const del = vi.fn(() => ({ eq: targetEqUser }))
+    const milestoneDelete = vi.fn(() => ({ eq: milestoneEqUser }))
 
     createServerSupabaseClient.mockResolvedValue({
       from: vi.fn((table: string) => {
         if (table === 'user_profiles') return { update }
         if (table === 'goal_targets') return { delete: del }
+        if (table === 'goal_milestones') return { delete: milestoneDelete }
         throw new Error(`Unexpected table ${table}`)
       }),
     })
@@ -71,6 +75,34 @@ describe('goal actions', () => {
 
     expect(update).toHaveBeenCalledWith({ goals: ['emergency'] })
     expect(del).toHaveBeenCalled()
+    expect(milestoneDelete).toHaveBeenCalled()
     expect(deleteTransactionsForCycleDateByCategory).toHaveBeenCalled()
+  })
+
+  it('saveGoalMilestones replaces milestone rows for the current user', async () => {
+    const deleteEqGoal = vi.fn().mockResolvedValue({ error: null })
+    const deleteEqUser = vi.fn(() => ({ eq: deleteEqGoal }))
+    const del = vi.fn(() => ({ eq: deleteEqUser }))
+    const insert = vi.fn().mockResolvedValue({ error: null })
+
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === 'goal_milestones') return { delete: del, insert }
+        throw new Error(`Unexpected table ${table}`)
+      }),
+    })
+
+    const { saveGoalMilestones } = await import('./actions')
+
+    await saveGoalMilestones('emergency', [
+      { name: 'First 10k', amount: 10000, targetDate: '2026-06-30' },
+      { name: 'Halfway', amount: 50000, targetDate: null },
+    ], 100000)
+
+    expect(del).toHaveBeenCalled()
+    expect(insert).toHaveBeenCalledWith([
+      { user_id: 'user-1', goal_id: 'emergency', name: 'First 10k', amount: 10000, target_date: '2026-06-30', sort_order: 0 },
+      { user_id: 'user-1', goal_id: 'emergency', name: 'Halfway', amount: 50000, target_date: null, sort_order: 1 },
+    ])
   })
 })
