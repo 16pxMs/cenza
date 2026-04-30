@@ -9,6 +9,7 @@ import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
@@ -1109,10 +1110,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
         title="Monthly reminder"
       >
         <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-          <Input
+          <MoneyInput
             label="Monthly amount"
-            prefix={currency}
-            type="number"
+            currency={currency}
             value={monthlyReminderAmount}
             onChange={(value) => {
               setMonthlyReminderAmount(value)
@@ -1240,10 +1240,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
                 placeholder={editLabel ? undefined : 'Name'}
                 error={editErrors.label}
               />
-              <Input
+              <MoneyInput
                 label="Amount"
-                prefix={currency}
-                type="number"
+                currency={currency}
                 value={editAmount}
                 onChange={(value) => {
                   setEditAmount(value)
@@ -1467,10 +1466,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
         }
       >
         <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-          <Input
+          <MoneyInput
             label="Amount"
-            prefix={currency}
-            type="number"
+            currency={currency}
             value={debtEditAmount}
             onChange={(value) => {
               setDebtEditAmount(value)

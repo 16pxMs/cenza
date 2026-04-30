@@ -9,6 +9,7 @@ import { validateGoalMilestones, type GoalMilestoneInput } from '@/lib/goals/mil
 import { SetupFlowPage } from '@/components/layout/SetupFlowPage/SetupFlowPage'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { GOAL_OPTIONS } from '@/constants/goals'
 import { fmt } from '@/lib/finance'
 import type { GoalId } from '@/types/database'
@@ -518,13 +519,12 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
           Or enter your own amount
         </p>
       )}
-      <Input
+      <MoneyInput
         label={emergencySuggestions.length > 0 ? '' : 'Target amount'}
         value={targetAmount}
         onChange={value => setTargetAmount(value)}
-        prefix={data.currency}
+        currency={data.currency}
         placeholder="e.g. 500,000"
-        type="number"
       />
 
       {data.alreadySaved > 0 && (
@@ -713,13 +713,12 @@ function NewGoalInner({ data, initialGoalType, excludeGoalIds, from }: NewGoalCl
               placeholder="e.g. First 50k"
             />
             <div style={{ height: 12 }} />
-            <Input
+            <MoneyInput
               label="Target amount"
               value={milestone.amount != null ? String(milestone.amount) : ''}
               onChange={(value) => updateMilestone(index, { amount: value.trim() ? Number(value) : null })}
-              prefix={data.currency}
+              currency={data.currency}
               placeholder="e.g. 50,000"
-              type="number"
             />
             <div style={{ height: 12 }} />
             <Input

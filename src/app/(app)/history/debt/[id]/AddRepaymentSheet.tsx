@@ -3,57 +3,76 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
-import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
+import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
+import { formatDate } from '@/lib/finance'
+import { parsePaymentImportText } from '@/lib/sms-import/parser'
 import { addRepayment } from './actions'
+import styles from './AddRepaymentSheet.module.css'
 
 interface Props {
   debtId: string
   debtName: string
+  direction: 'owed_by_me' | 'owed_to_me'
   currency: string
   currentBalance: number
   emphasized?: boolean
   initialOpen?: boolean
 }
 
-function formatToday() {
-  return new Date().toISOString().slice(0, 10)
+function paymentDirectionLabel(direction: Props['direction']) {
+  return direction === 'owed_by_me' ? 'You owe' : 'Owes you'
 }
+
+type PaymentEntryMode = 'manual' | 'import'
 
 export function AddRepaymentSheet({
   debtId,
   debtName,
+  direction,
   currency,
   currentBalance,
   emphasized = false,
   initialOpen = false,
 }: Props) {
   const router = useRouter()
-  const amountRef = useRef<HTMLInputElement>(null)
+  const importTextRef = useRef<HTMLTextAreaElement>(null)
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(initialOpen)
+  const [mode, setMode] = useState<PaymentEntryMode>('manual')
   const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(formatToday())
   const [note, setNote] = useState('')
+  const [importText, setImportText] = useState('')
+  const [detectedDate, setDetectedDate] = useState<string | null>(null)
+  const [importFeedback, setImportFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
+    setMode('manual')
     setAmount('')
-    setDate(formatToday())
     setNote('')
+    setImportText('')
+    setDetectedDate(null)
+    setImportFeedback(null)
     setError(null)
-    setTimeout(() => amountRef.current?.focus(), 250)
   }, [open])
 
-  const amountValue = Number(amount)
+  useEffect(() => {
+    if (mode !== 'import') return
+    const timeout = window.setTimeout(() => importTextRef.current?.focus(), 60)
+    return () => window.clearTimeout(timeout)
+  }, [mode])
 
-  const handleAmountChange = (value: string) => {
-    const cleaned = value.replace(/[^0-9.]/g, '')
-    const parts = cleaned.split('.')
-    if (parts.length > 2) return
-    if (parts[1] && parts[1].length > 2) return
-    setAmount(cleaned)
-  }
+  useEffect(() => {
+    if (!importFeedback) return
+    const timeout = window.setTimeout(() => setImportFeedback(null), 3200)
+    return () => window.clearTimeout(timeout)
+  }, [importFeedback])
+
+  const amountValue = Number(amount)
+  const showPayFull = currentBalance > 0 && amountValue !== currentBalance
 
   const validate = (): string | null => {
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
@@ -62,10 +81,27 @@ export function AddRepaymentSheet({
     if (amountValue > currentBalance) {
       return 'Repayment cannot be more than the current balance'
     }
-    if (!date.trim()) {
-      return 'Repayment date is required'
-    }
     return null
+  }
+
+  const handleImportText = (rawText = importText) => {
+    const parsed = parsePaymentImportText(rawText, { defaultCurrency: currency })
+
+    if (!parsed) {
+      setImportFeedback('We couldn’t read the payment details. You can enter them manually.')
+      return
+    }
+
+    if (parsed.amount != null) {
+      setAmount(String(parsed.amount))
+    }
+    if (parsed.note) {
+      setNote(parsed.note)
+    }
+    setDetectedDate(parsed.date ?? null)
+    setMode('manual')
+    setImportFeedback('Payment details filled.')
+    setError(null)
   }
 
   const handleSubmit = () => {
@@ -81,7 +117,7 @@ export function AddRepaymentSheet({
         await addRepayment({
           debtId,
           amount: amountValue,
-          date,
+          date: detectedDate ?? undefined,
           note,
         })
         setOpen(false)
@@ -98,10 +134,7 @@ export function AddRepaymentSheet({
         <PrimaryBtn
           size="sm"
           onClick={() => setOpen(true)}
-          style={{
-            minWidth: 132,
-            justifyContent: 'center',
-          }}
+          className={styles.triggerButton}
         >
           Record payment
         </PrimaryBtn>
@@ -109,154 +142,139 @@ export function AddRepaymentSheet({
         <SecondaryBtn
           size="sm"
           onClick={() => setOpen(true)}
-          style={{
-            minWidth: 132,
-            justifyContent: 'center',
-          }}
+          className={styles.triggerButton}
         >
           Record payment
         </SecondaryBtn>
       )}
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Record payment">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div>
-            <p style={{
-              margin: 0,
-              fontSize: 'var(--text-base)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-1)',
-            }}>
-              {debtName}
-            </p>
-            <p style={{
-              margin: '6px 0 0',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-3)',
-            }}>
-              Current balance: {new Intl.NumberFormat(undefined, {
+        <div className={styles.sheetRoot}>
+          <div className={styles.headerBlock}>
+            <p className={styles.title}>{debtName}</p>
+            <div className={styles.metaRow}>
+              <p className={styles.direction}>{paymentDirectionLabel(direction)}</p>
+              <span className={styles.metaDot} aria-hidden="true">·</span>
+              <p className={styles.balance}>
+              {new Intl.NumberFormat(undefined, {
                 style: 'currency',
                 currency,
                 maximumFractionDigits: 2,
               }).format(currentBalance)}
-            </p>
+              </p>
+            </div>
           </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-2)',
-            }}>
-              Amount
-            </span>
-            <input
-              ref={amountRef}
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={event => handleAmountChange(event.target.value)}
-              placeholder="0.00"
-              style={{
-                height: 48,
-                borderRadius: 14,
-                border: '1px solid var(--border)',
-                padding: '0 14px',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-1)',
-                background: 'var(--white)',
-                outline: 'none',
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
+          <div className={styles.tabRow}>
+            <SingleSelectChip
+              label="Manual"
+              selected={mode === 'manual'}
+              fill
+              onClick={() => setMode('manual')}
             />
-          </label>
+            <SingleSelectChip
+              label="Import"
+              selected={mode === 'import'}
+              fill
+              onClick={() => setMode('import')}
+            />
+          </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-2)',
-            }}>
-              Date
-            </span>
-            <input
-              type="date"
-              value={date}
-              onChange={event => setDate(event.target.value)}
-              style={{
-                height: 48,
-                borderRadius: 14,
-                border: '1px solid var(--border)',
-                padding: '0 14px',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-1)',
-                background: 'var(--white)',
-                outline: 'none',
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
-            />
-          </label>
+          {mode === 'manual' ? (
+            <div className={styles.primaryGroup}>
+              <MoneyInput
+                label="Amount"
+                currency={currency}
+                value={amount}
+                onChange={setAmount}
+                autoFocus
+                placeholder="0"
+                labelAction={
+                  showPayFull ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAmount(String(currentBalance))
+                        setError(null)
+                      }}
+                      className={styles.payFullAction}
+                    >
+                      Pay full
+                    </button>
+                  ) : null
+                }
+              />
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-2)',
-            }}>
-              Note
-            </span>
-            <textarea
-              value={note}
-              onChange={event => setNote(event.target.value)}
-              placeholder="Add a note (optional)"
-              rows={3}
-              style={{
-                borderRadius: 14,
-                border: '1px solid var(--border)',
-                padding: '12px 14px',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-1)',
-                background: 'var(--white)',
-                outline: 'none',
-                width: '100%',
-                boxSizing: 'border-box',
-                resize: 'vertical',
-                minHeight: 88,
-                fontFamily: 'inherit',
-              }}
-            />
-          </label>
+              <div className={styles.secondaryGroup}>
+                <label className={styles.fieldGroup}>
+                  <span className={styles.fieldLabel}>Note</span>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="Add a note (optional)"
+                    rows={3}
+                    className={styles.noteArea}
+                  />
+                </label>
+
+                {importFeedback ? (
+                  <p className={styles.feedback}>{importFeedback}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.importTab}>
+              <textarea
+                ref={importTextRef}
+                value={importText}
+                onChange={(event) => {
+                  const nextValue = event.target.value
+                  setImportText(nextValue)
+                  if (importFeedback) setImportFeedback(null)
+                }}
+                onPaste={(event) => {
+                  const pastedText = event.clipboardData.getData('text')
+                  const nextValue = importText
+                    ? `${importText}${pastedText}`
+                    : pastedText
+                  window.setTimeout(() => {
+                    setImportText(nextValue)
+                    handleImportText(nextValue)
+                  }, 0)
+                }}
+                placeholder="Paste SMS or bank receipt text"
+                rows={4}
+                className={styles.importArea}
+              />
+
+              <div className={styles.importActionRow}>
+                <TertiaryBtn
+                  size="sm"
+                  onClick={() => handleImportText()}
+                  disabled={!importText.trim() || isPending}
+                  className={styles.readButton}
+                >
+                  Read payment details
+                </TertiaryBtn>
+              </div>
+
+              {importFeedback ? (
+                <p className={styles.feedback}>{importFeedback}</p>
+              ) : null}
+            </div>
+          )}
 
           {error ? (
-            <p style={{
-              margin: 0,
-              fontSize: 'var(--text-sm)',
-              color: '#D93025',
-              lineHeight: 1.45,
-            }}>
-              {error}
-            </p>
+            <p className={styles.error}>{error}</p>
           ) : null}
 
-          <div style={{ display: 'flex', gap: 12 }}>
-            <SecondaryBtn
-              size="lg"
-              onClick={() => setOpen(false)}
-              disabled={isPending}
-              style={{ flex: 1 }}
-            >
-              Cancel
-            </SecondaryBtn>
-            <PrimaryBtn
-              size="lg"
-              onClick={handleSubmit}
-              disabled={isPending}
-              style={{ flex: 1 }}
-            >
+          <div className={styles.actions}>
+            <PrimaryBtn size="lg" onClick={handleSubmit} disabled={isPending} className={styles.actionButton}>
               {isPending ? 'Saving…' : 'Save'}
             </PrimaryBtn>
+            <SecondaryBtn size="lg" onClick={() => setOpen(false)} disabled={isPending} className={styles.actionButton}>
+              Cancel
+            </SecondaryBtn>
           </div>
         </div>
       </Sheet>

@@ -8,6 +8,7 @@ import {
   deleteDebtTransaction,
   getDebt,
   getDebtTransactions,
+  updateDebtDetails,
   updateStandardDebtDueDate,
   updateDebtTransaction,
 } from '@/lib/supabase/debt-db'
@@ -22,7 +23,7 @@ import type { DebtTransactionEntryType } from '@/types/database'
 interface AddRepaymentInput {
   debtId: string
   amount: number
-  date: string
+  date?: string
   note?: string
 }
 
@@ -59,10 +60,12 @@ export async function addRepayment(input: AddRepaymentInput): Promise<void> {
 
   const debtId = input.debtId.trim()
   const amount = Number(input.amount)
-  const date = input.date.trim()
+  const date = (input.date?.trim() || new Date().toISOString().slice(0, 10))
 
   if (!debtId) throw new Error('Debt id is required')
-  if (!date) throw new Error('Repayment date is required')
+  if (!isValidDateString(date)) {
+    throw new Error('Enter a valid payment date')
+  }
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Amount must be greater than zero')
   }
@@ -186,6 +189,13 @@ interface DeleteDebtResult {
   redirectTo: string
 }
 
+interface UpdateDebtDetailsActionInput {
+  debtId: string
+  name: string
+  note?: string
+  dueDate?: string | null
+}
+
 function isDebtMissingError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   const normalized = message.toLowerCase()
@@ -279,6 +289,7 @@ export async function deleteDebtForDebtDetail(debtIdInput: string): Promise<Dele
     if (transaction.linked_transaction_id && isMirrorableDebtEntryType(transaction.entry_type)) {
       await deleteDebtMirrorTransaction(transaction.linked_transaction_id, user.id)
     }
+    await deleteDebtTransaction(transaction.id)
   }
 
   try {
@@ -335,11 +346,49 @@ export async function updateStandardDebtDueDateAction(
     throw new Error('Due dates are only available for standard debts')
   }
 
-  await updateStandardDebtDueDate(debtId, user.id, dueDate)
+  const supported = await updateStandardDebtDueDate(debtId, user.id, dueDate)
+  if (!supported) {
+    throw new Error('Debt due dates are not available yet.')
+  }
 
   revalidatePath(`/history/debt/${debtId}`)
   revalidatePath('/history/debt')
   revalidatePath('/app')
+}
+
+export async function updateDebtDetailsAction(
+  input: UpdateDebtDetailsActionInput
+): Promise<{ dueDateSupported: boolean }> {
+  const { user } = await getAppSession()
+  if (!user) throw new Error('Not authenticated')
+
+  const debtId = input.debtId.trim()
+  const name = input.name.trim()
+  const dueDate = input.dueDate?.trim() || null
+
+  if (!debtId) throw new Error('Debt id is required')
+  if (!name) throw new Error('Debt name is required')
+  if (dueDate && !isValidDateString(dueDate)) {
+    throw new Error('Enter a valid due date')
+  }
+
+  const debt = await getDebt(debtId)
+  if (!debt) throw new Error('Debt not found')
+
+  const result = await updateDebtDetails({
+    debtId,
+    userId: user.id,
+    name,
+    note: input.note?.trim() || null,
+    ...(debt.debt_kind === 'standard' ? { standardDueDate: dueDate } : {}),
+  })
+
+  revalidatePath(`/history/debt/${debtId}`)
+  revalidatePath('/history/debt')
+  revalidatePath('/history')
+  revalidatePath('/app')
+
+  return result
 }
 
 export async function updateDebtTransactionForDebt(

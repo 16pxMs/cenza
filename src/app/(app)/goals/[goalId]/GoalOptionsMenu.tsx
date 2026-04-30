@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconMore } from '@/components/ui/Icons'
 
@@ -195,13 +196,12 @@ export function GoalOptionsMenu({
               </p>
             </div>
 
-            <Input
+            <MoneyInput
               label="Target amount"
               value={targetAmount}
               onChange={setTargetAmount}
-              prefix={currency}
+              currency={currency}
               placeholder="e.g. 500,000"
-              type="number"
               autoFocus={!focusTargetDateOnOpen}
             />
 

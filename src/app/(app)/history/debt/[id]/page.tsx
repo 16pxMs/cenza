@@ -1,11 +1,13 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
 import { fmt, formatDate } from '@/lib/finance'
-import { deleteDebt, getDebt, getDebtTransactions, type Debt, type DebtTransaction } from '@/lib/supabase/debt-db'
+import { getDebtDetailState, isDebtSettled } from '@/lib/debts/state'
+import { deleteDebt, getDebt, getDebtTransactions, isStandardDebtDueDateSupported, type Debt, type DebtTransaction } from '@/lib/supabase/debt-db'
 import { IconBack } from '@/components/ui/Icons'
+import { StatusChip } from '@/components/ui/StatusChip/StatusChip'
 import { AddOpeningBalanceSheet } from './AddOpeningBalanceSheet'
 import { AddRepaymentSheet } from './AddRepaymentSheet'
 import { DebtOptionsMenu } from './DebtOptionsMenu'
@@ -28,6 +30,25 @@ function resolveDebtBackHref(value: string | string[] | undefined) {
   if (!candidate.startsWith('/') || candidate.startsWith('//')) return '/history/debt'
   if (candidate.includes('\\')) return '/history/debt'
   return candidate
+}
+
+function isDebtMissingError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const normalized = message.toLowerCase()
+  return normalized.includes('debt') && (
+    normalized.includes('does not exist') ||
+    normalized.includes('not found')
+  )
+}
+
+function isStandardDueDateSchemaMismatch(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const normalized = message.toLowerCase()
+  return normalized.includes('standard_due_date') && (
+    normalized.includes('schema cache') ||
+    normalized.includes('column') ||
+    normalized.includes('failed to check debt due date support')
+  )
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -126,7 +147,9 @@ function toDisplayDebt(debt: Debt, fallbackId: string) {
       ? clamp(paid / totalCost, 0, 1)
       : null
   const targetDate = parseDate(debt.financing_target_date)
-  const createdAt = parseDate(debt.created_at.slice(0, 10))
+  const createdAt = typeof debt.created_at === 'string' && debt.created_at.length >= 10
+    ? parseDate(debt.created_at.slice(0, 10))
+    : null
   const today = parseDate(new Date().toISOString().slice(0, 10))
   const monthsLeft =
     targetDate != null && today != null
@@ -166,6 +189,7 @@ function toDisplayDebt(debt: Debt, fallbackId: string) {
   return {
     id: debt.id,
     name: debt.name.trim() || fallbackId,
+    note: debt.note?.trim() || '',
     direction: formatDebtDirection(debt.direction),
     status: formatDebtStatus(debt.status),
     summaryLine: formatDebtSummaryLine(debt.direction, debt.status),
@@ -209,13 +233,33 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const shouldOpenAddPayment = firstSearchParam(resolvedSearchParams.action) === 'add-payment'
   const backHref = resolveDebtBackHref(resolvedSearchParams.returnTo)
-  const [debt, transactions] = await Promise.all([
-    getDebt(id),
-    getDebtTransactions(id),
-  ])
+  const debt = await getDebt(id)
+  let dueDateSupported = false
+  try {
+    dueDateSupported = await isStandardDebtDueDateSupported()
+  } catch (error) {
+    if (!isStandardDueDateSchemaMismatch(error)) {
+      throw error
+    }
+  }
 
-  if (!debt) notFound()
-  if (transactions.length === 0 && debt.status === 'active') {
+  if (!debt) {
+    redirect('/history/debt')
+  }
+
+  let transactions: DebtTransaction[] = []
+  let transactionsLoaded = true
+  try {
+    transactions = await getDebtTransactions(id)
+  } catch (error) {
+    if (isDebtMissingError(error)) {
+      redirect('/history/debt')
+    }
+    transactionsLoaded = false
+    transactions = []
+  }
+
+  if (transactionsLoaded && transactions.length === 0 && debt.status === 'active') {
     try {
       await deleteDebt(id, user.id)
     } catch {
@@ -227,7 +271,11 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
   const detail = toDisplayDebt(debt, id)
   const items = transactions.map((txn, index) => toDisplayTransaction(txn, index, detail.currency))
   const hasTransactions = items.length > 0
+  const settled = isDebtSettled(debt)
+  const detailState = getDebtDetailState(debt, hasTransactions)
   const canAddPayment = hasTransactions && debt.status === 'active' && detail.balance > 0
+  const showOrphanedActiveDebtState = detailState === 'orphaned'
+  const displayStatus = settled ? 'Settled' : detail.status
 
   return (
     <main style={{
@@ -279,8 +327,11 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
             <DebtOptionsMenu
               debtId={detail.id}
               debtName={detail.name}
+              currentNote={detail.note}
               debtKind={detail.debtKind}
               currentDueDate={detail.standardDueDate}
+              dueDateSupported={dueDateSupported}
+              returnTo={backHref}
             />
           </div>
 
@@ -299,20 +350,11 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
             }}>
               {detail.direction}
             </span>
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              minHeight: 24,
-              padding: '0 10px',
-              borderRadius: 999,
-              background: 'var(--grey-100)',
-              color: 'var(--text-3)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-semibold)',
-              letterSpacing: '0.02em',
-            }}>
-              {detail.status}
-            </span>
+            <StatusChip
+              label={displayStatus}
+              variant={settled ? 'success' : 'neutral'}
+            />
+
           </div>
 
           <div style={{
@@ -343,24 +385,25 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
               }}>
                 {fmt(detail.balance, detail.currency)}
               </p>
-              {detail.status !== 'Active' ? (
+              {settled ? (
                 <p style={{
                   margin: 'var(--space-xs) 0 0',
                   fontSize: 'var(--text-sm)',
                   color: 'var(--text-3)',
                   lineHeight: 1.4,
                 }}>
-                  {detail.summaryLine}
+                  This debt has been settled.
                 </p>
               ) : null}
             </div>
 
-            {canAddPayment || !hasTransactions ? (
+            {canAddPayment || showOrphanedActiveDebtState ? (
               <div>
                 {canAddPayment ? (
                   <AddRepaymentSheet
                     debtId={detail.id}
                     debtName={detail.name}
+                    direction={debt.direction}
                     currency={detail.currency}
                     currentBalance={detail.balance}
                     emphasized={detail.isOverdue}
@@ -376,7 +419,7 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
               </div>
             ) : null}
 
-            {detail.debtKind === 'standard' ? (
+            {detail.debtKind === 'standard' && (dueDateSupported || detail.standardDueDate) ? (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -568,42 +611,55 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
               borderRadius: 'var(--radius-lg)',
               padding: 'var(--space-lg)',
             }}>
-              <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
-                This debt is saved, but it has no entries yet.
-              </p>
-              <p style={{ margin: '0 0 var(--space-card-sm)', fontSize: 'var(--text-base)', color: 'var(--text-2)', lineHeight: 1.6 }}>
-                Add an opening balance to start tracking it again. We keep the debt record for now so you do not lose the name, direction, or financing details.
-              </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
-                <AddOpeningBalanceSheet
-                  debtId={detail.id}
-                  debtName={detail.name}
-                  currency={detail.currency}
-                />
-                <Link
-                  href="/history/debt"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: 'var(--button-height-sm)',
-                    padding: '0 16px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--white)',
-                    color: 'var(--text-1)',
-                    border: '1px solid var(--border)',
-                    textDecoration: 'none',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-medium)',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  View all debts
-                </Link>
-              </div>
-              <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
-                If this was created by mistake, leaving it empty is safer than deleting it automatically.
-              </p>
+              {settled ? (
+                <>
+                  <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+                    No debt history recorded for this item.
+                  </p>
+                  <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-2)', lineHeight: 1.6 }}>
+                    This debt has been settled.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+                    This debt is saved, but it has no entries yet.
+                  </p>
+                  <p style={{ margin: '0 0 var(--space-card-sm)', fontSize: 'var(--text-base)', color: 'var(--text-2)', lineHeight: 1.6 }}>
+                    Add an opening balance to start tracking it again. We keep the debt record for now so you do not lose the name, direction, or financing details.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                    <AddOpeningBalanceSheet
+                      debtId={detail.id}
+                      debtName={detail.name}
+                      currency={detail.currency}
+                    />
+                    <Link
+                      href="/history/debt"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: 'var(--button-height-sm)',
+                        padding: '0 16px',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'var(--white)',
+                        color: 'var(--text-1)',
+                        border: '1px solid var(--border)',
+                        textDecoration: 'none',
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: 'var(--weight-medium)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      View all debts
+                    </Link>
+                  </div>
+                  <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                    If this was created by mistake, leaving it empty is safer than deleting it automatically.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <DebtTransactionList

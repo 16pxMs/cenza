@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, TertiaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { updateDebtTransactionForDebt } from './actions'
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
   amount: number
   date: string
   note: string | null
+  currency?: string
 }
 
 export function EditDebtTransactionSheet({
@@ -20,9 +22,9 @@ export function EditDebtTransactionSheet({
   amount,
   date,
   note,
+  currency = 'KES',
 }: Props) {
   const router = useRouter()
-  const amountRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [amountValue, setAmountValue] = useState(String(amount))
@@ -36,16 +38,7 @@ export function EditDebtTransactionSheet({
     setDateValue(date)
     setNoteValue(note ?? '')
     setError(null)
-    setTimeout(() => amountRef.current?.focus(), 250)
   }, [open, amount, date, note])
-
-  const handleAmountChange = (value: string) => {
-    const cleaned = value.replace(/[^0-9.]/g, '')
-    const parts = cleaned.split('.')
-    if (parts.length > 2) return
-    if (parts[1] && parts[1].length > 2) return
-    setAmountValue(cleaned)
-  }
 
   const validate = () => {
     const nextAmount = Number(amountValue)
@@ -102,35 +95,14 @@ export function EditDebtTransactionSheet({
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Edit transaction">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--text-2)',
-            }}>
-              Amount
-            </span>
-            <input
-              ref={amountRef}
-              type="text"
-              inputMode="decimal"
-              value={amountValue}
-              onChange={event => handleAmountChange(event.target.value)}
-              placeholder="0.00"
-              style={{
-                height: 48,
-                borderRadius: 14,
-                border: '1px solid var(--border)',
-                padding: '0 14px',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-1)',
-                background: 'var(--white)',
-                outline: 'none',
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
-            />
-          </label>
+          <MoneyInput
+            label="Amount"
+            currency={currency}
+            value={amountValue}
+            onChange={setAmountValue}
+            autoFocus
+            placeholder="0"
+          />
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={{

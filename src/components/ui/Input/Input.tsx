@@ -1,8 +1,10 @@
 'use client'
+import type { ReactNode } from 'react'
 import styles from './Input.module.css'
 
 interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
   label: string
+  labelAction?: ReactNode
   prefix?: string
   hint?: string
   error?: string
@@ -17,7 +19,7 @@ function addCommas(raw: string): string {
   return parts.join('.')
 }
 
-export function Input({ label, prefix, hint, error, onChange, className, id, type, value, autoFocus, ...props }: Props) {
+export function Input({ label, labelAction, prefix, hint, error, onChange, className, id, type, value, autoFocus, ...props }: Props) {
   const inputId = id ?? label.replace(/\s+/g, '-').toLowerCase()
   const isNumeric = type === 'number'
   const shouldAutoFocus = autoFocus ?? isNumeric
@@ -37,9 +39,12 @@ export function Input({ label, prefix, hint, error, onChange, className, id, typ
 
   return (
     <div className={styles.inputWrap}>
-      <label className={styles.inputLabel} htmlFor={inputId}>
-        {label}
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <label className={styles.inputLabel} htmlFor={inputId}>
+          {label}
+        </label>
+        {labelAction}
+      </div>
 
       <div className={styles.inputField}>
         {prefix && <span className={styles.inputPrefix}>{prefix}</span>}

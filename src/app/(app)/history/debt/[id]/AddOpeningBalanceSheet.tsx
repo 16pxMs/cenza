@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { addOpeningBalance } from './actions'
 
 interface Props {
@@ -18,7 +19,6 @@ function formatToday() {
 
 export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
   const router = useRouter()
-  const amountRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState('')
@@ -32,18 +32,9 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
     setDate(formatToday())
     setNote('')
     setError(null)
-    setTimeout(() => amountRef.current?.focus(), 250)
   }, [open])
 
   const amountValue = Number(amount)
-
-  const handleAmountChange = (value: string) => {
-    const cleaned = value.replace(/[^0-9.]/g, '')
-    const parts = cleaned.split('.')
-    if (parts.length > 2) return
-    if (parts[1] && parts[1].length > 2) return
-    setAmount(cleaned)
-  }
 
   const handleSubmit = () => {
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
@@ -109,37 +100,14 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
             </p>
           </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span
-              style={{
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-medium)',
-                color: 'var(--text-2)',
-              }}
-            >
-              Amount
-            </span>
-            <input
-              ref={amountRef}
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={event => handleAmountChange(event.target.value)}
-              placeholder="0.00"
-              style={{
-                height: 48,
-                borderRadius: 14,
-                border: '1px solid var(--border)',
-                padding: '0 14px',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-1)',
-                background: 'var(--white)',
-                outline: 'none',
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
-            />
-          </label>
+          <MoneyInput
+            label="Amount"
+            currency={currency}
+            value={amount}
+            onChange={setAmount}
+            autoFocus
+            placeholder="0"
+          />
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span

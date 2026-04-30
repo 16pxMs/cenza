@@ -16,6 +16,7 @@ import { calculateTotalIncome, calculateRemaining } from '@/lib/math/finance'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
 import { removeMonthlyReminder, updateMonthlyReminder } from '@/app/(app)/log/actions'
@@ -875,14 +876,14 @@ const reference = receivedConfirmed
               }}
               error={monthlyReminderErrors.label}
             />
-            <Input
+            <MoneyInput
               label="Monthly amount"
-              type="number"
               value={monthlyReminderAmount}
               onChange={(value) => {
                 setMonthlyReminderAmount(value)
                 setMonthlyReminderErrors((current) => ({ ...current, monthlyAmount: undefined }))
               }}
+              currency={currency}
               error={monthlyReminderErrors.monthlyAmount}
             />
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>

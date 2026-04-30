@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import type { CategoryType } from '@/types/database'
 
 export type ImportCategoryType = Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>
@@ -27,13 +26,27 @@ export interface ParsedSmsExpense {
 
 export function hashSmsLine(raw: string): string {
   const normalized = raw.trim().toLowerCase().replace(/\s+/g, ' ')
-  return createHash('sha256').update(normalized).digest('hex')
+  let hash = 2166136261
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
 export interface SmsParseResult {
   rows: ParsedSmsExpense[]
   scanned: number
   skippedCredits: number
+}
+
+export interface ParsedPaymentImport {
+  amount: number | null
+  currency: string | null
+  date: string | null
+  note: string | null
 }
 
 const DEBIT_HINTS = [
@@ -154,10 +167,24 @@ function parseAmount(raw: string): { amount: number; currency: string; confidenc
   }
 }
 
-function parseDate(raw: string): string {
+function findDateInText(raw: string): string | null {
   const lower = raw.toLowerCase()
   const now = new Date()
   now.setHours(12, 0, 0, 0)
+  const monthMap: Record<string, number> = {
+    jan: 0, january: 0,
+    feb: 1, february: 1,
+    mar: 2, march: 2,
+    apr: 3, april: 3,
+    may: 4,
+    jun: 5, june: 5,
+    jul: 6, july: 6,
+    aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8,
+    oct: 9, october: 9,
+    nov: 10, november: 10,
+    dec: 11, december: 11,
+  }
 
   if (lower.includes('yesterday')) {
     const d = new Date(now)
@@ -184,23 +211,20 @@ function parseDate(raw: string): string {
     return toIsoLocalDate(d)
   }
 
+  const dayMonthName = raw.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})(?:,?\s*(\d{2,4}))?\b/)
+  if (dayMonthName) {
+    const month = monthMap[dayMonthName[2].toLowerCase()]
+    if (month != null) {
+      const day = Number(dayMonthName[1])
+      const yearRaw = dayMonthName[3] ? Number(dayMonthName[3]) : now.getFullYear()
+      const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw
+      const d = new Date(year, month, day, 12, 0, 0, 0)
+      return toIsoLocalDate(d)
+    }
+  }
+
   const monthName = raw.match(/\b(?:on\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s*(\d{2,4}))?\b/)
   if (monthName) {
-    const monthMap: Record<string, number> = {
-      jan: 0, january: 0,
-      feb: 1, february: 1,
-      mar: 2, march: 2,
-      apr: 3, april: 3,
-      may: 4,
-      jun: 5, june: 5,
-      jul: 6, july: 6,
-      aug: 7, august: 7,
-      sep: 8, sept: 8, september: 8,
-      oct: 9, october: 9,
-      nov: 10, november: 10,
-      dec: 11, december: 11,
-    }
-
     const month = monthMap[monthName[1].toLowerCase()]
     if (month != null) {
       const day = Number(monthName[2])
@@ -211,7 +235,13 @@ function parseDate(raw: string): string {
     }
   }
 
-  return toIsoLocalDate(now)
+  return null
+}
+
+function parseDate(raw: string): string {
+  const now = new Date()
+  now.setHours(12, 0, 0, 0)
+  return findDateInText(raw) ?? toIsoLocalDate(now)
 }
 
 function extractMerchant(raw: string): string | null {
@@ -228,6 +258,16 @@ function extractMerchant(raw: string): string | null {
     .trim()
 
   return label.length >= 2 ? label : null
+}
+
+function extractReference(raw: string): string | null {
+  const referenceMatch = raw.match(/\b(?:ref|reference|txn|transaction id|receipt)\s*[:#-]?\s*([A-Za-z0-9-]{3,})/i)
+  if (referenceMatch?.[1]) {
+    return `Ref ${referenceMatch[1].trim()}`
+  }
+
+  const merchant = extractMerchant(raw)
+  return merchant ? merchant.trim() : null
 }
 
 function inferCategory(label: string): ImportCategoryType {
@@ -334,6 +374,24 @@ export function parseSimpleExpenseLines(
   })
 
   return rows
+}
+
+export function parsePaymentImportText(
+  rawInput: string,
+  options: { defaultCurrency: string }
+): ParsedPaymentImport | null {
+  const text = rawInput.trim()
+  if (!text) return null
+
+  const amountMatch = parseAmount(text)
+  if (!amountMatch) return null
+
+  return {
+    amount: amountMatch.amount,
+    currency: amountMatch.currency || options.defaultCurrency,
+    date: findDateInText(text),
+    note: extractReference(text),
+  }
 }
 
 export function parseSmsBlob(

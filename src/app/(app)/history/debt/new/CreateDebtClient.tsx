@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { SingleTaskFlowStep } from '@/components/layout/SingleTaskFlowStep/SingleTaskFlowStep'
 import { PrimaryBtn } from '@/components/ui/Button/Button'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import cardStyles from '@/components/ui/Card/Card.module.css'
 import type { DebtDirection } from '@/lib/supabase/debt-db'
 import { createDebtWithOpeningBalance } from './actions'
@@ -13,6 +14,7 @@ interface Props {
   currency: string
   returnTo: string
   activeDebtNames: string[]
+  dueDateSupported: boolean
   initialName?: string
   initialAmount?: string
 }
@@ -64,13 +66,6 @@ function isValidDateString(value: string) {
 
 function normalizeDebtNameForMatch(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
-}
-
-function addCommas(raw: string): string {
-  if (!raw) return raw
-  const parts = raw.split('.')
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  return parts.join('.')
 }
 
 function mapTrackingChoice(choice: DebtTrackingChoice | null): { direction: DebtDirection; mode: CreateDebtMode } | null {
@@ -239,50 +234,28 @@ function StepDebtAmount({
 }) {
   return (
     <div style={{ marginBottom: 'var(--space-md)', width: '100%' }}>
-      <label style={{ display: 'block' }}>
-        <FieldLabel>Amount</FieldLabel>
-        <FieldFrame>
-          <span style={{
-            padding: '0 0 0 14px',
-            fontSize: 'var(--text-base)',
-            color: 'var(--text-3)',
-            fontWeight: 'var(--weight-regular)',
-            fontFamily: 'var(--font-sans)',
-            pointerEvents: 'none',
-            userSelect: 'none',
-          }}>
-            {currency}
-          </span>
-          <input
-            className={styles.fieldInput}
-            inputMode="decimal"
-            pattern="[0-9]*"
-            enterKeyHint="done"
-            value={addCommas(amount)}
-            onChange={(event) => {
-              const raw = event.target.value.replace(/,/g, '')
-              if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
-              onChange(raw)
-            }}
-            placeholder="0"
-            autoFocus
-            autoComplete="off"
-            style={{ paddingLeft: 'var(--space-sm)' }}
-          />
-        </FieldFrame>
-      </label>
+      <MoneyInput
+        label="Amount"
+        currency={currency}
+        value={amount}
+        onChange={onChange}
+        placeholder="0"
+        autoFocus
+      />
       {error ? <FieldError>{error}</FieldError> : null}
     </div>
   )
 }
 
 function StepDebtOptionalDetails({
+  showDateField,
   dueDate,
   note,
   dueDateError,
   onDueDateChange,
   onNoteChange,
 }: {
+  showDateField: boolean
   dueDate: string
   note: string
   dueDateError?: string
@@ -291,21 +264,23 @@ function StepDebtOptionalDetails({
 }) {
   return (
     <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
-      <div style={{ marginBottom: 'var(--space-md)', width: '100%' }}>
-        <label style={{ display: 'block' }}>
-          <FieldLabel>Due date</FieldLabel>
-          <FieldFrame>
-            <input
-              className={styles.fieldInput}
-              type="date"
-              value={dueDate}
-              onChange={(event) => onDueDateChange(event.target.value)}
-              autoFocus
-            />
-          </FieldFrame>
-        </label>
-        {dueDateError ? <FieldError>{dueDateError}</FieldError> : null}
-      </div>
+      {showDateField ? (
+        <div style={{ marginBottom: 'var(--space-md)', width: '100%' }}>
+          <label style={{ display: 'block' }}>
+            <FieldLabel>Due date</FieldLabel>
+            <FieldFrame>
+              <input
+                className={styles.fieldInput}
+                type="date"
+                value={dueDate}
+                onChange={(event) => onDueDateChange(event.target.value)}
+                autoFocus
+              />
+            </FieldFrame>
+          </label>
+          {dueDateError ? <FieldError>{dueDateError}</FieldError> : null}
+        </div>
+      ) : null}
 
       <label style={{ display: 'block' }}>
         <FieldLabel>Note</FieldLabel>
@@ -337,6 +312,7 @@ export default function CreateDebtClient({
   currency,
   returnTo,
   activeDebtNames,
+  dueDateSupported,
   initialName = '',
   initialAmount = '',
 }: Props) {
@@ -373,8 +349,20 @@ export default function CreateDebtClient({
     1: { title: "What's this for?" },
     2: { title: debtNameTitle },
     3: { title: 'How much is it?' },
-    4: { title: 'Any extra details?', supportingLine: 'Due date and note are optional.' },
+    4: {
+      title: 'Any extra details?',
+      supportingLine:
+        trackingChoice === 'i_owe_over_time'
+          ? 'Target date and note are optional.'
+          : dueDateSupported
+            ? 'Due date and note are optional.'
+            : 'Note is optional.',
+    },
   }
+  const showDateField =
+    trackingChoice === 'i_owe_over_time'
+      ? true
+      : dueDateSupported
   const displayedNameError =
     errors.name ??
     (name.length > 0 && !normalizedName ? 'Debt name is required' : undefined) ??
@@ -400,7 +388,7 @@ export default function CreateDebtClient({
       }
     }
 
-    if (targetStep === 4 && dueDate.trim() && !isValidDateString(dueDate)) {
+    if (targetStep === 4 && showDateField && dueDate.trim() && !isValidDateString(dueDate)) {
       nextErrors.dueDate = 'Enter a valid due date'
     }
 
@@ -530,12 +518,13 @@ export default function CreateDebtClient({
       case 4:
       default:
         return (
-          <StepDebtOptionalDetails
-            dueDate={dueDate}
-            note={note}
-            dueDateError={errors.dueDate}
-            onDueDateChange={(value) => {
-              setDueDate(value)
+            <StepDebtOptionalDetails
+              showDateField={showDateField}
+              dueDate={dueDate}
+              note={note}
+              dueDateError={errors.dueDate}
+              onDueDateChange={(value) => {
+                setDueDate(value)
               setErrors((current) => ({ ...current, dueDate: undefined, form: undefined }))
             }}
             onNoteChange={setNote}

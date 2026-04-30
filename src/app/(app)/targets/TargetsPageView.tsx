@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { IconBack } from '@/components/ui/Icons'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 
 const T = {
   brand: '#EADFF4',
@@ -86,54 +87,6 @@ const GOAL_META: Record<string, {
 const fmt = (n: number, cur = 'KES') => {
   if (!n) return `${cur} 0`
   return `${cur} ${n.toLocaleString()}`
-}
-
-function AmountInput({ value, onChange, prefix, placeholder }: {
-  value: string; onChange: (v: string) => void; prefix: string; placeholder?: string
-}) {
-  const [focused, setFocused] = useState(false)
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center',
-      height: 54, borderRadius: 14,
-      border: focused ? `2px solid var(--border-focus)` : `1px solid var(--border)`,
-      background: T.white, overflow: 'hidden',
-      transition: 'border-color 0.2s ease',
-    }}>
-      <span style={{
-        padding: '0 14px 0 16px', fontSize: 15, color: T.text3,
-        fontWeight: 600, borderRight: `1px solid var(--border-subtle)`,
-        height: '100%', display: 'flex', alignItems: 'center',
-        background: T.brand + '33', flexShrink: 0,
-      }}>
-        {prefix}
-      </span>
-      <input
-        type="text"
-        inputMode="decimal"
-        autoFocus
-        value={(() => {
-          if (!value) return ''
-          const parts = value.replace(/,/g, '').split('.')
-          parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-          return parts.join('.')
-        })()}
-        placeholder={placeholder ?? '0'}
-        onChange={e => {
-          const raw = e.target.value.replace(/,/g, '')
-          if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
-          onChange(raw)
-        }}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          flex: 1, height: '100%', border: 'none', outline: 'none',
-          padding: '0 16px', fontSize: 24, fontWeight: 600,
-          fontFamily: 'var(--font-display)', color: T.text1, background: 'transparent',
-        }}
-      />
-    </div>
-  )
 }
 
 interface GoalTarget {
@@ -371,7 +324,7 @@ export default function TargetsPageView({ goals, currency, totalIncome, onDone, 
         )}
 
         <div style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(8px)', transition: 'all 0.35s ease 0.08s' }}>
-          <AmountInput value={amount} onChange={setAmount} prefix={currency} placeholder="0" />
+          <MoneyInput label="Amount" value={amount} onChange={setAmount} currency={currency} placeholder="0" />
           {renderBenchmark()}
         </div>
 

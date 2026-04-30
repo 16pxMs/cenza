@@ -5,9 +5,18 @@ import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
 import { fmt } from '@/lib/finance'
 import { getDebts, type Debt } from '@/lib/supabase/debt-db'
+import { getDebtListVisibility } from '@/lib/debts/state'
 import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
 import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
 import { PrimaryLink } from '@/components/ui/Button/Button'
+
+interface DebtListPageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+function firstValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
 
 function toDisplayDebt(debt: Debt) {
   return {
@@ -15,14 +24,17 @@ function toDisplayDebt(debt: Debt) {
     name: debt.name.trim() || 'Untitled debt',
     balance: debt.current_balance,
     currency: debt.currency.trim() || 'KES',
-    isCleared: debt.status === 'cleared' || debt.status === 'cancelled',
+    visibility: getDebtListVisibility(debt),
   }
 }
 
-function DebtRow({ debt, showSeparator }: { debt: ReturnType<typeof toDisplayDebt>; showSeparator: boolean }) {
+function DebtRow({ debt, showSeparator, returnTo }: { debt: ReturnType<typeof toDisplayDebt>; showSeparator: boolean; returnTo?: string }) {
+  const href = returnTo
+    ? `/history/debt/${debt.id}?returnTo=${encodeURIComponent(returnTo)}`
+    : `/history/debt/${debt.id}`
   return (
     <Link
-      href={`/history/debt/${debt.id}`}
+      href={href}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -38,7 +50,7 @@ function DebtRow({ debt, showSeparator }: { debt: ReturnType<typeof toDisplayDeb
         margin: 0,
         fontSize: 'var(--text-base)',
         fontWeight: 'var(--weight-regular)',
-        color: debt.isCleared ? 'var(--text-3)' : 'var(--text-1)',
+        color: debt.visibility === 'settled' ? 'var(--text-3)' : 'var(--text-1)',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
@@ -50,7 +62,7 @@ function DebtRow({ debt, showSeparator }: { debt: ReturnType<typeof toDisplayDeb
       <span style={{
         fontSize: 'var(--text-base)',
         fontWeight: 'var(--weight-medium)',
-        color: debt.isCleared ? 'var(--text-3)' : 'var(--text-1)',
+        color: debt.visibility === 'settled' ? 'var(--text-3)' : 'var(--text-1)',
         flexShrink: 0,
         fontVariantNumeric: 'tabular-nums',
       }}>
@@ -60,13 +72,15 @@ function DebtRow({ debt, showSeparator }: { debt: ReturnType<typeof toDisplayDeb
   )
 }
 
-export default async function DebtListPage() {
+export default async function DebtListPage({ searchParams }: DebtListPageProps) {
   const { user } = await getAppSession()
   if (!user) redirect('/')
 
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const view = firstValue(resolvedSearchParams.view) === 'settled' ? 'settled' : 'active'
   const allDebts = (await getDebts(user.id)).map(toDisplayDebt)
-  const active = allDebts.filter((d) => !d.isCleared).sort((a, b) => b.balance - a.balance)
-  const cleared = allDebts.filter((d) => d.isCleared)
+  const active = allDebts.filter((d) => d.visibility === 'active').sort((a, b) => b.balance - a.balance)
+  const settled = allDebts.filter((d) => d.visibility === 'settled')
 
   return (
     <main style={{
@@ -74,64 +88,97 @@ export default async function DebtListPage() {
       background: 'var(--page-bg)',
     }}>
       <AppSubpageLayout maxWidth={720}>
-        <AppSubpageHeader title="Debts" backHref="/menu" ariaLabel="Back to More" />
+        <AppSubpageHeader
+          title={view === 'settled' ? 'Settled debts' : 'Debts'}
+          backHref={view === 'settled' ? '/history/debt' : '/menu'}
+          ariaLabel={view === 'settled' ? 'Back to debts' : 'Back to More'}
+        />
 
-        <PrimaryLink
-          href="/history/debt/new?returnTo=/history/debt"
-          size="md"
-          style={{ marginBottom: 'var(--space-lg)' }}
-        >
-          Add debt
-        </PrimaryLink>
+        {view === 'active' ? (
+          <>
+            <PrimaryLink
+              href="/history/debt/new?returnTo=/history/debt"
+              size="md"
+              style={{ marginBottom: 'var(--space-md)' }}
+            >
+              Add debt
+            </PrimaryLink>
 
-        {allDebts.length === 0 ? (
+            {settled.length > 0 ? (
+              <Link
+                href="/history/debt?view=settled"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 'var(--button-height-md)',
+                  padding: '0 18px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--white)',
+                  color: 'var(--text-1)',
+                  border: '1px solid var(--border)',
+                  textDecoration: 'none',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 'var(--weight-medium)',
+                  marginBottom: 'var(--space-lg)',
+                }}
+              >
+                View settled debts
+              </Link>
+            ) : (
+              <div style={{ marginBottom: 'var(--space-lg)' }} />
+            )}
+          </>
+        ) : null}
+
+        {view === 'active' && active.length === 0 ? (
           <p style={{
             margin: 0,
             fontSize: 'var(--text-sm)',
             color: 'var(--text-muted)',
             lineHeight: 1.5,
           }}>
-            No debts yet.
+            <span style={{ display: 'block', color: 'var(--text-1)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-2xs)' }}>
+              No active debts
+            </span>
+            Add a debt to start tracking what you owe or what is owed to you.
           </p>
-        ) : (
-          <>
-            {active.length > 0 && (
-              <div style={{
-                background: 'var(--white)',
-                borderRadius: 'var(--radius-xl)',
-                overflow: 'hidden',
-              }}>
-                {active.map((debt, i) => (
-                  <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} />
-                ))}
-              </div>
-            )}
+        ) : null}
 
-            {cleared.length > 0 && (
-              <div style={{ marginTop: active.length > 0 ? 'var(--space-lg)' : 0 }}>
-                <p style={{
-                  margin: '0 0 var(--space-sm)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-semibold)',
-                  color: 'var(--text-muted)',
-                  letterSpacing: '0.07em',
-                  textTransform: 'uppercase',
-                }}>
-                  Cleared
-                </p>
-                <div style={{
-                  background: 'var(--white)',
-                  borderRadius: 'var(--radius-xl)',
-                  overflow: 'hidden',
-                }}>
-                  {cleared.map((debt, i) => (
-                    <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
+        {view === 'settled' && settled.length === 0 ? (
+          <p style={{
+            margin: 0,
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-muted)',
+            lineHeight: 1.5,
+          }}>
+            No settled debts yet.
+          </p>
+        ) : null}
+
+        {view === 'active' && active.length > 0 ? (
+          <div style={{
+            background: 'var(--white)',
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden',
+          }}>
+            {active.map((debt, i) => (
+              <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} />
+            ))}
+          </div>
+        ) : null}
+
+        {view === 'settled' && settled.length > 0 ? (
+          <div style={{
+            background: 'var(--white)',
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden',
+          }}>
+            {settled.map((debt, i) => (
+              <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} returnTo="/history/debt?view=settled" />
+            ))}
+          </div>
+        ) : null}
       </AppSubpageLayout>
     </main>
   )

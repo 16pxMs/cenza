@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useRef, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { fmt, formatDate } from '@/lib/finance'
 import { deleteDebtTransactionForDebt, updateDebtTransactionForDebt } from './actions'
 
@@ -26,7 +27,6 @@ type SheetMode = 'actions' | 'edit' | 'delete'
 
 export function DebtTransactionList({ debtId, items, lockedTransactionId }: Props) {
   const router = useRouter()
-  const amountRef = useRef<HTMLInputElement>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mode, setMode] = useState<SheetMode>('actions')
   const [isPending, startTransition] = useTransition()
@@ -61,15 +61,6 @@ export function DebtTransactionList({ debtId, items, lockedTransactionId }: Prop
     setNoteValue(selected.note ?? '')
     setError(null)
     setMode('edit')
-    setTimeout(() => amountRef.current?.focus(), 250)
-  }
-
-  const handleAmountChange = (value: string) => {
-    const cleaned = value.replace(/[^0-9.]/g, '')
-    const parts = cleaned.split('.')
-    if (parts.length > 2) return
-    if (parts[1] && parts[1].length > 2) return
-    setAmountValue(cleaned)
   }
 
   const validateEdit = () => {
@@ -282,35 +273,14 @@ export function DebtTransactionList({ debtId, items, lockedTransactionId }: Prop
 
             {mode === 'edit' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <span style={{
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-medium)',
-                    color: 'var(--text-2)',
-                  }}>
-                    Amount
-                  </span>
-                  <input
-                    ref={amountRef}
-                    type="text"
-                    inputMode="decimal"
-                    value={amountValue}
-                    onChange={event => handleAmountChange(event.target.value)}
-                    placeholder="0.00"
-                    style={{
-                      height: 48,
-                      borderRadius: 14,
-                      border: '1px solid var(--border)',
-                      padding: '0 14px',
-                      fontSize: 'var(--text-base)',
-                      color: 'var(--text-1)',
-                      background: 'var(--white)',
-                      outline: 'none',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </label>
+                <MoneyInput
+                  label="Amount"
+                  currency={selected?.currency ?? 'KES'}
+                  value={amountValue}
+                  onChange={setAmountValue}
+                  autoFocus
+                  placeholder="0"
+                />
 
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <span style={{

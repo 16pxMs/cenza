@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './AddIncomeSheet.css'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { sumAmounts, safeNum } from '@/lib/math/finance'
@@ -235,7 +236,7 @@ export function AddIncomeFlow({
             </button>
           )}
 
-          <Input
+          <MoneyInput
             label={
               isMidMonth
                 ? 'Money left right now'
@@ -245,9 +246,8 @@ export function AddIncomeFlow({
             }
             value={salary}
             onChange={v => { setSalary(v); if (error) setError(null) }}
-            prefix={currency}
+            currency={currency}
             placeholder="e.g. 50,000"
-            type="number"
             autoFocus
             hint={
               isMidMonth
@@ -267,13 +267,12 @@ export function AddIncomeFlow({
                 onChange={v => updateExtra(x.id, 'label', v)}
                 placeholder="e.g. Freelance, Dividends"
               />
-              <Input
+              <MoneyInput
                 label="Amount"
                 value={x.amount}
                 onChange={v => updateExtra(x.id, 'amount', v)}
-                prefix={currency}
+                currency={currency}
                 placeholder="e.g. 10,000"
-                type="number"
                 autoFocus={false}
               />
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'calc(var(--space-2xs) * -1)' }}>

@@ -45,6 +45,14 @@ export interface UpdateDebtTransactionInput {
   note?: string | null
 }
 
+export interface UpdateDebtDetailsInput {
+  debtId: string
+  userId: string
+  name: string
+  note?: string | null
+  standardDueDate?: string | null
+}
+
 type RpcErrorLike = { message?: string; code?: string } | null
 
 const ERRORS = {
@@ -65,6 +73,31 @@ function isMissingRpc(error: RpcErrorLike): boolean {
     (message.includes('function') && message.includes('does not exist')) ||
     error.code === 'PGRST202'
   )
+}
+
+function isMissingColumnError(error: RpcErrorLike, column: string): boolean {
+  if (!error) return false
+  const message = String(error.message ?? '').toLowerCase()
+  const normalizedColumn = column.toLowerCase()
+  return (
+    message.includes(`could not find the '${normalizedColumn}' column`) ||
+    message.includes(`column "${normalizedColumn}" does not exist`) ||
+    (message.includes('schema cache') && message.includes(normalizedColumn))
+  )
+}
+
+function isDuplicateActiveDebtNameError(error: RpcErrorLike): boolean {
+  if (!error) return false
+  const message = String(error.message ?? '').toLowerCase()
+  return (
+    message.includes('debts_user_active_name_idx') ||
+    message.includes('duplicate key value') ||
+    message.includes('unique constraint')
+  )
+}
+
+function normalizeDebtName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
 function normalizeSingleRow<T>(data: T[] | T | null): T | null {
@@ -113,7 +146,7 @@ export async function updateStandardDebtDueDate(
   debtId: string,
   userId: string,
   standardDueDate: string | null
-): Promise<void> {
+): Promise<boolean> {
   const normalizedDebtId = debtId.trim()
   const normalizedUserId = userId.trim()
 
@@ -126,9 +159,72 @@ export async function updateStandardDebtDueDate(
     .eq('id', normalizedDebtId)
     .eq('user_id', normalizedUserId)
 
-  if (error) {
-    throw new Error(`Failed to update debt due date: ${error.message}`)
+  if (!error) return true
+  if (isMissingColumnError(error, 'standard_due_date')) return false
+  throw new Error(`Failed to update debt due date: ${error.message}`)
+}
+
+export function isStandardDebtDueDateUnsupportedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return message === 'Debt due dates are not available yet.'
+}
+
+export async function isStandardDebtDueDateSupported(): Promise<boolean> {
+  const supabase = await createServerSupabaseClient()
+  const { error } = await (supabase.from('debts') as any)
+    .select('standard_due_date')
+    .limit(1)
+
+  if (!error) return true
+  if (isMissingColumnError(error, 'standard_due_date')) return false
+  throw new Error(`Failed to check debt due date support: ${error.message}`)
+}
+
+export async function updateDebtDetails(input: UpdateDebtDetailsInput): Promise<{ dueDateSupported: boolean }> {
+  const debtId = input.debtId.trim()
+  const userId = input.userId.trim()
+  const name = input.name.trim()
+
+  if (!debtId) throw new Error(ERRORS.debtIdRequired)
+  if (!userId) throw new Error('User id is required')
+  if (!name) throw new Error(ERRORS.debtNameRequired)
+
+  const supabase = await createServerSupabaseClient()
+  const payload: Record<string, unknown> = {
+    name,
+    normalized_name: normalizeDebtName(name),
+    note: input.note?.trim() || null,
   }
+
+  const wantsDueDateUpdate = Object.prototype.hasOwnProperty.call(input, 'standardDueDate')
+  if (wantsDueDateUpdate) {
+    payload.standard_due_date = input.standardDueDate ?? null
+  }
+
+  let dueDateSupported = true
+  let { error } = await (supabase.from('debts') as any)
+    .update(payload)
+    .eq('id', debtId)
+    .eq('user_id', userId)
+
+  if (error && wantsDueDateUpdate && isMissingColumnError(error, 'standard_due_date')) {
+    dueDateSupported = false
+    delete payload.standard_due_date
+    const retry = await (supabase.from('debts') as any)
+      .update(payload)
+      .eq('id', debtId)
+      .eq('user_id', userId)
+    error = retry.error
+  }
+
+  if (isDuplicateActiveDebtNameError(error)) {
+    throw new Error('You already have an active debt with this name.')
+  }
+  if (error) {
+    throw new Error(`Failed to update debt: ${error.message}`)
+  }
+
+  return { dueDateSupported }
 }
 
 export async function createFinancingDebt(input: CreateFinancingDebtInput): Promise<Debt | null> {
@@ -251,13 +347,17 @@ export async function deleteDebt(debtId: string, userId: string): Promise<void> 
   if (!normalizedUserId) throw new Error('User id is required')
 
   const supabase = await createServerSupabaseClient()
-  const { error } = await (supabase.from('debts') as any)
+  const { data, error } = await (supabase.from('debts') as any)
     .delete()
     .eq('id', normalizedDebtId)
     .eq('user_id', normalizedUserId)
+    .select('id')
 
   if (error) {
     throw new Error(`Failed to delete debt: ${error.message}`)
+  }
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`Failed to delete debt: Debt ${normalizedDebtId} does not exist`)
   }
 }
 

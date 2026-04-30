@@ -7,6 +7,7 @@ import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpag
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack } from '@/components/ui/Icons'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
@@ -156,13 +157,12 @@ export default function MilestonesPageClient({ currency, goal }: MilestonesPageC
               placeholder="e.g. First 50k"
             />
             <div style={{ height: 12 }} />
-            <Input
+            <MoneyInput
               label="Target amount"
               value={row.amount != null ? String(row.amount) : ''}
               onChange={(value) => updateRow(index, { amount: value.trim() ? Number(value) : null })}
-              prefix={currency}
+              currency={currency}
               placeholder="e.g. 50,000"
-              type="number"
             />
             <div style={{ height: 12 }} />
             <Input

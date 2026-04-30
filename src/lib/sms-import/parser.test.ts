@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { parseSmsBlob } from './parser'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { parsePaymentImportText, parseSimpleExpenseLines, parseSmsBlob } from './parser'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('sms import parser', () => {
   it('parses debit rows and skips credit rows', () => {
@@ -52,5 +56,48 @@ describe('sms import parser', () => {
     expect(result.rows[0].label).toBe('Unknown item')
     expect(result.rows[0].categoryType).toBe('everyday')
     expect(result.rows[0].amount).toBe(750)
+  })
+
+  it('uses the SMS transaction date when the message includes day month year', () => {
+    const result = parseSmsBlob(
+      'Confirmed. KES 1,850 paid to Java on 29 Apr 2026.',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0].date).toBe('2026-04-29')
+  })
+
+  it('falls back to today when no transaction date is present', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-30T12:00:00.000Z'))
+
+    const rows = parseSimpleExpenseLines('food 500', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].date).toBe('2026-04-30')
+  })
+
+  it('parses payment import text amount, date, and reference when present', () => {
+    const parsed = parsePaymentImportText(
+      'Confirmed. KES 2,000 paid to Equity on 29 Apr 2026. Ref ABC123.',
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(parsed).toEqual({
+      amount: 2000,
+      currency: 'KES',
+      date: '2026-04-29',
+      note: 'Ref ABC123',
+    })
+  })
+
+  it('returns null when payment import text has no readable amount', () => {
+    const parsed = parsePaymentImportText(
+      'Thanks for your payment.',
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(parsed).toBeNull()
   })
 })

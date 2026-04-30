@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { getDebts } from '@/lib/supabase/debt-db'
+import { getDebts, isStandardDebtDueDateSupported } from '@/lib/supabase/debt-db'
 import CreateDebtClient from './CreateDebtClient'
+import { isStandardDueDateSchemaMismatch } from './route-state'
 
 interface NewDebtPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -37,6 +38,14 @@ export default async function NewDebtPage({ searchParams }: NewDebtPageProps) {
   const initialName = cleanPrefillText(resolvedSearchParams.name)
   const initialAmount = cleanPrefillAmount(resolvedSearchParams.amount)
   const debts = await getDebts(user.id)
+  let dueDateSupported = false
+  try {
+    dueDateSupported = await isStandardDebtDueDateSupported()
+  } catch (error) {
+    if (!isStandardDueDateSchemaMismatch(error)) {
+      throw error
+    }
+  }
   const activeDebtNames = debts
     .filter((debt) => debt.status === 'active')
     .map((debt) => debt.normalized_name)
@@ -49,6 +58,7 @@ export default async function NewDebtPage({ searchParams }: NewDebtPageProps) {
       activeDebtNames={activeDebtNames}
       initialName={initialName}
       initialAmount={initialAmount}
+      dueDateSupported={dueDateSupported}
     />
   )
 }

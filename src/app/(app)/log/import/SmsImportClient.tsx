@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
@@ -170,6 +171,7 @@ export function SmsImportClient() {
   const [editDraft, setEditDraft] = useState<{
     label: string
     amount: string
+    date: string
     categoryType: ImportCategoryType | null
     repeatsMonthly: boolean
     debtId: string | null
@@ -178,6 +180,7 @@ export function SmsImportClient() {
   const [editErrors, setEditErrors] = useState<{
     label?: string
     amount?: string
+    date?: string
     category?: string
     debtId?: string
   }>({})
@@ -323,6 +326,7 @@ export function SmsImportClient() {
     setEditDraft({
       label: row.label,
       amount: String(row.amount),
+      date: row.date,
       categoryType: row.categoryType,
       repeatsMonthly: row.repeatsMonthly,
       debtId: row.debtId,
@@ -344,14 +348,16 @@ export function SmsImportClient() {
   const saveEditRow = () => {
     if (!editingRowId || !editDraft) return
 
-    const nextErrors: { label?: string; amount?: string; category?: string; debtId?: string } = {}
+    const nextErrors: { label?: string; amount?: string; date?: string; category?: string; debtId?: string } = {}
     const trimmedLabel = editDraft.label.trim()
     const amount = Number(editDraft.amount)
+    const date = editDraft.date.trim()
     const nextCategoryType = editDraft.categoryType
     const existingRow = rows.find((row) => row.id === editingRowId) ?? null
 
     if (!trimmedLabel) nextErrors.label = 'Name is required.'
     if (!Number.isFinite(amount) || amount <= 0) nextErrors.amount = 'Amount must be greater than zero.'
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) nextErrors.date = 'Enter a valid date.'
     if (!nextCategoryType) nextErrors.category = 'Choose a category'
     if (nextCategoryType === 'debt' && !editDraft.debtId) {
       nextErrors.debtId = 'Select which debt this payment is for.'
@@ -368,6 +374,7 @@ export function SmsImportClient() {
     updateRow(editingRowId, {
       label: trimmedLabel,
       amount,
+      date,
       categoryType: nextCategoryType,
       categoryKey: slugify(trimmedLabel),
       repeatsMonthly:
@@ -907,7 +914,7 @@ export function SmsImportClient() {
                   }}>
                     {editDraft.categoryType ? categoryLabel(editDraft.categoryType) : 'Choose a category'}
                     {' · '}
-                    {new Date(`${editingRow.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(`${editDraft.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </p>
                 </div>
                 <button
@@ -963,9 +970,8 @@ export function SmsImportClient() {
                       error={editErrors.label}
                     />
 
-                    <Input
+                    <MoneyInput
                       label="Amount"
-                      type="number"
                       value={editDraft.amount}
                       onChange={(value) => {
                         setEditDraft((current) => current ? { ...current, amount: value } : current)
@@ -974,8 +980,24 @@ export function SmsImportClient() {
                           amount: undefined,
                         }))
                       }}
+                      currency={editingRow?.currency || 'KES'}
                       autoFocus={false}
                       error={editErrors.amount}
+                    />
+
+                    <Input
+                      label="Date"
+                      type="date"
+                      value={editDraft.date}
+                      onChange={(value) => {
+                        setEditDraft((current) => current ? { ...current, date: value } : current)
+                        setEditErrors((current) => ({
+                          ...current,
+                          date: undefined,
+                        }))
+                      }}
+                      autoFocus={false}
+                      error={editErrors.date}
                     />
 
                     <div>
@@ -1140,17 +1162,14 @@ export function SmsImportClient() {
                               autoFocus
                             />
 
-                            <Input
+                            <MoneyInput
                               label="Total owed"
-                              type="number"
-                              inputMode="decimal"
-                              min="0"
-                              step="0.01"
                               value={createDebtDraft.totalOwed}
                               onChange={(value) => {
                                 setCreateDebtDraft((current) => ({ ...current, totalOwed: value }))
                                 setCreateDebtError(null)
                               }}
+                              currency={editingRow?.currency || 'KES'}
                             />
 
                             <div>

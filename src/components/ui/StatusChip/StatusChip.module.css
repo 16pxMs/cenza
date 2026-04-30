@@ -1,0 +1,23 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: var(--border-width) solid transparent;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.neutral {
+  background: var(--grey-100);
+  color: var(--text-3);
+}
+
+.success {
+  background: var(--green-light);
+  color: var(--green-dark);
+  border-color: var(--green-border);
+}

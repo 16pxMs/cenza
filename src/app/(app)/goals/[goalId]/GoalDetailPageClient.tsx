@@ -10,6 +10,7 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { Input } from '@/components/ui/Input/Input'
+import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack } from '@/components/ui/Icons'
 import { GOAL_META } from '@/constants/goals'
@@ -657,13 +658,12 @@ export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageC
         }}
         title="Add contribution"
       >
-        <Input
+        <MoneyInput
           label="Contribution amount"
           value={contributionAmount}
           onChange={value => setContributionAmount(value)}
-          prefix={currency}
+          currency={currency}
           placeholder="e.g. 5,000"
-          type="number"
         />
         <div style={{ height: 12 }} />
         <Input
