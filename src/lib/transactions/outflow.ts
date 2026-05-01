@@ -9,7 +9,14 @@ export interface OutflowCategoryRow {
 
 export interface OutflowTransaction {
   category_type?: string | null
+  category_key?: string | null
   amount?: number | string | null
+}
+
+export function isDebtOpeningBalanceTransaction(
+  txn: Pick<OutflowTransaction, 'category_type' | 'category_key'>
+) {
+  return txn.category_type === 'debt' && txn.category_key === 'debt_opening_balance'
 }
 
 export function normalizeOutflowCategoryType(categoryType: string | null | undefined): OutflowCategoryType {
@@ -30,6 +37,7 @@ export function deriveOutflowCategoryRows(txns: OutflowTransaction[]): OutflowCa
   }
 
   for (const txn of txns) {
+    if (isDebtOpeningBalanceTransaction(txn)) continue
     const type = normalizeOutflowCategoryType(txn.category_type)
     byType[type].spent += Number(txn.amount ?? 0)
   }

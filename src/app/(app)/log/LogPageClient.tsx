@@ -46,10 +46,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const [filter, setFilter] = useState<'all' | 'everyday' | 'fixed' | 'debt'>('all')
 
   const entries = data.entries
-  const totalLogged = useMemo(
-    () => entries.reduce((sum, entry) => sum + entry.amount, 0),
-    [entries]
-  )
+  const totalLogged = data.totalOutflow
   const totalEntries = entries.length
   const visibleEntries = useMemo(
     () => filter === 'all'
@@ -74,23 +71,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
   const pageX = isDesktop ? 'var(--space-page-desktop)' : 'var(--space-page-mobile)'
 
-  const categoryDisplayName = (key: string, fallback: string) => {
-    const cleaned = key.replace(/[_-]+/g, ' ').trim()
-    if (!cleaned) return fallback
-    return cleaned.replace(/\b\w/g, c => c.toUpperCase())
-  }
-  const topCategories = useMemo(() => {
-    const sums = new Map<string, { name: string; amount: number }>()
-    for (const entry of entries) {
-      const existing = sums.get(entry.categoryKey)
-      if (existing) existing.amount += entry.amount
-      else sums.set(entry.categoryKey, {
-        name: categoryDisplayName(entry.categoryKey, entry.name),
-        amount: entry.amount,
-      })
-    }
-    return Array.from(sums.values()).sort((a, b) => b.amount - a.amount).slice(0, 3)
-  }, [entries])
+  const topCategories = data.topOutflowCategories
 
   const logOther = () => {
     router.push('/log/new?isOther=true&returnTo=/log')

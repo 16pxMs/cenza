@@ -9,6 +9,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { saveMonthlyReminderEntriesForCycle } from '@/lib/monthly-reminders/storage'
+import { isDebtOpeningBalanceTransaction } from '@/lib/transactions/outflow'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 
@@ -125,7 +126,9 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
       }
     }
 
-    const existingExpenseCount = (cycleTxns ?? []).filter((txn: any) => txn.category_type !== 'goal').length
+    const existingExpenseCount = (cycleTxns ?? []).filter((txn: any) =>
+      txn.category_type !== 'goal' && !isDebtOpeningBalanceTransaction(txn)
+    ).length
     const netNewEntries = items.reduce((sum, input) => {
       const isReplacement = input.mode === 'update' && Boolean(input.priorEntryId)
       return sum + (isReplacement ? 0 : 1)

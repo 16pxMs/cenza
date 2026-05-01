@@ -12,6 +12,7 @@ import {
 import {
   deriveOutflowCategoryRows,
   deriveOutflowTotalFromCategories,
+  isDebtOpeningBalanceTransaction,
 } from '@/lib/transactions/outflow'
 import type { Debt, GoalId, UserProfile } from '@/types/database'
 
@@ -487,7 +488,7 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     { data: goalTargetExistsRow },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('amount, category_type')
+      .select('amount, category_type, category_key')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     (supabase.from('income_entries') as any)
@@ -523,12 +524,13 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
       .maybeSingle(),
   ])
 
-  const transactionRows = (txns ?? []) as Array<Pick<OverviewTransactionRow, 'amount' | 'category_type'>>
+  const transactionRows = (txns ?? []) as Array<Pick<OverviewTransactionRow, 'amount' | 'category_type' | 'category_key'>>
+  const visibleTransactionRows = transactionRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
   const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const debtRows = (activeDebtRows ?? []) as Debt[]
 
   const totalSpent = (() => {
-    const outflowRows = deriveOutflowCategoryRows(transactionRows)
+    const outflowRows = deriveOutflowCategoryRows(visibleTransactionRows)
     return deriveOutflowTotalFromCategories(outflowRows)
   })()
 
@@ -628,6 +630,7 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
+  const visibleTransactionRows = transactionRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
   const goalTargetRows = (goalTargets ?? []) as OverviewGoalTargetRow[]
   const debtRows = (debtRowsRaw ?? []) as Debt[]
   const fixedTotal = monthlyStorage.plannedTotal
@@ -699,7 +702,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     const nextCategorySpend: Record<string, number> = {}
     const nextGoalSavedMap: Record<string, number> = {}
 
-    for (const txn of transactionRows) {
+    for (const txn of visibleTransactionRows) {
       if (txn.category_type === 'goal') {
         const addedAt = goalAddedAtMap[txn.category_key]
         if (!addedAt || txn.date >= addedAt.slice(0, 10)) {
@@ -723,7 +726,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     0
   )
 
-  const recentActivity = [...transactionRows]
+  const recentActivity = [...visibleTransactionRows]
     .sort((a, b) => {
       if (a.date === b.date) return Number(b.id) - Number(a.id)
       return b.date.localeCompare(a.date)

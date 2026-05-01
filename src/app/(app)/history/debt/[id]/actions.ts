@@ -153,23 +153,6 @@ export async function addOpeningBalance(input: AddOpeningBalanceInput): Promise<
     note: noteText,
   })
 
-  if (debtTxn) {
-    try {
-      await createAndLinkDebtMirrorTransaction({
-        userId: user.id,
-        debtName: debt.name,
-        debtTransactionId: debtTxn.id,
-        entryType: 'principal_increase',
-        amount,
-        date,
-        note: noteText,
-        profile,
-      })
-    } catch {
-      // Opening balance already committed. Mirror is best-effort.
-    }
-  }
-
   revalidatePath(`/history/debt/${debtId}`)
   revalidatePath('/history')
   revalidatePath('/app')

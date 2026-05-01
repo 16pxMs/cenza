@@ -62,6 +62,19 @@ describe('create debt actions', () => {
     expect(updateStandardDebtDueDate).not.toHaveBeenCalled()
   })
 
+  it('does not create a general expense mirror for a new opening balance', async () => {
+    const { createDebtWithOpeningBalance } = await import('./actions')
+
+    await createDebtWithOpeningBalance({
+      mode: 'standard',
+      name: 'Laptop',
+      direction: 'owed_by_me',
+      openingAmount: 45000,
+    })
+
+    expect(createAndLinkDebtMirrorTransaction).not.toHaveBeenCalled()
+  })
+
   it('does not fail the create flow when due date support is unavailable after the debt is created', async () => {
     updateStandardDebtDueDate.mockResolvedValue(false)
 

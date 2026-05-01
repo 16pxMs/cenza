@@ -131,23 +131,6 @@ export async function createDebtWithOpeningBalance(
 
     const remaining = totalCost - upfrontPaid
 
-    if (financingDebt.financing_principal_tx_id) {
-      try {
-        await createAndLinkDebtMirrorTransaction({
-          userId: user.id,
-          debtName: financingDebt.name,
-          debtTransactionId: financingDebt.financing_principal_tx_id,
-          entryType: 'principal_increase',
-          amount: remaining,
-          date: todayDateString(),
-          note,
-          profile,
-        })
-      } catch {
-        // Financing debt already committed. Mirror is best-effort.
-      }
-    }
-
     revalidatePath('/app')
     revalidatePath('/history')
     revalidatePath('/history/debt')
@@ -199,21 +182,6 @@ export async function createDebtWithOpeningBalance(
 
   if (!openingTransaction) {
     throw new Error('Failed to create opening debt balance')
-  }
-
-  try {
-    await createAndLinkDebtMirrorTransaction({
-      userId: user.id,
-      debtName: debt.name,
-      debtTransactionId: openingTransaction.id,
-      entryType: 'principal_increase',
-      amount,
-      date: todayDateString(),
-      note,
-      profile,
-    })
-  } catch {
-    // Debt and opening balance already committed. Mirror is best-effort.
   }
 
   if (dueDate) {

@@ -19,6 +19,7 @@ import type { UserProfile } from '@/types/database'
 
 export interface HistoryTransaction {
   category_type: string
+  category_key: string
   amount: number
 }
 
@@ -97,7 +98,7 @@ export async function loadHistoryPageData(
     availableCycleIds,
   ] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('category_type, amount')
+      .select('category_type, category_key, amount')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     (supabase.from('income_entries') as any)
@@ -111,7 +112,8 @@ export async function loadHistoryPageData(
   ])
 
   const rows: HistoryTransaction[] = (txnRows ?? []).map((row: any) => ({
-    ...row,
+    category_type: String(row.category_type ?? ''),
+    category_key: String(row.category_key ?? ''),
     amount: Number(row.amount),
   }))
   const categoryRows = deriveOutflowCategoryRows(rows)

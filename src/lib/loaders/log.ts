@@ -4,6 +4,11 @@ import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { loadMonthlyReminderEntriesForCycle } from '@/lib/monthly-reminders/storage'
+import {
+  deriveOutflowCategoryRows,
+  deriveOutflowTotalFromCategories,
+  isDebtOpeningBalanceTransaction,
+} from '@/lib/transactions/outflow'
 
 export interface LogSubItem {
   key: string
@@ -44,6 +49,8 @@ export interface LogPageData {
   cycleLabel: string
   currency: string
   entries: LogEntry[]
+  totalOutflow: number
+  topOutflowCategories: Array<{ name: string; amount: number }>
 }
 
 function titleCase(value: string) {
@@ -113,6 +120,12 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     note?: string | null
     created_at: string
   }>
+  const visibleTxRows = txRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
+  const outflowRows = deriveOutflowCategoryRows(visibleTxRows)
+  const totalOutflow = deriveOutflowTotalFromCategories(outflowRows)
+  const topOutflowCategories = outflowRows
+    .slice(0, 3)
+    .map((row) => ({ name: row.label, amount: row.spent }))
 
   const monthlyReminderEntriesByKey = new Map(
     monthlyReminderEntries.map((entry) => [entry.key, entry] as const)
@@ -120,10 +133,10 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const debtMetadataByLinkedTransactionId = await loadDebtMirrorMetadata(
     supabase,
     userId,
-    txRows.filter((txn) => txn.category_type === 'debt').map((txn) => txn.id)
+    visibleTxRows.filter((txn) => txn.category_type === 'debt').map((txn) => txn.id)
   )
 
-  const entries: LogEntry[] = txRows
+  const entries: LogEntry[] = visibleTxRows
     .filter((txn) => txn.category_type !== 'goal')
     .map((txn) => {
       const categoryType = normalizeCategoryType(txn.category_type)
@@ -160,6 +173,8 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     cycleLabel: formatCycleLabel(getCycleByDate(new Date(), schedule)),
     currency,
     entries,
+    totalOutflow,
+    topOutflowCategories,
   }
 }
 
@@ -181,6 +196,7 @@ export async function loadEntryById(
   ])
 
   if (!txn) return null
+  if (isDebtOpeningBalanceTransaction(txn)) return null
 
   const monthlyReminderEntriesByKey = new Map(
     monthlyReminderEntries.map((entry) => [entry.key, entry] as const)

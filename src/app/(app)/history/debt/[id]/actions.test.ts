@@ -155,6 +155,36 @@ describe('debt detail actions', () => {
     })
   })
 
+  it('does not create a general expense mirror when adding an opening balance', async () => {
+    getDebt.mockResolvedValue({
+      id: 'debt-1',
+      name: 'Visa',
+      direction: 'owed_by_me',
+      current_balance: 0,
+      currency: 'KES',
+    })
+    addDebtTransaction.mockResolvedValue({ id: 'txn-1' })
+
+    const { addOpeningBalance } = await import('./actions')
+
+    await addOpeningBalance({
+      debtId: 'debt-1',
+      amount: 4000,
+      date: '2026-05-01',
+      note: 'Start tracking',
+    })
+
+    expect(addDebtTransaction).toHaveBeenCalledWith({
+      debtId: 'debt-1',
+      entryType: 'principal_increase',
+      amount: 4000,
+      currency: 'KES',
+      transactionDate: '2026-05-01',
+      note: 'Start tracking',
+    })
+    expect(createAndLinkDebtMirrorTransaction).not.toHaveBeenCalled()
+  })
+
   it('treats an already-missing debt as a successful delete redirect', async () => {
     getDebtTransactions.mockRejectedValue(new Error('Debt debt-1 does not exist'))
 

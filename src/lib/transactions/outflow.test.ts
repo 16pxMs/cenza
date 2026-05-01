@@ -44,4 +44,18 @@ describe('outflow bucket grouping', () => {
 
     expect(deriveOutflowTotalFromCategories(rows)).toBe(600)
   })
+
+  it('excludes debt opening balance from outflow totals', () => {
+    const rows = deriveOutflowCategoryRows([
+      { category_type: 'debt', category_key: 'debt_opening_balance', amount: 4000 },
+      { category_type: 'debt', category_key: 'debt_repayment', amount: 300 },
+      { category_type: 'everyday', category_key: 'food', amount: 200 },
+    ])
+
+    expect(rows).toEqual([
+      { key: 'debt-entries', type: 'debt', label: 'Debt', spent: 300 },
+      { key: 'everyday', type: 'everyday', label: 'Spending', spent: 200 },
+    ])
+    expect(deriveOutflowTotalFromCategories(rows)).toBe(500)
+  })
 })

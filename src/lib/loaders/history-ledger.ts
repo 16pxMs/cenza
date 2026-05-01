@@ -1,7 +1,11 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { formatCycleLabel, getCurrentCycle, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
-import { normalizeOutflowCategoryType, type OutflowCategoryType } from '@/lib/transactions/outflow'
+import {
+  isDebtOpeningBalanceTransaction,
+  normalizeOutflowCategoryType,
+  type OutflowCategoryType,
+} from '@/lib/transactions/outflow'
 import type { CategoryType, UserProfile } from '@/types/database'
 
 export interface LedgerTransaction {
@@ -46,7 +50,7 @@ export async function loadHistoryLedgerPageData(
     : deriveCurrentCycleId(profile)
 
   const baseQuery = (supabase.from('transactions') as any)
-    .select('id, date, amount, note, category_label, category_type')
+    .select('id, date, amount, note, category_key, category_label, category_type')
     .eq('user_id', userId)
     .eq('cycle_id', cycleId)
 
@@ -69,7 +73,10 @@ export async function loadHistoryLedgerPageData(
     .order('created_at', { ascending: false })
 
   const filteredRows = outflowBucketType
-    ? (data ?? []).filter((row: any) => normalizeOutflowCategoryType(row.category_type) === outflowBucketType)
+    ? (data ?? []).filter((row: any) =>
+        !isDebtOpeningBalanceTransaction(row) &&
+        normalizeOutflowCategoryType(row.category_type) === outflowBucketType
+      )
     : (data ?? [])
 
   const txns: LedgerTransaction[] = filteredRows.map((row: any) => ({

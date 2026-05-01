@@ -70,6 +70,73 @@ const T = {
   textInverse: 'var(--text-inverse)',
 }
 
+const actionCardStyle: React.CSSProperties = {
+  background: T.white,
+  border: `1px solid ${T.border}`,
+  borderRadius: 'var(--radius-lg)',
+  overflow: 'hidden',
+}
+
+const actionRowButtonStyle: React.CSSProperties = {
+  width: '100%',
+  textAlign: 'left',
+  padding: 'var(--space-md)',
+  background: T.white,
+  border: 'none',
+  cursor: 'pointer',
+}
+
+const actionRowTitleStyle: React.CSSProperties = {
+  fontSize: 'var(--text-base)',
+  fontWeight: 'var(--weight-semibold)',
+  color: T.text1,
+}
+
+const actionRowMetaStyle: React.CSSProperties = {
+  fontSize: 'var(--text-xs)',
+  color: T.text3,
+  marginTop: 'var(--space-xs)',
+  lineHeight: 1.45,
+}
+
+function ActionCard({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return <div style={actionCardStyle}>{children}</div>
+}
+
+function ActionRow({
+  title,
+  meta,
+  onClick,
+  disabled = false,
+  danger = false,
+}: {
+  title: string
+  meta: string
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        ...actionRowButtonStyle,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      <div style={{ ...actionRowTitleStyle, color: danger ? 'var(--red-dark)' : T.text1 }}>
+        {title}
+      </div>
+      <div style={actionRowMetaStyle}>{meta}</div>
+    </button>
+  )
+}
+
 interface Props {
   entry: LogEntry
   currency: string
@@ -465,7 +532,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
 
   const content = (
     <div>
-      <div style={{ padding: isDesktop ? '32px 32px 0' : `18px ${pageX} 0` }}>
+      <div style={{ padding: isDesktop ? 'var(--space-xl) var(--space-page-desktop) 0' : `var(--space-lg) ${pageX} 0` }}>
         <button
           onClick={goBack}
           style={{
@@ -484,64 +551,78 @@ export function EntryActionsClient({ entry, currency }: Props) {
         </button>
       </div>
 
-      {/* Summary block */}
-      <div style={{
-        textAlign: 'center',
-        padding: 'var(--space-xl) 0 var(--space-lg)',
-      }}>
-        <div style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 'var(--text-xl)',
-          fontWeight: 'var(--weight-bold)',
-          color: T.text1,
-          lineHeight: 1.1,
-          letterSpacing: '-0.02em',
-        }}>
-          {entry.name}
-        </div>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 'var(--space-xs)',
-          fontSize: 'var(--text-sm)',
-          color: T.text2,
-          marginTop: 'var(--space-xs)',
-          lineHeight: 1.25,
-        }}>
-          <span>{CATEGORY_LABEL[entry.categoryType] ?? 'Other'}</span>
-          <span style={{ opacity: 0.3 }}>·</span>
-          <span>{fmt(entry.amount, currency)}</span>
-          {entry.date && (
-            <>
-              <span style={{ opacity: 0.3 }}>·</span>
-              <span>{formatDate(entry.date)}</span>
-            </>
+      <div style={{ padding: `var(--space-lg) ${pageX} 0`, display: 'grid', gap: 'var(--space-md)' }}>
+        <div
+          style={{
+            background: T.white,
+            border: `1px solid ${T.border}`,
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-lg)',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-xl)',
+            fontWeight: 'var(--weight-bold)',
+            color: T.text1,
+            lineHeight: 1.1,
+            letterSpacing: '-0.02em',
+          }}>
+            {entry.name}
+          </div>
+          <div style={{
+            marginTop: 'var(--space-sm)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-lg)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.text1,
+            lineHeight: 1.15,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {fmt(entry.amount, currency)}
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-xs)',
+            fontSize: 'var(--text-sm)',
+            color: T.text2,
+            marginTop: 'var(--space-xs)',
+            lineHeight: 1.25,
+            flexWrap: 'wrap',
+          }}>
+            <span>{CATEGORY_LABEL[entry.categoryType] ?? 'Other'}</span>
+            {entry.date && (
+              <>
+                <span style={{ opacity: 0.3 }}>·</span>
+                <span>{formatDate(entry.date)}</span>
+              </>
+            )}
+          </div>
+          {entry.hasMonthlyReminder && (
+            <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 22,
+                padding: '0 var(--space-sm)',
+                borderRadius: 'var(--radius-full)',
+                border: `var(--border-width) solid ${T.borderSubtle}`,
+                background: T.pageBg,
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-semibold)',
+                color: T.textMuted,
+                letterSpacing: '0.02em',
+              }}>
+                Monthly reminder
+              </span>
+            </div>
           )}
         </div>
-        {entry.hasMonthlyReminder && (
-          <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              minHeight: 22,
-              padding: '0 var(--space-sm)',
-              borderRadius: 'var(--radius-full)',
-              border: `var(--border-width) solid ${T.borderSubtle}`,
-              background: T.pageBg,
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-semibold)',
-              color: T.textMuted,
-              letterSpacing: '0.02em',
-            }}>
-              Monthly reminder
-            </span>
-          </div>
-        )}
-      </div>
 
-      {/* Action cards */}
-      <div style={{ padding: `0 ${pageX}`, display: 'grid', gap: 'var(--space-sm)' }}>
+        {/* Action cards */}
         {isDebtEntry ? (
           <>
             {isUnlinkedDebtEntry && (
@@ -560,262 +641,90 @@ export function EntryActionsClient({ entry, currency }: Props) {
               </div>
             )}
 
-            {hasLinkedDebt ? (
-              <div style={{
-                background: T.white,
-                border: `1px solid ${T.border}`,
-                borderRadius: 'var(--radius-lg)',
-                overflow: 'hidden',
-              }}>
-                <button
-                  onClick={() => router.push(debtHref)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: 'var(--space-md)',
-                    background: T.white,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                    Open debt
+            <ActionCard>
+              {hasLinkedDebt ? (
+                <>
+                  <ActionRow
+                    title="Open debt"
+                    meta="View this in Things to pay"
+                    onClick={() => router.push(debtHref)}
+                  />
+                  {entry.debtId && (
+                    <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+                      <ActionRow
+                        title="Add payment"
+                        meta="Record another payment for this debt"
+                        onClick={() => router.push(`${debtHref}&action=add-payment`)}
+                      />
+                    </div>
+                  )}
+                  <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+                    <ActionRow
+                      title={entry.debtEntryType === 'principal_increase' ? 'Edit opening balance' : 'Edit entry'}
+                      meta={`Update the debt ${debtEntryLabel}`}
+                      onClick={openDebtEdit}
+                    />
                   </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                    View this in Things to pay
-                  </div>
-                </button>
-              </div>
-            ) : (
-              <>
-                <div style={{
-                  background: T.white,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 'var(--radius-lg)',
-                  overflow: 'hidden',
-                }}>
-                  <button
+                </>
+              ) : (
+                <>
+                  <ActionRow
+                    title="Track as new debt"
+                    meta="Start a debt record with this amount"
                     onClick={openCreateDebt}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: 'var(--space-md)',
-                      background: T.white,
-                      border: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                      Track as new debt
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                      Start a debt record with this amount
-                    </div>
-                  </button>
-                </div>
-
-                <div style={{
-                  background: T.white,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 'var(--radius-lg)',
-                  overflow: 'hidden',
-                }}>
-                  <button
-                    onClick={openLinkDebt}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: 'var(--space-md)',
-                      background: T.white,
-                      border: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                      Connect to a debt
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                      Use this entry on a debt you already track
-                    </div>
-                  </button>
-                </div>
-              </>
-            )}
-
-            {entry.debtId && (
-              <div style={{
-                background: T.white,
-                border: `1px solid ${T.border}`,
-                borderRadius: 'var(--radius-lg)',
-                overflow: 'hidden',
-                }}>
-                <button
-                  onClick={() => router.push(`${debtHref}&action=add-payment`)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: 'var(--space-md)',
-                    background: T.white,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                    Add payment
+                  />
+                  <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+                    <ActionRow
+                      title="Connect to a debt"
+                      meta="Use this entry on a debt you already track"
+                      onClick={openLinkDebt}
+                    />
                   </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                    Record another payment for this debt
+                  <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+                    <ActionRow
+                      title="Edit entry"
+                      meta="Change the category if this is not really debt"
+                      onClick={openEdit}
+                    />
                   </div>
-                </button>
-              </div>
-            )}
-
-            {hasLinkedDebt && (
-              <div style={{
-                background: T.white,
-                border: `1px solid ${T.border}`,
-                borderRadius: 'var(--radius-lg)',
-                overflow: 'hidden',
-              }}>
-                <button
-                  onClick={openDebtEdit}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: 'var(--space-md)',
-                    background: T.white,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                    {entry.debtEntryType === 'principal_increase' ? 'Edit opening balance' : 'Edit entry'}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                    Update the debt {debtEntryLabel}
-                  </div>
-                </button>
-              </div>
-            )}
-
-            {isUnlinkedDebtEntry && (
-              <div style={{
-                background: T.white,
-                border: `1px solid ${T.border}`,
-                borderRadius: 'var(--radius-lg)',
-                overflow: 'hidden',
-              }}>
-                <button
-                  onClick={openEdit}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: 'var(--space-md)',
-                    background: T.white,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                    Edit entry
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                    Change the category if this is not really debt
-                  </div>
-                </button>
-              </div>
-            )}
+                </>
+              )}
+            </ActionCard>
           </>
         ) : isGoalEntry ? (
           <>
-            <div style={{
-              background: T.white,
-              border: `1px solid ${T.border}`,
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-            }}>
-              <button
+            <ActionCard>
+              <ActionRow
+                title="Open goal"
+                meta="View this in Goals"
                 onClick={() => router.push('/goals')}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: 'var(--space-md)',
-                  background: T.white,
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                  Open goal
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                  View this in Goals
-                </div>
-              </button>
-            </div>
-
-            <div style={{
-              background: T.white,
-              border: `1px solid ${T.border}`,
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-            }}>
-              <button
-                onClick={openGoalEdit}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: 'var(--space-md)',
-                  background: T.white,
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                  Edit entry
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                  Update this goal contribution
-                </div>
-              </button>
-            </div>
+              />
+              <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+                <ActionRow
+                  title="Edit entry"
+                  meta="Update this goal contribution"
+                  onClick={openGoalEdit}
+                />
+              </div>
+            </ActionCard>
           </>
         ) : (
-          <div style={{
-            background: T.white,
-            border: `1px solid ${T.border}`,
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-          }}>
-            <button
+          <ActionCard>
+            <ActionRow
+              title="Edit expense"
+              meta="Change amount or category"
               onClick={openEdit}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: 'var(--space-md)',
-                background: T.white,
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                Edit expense
-              </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                Change amount or category
-              </div>
-            </button>
-          </div>
+            />
+          </ActionCard>
         )}
 
         {!isDebtEntry && !isGoalEntry && (entry.categoryType === 'everyday' || entry.categoryType === 'fixed') && (
-          <div style={{
-            background: T.white,
-            border: `1px solid ${T.border}`,
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-          }}>
-            <button
+          <ActionCard>
+            <ActionRow
+              title={entry.hasMonthlyReminder ? 'Remove monthly reminder' : 'Remind me about this every month'}
+              meta={entry.hasMonthlyReminder
+                ? 'We’ll stop reminding you before it’s due'
+                : 'We’ll remind you before it’s due'}
               onClick={
                 entry.hasMonthlyReminder
                   ? handleToggleMonthlyReminder
@@ -826,78 +735,34 @@ export function EntryActionsClient({ entry, currency }: Props) {
                     }
               }
               disabled={savingMonthlyReminder}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: 'var(--space-md)',
-                background: T.white,
-                border: 'none',
-                cursor: savingMonthlyReminder ? 'default' : 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                {entry.hasMonthlyReminder ? 'Remove monthly reminder' : 'Remind me about this every month'}
-              </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-                {entry.hasMonthlyReminder
-                  ? 'We’ll stop reminding you before it’s due'
-                  : 'We’ll remind you before it’s due'}
-              </div>
-            </button>
-          </div>
+            />
+          </ActionCard>
         )}
 
         {!isDebtEntry && !isGoalEntry && (
-          <div style={{
-            background: T.white,
-            border: `1px solid ${T.border}`,
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-          }}>
-            <button
+          <ActionCard>
+            <ActionRow
+              title="Refund"
+              meta="Log money returned"
               onClick={() => { setRefundAmount(''); setRefundNote(''); setActiveFlow('refund') }}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: 'var(--space-md)',
-                background: T.white,
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>Refund</div>
-              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>Log money returned</div>
-            </button>
-          </div>
+            />
+          </ActionCard>
         )}
 
-        <div style={{
-          background: T.white,
-          border: `1px solid ${T.border}`,
-          borderRadius: 'var(--radius-lg)',
-          overflow: 'hidden',
-        }}>
-          <button
-            onClick={() => setActiveFlow('confirm')}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              padding: 'var(--space-md)',
-              background: T.white,
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--red-dark)' }}>Delete entry</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, marginTop: 2 }}>
-              {isDebtEntry
+        <ActionCard>
+          <ActionRow
+            title="Delete entry"
+            meta={
+              isDebtEntry
                 ? `Remove this debt ${debtEntryLabel}`
                 : isGoalEntry
                   ? 'Remove this goal contribution'
-                  : 'Remove this expense'}
-            </div>
-          </button>
-        </div>
+                  : 'Remove this expense'
+            }
+            onClick={() => setActiveFlow('confirm')}
+            danger
+          />
+        </ActionCard>
       </div>
 
       {/* Sub-flow sheets */}
@@ -1513,8 +1378,8 @@ export function EntryActionsClient({ entry, currency }: Props) {
         onClose={() => setActiveFlow(null)}
         title="Are you sure?"
       >
-        <div>
-          <p style={{ fontSize: 14, color: '#475467', margin: '0 0 24px', lineHeight: 1.6 }}>
+        <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.6 }}>
             {isDebtEntry
               ? (
                   <>
@@ -1536,34 +1401,22 @@ export function EntryActionsClient({ entry, currency }: Props) {
                   </>
                 )}
           </p>
-          <button
-            onClick={handleDeleteEntry}
-            disabled={deletingKey === entry.id}
-            style={{
-              width: '100%',
-              padding: '14px',
-              borderRadius: 14,
-              background: '#D93025',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 15,
-              fontWeight: 600,
-              color: T.textInverse,
-              opacity: deletingKey === entry.id ? 0.6 : 1,
-            }}
-          >
-            {deletingKey === entry.id ? 'Removing…' : 'Yes, remove it'}
-          </button>
-          <TertiaryBtn
-            size="md"
-            onClick={() => setActiveFlow(null)}
-            style={{
-              marginTop: 10,
-              padding: '12px',
-            }}
-          >
-            Go back
-          </TertiaryBtn>
+          <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+            <PrimaryBtn
+              size="lg"
+              onClick={handleDeleteEntry}
+              disabled={deletingKey === entry.id}
+              style={{ background: 'var(--red-dark)', color: T.textInverse }}
+            >
+              {deletingKey === entry.id ? 'Removing…' : 'Yes, remove it'}
+            </PrimaryBtn>
+            <SecondaryBtn
+              size="lg"
+              onClick={() => setActiveFlow(null)}
+            >
+              Go back
+            </SecondaryBtn>
+          </div>
         </div>
       </Sheet>
 
@@ -1572,93 +1425,38 @@ export function EntryActionsClient({ entry, currency }: Props) {
         onClose={() => setActiveFlow(null)}
         title="Log a refund"
       >
-        <div>
-          <p style={{ fontSize: 14, color: '#475467', margin: '0 0 20px', lineHeight: 1.6 }}>
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.6 }}>
             How much was refunded for <strong>{entry.name}</strong>?
           </p>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            border: '1px solid var(--border-strong)',
-            borderRadius: 12,
-            background: T.white,
-            overflow: 'hidden',
-            marginBottom: 12,
-          }}>
-            <span style={{
-              padding: '0 14px',
-              fontSize: 14,
-              fontWeight: 600,
-              color: T.text3,
-              borderRight: '1px solid var(--border-subtle)',
-              whiteSpace: 'nowrap',
-            }}>
-              {currency}
-            </span>
-            <input
-              autoFocus
-              type="text"
-              inputMode="decimal"
-              placeholder="0"
-              value={refundAmount.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-              onChange={event => {
-                const raw = event.target.value.replace(/,/g, '')
-                if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
-                setRefundAmount(raw)
-              }}
-              style={{
-                flex: 1,
-                height: 52,
-                border: 'none',
-                outline: 'none',
-                padding: '0 14px',
-                fontSize: 18,
-                fontWeight: 600,
-                color: T.text1,
-                background: 'transparent',
-              }}
-            />
-          </div>
-          <input
-            type="text"
-            placeholder="Note (optional)"
-            value={refundNote}
-            onChange={event => setRefundNote(event.target.value)}
-            style={{
-              width: '100%',
-              height: 46,
-              borderRadius: 12,
-              border: '1px solid var(--border)',
-              padding: '0 14px',
-              fontSize: 14,
-              color: T.text1,
-              background: T.white,
-              outline: 'none',
-              boxSizing: 'border-box',
-              marginBottom: 20,
-            }}
+          <MoneyInput
+            label="Amount"
+            currency={currency}
+            value={refundAmount}
+            onChange={(value) => setRefundAmount(value)}
+            autoFocus
           />
-          <PrimaryBtn
-            size="lg"
-            onClick={handleSaveRefund}
-            disabled={!refundAmount || parseFloat(refundAmount) <= 0 || savingRefund}
-            style={{
-              background: refundAmount && parseFloat(refundAmount) > 0 ? T.brandDark : T.border,
-              color: refundAmount && parseFloat(refundAmount) > 0 ? T.textInverse : T.textMuted,
-            }}
-          >
-            {savingRefund ? 'Saving…' : 'Log refund'}
-          </PrimaryBtn>
-          <TertiaryBtn
-            size="md"
-            onClick={() => setActiveFlow(null)}
-            style={{
-              marginTop: 10,
-              padding: '12px',
-            }}
-          >
-            Go back
-          </TertiaryBtn>
+          <Input
+            label="Note"
+            value={refundNote}
+            onChange={setRefundNote}
+            placeholder="Optional note"
+          />
+          <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+            <PrimaryBtn
+              size="lg"
+              onClick={handleSaveRefund}
+              disabled={!refundAmount || parseFloat(refundAmount) <= 0 || savingRefund}
+            >
+              {savingRefund ? 'Saving…' : 'Log refund'}
+            </PrimaryBtn>
+            <SecondaryBtn
+              size="lg"
+              onClick={() => setActiveFlow(null)}
+            >
+              Go back
+            </SecondaryBtn>
+          </div>
         </div>
       </Sheet>
     </div>

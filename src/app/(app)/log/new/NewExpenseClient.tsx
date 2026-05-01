@@ -13,6 +13,7 @@ import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components
 import { saveExpenseBatch } from './actions'
 import { GOAL_META } from '@/constants/goals'
 import type { GoalId } from '@/types/database'
+import { isDebtOpeningBalanceTransaction } from '@/lib/transactions/outflow'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
 type Step = 'method' | 'queue' | 'review' | 'done'
@@ -474,7 +475,9 @@ export function NewExpenseClient() {
       ])
 
       const hasIncomeForCurrentCycle = hasIncomeForCycle(incomeRow)
-      const existingExpenseCount = (txRows ?? []).filter((txn: any) => txn.category_type !== 'goal').length
+      const existingExpenseCount = (txRows ?? []).filter((txn: any) =>
+        txn.category_type !== 'goal' && !isDebtOpeningBalanceTransaction(txn)
+      ).length
 
       setQuickEntryStatus({
         loaded: true,
