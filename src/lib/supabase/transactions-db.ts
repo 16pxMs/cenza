@@ -18,6 +18,7 @@ export interface TransactionWriteInput {
   categoryType: CategoryType
   categoryKey: string
   categoryLabel: string
+  displayName: string
   amount: number
   note?: string | null
 }
@@ -89,6 +90,10 @@ export function buildTransactionRecord(input: TransactionWriteInput) {
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
   })
+  const displayName = input.displayName.trim()
+  if (!displayName) {
+    throw new Error('Display name is required')
+  }
 
   return {
     user_id: input.userId,
@@ -97,6 +102,7 @@ export function buildTransactionRecord(input: TransactionWriteInput) {
     category_type: resolvedCategory.categoryType,
     category_key: resolvedCategory.categoryKey,
     category_label: resolvedCategory.categoryLabel,
+    display_name: displayName,
     amount: input.amount,
     note: input.note?.trim() || null,
   }
@@ -136,6 +142,7 @@ export async function createCycleTransaction(
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
+    displayName: input.displayName,
     amount: input.amount,
     note: input.note,
   })
@@ -152,6 +159,7 @@ export async function createCycleRefundTransaction(
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
+    displayName: input.displayName,
     amount: -Math.abs(input.amount),
     note: input.note,
   })

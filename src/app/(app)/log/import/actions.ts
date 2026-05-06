@@ -16,6 +16,7 @@ import {
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { buildDictionaryCategoryWriteRecord } from '@/lib/categories/dictionary-write'
+import { DUPLICATE_MESSAGE } from './state'
 import {
   loadMonthlyReminderEntriesForCycle,
   saveMonthlyReminderEntriesForCycle,
@@ -506,7 +507,7 @@ export async function saveParsedSmsExpenses(
   for (const { row } of rowMeta) {
     if (!row.sourceHash) continue
     if (importedHashes.has(row.sourceHash) || seenHashInBatch.has(row.sourceHash)) {
-      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), 'This message was already added']
+      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), DUPLICATE_MESSAGE]
       continue
     }
     seenHashInBatch.add(row.sourceHash)
@@ -693,6 +694,7 @@ export async function saveParsedSmsExpenses(
         categoryType: row.categoryType,
         categoryKey: persistedKey,
         categoryLabel: row.label,
+        displayName: row.label,
         amount: row.amount,
         note: 'Imported from SMS',
       })
@@ -731,6 +733,7 @@ export async function saveParsedSmsExpenses(
             categoryType: 'debt',
             categoryKey: 'debt_repayment',
             categoryLabel: debt.name,
+            displayName: `${debt.name} payment`,
             amount: row.amount,
             note: 'Imported from SMS',
           }))

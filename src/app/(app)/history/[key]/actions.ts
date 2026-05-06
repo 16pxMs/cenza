@@ -102,6 +102,7 @@ export async function refundHistoryCategory(input: RefundHistoryEntryInput): Pro
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
+    displayName: input.categoryLabel,
     amount,
     note: input.note?.trim() || 'Refund',
   })

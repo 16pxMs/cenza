@@ -10,11 +10,9 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconMore } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
-import { getCategoryLabel } from '@/lib/categories/config'
-import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import type { CategoryType } from '@/types/database'
 import type { HistoryLedgerPageData, LedgerTransaction } from '@/lib/loaders/history-ledger'
-import { deleteHistoryEntry, refundHistoryCategory, updateHistoryEntry } from './actions'
+import { deleteHistoryEntry, refundHistoryCategory } from './actions'
 
 const T = {
   brand: 'var(--brand)',
@@ -37,8 +35,6 @@ const T = {
   grey100: 'var(--grey-100)',
 }
 
-const EDITABLE_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
-
 interface CategoryLedgerPageClientProps {
   data: HistoryLedgerPageData
   categoryKey: string
@@ -60,15 +56,6 @@ export default function CategoryLedgerPageClient({
   const { toast } = useToast()
   const { isDesktop } = useBreakpoint()
 
-  const [editId, setEditId] = useState<string | null>(null)
-  const [editAmount, setEditAmount] = useState('')
-  const [editDate, setEditDate] = useState('')
-  const [editNote, setEditNote] = useState('')
-  const [editLabel, setEditLabel] = useState('')
-  const [editCategoryKey, setEditCategoryKey] = useState<string | null>(null)
-  const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
-  const [focusedField, setFocusedField] = useState<'label' | 'amount' | 'date' | 'note' | null>(null)
-  const [saving, setSaving] = useState(false)
   const [activeEntry, setActiveEntry] = useState<LedgerTransaction | null>(null)
   const [entrySheetStep, setEntrySheetStep] = useState<'menu' | 'confirm' | 'refund'>('menu')
   const [deleting, setDeleting] = useState(false)
@@ -76,20 +63,7 @@ export default function CategoryLedgerPageClient({
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
 
-  const labelRef = useRef<HTMLInputElement>(null)
   const refundRef = useRef<HTMLInputElement>(null)
-
-  const openEdit = (txn: LedgerTransaction) => {
-    setEditId(txn.id)
-    setEditAmount(String(txn.amount))
-    setEditDate(txn.date)
-    setEditNote(txn.note ?? '')
-    setEditLabel(getEntryTitle(txn))
-    setEditCategoryKey(categoryKey)
-    setEditIsSmsMeta((txn.note ?? '').trim().toLowerCase() === 'imported from sms')
-    setFocusedField('label')
-    setTimeout(() => labelRef.current?.focus(), 80)
-  }
 
   const goBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -101,31 +75,6 @@ export default function CategoryLedgerPageClient({
 
   const refreshPage = () => {
     router.refresh()
-  }
-
-  const handleSave = async () => {
-    const amount = parseFloat(editAmount) || 0
-    if (!editId || amount <= 0 || !editCategoryKey) return
-
-    setSaving(true)
-    try {
-      await updateHistoryEntry({
-        id: editId,
-        amount,
-        date: editDate,
-        note: editNote,
-        categoryKey: editCategoryKey ?? '',
-        currentCategoryKey: categoryKey,
-      })
-      toast('Entry updated')
-      setEditId(null)
-      setFocusedField(null)
-      refreshPage()
-    } catch {
-      toast('Could not update entry')
-    } finally {
-      setSaving(false)
-    }
   }
 
   const handleDelete = async () => {
@@ -153,7 +102,7 @@ export default function CategoryLedgerPageClient({
       await refundHistoryCategory({
         categoryType,
         categoryKey,
-        categoryLabel: getEntryTitle(activeEntry),
+        categoryLabel: activeEntry.categoryLabel?.trim() || categoryLabel,
         amount,
         note: refundNote,
       })
@@ -257,7 +206,10 @@ export default function CategoryLedgerPageClient({
     return acc
   }, {})
   const sortedDates = Object.keys(dateGroups).sort((a, b) => b.localeCompare(a))
-  const getEntryTitle = (txn: LedgerTransaction) => {
+  const getVisibleEntryTitle = (txn: LedgerTransaction) => {
+    const displayName = txn.displayName?.trim()
+    if (displayName) return displayName
+
     const label = txn.categoryLabel?.trim()
     if (label) return label
     if (txn.amount < 0) return categoryType === 'debt' ? 'Debt payback' : 'Refund'
@@ -391,10 +343,9 @@ export default function CategoryLedgerPageClient({
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {dateGroups[date].map(txn => {
-                    const isEditing = editId === txn.id
                     const isRefund = txn.amount < 0
                     const hasNote = !!(txn.note && txn.note !== 'Refund')
-                    const entryTitle = getEntryTitle(txn)
+                    const entryTitle = getVisibleEntryTitle(txn)
                     const showEntryTitle = entryTitle.trim().toLowerCase() !== normalizedCategoryLabel
                     const entryDateLabel = formatDate(txn.date)
                     const fallbackDetail = `No description · ${entryDateLabel}`
@@ -447,233 +398,29 @@ export default function CategoryLedgerPageClient({
 
                           {!isRefund && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-                              {isEditing ? (
-                                <TertiaryBtn
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditId(null)
-                                    setFocusedField(null)
-                                  }}
-                                  style={{
-                                    padding: 0,
-                                    lineHeight: 1,
-                                  }}
-                                >
-                                  Cancel
-                                </TertiaryBtn>
-                              ) : (
-                                <button
-                                  onClick={() => openEntryMenu(txn)}
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 999,
-                                    border: `1px solid ${T.border}`,
-                                    background: T.grey100,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: T.text2,
-                                    cursor: 'pointer',
-                                    flexShrink: 0,
-                                  }}
-                                  aria-label="More actions"
-                                >
-                                  <IconMore size={18} color="var(--text-2)" />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => openEntryMenu(txn)}
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 999,
+                                  border: `1px solid ${T.border}`,
+                                  background: T.grey100,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: T.text2,
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                                aria-label="More actions"
+                              >
+                                <IconMore size={18} color="var(--text-2)" />
+                              </button>
                             </div>
                           )}
                         </div>
 
-                        {isEditing && (
-                          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--grey-25)' }}>
-                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                              Name
-                            </div>
-                            <input
-                              ref={labelRef}
-                              type="text"
-                              value={editLabel}
-                              onChange={event => setEditLabel(event.target.value)}
-                              onFocus={() => setFocusedField('label')}
-                              onBlur={() => setFocusedField((current) => (current === 'label' ? null : current))}
-                              placeholder="Expense name"
-                              style={{
-                                height: 40,
-                                borderRadius: 10,
-                                border: `2px solid ${focusedField === 'label' ? 'var(--border-focus)' : 'var(--border)'}`,
-                                padding: '0 12px',
-                                fontSize: 'var(--text-sm)',
-                                color: T.text1,
-                                background: T.white,
-                                outline: 'none',
-                                width: '100%',
-                                boxSizing: 'border-box',
-                              }}
-                            />
-                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
-                              Amount
-                            </div>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={(() => {
-                                if (!editAmount) return ''
-                                const parts = editAmount.split('.')
-                                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-                                return parts.join('.')
-                              })()}
-                              onChange={event => {
-                                const value = event.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
-                                const parts = value.split('.')
-                                if (parts.length > 2 || (parts[1] && parts[1].length > 2)) return
-                                setEditAmount(value)
-                              }}
-                              onFocus={() => setFocusedField('amount')}
-                              onBlur={() => setFocusedField((current) => (current === 'amount' ? null : current))}
-                              onKeyDown={event => { if (event.key === 'Enter') handleSave() }}
-                              style={{
-                                height: 44,
-                                borderRadius: 10,
-                                border: `2px solid ${focusedField === 'amount' ? 'var(--border-focus)' : 'var(--border)'}`,
-                                padding: '0 12px',
-                                fontSize: 'var(--text-md)',
-                                fontWeight: 'var(--weight-semibold)',
-                                color: T.text1,
-                                background: T.white,
-                                outline: 'none',
-                                width: '100%',
-                                boxSizing: 'border-box',
-                              }}
-                            />
-                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
-                              Count this as
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              {EDITABLE_CATEGORY_GROUPS.map((group) => (
-                                <div key={group.type} style={{ width: '100%' }}>
-                                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, marginBottom: 6 }}>
-                                    {group.label}
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                    {group.options.map((option) => {
-                                      const active = editCategoryKey === option.key
-                                      return (
-                                        <button
-                                          key={option.key}
-                                          type="button"
-                                          onClick={() => setEditCategoryKey(option.key)}
-                                          style={{
-                                            height: 36,
-                                            borderRadius: 999,
-                                            border: `1px solid ${active ? 'var(--brand-mid)' : 'var(--border)'}`,
-                                            background: active ? 'var(--brand)' : T.white,
-                                            color: active ? T.brandDark : T.text1,
-                                            padding: '0 16px',
-                                            fontSize: 'var(--text-sm)',
-                                            fontWeight: 'var(--weight-semibold)',
-                                            cursor: 'pointer',
-                                          }}
-                                        >
-                                          {option.label}
-                                        </button>
-                                      )
-                                    })}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.45 }}>
-                              {editCategoryKey ? getCategoryLabel(editCategoryKey) : 'Choose a category'}
-                            </div>
-                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
-                              Date
-                            </div>
-                            <input
-                              type="date"
-                              value={editDate}
-                              onChange={event => setEditDate(event.target.value)}
-                              onFocus={() => setFocusedField('date')}
-                              onBlur={() => setFocusedField((current) => (current === 'date' ? null : current))}
-                              style={{
-                                height: 40,
-                                borderRadius: 10,
-                                border: `2px solid ${focusedField === 'date' ? 'var(--border-focus)' : 'var(--border)'}`,
-                                padding: '0 12px',
-                                fontSize: 'var(--text-sm)',
-                                color: T.text1,
-                                background: T.white,
-                                outline: 'none',
-                                width: '100%',
-                                boxSizing: 'border-box',
-                              }}
-                            />
-                            {editIsSmsMeta ? (
-                              <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <span
-                                  style={{
-                                    height: 28,
-                                    borderRadius: 999,
-                                    border: `1px solid ${T.border}`,
-                                    background: 'var(--grey-100)',
-                                    color: T.text3,
-                                    padding: '0 10px',
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  Imported from SMS
-                                </span>
-                              </div>
-                            ) : (
-                              <>
-                                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
-                                  Note
-                                </div>
-                                <input
-                                  type="text"
-                                  value={editNote}
-                                  onChange={event => setEditNote(event.target.value)}
-                                  onFocus={() => setFocusedField('note')}
-                                  onBlur={() => setFocusedField((current) => (current === 'note' ? null : current))}
-                                  placeholder="Note (optional)"
-                                  style={{
-                                    height: 40,
-                                    borderRadius: 10,
-                                    border: `2px solid ${focusedField === 'note' ? 'var(--border-focus)' : 'var(--border)'}`,
-                                    padding: '0 12px',
-                                    fontSize: 'var(--text-sm)',
-                                    color: T.text1,
-                                    background: T.white,
-                                    outline: 'none',
-                                    width: '100%',
-                                    boxSizing: 'border-box',
-                                  }}
-                                />
-                              </>
-                            )}
-                            <button
-                              onClick={handleSave}
-                              disabled={saving || parseFloat(editAmount) <= 0 || !editDate || editLabel.trim().length === 0}
-                              style={{
-                                height: 'var(--button-height-md)',
-                                borderRadius: 10,
-                                background: saving ? T.border : T.brandDark,
-                                border: 'none',
-                                color: T.textInverse,
-                                fontSize: 'var(--text-sm)',
-                                fontWeight: 'var(--weight-semibold)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {saving ? 'Saving…' : 'Save changes'}
-                            </button>
-                          </div>
-                        )}
                       </div>
                     )
                   })}
@@ -699,7 +446,7 @@ export default function CategoryLedgerPageClient({
           {entrySheetStep === 'menu' && (
             <div>
               <p style={{ fontSize: 'var(--text-base)', color: T.text3, margin: '0 0 20px', lineHeight: 1.55 }}>
-                {getEntryTitle(activeEntry)} · {fmt(activeEntry.amount, data.currency)} · {formatDate(activeEntry.date)}
+                {getVisibleEntryTitle(activeEntry)} · {fmt(activeEntry.amount, data.currency)} · {formatDate(activeEntry.date)}
               </p>
               <div style={{
                 background: T.white,
@@ -711,7 +458,10 @@ export default function CategoryLedgerPageClient({
                   {
                     label: 'Edit entry',
                     sub: 'Change label, amount, date, or note',
-                    action: () => { setActiveEntry(null); openEdit(activeEntry) },
+                    action: () => {
+                      setActiveEntry(null)
+                      router.push(`/log/${activeEntry.id}/edit?returnTo=/history/${categoryKey}`)
+                    },
                   },
                   {
                     label: categoryType === 'debt' ? 'Paid back' : 'Refund',
@@ -750,7 +500,7 @@ export default function CategoryLedgerPageClient({
           {entrySheetStep === 'refund' && (
             <div>
               <p style={{ fontSize: 'var(--text-base)', color: T.text3, margin: '0 0 20px', lineHeight: 1.55 }}>
-                {getEntryTitle(activeEntry)} · {fmt(activeEntry.amount, data.currency)} · {formatDate(activeEntry.date)}
+                {getVisibleEntryTitle(activeEntry)} · {fmt(activeEntry.amount, data.currency)} · {formatDate(activeEntry.date)}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <input

@@ -31,6 +31,7 @@ export async function addGoalContribution(input: AddGoalContributionInput): Prom
     categoryType: 'goal',
     categoryKey: input.goalId,
     categoryLabel: input.goalLabel,
+    displayName: input.goalLabel,
     amount,
     note: input.note,
   })

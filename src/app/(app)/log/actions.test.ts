@@ -41,6 +41,7 @@ describe('log actions', () => {
         categoryType: 'everyday',
         categoryKey: 'groceries',
         categoryLabel: 'Groceries',
+        displayName: 'Groceries',
         amount: 200,
         note: 'Returned item',
       }

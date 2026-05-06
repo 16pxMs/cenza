@@ -78,6 +78,7 @@ describe('log/new actions', () => {
         categoryType: 'fixed',
         categoryKey: 'internet',
         categoryLabel: 'Home WiFi',
+        displayName: 'Home WiFi',
         amount: 450,
         note: 'bulk buy',
       }

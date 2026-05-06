@@ -14,6 +14,7 @@ describe('buildTransactionRecord', () => {
       categoryType: 'everyday',
       categoryKey: 'groceries',
       categoryLabel: 'Groceries',
+      displayName: 'Market run',
       amount: 1200,
       note: 'market run',
     })).toEqual({
@@ -23,6 +24,7 @@ describe('buildTransactionRecord', () => {
       category_type: 'everyday',
       category_key: 'groceries',
       category_label: 'Groceries',
+      display_name: 'Market run',
       amount: 1200,
       note: 'market run',
     })
@@ -36,6 +38,7 @@ describe('buildTransactionRecord', () => {
       categoryType: 'goal',
       categoryKey: 'emergency',
       categoryLabel: 'Emergency Fund',
+      displayName: 'Emergency Fund',
       amount: -400,
       note: '   ',
     }).note).toBeNull()
@@ -49,6 +52,7 @@ describe('buildTransactionRecord', () => {
       categoryType: 'fixed',
       categoryKey: 'wifi',
       categoryLabel: 'Home WiFi',
+      displayName: 'Home WiFi',
       amount: 1200,
       note: 'market run',
     })).toEqual({
@@ -58,6 +62,7 @@ describe('buildTransactionRecord', () => {
       category_type: 'fixed',
       category_key: 'internet',
       category_label: 'Internet',
+      display_name: 'Home WiFi',
       amount: 1200,
       note: 'market run',
     })
@@ -72,10 +77,27 @@ describe('buildTransactionRecord', () => {
         categoryType: 'everyday',
         categoryKey: 'custom_dog_food',
         categoryLabel: 'Dog Food',
+        displayName: 'Dog Food',
         amount: 1200,
         note: null,
       })
     ).toThrow('Unknown category key: custom_dog_food')
+  })
+
+  it('rejects blank display names before insert', () => {
+    expect(() =>
+      buildTransactionRecord({
+        userId: 'user-1',
+        cycleId: '2026-03-14',
+        date: '2026-03-20',
+        categoryType: 'everyday',
+        categoryKey: 'groceries',
+        categoryLabel: 'Groceries',
+        displayName: '   ',
+        amount: 1200,
+        note: null,
+      })
+    ).toThrow('Display name is required')
   })
 })
 

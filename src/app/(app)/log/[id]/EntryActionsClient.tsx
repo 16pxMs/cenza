@@ -11,10 +11,8 @@ import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Bu
 import { Input } from '@/components/ui/Input/Input'
 import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
-import { IconBack, IconChevronX } from '@/components/ui/Icons'
+import { IconBack } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
-import { getCategoryConfig, getCategoryLabel } from '@/lib/categories/config'
-import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import type { LogEntry } from '@/lib/loaders/log'
 import {
   createTrackedDebtFromLogEntry,
@@ -32,16 +30,6 @@ import {
   updateDebtTransactionForDebt,
 } from '../../history/debt/[id]/actions'
 import type { DebtDirection } from '@/types/database'
-
-const CATEGORY_LABEL: Record<string, string> = {
-  everyday: 'Spending',
-  essentials: 'Fixed',
-  fixed: 'Fixed',
-  debt: 'Debt',
-  goal: 'Goal',
-}
-
-const EDITABLE_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
 
 const T = {
   brandDark: 'var(--brand-dark)',
@@ -133,24 +121,12 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const { isDesktop } = useBreakpoint()
   const { toast } = useToast()
 
-  const [activeFlow, setActiveFlow] = useState<'edit' | 'refund' | 'confirm' | 'track' | 'debtEdit' | 'createDebt' | 'linkDebt' | null>(null)
+  const [activeFlow, setActiveFlow] = useState<'refund' | 'confirm' | 'track' | 'debtEdit' | 'createDebt' | 'linkDebt' | null>(null)
 
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
   const [savingRefund, setSavingRefund] = useState(false)
 
-  const [editAmount, setEditAmount] = useState('')
-  const [editDate, setEditDate] = useState('')
-  const [editNote, setEditNote] = useState('')
-  const [editLabel, setEditLabel] = useState('')
-  const [editCategoryKey, setEditCategoryKey] = useState<string | null>(null)
-  const [editErrors, setEditErrors] = useState<{
-    label?: string
-    amount?: string
-    category?: string
-  }>({})
-  const [editDialog, setEditDialog] = useState<'delete' | 'discard' | 'monthlyReminder' | null>(null)
-  const [savingEdit, setSavingEdit] = useState(false)
   const [debtEditAmount, setDebtEditAmount] = useState('')
   const [debtEditDate, setDebtEditDate] = useState('')
   const [debtEditNote, setDebtEditNote] = useState('')
@@ -185,17 +161,6 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const debtEntryLabel = entry.debtEntryType === 'principal_increase'
     ? 'opening balance'
     : 'entry'
-
-  const openEdit = () => {
-    setEditAmount(String(entry.amount))
-    setEditDate(entry.date)
-    setEditNote(entry.note ?? '')
-    setEditLabel(entry.name)
-    setEditCategoryKey(entry.categoryKey)
-    setEditErrors({})
-    setEditDialog(null)
-    setActiveFlow('edit')
-  }
 
   const openDebtEdit = () => {
     setDebtEditAmount(String(entry.amount))
@@ -233,91 +198,6 @@ export function EntryActionsClient({ entry, currency }: Props) {
     } finally {
       setLoadingActiveDebts(false)
     }
-  }
-
-  const editIsDirty =
-    activeFlow === 'edit' &&
-    (
-      editLabel.trim() !== entry.name.trim() ||
-      editAmount !== String(entry.amount) ||
-      editCategoryKey !== entry.categoryKey
-    )
-
-  const requestCloseEdit = () => {
-    if (activeFlow === 'edit' && editDialog) {
-      setEditDialog(null)
-      return
-    }
-    if (activeFlow === 'edit' && editIsDirty) {
-      setEditDialog('discard')
-      return
-    }
-    setActiveFlow(null)
-    setEditCategoryKey(null)
-    setEditErrors({})
-    setEditDialog(null)
-  }
-
-  const validateEdit = () => {
-    const nextErrors: { label?: string; amount?: string; category?: string } = {}
-    if (!editLabel.trim()) nextErrors.label = 'Add a name'
-    if (!editAmount.trim() || !(parseFloat(editAmount) > 0)) nextErrors.amount = 'Add an amount'
-    const selectedCategory = getCategoryConfig(editCategoryKey)
-    if (!selectedCategory || selectedCategory.type === 'goal') nextErrors.category = 'Choose a category'
-    if (!isDebtEntry && selectedCategory?.type === 'debt') {
-      nextErrors.category = 'Debt entries need to be linked to a tracked debt.'
-    }
-    setEditErrors(nextErrors)
-    return Object.keys(nextErrors).length === 0
-  }
-
-  const performSaveEdit = async (removeReminder: boolean) => {
-    if (!entry.id || !editCategoryKey) return
-    const amount = parseFloat(editAmount)
-    if (!amount || amount <= 0 || !editDate || !editCategoryKey) return
-
-    const transactionDirty =
-      editLabel.trim() !== entry.name.trim() ||
-      amount !== entry.amount ||
-      editCategoryKey !== entry.categoryKey
-
-    setSavingEdit(true)
-    try {
-      if (transactionDirty || removeReminder) {
-        await updateLogEntry({
-          id: entry.id,
-          amount,
-          date: editDate,
-          note: editNote,
-          categoryKey: editCategoryKey,
-          removeMonthlyReminderKey: removeReminder
-            ? (entry.monthlyReminderKey ?? entry.categoryKey)
-            : undefined,
-        })
-      }
-      toast('Entry updated')
-      router.push('/log')
-      router.refresh()
-    } catch {
-      toast('Could not update entry')
-    } finally {
-      setSavingEdit(false)
-    }
-  }
-
-  const handleSaveEdit = async () => {
-    if (!entry.id) return
-    if (!validateEdit()) return
-
-    if (
-      entry.hasMonthlyReminder &&
-      getCategoryConfig(editCategoryKey)?.type === 'debt'
-    ) {
-      setEditDialog('monthlyReminder')
-      return
-    }
-
-    await performSaveEdit(false)
   }
 
   const handleSaveRefund = async () => {
@@ -575,7 +455,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             lineHeight: 1.25,
             flexWrap: 'wrap',
           }}>
-            <span>{CATEGORY_LABEL[entry.categoryType] ?? 'Other'}</span>
+            <span>{entry.categoryLabel}</span>
             {entry.date && (
               <>
                 <span style={{ opacity: 0.3 }}>·</span>
@@ -666,7 +546,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                     <ActionRow
                       title="Edit entry"
                       meta="Change the category if this is not really debt"
-                      onClick={openEdit}
+                      onClick={() => router.push(`/log/${entry.id}/edit?returnTo=/log/${entry.id}`)}
                     />
                   </div>
                 </>
@@ -695,7 +575,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             <ActionRow
               title="Edit expense"
               meta="Change amount or category"
-              onClick={openEdit}
+              onClick={() => router.push(`/log/${entry.id}/edit?returnTo=/log/${entry.id}`)}
             />
           </ActionCard>
         )}
@@ -986,314 +866,6 @@ export function EntryActionsClient({ entry, currency }: Props) {
         </div>
       </Sheet>
 
-      <Sheet
-        open={activeFlow === 'edit'}
-        onClose={requestCloseEdit}
-        title="Edit expense"
-        hideHeader
-        bodyPadding="none"
-        variant="bottom"
-      >
-        <div style={{
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          maxHeight: '80vh',
-          minHeight: 'min(640px, 80vh)',
-          background: 'var(--page-bg)',
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            padding: 'var(--space-sm) var(--space-page-mobile) 0',
-            background: 'var(--page-bg)',
-          }}>
-            <button
-              type="button"
-              onClick={requestCloseEdit}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 'var(--radius-full)',
-                border: 'none',
-                background: 'var(--grey-100)',
-                color: T.text2,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                cursor: 'pointer',
-              }}
-            >
-              <IconChevronX size={16} color="var(--text-2)" />
-            </button>
-          </div>
-
-          <div style={{
-            padding: 'var(--space-sm) var(--space-page-mobile) var(--space-lg)',
-            textAlign: 'center',
-          }}>
-            <p style={{
-              margin: 0,
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--text-xl)',
-              fontWeight: 'var(--weight-semibold)',
-              color: T.text1,
-              letterSpacing: '-0.02em',
-              lineHeight: 1.15,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {editLabel.trim() || entry.name}
-            </p>
-            <p style={{
-              margin: 'var(--space-2xs) 0 0',
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--text-lg)',
-              fontWeight: 'var(--weight-semibold)',
-              color: T.text2,
-              lineHeight: 1.2,
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {fmt(parseFloat(editAmount) || 0, currency)}
-            </p>
-            <p style={{
-              margin: 'var(--space-2xs) 0 0',
-              fontSize: 'var(--text-sm)',
-              color: T.text2,
-              lineHeight: 1.35,
-            }}>
-              {editCategoryKey ? getCategoryLabel(editCategoryKey) : CATEGORY_LABEL[entry.categoryType] ?? 'Other'}
-              {entry.date ? ` · ${formatDate(entry.date)}` : ''}
-            </p>
-          </div>
-
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '0 var(--space-page-mobile) var(--space-md)',
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <Input
-                label="Name"
-                value={editLabel}
-                onChange={(value) => {
-                  setEditLabel(value)
-                  setEditErrors((current) => ({ ...current, label: undefined }))
-                }}
-                autoFocus
-                placeholder={editLabel ? undefined : 'Name'}
-                error={editErrors.label}
-              />
-              <MoneyInput
-                label="Amount"
-                currency={currency}
-                value={editAmount}
-                onChange={(value) => {
-                  setEditAmount(value)
-                  setEditErrors((current) => ({ ...current, amount: undefined }))
-                }}
-                autoFocus={false}
-                placeholder={editAmount ? undefined : 'Amount'}
-                error={editErrors.amount}
-              />
-              <div style={{ marginTop: 'var(--space-sm)' }}>
-                <p style={{
-                  margin: '0 0 var(--space-2xs)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-semibold)',
-                  color: T.text2,
-                  letterSpacing: '0.2px',
-                }}>
-                  Category
-                </p>
-                <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                  {EDITABLE_CATEGORY_GROUPS
-                    .filter((group) => isDebtEntry || group.type !== 'debt')
-                    .map((group) => (
-                      <div key={group.type}>
-                        <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted }}>
-                          {group.label}
-                        </p>
-                        <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
-                          {group.options.map((option) => (
-                            <SingleSelectChip
-                              key={option.key}
-                              label={option.label}
-                              selected={editCategoryKey === option.key}
-                              fill
-                              onClick={() => {
-                                setEditCategoryKey(option.key)
-                                setEditErrors((current) => ({ ...current, category: undefined }))
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-                {editErrors.category && (
-                  <p style={{
-                    margin: 'var(--space-xs) 0 0',
-                    fontSize: 12,
-                    color: 'var(--red-dark)',
-                    fontWeight: 500,
-                  }}>
-                    {editErrors.category}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div style={{
-            position: 'sticky',
-            bottom: 0,
-            display: 'grid',
-            gap: 'var(--space-sm)',
-            padding: 'var(--space-lg) var(--space-page-mobile) calc(var(--space-md) + env(safe-area-inset-bottom, 0px))',
-            background: 'var(--page-bg)',
-          }}>
-            <PrimaryBtn
-              size="lg"
-              onClick={handleSaveEdit}
-              disabled={savingEdit}
-            >
-              {savingEdit ? 'Saving…' : 'Save changes'}
-            </PrimaryBtn>
-            <TertiaryBtn
-              size="lg"
-              onClick={() => setEditDialog('delete')}
-              style={{
-                color: 'var(--red-dark)',
-                minHeight: 'var(--button-height)',
-              }}
-            >
-              Delete entry
-            </TertiaryBtn>
-          </div>
-
-          {editDialog && (
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(16, 24, 40, 0.32)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 'var(--space-md)',
-              zIndex: 2,
-            }}>
-              <div style={{
-                width: '100%',
-                maxWidth: 360,
-                background: T.white,
-                borderRadius: 'var(--radius-lg)',
-                border: `var(--border-width) solid ${T.border}`,
-                padding: 'var(--space-lg)',
-              }}>
-                <p style={{
-                  margin: 0,
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 'var(--text-lg)',
-                  fontWeight: 'var(--weight-semibold)',
-                  color: T.text1,
-                  letterSpacing: '-0.01em',
-                }}>
-                  {editDialog === 'delete'
-                    ? 'Delete this entry?'
-                    : editDialog === 'monthlyReminder'
-                      ? 'Keep monthly reminder?'
-                      : 'Discard changes?'}
-                </p>
-                {(editDialog === 'delete' || editDialog === 'monthlyReminder') && (
-                  <p style={{
-                    margin: 'var(--space-sm) 0 0',
-                    fontSize: 'var(--text-sm)',
-                    color: T.text2,
-                    lineHeight: 1.5,
-                  }}>
-                    {editDialog === 'delete'
-                      ? 'This will remove it from your log.'
-                      : 'This item will still appear in reminders.'}
-                  </p>
-                )}
-                <div style={{
-                  display: 'grid',
-                  gap: 'var(--space-sm)',
-                  marginTop: 'var(--space-lg)',
-                }}>
-                  {editDialog === 'delete' ? (
-                    <>
-                      <SecondaryBtn
-                        size="lg"
-                        onClick={() => setEditDialog(null)}
-                      >
-                        Cancel
-                      </SecondaryBtn>
-                      <PrimaryBtn
-                        size="lg"
-                        onClick={handleDeleteEntry}
-                        disabled={deletingKey === entry.id}
-                        style={{
-                          background: 'var(--red-dark)',
-                          color: T.textInverse,
-                        }}
-                      >
-                        {deletingKey === entry.id ? 'Deleting…' : 'Delete'}
-                      </PrimaryBtn>
-                    </>
-                  ) : editDialog === 'monthlyReminder' ? (
-                    <>
-                      <SecondaryBtn
-                        size="lg"
-                        onClick={() => {
-                          setEditDialog(null)
-                          void performSaveEdit(false)
-                        }}
-                        disabled={savingEdit}
-                      >
-                        Keep monthly reminder
-                      </SecondaryBtn>
-                      <PrimaryBtn
-                        size="lg"
-                        onClick={() => {
-                          setEditDialog(null)
-                          void performSaveEdit(true)
-                        }}
-                        disabled={savingEdit}
-                      >
-                        {savingEdit ? 'Saving…' : 'Remove monthly reminder'}
-                      </PrimaryBtn>
-                    </>
-                  ) : (
-                    <>
-                      <SecondaryBtn
-                        size="lg"
-                        onClick={() => setEditDialog(null)}
-                      >
-                        Keep editing
-                      </SecondaryBtn>
-                      <TertiaryBtn
-                        size="lg"
-                        onClick={() => {
-                          setEditDialog(null)
-                          setActiveFlow(null)
-                          setEditErrors({})
-                        }}
-                      >
-                        Discard
-                      </TertiaryBtn>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </Sheet>
 
       <Sheet
         open={activeFlow === 'debtEdit'}

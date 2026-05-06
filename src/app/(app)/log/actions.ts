@@ -329,6 +329,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<void> {
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
+    displayName: input.categoryLabel,
     amount,
     note: input.note,
   })

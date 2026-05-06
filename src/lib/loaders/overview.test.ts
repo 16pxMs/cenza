@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createServerSupabaseClient = vi.fn()
 const deriveCurrentCycleId = vi.fn()
+const derivePrevCycleId = vi.fn()
 const hasMonthlyStorageForUser = vi.fn()
+const loadMonthlyStorageSnapshotForCycle = vi.fn()
 
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/cycles-db', async () => {
@@ -10,6 +12,7 @@ vi.mock('@/lib/supabase/cycles-db', async () => {
   return {
     ...actual,
     deriveCurrentCycleId,
+    derivePrevCycleId,
   }
 })
 vi.mock('@/lib/monthly-reminders/storage', async () => {
@@ -17,6 +20,7 @@ vi.mock('@/lib/monthly-reminders/storage', async () => {
   return {
     ...actual,
     hasMonthlyStorageForUser,
+    loadMonthlyStorageSnapshotForCycle,
   }
 })
 
@@ -126,7 +130,13 @@ describe('loadOverviewCriticalData', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     deriveCurrentCycleId.mockReturnValue('2026-05-01')
+    derivePrevCycleId.mockReturnValue(null)
     hasMonthlyStorageForUser.mockResolvedValue(false)
+    loadMonthlyStorageSnapshotForCycle.mockResolvedValue({
+      plannedTotal: 0,
+      plannedEntries: [],
+      reminderEntries: [],
+    })
     createServerSupabaseClient.mockResolvedValue(makeSupabaseForCriticalData())
   })
 
@@ -143,5 +153,112 @@ describe('loadOverviewCriticalData', () => {
 
     expect(data.totalSpent).toBe(147300)
     expect(data.incomeData.total).toBe(300000)
+  })
+
+  it('uses display_name for recent activity labels and falls back to category label', async () => {
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === 'transactions') {
+          return {
+            select: vi.fn((query: string) => {
+              if (query === 'id, amount, category_key, category_type, category_label, display_name, date') {
+                return {
+                  eq: vi.fn(() => ({
+                    eq: vi.fn().mockResolvedValue({
+                      data: [
+                        {
+                          id: 'txn-1',
+                          amount: 3200,
+                          category_key: 'sports',
+                          category_type: 'everyday',
+                          category_label: 'Sports',
+                          display_name: 'tennis court',
+                          date: '2026-05-06',
+                        },
+                        {
+                          id: 'txn-2',
+                          amount: 1200,
+                          category_key: 'transport',
+                          category_type: 'everyday',
+                          category_label: 'Transport',
+                          display_name: '   ',
+                          date: '2026-05-05',
+                        },
+                      ],
+                    }),
+                  })),
+                }
+              }
+
+              if (query === 'category_key, amount, date, created_at') {
+                return {
+                  eq: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                      in: vi.fn().mockResolvedValue({ data: [] }),
+                    })),
+                  })),
+                }
+              }
+
+              if (query === 'amount, category_key, category_label, category_type') {
+                return {
+                  eq: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                      in: vi.fn().mockResolvedValue({ data: [] }),
+                    })),
+                  })),
+                }
+              }
+
+              throw new Error(`Unexpected transactions select ${query}`)
+            }),
+          }
+        }
+
+        if (table === 'spending_budgets') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                })),
+              })),
+            })),
+          }
+        }
+
+        if (table === 'goal_targets') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ data: [] }),
+            })),
+          }
+        }
+
+        if (table === 'debts') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ data: [] }),
+            })),
+          }
+        }
+
+        throw new Error(`Unexpected table ${table}`)
+      }),
+    })
+
+    const { loadOverviewSecondaryData } = await import('./overview')
+
+    const data = await loadOverviewSecondaryData('user-1', {
+      currency: 'KES',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [25],
+      goals: [],
+    } as any)
+
+    expect(data.recentActivity).toEqual([
+      expect.objectContaining({ id: 'txn-1', label: 'tennis court' }),
+      expect.objectContaining({ id: 'txn-2', label: 'Transport' }),
+    ])
   })
 })

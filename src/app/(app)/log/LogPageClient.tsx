@@ -11,14 +11,6 @@ import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectC
 import { fmt } from '@/lib/finance'
 import type { LogEntry, LogPageData } from '@/lib/loaders/log'
 
-const CATEGORY_LABEL: Record<string, string> = {
-  everyday: 'Spending',
-  essentials: 'Fixed',
-  fixed: 'Fixed',
-  debt: 'Debt',
-}
-
-
 const T = {
   brandDark: 'var(--brand-dark)',
   pageBg: 'var(--page-bg)',
@@ -93,7 +85,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   }
 
   const renderEntryRow = (entry: LogEntry) => {
-    const categoryLabel = CATEGORY_LABEL[entry.categoryType] ?? 'Other'
     const savedAt = formatSavedAt(entry.createdAt)
     const entryHref = entry.categoryType === 'debt'
       ? entry.debtId
@@ -146,7 +137,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
               marginTop: 4,
               lineHeight: 1.3,
             }}>
-              {categoryLabel}{savedAt ? ` · ${savedAt}` : ''}
+              {entry.categoryLabel}{savedAt ? ` · ${savedAt}` : ''}
             </div>
           </div>
 
@@ -228,7 +219,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
               {topCategories.map(cat => (
-                <div key={cat.name} style={{
+                <div key={cat.categoryKey} style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'baseline',
@@ -241,7 +232,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}>
-                    {cat.name}
+                    {cat.categoryLabel}
                   </span>
                   <span style={{
                     fontSize: 'var(--text-sm)',
@@ -249,7 +240,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                     color: T.text1,
                     fontVariantNumeric: 'tabular-nums',
                   }}>
-                    {fmt(cat.amount, data.currency)}
+                    {fmt(cat.totalAmount, data.currency)}
                   </span>
                 </div>
               ))}

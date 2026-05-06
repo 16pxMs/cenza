@@ -4,11 +4,13 @@ const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
 const createServerSupabaseClient = vi.fn()
 const getCurrentCycleId = vi.fn()
+const createCycleTransaction = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/cycles-db', () => ({ getCurrentCycleId }))
+vi.mock('@/lib/supabase/transactions-db', () => ({ createCycleTransaction }))
 
 function makeSupabase(existingRow: { id: string } | null) {
   const maybeSingle = vi.fn().mockResolvedValue({ data: existingRow, error: null })
@@ -78,6 +80,32 @@ describe('app actions', () => {
         received_confirmed_at: expect.any(String),
       }),
       { onConflict: 'user_id,cycle_id' }
+    )
+  })
+
+  it('addGoalContribution writes display_name from the goal label', async () => {
+    createServerSupabaseClient.mockResolvedValue({})
+
+    const { addGoalContribution } = await import('./actions')
+    await addGoalContribution({
+      goalId: 'emergency',
+      goalLabel: 'Emergency Fund',
+      amount: 3200,
+      note: 'May top-up',
+    })
+
+    expect(createCycleTransaction).toHaveBeenCalledWith(
+      {},
+      'user-1',
+      { pay_schedule_type: 'monthly', pay_schedule_days: [25] },
+      {
+        categoryType: 'goal',
+        categoryKey: 'emergency',
+        categoryLabel: 'Emergency Fund',
+        displayName: 'Emergency Fund',
+        amount: 3200,
+        note: 'May top-up',
+      }
     )
   })
 })

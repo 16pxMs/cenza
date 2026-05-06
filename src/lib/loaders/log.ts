@@ -9,6 +9,7 @@ import {
   deriveOutflowTotalFromCategories,
   isDebtOpeningBalanceTransaction,
 } from '@/lib/transactions/outflow'
+import { deriveCategoryBreakdown, type CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
 
 export interface LogSubItem {
   key: string
@@ -31,6 +32,7 @@ export interface LogSubItem {
 export interface LogEntry {
   id: string
   name: string
+  categoryLabel: string
   categoryKey: string
   categoryType: string
   amount: number
@@ -50,11 +52,34 @@ export interface LogPageData {
   currency: string
   entries: LogEntry[]
   totalOutflow: number
-  topOutflowCategories: Array<{ name: string; amount: number }>
+  topOutflowCategories: CategoryBreakdownRow[]
 }
 
 function titleCase(value: string) {
   return value.replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function resolveTransactionTitle(row: {
+  display_name?: string | null
+  category_label?: string | null
+  category_key?: string | null
+}) {
+  const displayName = typeof row.display_name === 'string' ? row.display_name.trim() : ''
+  if (displayName) return displayName
+
+  const categoryLabel = typeof row.category_label === 'string' ? row.category_label.trim() : ''
+  if (categoryLabel) return categoryLabel
+
+  return titleCase(row.category_key || 'Expense')
+}
+
+function resolveCategoryLabel(row: {
+  category_label?: string | null
+  category_key?: string | null
+}) {
+  const categoryLabel = typeof row.category_label === 'string' ? row.category_label.trim() : ''
+  if (categoryLabel) return categoryLabel
+  return titleCase(row.category_key || 'Expense')
 }
 
 function normalizeCategoryType(value: string | null | undefined) {
@@ -102,7 +127,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
 
   const [{ data: txns }, monthlyReminderEntries] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('id, category_key, category_label, category_type, amount, date, note, created_at')
+      .select('*')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId)
       .order('created_at', { ascending: false }),
@@ -112,6 +137,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const currency = profile.currency ?? 'KES'
   const txRows = (txns ?? []) as Array<{
     id: string
+    display_name?: string | null
     category_key: string
     category_label: string
     category_type: string
@@ -123,9 +149,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const visibleTxRows = txRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
   const outflowRows = deriveOutflowCategoryRows(visibleTxRows)
   const totalOutflow = deriveOutflowTotalFromCategories(outflowRows)
-  const topOutflowCategories = outflowRows
-    .slice(0, 3)
-    .map((row) => ({ name: row.label, amount: row.spent }))
+  const topOutflowCategories = deriveCategoryBreakdown(visibleTxRows).slice(0, 5)
 
   const monthlyReminderEntriesByKey = new Map(
     monthlyReminderEntries.map((entry) => [entry.key, entry] as const)
@@ -153,7 +177,8 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
 
       return {
         id: txn.id,
-        name: txn.category_label || titleCase(txn.category_key),
+        name: resolveTransactionTitle(txn),
+        categoryLabel: resolveCategoryLabel(txn),
         categoryKey: txn.category_key,
         categoryType: categoryType ?? 'other',
         amount: Number(txn.amount),
@@ -188,7 +213,7 @@ export async function loadEntryById(
 
   const [{ data: txn }, monthlyReminderEntries] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('id, category_key, category_label, category_type, amount, date, note, created_at')
+      .select('*')
       .eq('id', entryId)
       .eq('user_id', userId)
       .maybeSingle(),
@@ -221,7 +246,8 @@ export async function loadEntryById(
 
   const entry: LogEntry = {
     id: txn.id,
-    name: txn.category_label || titleCase(txn.category_key),
+    name: resolveTransactionTitle(txn),
+    categoryLabel: resolveCategoryLabel(txn),
     categoryKey: txn.category_key,
     categoryType: normalizedCategoryType ?? 'other',
     amount: Number(txn.amount),

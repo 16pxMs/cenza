@@ -181,6 +181,7 @@ export async function saveExpenseBatch(items: SaveExpenseBatchItem[]): Promise<A
           categoryType: input.categoryType,
           categoryKey: persistedKey,
           categoryLabel: input.categoryLabel,
+          displayName: input.categoryLabel,
           amount: input.amount,
           note: input.note,
         })

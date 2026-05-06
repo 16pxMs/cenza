@@ -18,7 +18,7 @@ import { getGroupedCategoryOptions, type CategoryOptionGroup } from '@/lib/categ
 import { isDebtOpeningBalanceTransaction } from '@/lib/transactions/outflow'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
-type Step = 'method' | 'queue' | 'review' | 'done'
+type Step = 'method' | 'queue' | 'details' | 'category' | 'review' | 'done'
 type QueueSource = 'common' | 'typed' | 'known'
 
 interface DictEntry {
@@ -222,7 +222,7 @@ export function NewExpenseClient() {
 
   const hasInitialKnownItem = !isOther && Boolean(paramLabel)
   const [step, setStep] = useState<Step>(
-    hasInitialKnownItem ? 'review' : isOther ? 'queue' : 'method'
+    hasInitialKnownItem ? 'details' : isOther ? 'queue' : 'method'
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -544,6 +544,16 @@ export function NewExpenseClient() {
 
   const handleBack = () => {
     if (step === 'review') {
+      setStep('category')
+      return
+    }
+
+    if (step === 'category') {
+      setStep('details')
+      return
+    }
+
+    if (step === 'details') {
       if (activeIndex > 0) {
         setActiveIndex((current) => current - 1)
         return
@@ -577,19 +587,21 @@ export function NewExpenseClient() {
       return
     }
     setActiveIndex(0)
-    setStep('review')
+    setStep('details')
   }
 
   const handleNext = () => {
     if (!activeItem || !activeItem.categoryType || parsedAmount <= 0 || !activeItem.label.trim()) return
     if (activeIndex < queue.length - 1) {
       setActiveIndex((current) => current + 1)
+      setStep('details')
     }
   }
 
   const handlePrevious = () => {
     if (activeIndex > 0) {
       setActiveIndex((current) => current - 1)
+      setStep('details')
     }
   }
 
@@ -625,6 +637,7 @@ export function NewExpenseClient() {
       return next
     })
     setActiveIndex((current) => current + 1)
+    setStep('details')
     setSaveError(null)
   }
 
@@ -694,7 +707,8 @@ export function NewExpenseClient() {
 
   const isLastItem = activeIndex === queue.length - 1
   const canReviewContinue = queue.length > 0
-  const canAdvance = !!activeItem?.categoryKey && parsedAmount > 0 && !!activeItem?.label.trim()
+  const detailsValid = parsedAmount > 0 && !!activeItem?.label.trim()
+  const canAdvance = !!activeItem?.categoryKey && detailsValid
   const requiresIncomeRecovery = !quickEntryStatus.hasIncome && queue.length > remainingQuickEntries
   const recentMatch = activeItem ? recentByLabel[normalizeLabel(activeItem.label)] ?? null : null
 
@@ -804,8 +818,8 @@ export function NewExpenseClient() {
               }}
               onGoToOverview={() => { router.refresh(); router.push('/app') }}
             />
-          ) : activeItem ? (
-            <ReviewStep
+          ) : !activeItem ? null : step === 'details' ? (
+            <DetailsStep
               item={activeItem}
               currency={currency}
               recentMatch={recentMatch}
@@ -813,16 +827,23 @@ export function NewExpenseClient() {
               currentGroupIndex={Math.max(0, activeGroupFlowIndex)}
               totalGroups={groupedLabelsInOrder.length}
               isPreviousInSameGroup={activeIndex > 0 && normalizeLabel(queue[activeIndex - 1]?.label ?? '') === normalizeLabel(activeItem.label)}
-              isNextInSameGroup={activeIndex < queue.length - 1 && normalizeLabel(queue[activeIndex + 1]?.label ?? '') === normalizeLabel(activeItem.label)}
-              saving={saving}
-              saveError={saveError}
               groupIndex={Math.max(0, activeGroupedIndex)}
               groupCount={groupedEntriesForActiveItem.length}
               previousGroupEntries={groupedEntriesBeforeActive}
+              detailsValid={detailsValid}
               onAmountChange={(value) => updateActiveItem({ amount: value })}
-              onLabelChange={(value) => updateActiveItem({
-                label: value,
-              })}
+              onLabelChange={(value) => updateActiveItem({ label: value })}
+              onNoteChange={(value) => updateActiveItem({ note: value })}
+              onRepeatsMonthlyChange={(checked) => updateActiveItem({ repeatsMonthly: checked })}
+              onPrevious={handlePrevious}
+              onContinue={() => {
+                if (!detailsValid) return
+                setStep('category')
+              }}
+            />
+          ) : step === 'category' ? (
+            <CategoryStep
+              item={activeItem}
               onCategorySelect={(key) => {
                 const category = getCategoryConfig(key)
                 const nextType = toSelectableCategoryType(category?.type)
@@ -834,16 +855,29 @@ export function NewExpenseClient() {
                   repeatsMonthly: nextType === 'everyday' || nextType === 'fixed' ? activeItem.repeatsMonthly : false,
                 })
               }}
-              onRepeatsMonthlyChange={(checked) => updateActiveItem({ repeatsMonthly: checked })}
-              onNoteChange={(value) => updateActiveItem({ note: value })}
-              onPrevious={handlePrevious}
-              onNext={handleNext}
-              onAddAnother={handleAddAnotherCurrentItem}
-              onSaveAll={handleSaveAll}
-              onRecoverIncome={() => router.push(`/income/new?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
-              requiresIncomeRecovery={requiresIncomeRecovery}
+              onBack={() => setStep('details')}
+              onContinue={() => {
+                if (!activeItem.categoryKey) return
+                setStep('review')
+              }}
+            />
+          ) : step === 'review' ? (
+            <ReviewStep
+              item={activeItem}
+              currency={currency}
+              currentGroupIndex={Math.max(0, activeGroupFlowIndex)}
+              totalGroups={groupedLabelsInOrder.length}
+              isNextInSameGroup={activeIndex < queue.length - 1 && normalizeLabel(queue[activeIndex + 1]?.label ?? '') === normalizeLabel(activeItem.label)}
+              saving={saving}
+              saveError={saveError}
               canAdvance={canAdvance}
               isLastItem={isLastItem}
+              requiresIncomeRecovery={requiresIncomeRecovery}
+              onBack={() => setStep('category')}
+              onAddAnother={handleAddAnotherCurrentItem}
+              onNext={handleNext}
+              onSaveAll={handleSaveAll}
+              onRecoverIncome={() => router.push(`/income/new?returnTo=${encodeURIComponent('/log/new?returnTo=' + returnTo)}`)}
             />
           ) : null}
         </div>
@@ -1170,7 +1204,8 @@ function QueueStep({
   )
 }
 
-function ReviewStep({
+
+function DetailsStep({
   item,
   currency,
   recentMatch,
@@ -1178,25 +1213,16 @@ function ReviewStep({
   currentGroupIndex,
   totalGroups,
   isPreviousInSameGroup,
-  isNextInSameGroup,
-  saving,
-  saveError,
   groupIndex,
   groupCount,
   previousGroupEntries,
+  detailsValid,
   onAmountChange,
   onLabelChange,
-  onCategorySelect,
-  onRepeatsMonthlyChange,
   onNoteChange,
+  onRepeatsMonthlyChange,
   onPrevious,
-  onNext,
-  onAddAnother,
-  onSaveAll,
-  onRecoverIncome,
-  requiresIncomeRecovery,
-  canAdvance,
-  isLastItem,
+  onContinue,
 }: {
   item: PendingExpenseItem
   currency: string
@@ -1205,43 +1231,25 @@ function ReviewStep({
   currentGroupIndex: number
   totalGroups: number
   isPreviousInSameGroup: boolean
-  isNextInSameGroup: boolean
-  saving: boolean
-  saveError: string | null
   groupIndex: number
   groupCount: number
   previousGroupEntries: PendingExpenseItem[]
+  detailsValid: boolean
   onAmountChange: (value: string) => void
   onLabelChange: (value: string) => void
-  onCategorySelect: (key: string) => void
-  onRepeatsMonthlyChange: (checked: boolean) => void
   onNoteChange: (value: string) => void
+  onRepeatsMonthlyChange: (checked: boolean) => void
   onPrevious: () => void
-  onNext: () => void
-  onAddAnother: () => void
-  onSaveAll: () => void
-  onRecoverIncome: () => void
-  requiresIncomeRecovery: boolean
-  canAdvance: boolean
-  isLastItem: boolean
+  onContinue: () => void
 }) {
   const displayAmount = item.amount
     ? item.amount.replace(/,/g, '').split('.').map((part, index) => (
       index === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : part
     )).join('.')
     : ''
-  const incomeBlocked = isLastItem && requiresIncomeRecovery
   const displayLabel = formatDisplayLabel(item.label)
   const previousEntriesLabel = `${previousGroupEntries.length} ${previousGroupEntries.length === 1 ? 'entry is' : 'entries are'} already saved for this item.`
-  const primaryActionLabel = saving
-    ? 'Saving…'
-    : incomeBlocked
-      ? 'Add income to continue'
-      : isLastItem
-        ? 'Save'
-        : isNextInSameGroup
-          ? 'Next entry'
-          : 'Next item'
+  const showRepeatsToggle = item.categoryType === 'everyday' || item.categoryType === 'fixed'
 
   return (
     <div>
@@ -1285,11 +1293,6 @@ function ReviewStep({
             fontFamily: 'inherit',
           }}
         />
-        {item.categoryType === 'debt' && (
-          <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-            Debt is tracked separately with balances and repayments.
-          </p>
-        )}
         {groupCount > 1 && (
           <p style={{
             margin: '10px 0 0',
@@ -1367,69 +1370,58 @@ function ReviewStep({
       )}
 
       <div style={{ marginBottom: 'var(--space-lg)' }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '64px',
-        border: `${T.borderWidth} solid ${T.border}`,
-        borderRadius: 'var(--radius-sm)',
-        background: T.white,
-        overflow: 'hidden',
-      }}>
-        <span style={{
-          padding: '0 var(--space-md)',
-          fontSize: 'var(--text-base)',
-          fontWeight: 'var(--weight-medium)',
-          color: T.text3,
-          borderRight: `${T.borderWidth} solid ${T.border}`,
-          height: '100%',
+        <div style={{
           display: 'flex',
           alignItems: 'center',
-          background: T.grey50,
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
+          height: '64px',
+          border: `${T.borderWidth} solid ${T.border}`,
+          borderRadius: 'var(--radius-sm)',
+          background: T.white,
+          overflow: 'hidden',
         }}>
-          {currency}
-        </span>
-        <input
-          autoFocus
-          type="text"
-          inputMode="decimal"
-          placeholder="0.00"
-          value={displayAmount}
-          onChange={(event) => {
-            const raw = event.target.value.replace(/,/g, '')
-            if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
-            onAmountChange(raw)
-          }}
-          style={{
-            flex: 1,
-            height: '100%',
-            border: 'none',
-            outline: 'none',
+          <span style={{
             padding: '0 var(--space-md)',
-            fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--weight-semibold)',
-            color: T.text1,
-            background: 'transparent',
-            fontFamily: 'inherit',
-          }}
-        />
-      </div>
+            fontSize: 'var(--text-base)',
+            fontWeight: 'var(--weight-medium)',
+            color: T.text3,
+            borderRight: `${T.borderWidth} solid ${T.border}`,
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            background: T.grey50,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}>
+            {currency}
+          </span>
+          <input
+            autoFocus
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={displayAmount}
+            onChange={(event) => {
+              const raw = event.target.value.replace(/,/g, '')
+              if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return
+              onAmountChange(raw)
+            }}
+            style={{
+              flex: 1,
+              height: '100%',
+              border: 'none',
+              outline: 'none',
+              padding: '0 var(--space-md)',
+              fontSize: 'var(--text-xl)',
+              fontWeight: 'var(--weight-semibold)',
+              color: T.text1,
+              background: 'transparent',
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-          Category
-        </p>
-        <CategoryChips
-          selectedKey={item.categoryKey}
-          groups={NON_GOAL_CATEGORY_GROUPS}
-          onSelect={onCategorySelect}
-        />
-      </div>
-
-      {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
+      {showRepeatsToggle && (
         <div style={{ marginBottom: 'var(--space-lg)' }}>
           <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
             Reminder
@@ -1458,35 +1450,6 @@ function ReviewStep({
               </span>
             </span>
           </label>
-
-          {item.repeatsMonthly && (
-            <div style={{
-              marginTop: 'var(--space-md)',
-              display: 'grid',
-              gap: 'var(--space-xs)',
-              justifyItems: 'start',
-            }}>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
-                ✓ Monthly reminder set
-              </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
-                We’ll remind you before it’s due
-              </div>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-full)',
-                background: 'var(--brand-light)',
-                color: T.brandDark,
-                fontSize: 'var(--text-xs)',
-                fontWeight: 'var(--weight-medium)',
-                lineHeight: 1.2,
-              }}>
-                Monthly reminder
-              </span>
-            </div>
-          )}
         </div>
       )}
 
@@ -1512,19 +1475,8 @@ function ReviewStep({
         />
       </div>
 
-      <div style={{ marginBottom: 'var(--space-lg)' }}>
-        <SecondaryBtn
-          size="md"
-          onClick={onAddAnother}
-          disabled={saving || !canAdvance || incomeBlocked}
-          style={{ width: '100%', borderColor: T.border, color: T.text1 }}
-        >
-          Save and add another entry
-        </SecondaryBtn>
-      </div>
-
-      <div style={{ display: 'grid', gap: 'var(--space-sm)', marginBottom: saveError ? 'var(--space-md)' : 'var(--space-lg)' }}>
-        {currentIndex > 0 && (
+      {currentIndex > 0 && (
+        <div style={{ display: 'grid', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
           <TertiaryBtn
             size="sm"
             onClick={onPrevious}
@@ -1532,8 +1484,172 @@ function ReviewStep({
           >
             {isPreviousInSameGroup ? 'Back to previous entry' : 'Back'}
           </TertiaryBtn>
-        )}
+        </div>
+      )}
+
+      <PrimaryBtn
+        size="lg"
+        onClick={onContinue}
+        disabled={!detailsValid}
+        style={{
+          background: detailsValid ? T.brandDark : T.grey200,
+          color: detailsValid ? T.textInverse : T.textMuted,
+        }}
+      >
+        Continue
+      </PrimaryBtn>
+    </div>
+  )
+}
+
+function CategoryStep({
+  item,
+  onCategorySelect,
+  onBack,
+  onContinue,
+}: {
+  item: PendingExpenseItem
+  onCategorySelect: (key: string) => void
+  onBack: () => void
+  onContinue: () => void
+}) {
+  const canContinue = !!item.categoryKey
+
+  return (
+    <div>
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Category
+        </p>
+        <p style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+          Choose where this entry belongs.
+        </p>
+        <CategoryChips
+          selectedKey={item.categoryKey}
+          groups={NON_GOAL_CATEGORY_GROUPS}
+          onSelect={onCategorySelect}
+        />
       </div>
+
+      {item.categoryType === 'debt' && (
+        <p style={{ margin: '0 0 var(--space-lg)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+          Debt is tracked separately with balances and repayments.
+        </p>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+        <PrimaryBtn
+          size="lg"
+          onClick={onContinue}
+          disabled={!canContinue}
+          style={{
+            background: canContinue ? T.brandDark : T.grey200,
+            color: canContinue ? T.textInverse : T.textMuted,
+          }}
+        >
+          Continue
+        </PrimaryBtn>
+        <SecondaryBtn
+          size="lg"
+          onClick={onBack}
+          style={{ borderColor: T.border, color: T.text1 }}
+        >
+          Back
+        </SecondaryBtn>
+      </div>
+    </div>
+  )
+}
+
+function ReviewStep({
+  item,
+  currency,
+  currentGroupIndex,
+  totalGroups,
+  isNextInSameGroup,
+  saving,
+  saveError,
+  canAdvance,
+  isLastItem,
+  requiresIncomeRecovery,
+  onBack,
+  onAddAnother,
+  onNext,
+  onSaveAll,
+  onRecoverIncome,
+}: {
+  item: PendingExpenseItem
+  currency: string
+  currentGroupIndex: number
+  totalGroups: number
+  isNextInSameGroup: boolean
+  saving: boolean
+  saveError: string | null
+  canAdvance: boolean
+  isLastItem: boolean
+  requiresIncomeRecovery: boolean
+  onBack: () => void
+  onAddAnother: () => void
+  onNext: () => void
+  onSaveAll: () => void
+  onRecoverIncome: () => void
+}) {
+  const incomeBlocked = isLastItem && requiresIncomeRecovery
+  const amountValue = parseFloat((item.amount || '0').replace(/,/g, '')) || 0
+  const categoryLabel = item.categoryKey ? getCategoryLabel(item.categoryKey) : null
+  const primaryActionLabel = saving
+    ? 'Saving…'
+    : incomeBlocked
+      ? 'Add income to continue'
+      : isLastItem
+        ? 'Save'
+        : isNextInSameGroup
+          ? 'Next entry'
+          : 'Next item'
+
+  return (
+    <div>
+      {totalGroups > 1 && (
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 'var(--space-xs)' }}>
+            {currentGroupIndex + 1} of {totalGroups}
+          </span>
+          <div style={{ height: 'var(--size-bar-sm)', background: T.grey100, borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${((currentGroupIndex + 1) / totalGroups) * 100}%`,
+              background: T.brandDark,
+              borderRadius: 'var(--radius-full)',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+        </div>
+      )}
+
+      <section style={{
+        marginBottom: 'var(--space-lg)',
+        background: T.white,
+        border: `${T.borderWidth} solid ${T.border}`,
+        borderRadius: 'var(--radius-lg)',
+        padding: 'var(--space-lg)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-sm)',
+      }}>
+        <SummaryRow label="Name" value={formatDisplayLabel(item.label) || '—'} />
+        <SummaryRow
+          label="Amount"
+          value={`${currency} ${amountValue.toLocaleString()}`}
+          monospaced
+        />
+        <SummaryRow label="Category" value={categoryLabel ?? '—'} />
+        {item.note.trim() ? (
+          <SummaryRow label="Note" value={item.note.trim()} />
+        ) : null}
+        {item.repeatsMonthly && (item.categoryType === 'everyday' || item.categoryType === 'fixed') ? (
+          <SummaryRow label="Reminder" value="Repeats monthly" />
+        ) : null}
+      </section>
 
       {saveError && (
         <div style={{ margin: '0 0 var(--space-md)' }}>
@@ -1561,18 +1677,61 @@ function ReviewStep({
         </div>
       )}
 
-      <PrimaryBtn
-        size="lg"
-        onClick={incomeBlocked ? onRecoverIncome : (isLastItem ? onSaveAll : onNext)}
-        disabled={saving || (!incomeBlocked && !canAdvance)}
-        style={{
-          background: (incomeBlocked || canAdvance) ? T.brandDark : T.grey200,
-          color: (incomeBlocked || canAdvance) ? T.textInverse : T.textMuted,
-          opacity: saving ? 0.7 : 1,
-        }}
-      >
-        {primaryActionLabel}
-      </PrimaryBtn>
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <SecondaryBtn
+          size="md"
+          onClick={onAddAnother}
+          disabled={saving || !canAdvance || incomeBlocked}
+          style={{ width: '100%', borderColor: T.border, color: T.text1 }}
+        >
+          Save and add another entry
+        </SecondaryBtn>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+        <PrimaryBtn
+          size="lg"
+          onClick={incomeBlocked ? onRecoverIncome : (isLastItem ? onSaveAll : onNext)}
+          disabled={saving || (!incomeBlocked && !canAdvance)}
+          style={{
+            background: (incomeBlocked || canAdvance) ? T.brandDark : T.grey200,
+            color: (incomeBlocked || canAdvance) ? T.textInverse : T.textMuted,
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {primaryActionLabel}
+        </PrimaryBtn>
+        <SecondaryBtn
+          size="lg"
+          onClick={onBack}
+          disabled={saving}
+          style={{ borderColor: T.border, color: T.text1 }}
+        >
+          Back
+        </SecondaryBtn>
+      </div>
+    </div>
+  )
+}
+
+function SummaryRow({ label, value, monospaced = false }: { label: string; value: string; monospaced?: boolean }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: 'var(--space-md)',
+    }}>
+      <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>{label}</span>
+      <span style={{
+        fontSize: 'var(--text-base)',
+        fontWeight: 'var(--weight-medium)',
+        color: T.text1,
+        textAlign: 'right',
+        ...(monospaced ? { fontVariantNumeric: 'tabular-nums' } : {}),
+      }}>
+        {value}
+      </span>
     </div>
   )
 }

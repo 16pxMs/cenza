@@ -49,6 +49,7 @@ interface OverviewTransactionRow {
   category_key: string
   category_type: string
   category_label: string | null
+  display_name?: string | null
   date: string
 }
 
@@ -260,6 +261,16 @@ function daysUntilDue(value: string, today: Date) {
   const dueDate = parseDate(value)
   if (!dueDate) return null
   return Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function resolveVisibleTransactionLabel(row: Pick<OverviewTransactionRow, 'display_name' | 'category_label' | 'category_key'>) {
+  const displayName = typeof row.display_name === 'string' ? row.display_name.trim() : ''
+  if (displayName) return displayName
+
+  const categoryLabel = typeof row.category_label === 'string' ? row.category_label.trim() : ''
+  if (categoryLabel) return categoryLabel
+
+  return titleFromKey(row.category_key || 'Expense')
 }
 
 function deriveObligationStatus(daysUntil: number): ObligationStatus {
@@ -604,7 +615,7 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
     { data: goalContributionRows },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('id, amount, category_key, category_type, category_label, date')
+      .select('id, amount, category_key, category_type, category_label, display_name, date')
       .eq('user_id', userId)
       .eq('cycle_id', cycleId),
     loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
@@ -734,7 +745,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     .slice(0, 3)
     .map((txn) => ({
       id: String(txn.id),
-      label: (txn.category_label && txn.category_label.trim()) || titleFromKey(txn.category_key || 'Expense'),
+      label: resolveVisibleTransactionLabel(txn),
       amount: Math.abs(Number(txn.amount ?? 0)),
       date: txn.date,
     }))

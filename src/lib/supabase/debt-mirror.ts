@@ -39,6 +39,13 @@ function mirrorCategoryKey(entryType: MirrorableDebtEntryType) {
     : 'debt_repayment'
 }
 
+function debtMirrorDisplayName(entryType: MirrorableDebtEntryType, debtName: string) {
+  const trimmedName = debtName.trim()
+  return entryType === 'principal_increase'
+    ? `${trimmedName} balance`
+    : `${trimmedName} payment`
+}
+
 export function isMirrorableDebtEntryType(
   entryType: DebtTransactionEntryType
 ): entryType is MirrorableDebtEntryType {
@@ -69,6 +76,7 @@ export async function createAndLinkDebtMirrorTransaction(
       category_type: category.categoryType,
       category_key: category.categoryKey,
       category_label: category.categoryLabel,
+      display_name: debtMirrorDisplayName(input.entryType, input.debtName),
       amount: input.amount,
       note: input.note,
     })

@@ -146,6 +146,7 @@ export interface Transaction {
   category_type:  CategoryType
   category_key:   string
   category_label: string
+  display_name:   string | null
   amount:         number
   note:           string | null
   created_at:     string

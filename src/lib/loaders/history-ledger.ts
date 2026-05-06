@@ -13,6 +13,7 @@ export interface LedgerTransaction {
   date: string
   amount: number
   note: string | null
+  displayName: string | null
   categoryLabel: string | null
   categoryType: CategoryType | null
 }
@@ -50,7 +51,7 @@ export async function loadHistoryLedgerPageData(
     : deriveCurrentCycleId(profile)
 
   const baseQuery = (supabase.from('transactions') as any)
-    .select('id, date, amount, note, category_key, category_label, category_type')
+    .select('id, date, amount, note, display_name, category_key, category_label, category_type')
     .eq('user_id', userId)
     .eq('cycle_id', cycleId)
 
@@ -83,6 +84,7 @@ export async function loadHistoryLedgerPageData(
     id: row.id,
     date: row.date,
     note: row.note ?? null,
+    displayName: typeof row.display_name === 'string' && row.display_name.trim() ? row.display_name.trim() : null,
     categoryLabel: row.category_label ?? null,
     categoryType: row.category_type ?? null,
     amount: Number(row.amount),

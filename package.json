@@ -12,7 +12,8 @@
     "audit:categories": "node --experimental-strip-types scripts/audit-category-data.mjs",
     "plan:categories": "node --experimental-strip-types scripts/plan-category-migration.mjs",
     "sql:categories": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/generate-category-migration-sql.mjs",
-    "write:category-sql": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/write-category-migration-sql.mjs"
+    "write:category-sql": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/write-category-migration-sql.mjs",
+    "preview:display-name-backfill": "node --experimental-strip-types scripts/preview-display-name-backfill.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
