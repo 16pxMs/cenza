@@ -88,12 +88,32 @@ export function getInitialEditStepForRow(row: {
 export function getPreviousStepForActiveRow(input: {
   currentStep: ImportPresentationEditStep
   isImportedMessage: boolean
+  detailsReturnStep?: ImportPresentationEditStep | null
 }): ImportPresentationEditStep | null {
+  if (input.currentStep === 'details') {
+    return input.detailsReturnStep ?? null
+  }
   if (input.currentStep === 'review') return 'category'
   if (input.currentStep === 'category') {
     return input.isImportedMessage ? 'details' : null
   }
   return null
+}
+
+export function shouldAutoOpenSingleQuickTypedCategoryRow<T extends {
+  isImportedMessage: boolean
+  label: string
+  amount: number
+  categoryType?: ImportPresentationCategoryType
+  categoryKey?: string | null
+  blockedReason?: string | null
+}>(rows: T[]) {
+  if (rows.length !== 1) return false
+  const [row] = rows
+  if (row.isImportedMessage) return false
+  if (row.blockedReason) return false
+
+  return true
 }
 
 const CATEGORY_SUGGESTION_RULES: Array<{ keywords: string[]; key: string }> = [
@@ -142,4 +162,41 @@ export function getSuggestedCategoryOptions(
   }
 
   return suggestions
+}
+
+export function getQueueGuidanceCopy(unresolvedCount: number) {
+  if (unresolvedCount <= 0) {
+    return {
+      summary: null,
+      instruction: null,
+    }
+  }
+
+  if (unresolvedCount === 1) {
+    return {
+      summary: null,
+      instruction: 'Tap the expense below to choose a category.',
+    }
+  }
+
+  return {
+    summary: `${unresolvedCount} expenses need categories`,
+    instruction: 'Tap each expense to finish setup.',
+  }
+}
+
+export function getQueueSaveHelperCopy(unresolvedCount: number) {
+  if (unresolvedCount <= 0) return null
+  if (unresolvedCount === 1) return 'Choose a category to continue.'
+  return `Choose categories for ${unresolvedCount} expenses to continue.`
+}
+
+export function getReviewRowActionLabel(input: {
+  needsCategory: boolean
+  hasHardError: boolean
+  isBlocked: boolean
+}) {
+  if (input.isBlocked || input.hasHardError) return null
+  if (input.needsCategory) return 'Add category'
+  return 'Ready'
 }

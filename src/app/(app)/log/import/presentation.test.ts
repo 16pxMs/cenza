@@ -5,7 +5,11 @@ import {
   getInitialEditStepForRow,
   getNextEditableRowIndex,
   getPreviousStepForActiveRow,
+  getQueueGuidanceCopy,
+  getQueueSaveHelperCopy,
+  getReviewRowActionLabel,
   getSuggestedCategoryOptions,
+  shouldAutoOpenSingleQuickTypedCategoryRow,
   shouldShowRawMessageToggle,
 } from './presentation'
 
@@ -178,5 +182,149 @@ describe('sms import presentation helpers', () => {
         isImportedMessage: false,
       })
     ).toBe('category')
+  })
+
+  it('returns single unresolved queue guidance copy', () => {
+    expect(getQueueGuidanceCopy(1)).toEqual({
+      summary: null,
+      instruction: 'Tap the expense below to choose a category.',
+    })
+    expect(getQueueSaveHelperCopy(1)).toBe('Choose a category to continue.')
+  })
+
+  it('returns multi-entry queue guidance copy', () => {
+    expect(getQueueGuidanceCopy(3)).toEqual({
+      summary: '3 expenses need categories',
+      instruction: 'Tap each expense to finish setup.',
+    })
+    expect(getQueueSaveHelperCopy(2)).toBe('Choose categories for 2 expenses to continue.')
+  })
+
+  it('returns actionable labels for unresolved and resolved rows', () => {
+    expect(
+      getReviewRowActionLabel({
+        needsCategory: true,
+        hasHardError: false,
+        isBlocked: false,
+      })
+    ).toBe('Add category')
+
+    expect(
+      getReviewRowActionLabel({
+        needsCategory: false,
+        hasHardError: false,
+        isBlocked: false,
+      })
+    ).toBe('Ready')
+  })
+
+  it('auto-opens the category step for a single quick typed unresolved row', () => {
+    expect(
+      shouldAutoOpenSingleQuickTypedCategoryRow([
+        {
+          isImportedMessage: false,
+          label: 'rice',
+          amount: 200,
+          categoryType: null,
+          categoryKey: '',
+          blockedReason: null,
+        },
+      ])
+    ).toBe(true)
+  })
+
+  it('also auto-opens single quick typed rows that will land on details or review instead of the review list', () => {
+    expect(
+      shouldAutoOpenSingleQuickTypedCategoryRow([
+        {
+          isImportedMessage: false,
+          label: 'rice',
+          amount: 0,
+          categoryType: null,
+          categoryKey: '',
+          blockedReason: null,
+        },
+      ])
+    ).toBe(true)
+
+    expect(
+      shouldAutoOpenSingleQuickTypedCategoryRow([
+        {
+          isImportedMessage: false,
+          label: 'uber',
+          amount: 1200,
+          categoryType: 'everyday',
+          categoryKey: 'transport',
+          blockedReason: null,
+        },
+      ])
+    ).toBe(true)
+  })
+
+  it('does not auto-open category for imported, blocked, or multi-row results', () => {
+    expect(
+      shouldAutoOpenSingleQuickTypedCategoryRow([
+        {
+          isImportedMessage: true,
+          label: 'Naivas',
+          amount: 200,
+          categoryType: null,
+          categoryKey: '',
+          blockedReason: null,
+        },
+      ])
+    ).toBe(false)
+
+    expect(
+      shouldAutoOpenSingleQuickTypedCategoryRow([
+        {
+          isImportedMessage: false,
+          label: 'rice',
+          amount: 200,
+          categoryType: null,
+          categoryKey: '',
+          blockedReason: null,
+        },
+        {
+          isImportedMessage: false,
+          label: 'beans',
+          amount: 100,
+          categoryType: null,
+          categoryKey: '',
+          blockedReason: null,
+        },
+      ])
+    ).toBe(false)
+
+    expect(
+      shouldAutoOpenSingleQuickTypedCategoryRow([
+        {
+          isImportedMessage: false,
+          label: 'rice',
+          amount: 200,
+          categoryType: null,
+          categoryKey: '',
+          blockedReason: 'blocked',
+        },
+      ])
+    ).toBe(false)
+  })
+
+  it('returns details back to the step that opened it when provided', () => {
+    expect(
+      getPreviousStepForActiveRow({
+        currentStep: 'details',
+        isImportedMessage: false,
+        detailsReturnStep: 'category',
+      })
+    ).toBe('category')
+
+    expect(
+      getPreviousStepForActiveRow({
+        currentStep: 'details',
+        isImportedMessage: false,
+        detailsReturnStep: 'review',
+      })
+    ).toBe('review')
   })
 })

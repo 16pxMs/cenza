@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input/Input'
 import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack } from '@/components/ui/Icons'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { getCategoryLabel } from '@/lib/categories/config'
@@ -19,7 +20,11 @@ import {
   getInitialEditStepForRow,
   getNextEditableRowIndex,
   getPreviousStepForActiveRow,
+  getQueueGuidanceCopy,
+  getQueueSaveHelperCopy,
+  getReviewRowActionLabel,
   getSuggestedCategoryOptions,
+  shouldAutoOpenSingleQuickTypedCategoryRow,
   shouldShowRawMessageToggle,
 } from './presentation'
 import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
@@ -234,10 +239,13 @@ export function SmsImportClient() {
   const [expandedRaw, setExpandedRaw] = useState<Record<string, boolean>>({})
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [editStep, setEditStep] = useState<EditStep | null>(null)
+  const [editOpenedFromReviewList, setEditOpenedFromReviewList] = useState(false)
+  const [detailsReturnStep, setDetailsReturnStep] = useState<EditStep | null>(null)
   const [recentCategoryKeys, setRecentCategoryKeys] = useState<string[]>([])
   const [frozenRecentKeys, setFrozenRecentKeys] = useState<string[]>([])
   const [categoryFilter, setCategoryFilter] = useState<ImportCategoryType>('everyday')
   const [categoryQuery, setCategoryQuery] = useState('')
+  const [categoryBrowserOpen, setCategoryBrowserOpen] = useState(false)
 
   useEffect(() => {
     setRecentCategoryKeys(loadRecentCategoryKeys())
@@ -321,6 +329,25 @@ export function SmsImportClient() {
     hasSavableClientValidationErrors,
   } = reviewState
   const reviewCopy = useMemo(() => getReviewCopy(rows), [rows])
+  const unresolvedCategoryCount = useMemo(
+    () =>
+      rows.reduce((count, row) => {
+        const serverErrors = rowErrors[row.id] ?? []
+        const clientIssues = validateRow(row)
+        const hasHardError = serverErrors.length > 0 || clientIssues.some((issue) => issue !== 'Choose a category')
+        const needsCategory = !row.categoryType && !hasHardError
+        return count + (needsCategory ? 1 : 0)
+      }, 0),
+    [rowErrors, rows]
+  )
+  const queueGuidance = useMemo(
+    () => getQueueGuidanceCopy(unresolvedCategoryCount),
+    [unresolvedCategoryCount]
+  )
+  const queueSaveHelper = useMemo(
+    () => getQueueSaveHelperCopy(unresolvedCategoryCount),
+    [unresolvedCategoryCount]
+  )
   const editableRowIndices = useMemo(
     () => rows.reduce<number[]>((indices, row, index) => {
       if (!isBlockedIncomeRow(row)) indices.push(index)
@@ -478,10 +505,12 @@ export function SmsImportClient() {
     }
   }
 
-  const openEditRow = (row: EditableRow) => {
+  const beginEditRow = (row: EditableRow, fromReviewList: boolean) => {
     if (isBlockedIncomeRow(row)) return
 
     setEditingRowId(row.id)
+    setEditOpenedFromReviewList(fromReviewList)
+    setDetailsReturnStep(null)
     setEditStep(getInitialEditStepForRow(row))
     setFrozenRecentKeys(loadRecentCategoryKeys())
     setEditDraft({
@@ -500,6 +529,10 @@ export function SmsImportClient() {
     }
   }
 
+  const openEditRow = (row: EditableRow) => {
+    beginEditRow(row, true)
+  }
+
   const openEditRowAtIndex = (index: number) => {
     const row = rows[index]
     if (!row || isBlockedIncomeRow(row)) return
@@ -509,11 +542,14 @@ export function SmsImportClient() {
   const closeEditRow = () => {
     setEditingRowId(null)
     setEditStep(null)
+    setEditOpenedFromReviewList(false)
+    setDetailsReturnStep(null)
     setEditDraft(null)
     setEditDeleteConfirmOpen(false)
     setEditErrors({})
     setShowCreateDebt(false)
     setCreateDebtError(null)
+    setCategoryBrowserOpen(false)
   }
 
   const returnToInputScreen = () => {
@@ -531,10 +567,20 @@ export function SmsImportClient() {
     const previousStep = getPreviousStepForActiveRow({
       currentStep: editStep,
       isImportedMessage: editingRow.isImportedMessage,
+      detailsReturnStep,
     })
 
     if (previousStep) {
+      if (editStep === 'details') {
+        setDetailsReturnStep(null)
+      }
       setEditStep(previousStep)
+      return
+    }
+
+    if (!editOpenedFromReviewList && editStep === 'category' && !editingRow.isImportedMessage) {
+      returnToInputScreen()
+      closeEditRow()
       return
     }
 
@@ -578,6 +624,17 @@ export function SmsImportClient() {
     setEditStep('category')
   }
 
+  const openCategoryBrowser = () => {
+    setCategoryFilter(editDraft?.categoryType === 'fixed' || editDraft?.categoryType === 'debt' ? editDraft.categoryType : 'everyday')
+    setCategoryQuery('')
+    setCategoryBrowserOpen(true)
+  }
+
+  const closeCategoryBrowser = () => {
+    setCategoryBrowserOpen(false)
+    setCategoryQuery('')
+  }
+
   const selectImportCategory = (option: { key: string; type: string }) => {
     const nextType = toImportCategoryType(option.type)
     if (!nextType) return
@@ -603,6 +660,7 @@ export function SmsImportClient() {
     }))
     setRecentCategoryKeys(recordRecentCategoryKey(option.key))
     if (nextType === 'debt') ensureDebtsLoaded()
+    setCategoryBrowserOpen(false)
   }
 
   const goToEditReview = () => {
@@ -707,6 +765,9 @@ export function SmsImportClient() {
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
       setRowErrors(nextBlockedRowErrors)
       setRowWarnings({})
+      if (shouldAutoOpenSingleQuickTypedCategoryRow(nextRows)) {
+        beginEditRow(nextRows[0], false)
+      }
       if (data.rows.length === 0) {
         setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
       }
@@ -950,21 +1011,17 @@ export function SmsImportClient() {
           ) : (
             <>
               {(() => {
-                const needsAttentionCount = rows.reduce((count, row) => {
-                  const issues = rowErrors[row.id] ?? validateRow(row)
-                  return count + (issues.length > 0 ? 1 : 0)
-                }, 0)
                 return (
                   <div style={{ marginBottom: 12 }}>
                     <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
                       {reviewCopy.title}
                     </p>
                     <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
-                      {reviewCopy.body}
+                      {queueGuidance.instruction ?? reviewCopy.body}
                     </p>
-                    {needsAttentionCount > 0 && (
-                      <p style={{ margin: '4px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
-                        Some entries need a category.
+                    {queueGuidance.summary && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: T.text2, lineHeight: 1.5, fontWeight: 600 }}>
+                        {queueGuidance.summary}
                       </p>
                     )}
                   </div>
@@ -978,8 +1035,13 @@ export function SmsImportClient() {
                   const hasHardError = serverErrors.length > 0 || clientIssues.some((i) => i !== 'Choose a category')
                   const isBlocked = isBlockedIncomeRow(row)
                   const needsCategory = !row.categoryType && !hasHardError
-                  const cardBorder = hasHardError ? T.redBorder : needsCategory ? T.amberBorder : T.borderSubtle
-                  const cardBg = hasHardError ? T.redLight : needsCategory ? T.amberLight : 'var(--white)'
+                  const rowActionLabel = getReviewRowActionLabel({
+                    needsCategory,
+                    hasHardError,
+                    isBlocked,
+                  })
+                  const cardBorder = hasHardError ? T.redBorder : needsCategory ? T.border : T.borderSubtle
+                  const cardBg = hasHardError ? T.redLight : 'var(--white)'
 
                   return (
                   <div
@@ -1017,12 +1079,33 @@ export function SmsImportClient() {
                         <p style={{ margin: '0 0 4px', fontSize: 15, color: T.text1, fontWeight: 600, lineHeight: 1.3 }}>
                           {row.label}
                         </p>
-                        <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.amberDark : T.text3, lineHeight: 1.45 }}>
+                        <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.text2 : T.text3, lineHeight: 1.45 }}>
                           {needsCategory
                             ? buildNeedsCategoryMetaLabel(row)
                             : buildRowMetaLabel(row)}
                         </p>
+                        {rowActionLabel ? (
+                          <p style={{
+                            margin: '6px 0 0',
+                            fontSize: 12,
+                            color: needsCategory ? T.brandDark : T.textMuted,
+                            fontWeight: needsCategory ? 600 : 500,
+                            lineHeight: 1.4,
+                          }}>
+                            {rowActionLabel}
+                          </p>
+                        ) : null}
                       </button>
+                      {!isBlocked && !needsCategory ? (
+                        <span style={{
+                          color: T.textMuted,
+                          fontSize: 18,
+                          lineHeight: 1,
+                          paddingTop: 2,
+                        }}>
+                          ✓
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         aria-label="Remove row"
@@ -1138,7 +1221,22 @@ export function SmsImportClient() {
               )}
 
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-                {validSavableRows.length === 0 ? (
+                {unresolvedCategoryCount > 0 ? (
+                  <>
+                    {queueSaveHelper ? (
+                      <p style={{ margin: 0, fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
+                        {queueSaveHelper}
+                      </p>
+                    ) : null}
+                    <PrimaryBtn
+                      size="lg"
+                      onClick={() => handleSave(false)}
+                      disabled
+                    >
+                      {`Save ${savableRows.length} ${savableRows.length === 1 ? 'expense' : 'expenses'}`}
+                    </PrimaryBtn>
+                  </>
+                ) : validSavableRows.length === 0 ? (
                   <PrimaryBtn
                     size="lg"
                     onClick={() => {
@@ -1170,7 +1268,7 @@ export function SmsImportClient() {
                       : `Save ${validSavableRows.length} ${validSavableRows.length === 1 ? 'expense' : 'expenses'}`}
                   </PrimaryBtn>
                 )}
-                {validSavableRows.length > 0 ? (
+                {showReview ? (
                   <SecondaryBtn
                     size="lg"
                     onClick={() => {
@@ -1433,114 +1531,33 @@ export function SmsImportClient() {
                   </div>
                 ) : null}
 
-                <input
-                  type="search"
-                  value={categoryQuery}
-                  onChange={(event) => setCategoryQuery(event.target.value)}
-                  placeholder="Search categories"
-                  aria-label="Search categories"
-                  className={styles.focusRing}
+                <button
+                  type="button"
+                  onClick={openCategoryBrowser}
                   style={{
                     width: '100%',
-                    height: 40,
-                    borderRadius: 10,
+                    borderRadius: 14,
                     border: `var(--border-width) solid ${T.border}`,
                     background: T.white,
-                    padding: '0 14px',
-                    fontSize: 'var(--text-sm)',
-                    color: T.text1,
-                    outline: 'none',
-                    boxSizing: 'border-box',
+                    padding: '14px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-sm)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
                   }}
-                />
-
-                {isSearchingCategories ? (
-                  categorySearchResults.length > 0 ? (
-                    <div style={{
-                      display: 'flex',
-                      gap: 'var(--space-sm)',
-                      flexWrap: 'wrap',
-                      maxHeight: 200,
-                      overflowY: 'auto',
-                    }}>
-                      {categorySearchResults.map((option) => (
-                        <SingleSelectChip
-                          key={`search-${option.key}`}
-                          label={option.label}
-                          selected={editDraft.categoryKey === option.key}
-                          onClick={() => selectImportCategory(option)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                      No matches.
-                    </p>
-                  )
-                ) : (
-                  <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-                    <div
-                      role="tablist"
-                      aria-label="Category groups"
-                      style={{
-                        display: 'flex',
-                        padding: 3,
-                        borderRadius: 10,
-                        background: 'var(--grey-100)',
-                        width: '100%',
-                      }}
-                    >
-                      {IMPORT_CATEGORY_GROUPS.map((group) => {
-                        const groupType = toImportCategoryType(group.type)
-                        if (!groupType) return null
-                        const active = categoryFilter === groupType
-                        return (
-                          <button
-                            key={`filter-${groupType}`}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            onClick={() => setCategoryFilter(groupType)}
-                            style={{
-                              flex: 1,
-                              height: 30,
-                              borderRadius: 8,
-                              border: 'none',
-                              background: active ? T.white : 'transparent',
-                              color: active ? T.text1 : T.text2,
-                              fontSize: 'var(--text-sm)',
-                              fontWeight: active ? 'var(--weight-semibold)' : 'var(--weight-medium)',
-                              cursor: 'pointer',
-                              boxShadow: active ? '0 1px 2px rgba(16, 24, 40, 0.08)' : 'none',
-                              transition: 'background 140ms ease, color 140ms ease, box-shadow 140ms ease',
-                            }}
-                          >
-                            {group.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-
-                    {tabCategoryOptions.length > 0 ? (
-                      <div style={{
-                        display: 'flex',
-                        gap: 'var(--space-sm)',
-                        flexWrap: 'wrap',
-                        maxHeight: 200,
-                        overflowY: 'auto',
-                      }}>
-                        {tabCategoryOptions.map((option) => (
-                          <SingleSelectChip
-                            key={`filtered-${option.key}`}
-                            label={option.label}
-                            selected={editDraft.categoryKey === option.key}
-                            onClick={() => selectImportCategory(option)}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
+                >
+                  <span>
+                    <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                      Browse all categories
+                    </span>
+                    <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                      Search or browse the full category list
+                    </span>
+                  </span>
+                  <span style={{ color: T.textMuted, fontSize: 18, lineHeight: 1 }}>›</span>
+                </button>
 
                 <div>
                   {editErrors.category && (
@@ -1792,7 +1809,10 @@ export function SmsImportClient() {
           </div>
           {editStep === 'category' && !editingRow.isImportedMessage ? (
             <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
-              <TertiaryBtn size="md" onClick={() => setEditStep('details')}>
+              <TertiaryBtn size="md" onClick={() => {
+                setDetailsReturnStep('category')
+                setEditStep('details')
+              }}>
                 Edit details
               </TertiaryBtn>
             </div>
@@ -1806,7 +1826,10 @@ export function SmsImportClient() {
               gap: 'var(--space-sm)',
             }}>
               {!editingRow.isImportedMessage ? (
-                <TertiaryBtn size="md" onClick={() => setEditStep('details')}>
+                <TertiaryBtn size="md" onClick={() => {
+                  setDetailsReturnStep('review')
+                  setEditStep('details')
+                }}>
                   Edit details
                 </TertiaryBtn>
               ) : null}
@@ -1818,6 +1841,118 @@ export function SmsImportClient() {
           </>
         )}
       </div>
+
+      <Sheet
+        open={showingEditFlow && editStep === 'category' && categoryBrowserOpen}
+        onClose={closeCategoryBrowser}
+        title="Choose category"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+            Select a category and we&apos;ll return you to this entry.
+          </p>
+
+          <input
+            type="search"
+            value={categoryQuery}
+            onChange={(event) => setCategoryQuery(event.target.value)}
+            placeholder="Search categories"
+            aria-label="Search categories"
+            className={styles.focusRing}
+            style={{
+              width: '100%',
+              height: 44,
+              borderRadius: 12,
+              border: `var(--border-width) solid ${T.border}`,
+              background: T.white,
+              padding: '0 14px',
+              fontSize: 'var(--text-sm)',
+              color: T.text1,
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+
+          {!isSearchingCategories ? (
+            <div
+              role="tablist"
+              aria-label="Category groups"
+              style={{
+                display: 'flex',
+                padding: 3,
+                borderRadius: 10,
+                background: 'var(--grey-100)',
+                width: '100%',
+              }}
+            >
+              {IMPORT_CATEGORY_GROUPS.map((group) => {
+                const groupType = toImportCategoryType(group.type)
+                if (!groupType) return null
+                const active = categoryFilter === groupType
+                return (
+                  <button
+                    key={`modal-filter-${groupType}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setCategoryFilter(groupType)}
+                    style={{
+                      flex: 1,
+                      height: 34,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: active ? T.white : 'transparent',
+                      color: active ? T.text1 : T.text2,
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: active ? 'var(--weight-semibold)' : 'var(--weight-medium)',
+                      cursor: 'pointer',
+                      boxShadow: active ? '0 1px 2px rgba(16, 24, 40, 0.08)' : 'none',
+                    }}
+                  >
+                    {group.label}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
+
+          <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+            {isSearchingCategories ? (
+              categorySearchResults.length > 0 ? (
+                <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                  {categorySearchResults.map((option) => (
+                    <SingleSelectChip
+                      key={`modal-search-${option.key}`}
+                      label={option.label}
+                      selected={editDraft?.categoryKey === option.key}
+                      onClick={() => selectImportCategory(option)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                  No matches.
+                </p>
+              )
+            ) : tabCategoryOptions.length > 0 ? (
+              <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                {tabCategoryOptions.map((option) => (
+                  <SingleSelectChip
+                    key={`modal-filtered-${option.key}`}
+                    label={option.label}
+                    selected={editDraft?.categoryKey === option.key}
+                    onClick={() => selectImportCategory(option)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                No categories in this group.
+              </p>
+            )}
+          </div>
+        </div>
+      </Sheet>
     </div>
   )
 }
