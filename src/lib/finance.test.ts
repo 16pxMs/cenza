@@ -125,6 +125,65 @@ describe('formatAmount', () => {
       expect(formatAmount(100, { currency: 'USD', variant: 'raw' })).toBe('100')
     })
   })
+
+  describe('preference + context formatting', () => {
+    it('smart summary abbreviates large values', () => {
+      expect(
+        formatAmount(24_530, {
+          currency: 'KES',
+          preference: 'smart',
+          context: 'summary',
+        })
+      ).toBe('KES 24.5K')
+    })
+
+    it('smart detail shows full values', () => {
+      expect(
+        formatAmount(24_530, {
+          currency: 'KES',
+          preference: 'smart',
+          context: 'detail',
+        })
+      ).toBe('KES 24,530')
+    })
+
+    it('full shows full ordinary values', () => {
+      expect(
+        formatAmount(24_530, {
+          currency: 'KES',
+          preference: 'full',
+          context: 'summary',
+        })
+      ).toBe('KES 24,530')
+    })
+
+    it('short abbreviates eligible values consistently', () => {
+      expect(
+        formatAmount(24_530, {
+          currency: 'KES',
+          preference: 'short',
+          context: 'detail',
+        })
+      ).toBe('KES 24.5K')
+    })
+
+    it('small values stay readable', () => {
+      expect(
+        formatAmount(530, {
+          currency: 'KES',
+          preference: 'smart',
+          context: 'summary',
+        })
+      ).toBe('KES 530')
+      expect(
+        formatAmount(530, {
+          currency: 'KES',
+          preference: 'short',
+          context: 'row',
+        })
+      ).toBe('KES 530')
+    })
+  })
 })
 
 // ─── formatDate ───────────────────────────────────────────────

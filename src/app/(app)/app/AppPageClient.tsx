@@ -50,6 +50,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
       <OverviewWithData
         name={overview.name}
         currency={overview.currency}
+        amountFormatPreference={overview.amountFormatPreference}
         hasStartedCycleData={overview.hasStartedCycleData}
         incomeType={overview.incomeType}
         paydayDay={overview.paydayDay}

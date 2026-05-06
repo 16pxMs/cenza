@@ -1,10 +1,15 @@
 // ─────────────────────────────────────────────────────────────
 // Currency amount formatting
 //
-// Three variants:
+// Variants:
 //   full    — KES 24,530     finance-safe, no abbreviation
 //   compact — KES 24.5K      UI scanning, 1 decimal, strip .0
 //   raw     — 24530          no currency, no formatting
+//
+// Preferences:
+//   smart   — balances readability and precision by context
+//   full    — prefer full values everywhere
+//   short   — abbreviate eligible values consistently
 //
 // Rules:
 //   • Negatives always format as -KES 1.5K (sign before currency)
@@ -13,10 +18,14 @@
 // ─────────────────────────────────────────────────────────────
 
 export type AmountVariant = 'full' | 'compact' | 'raw'
+export type AmountFormatPreference = 'smart' | 'full' | 'short'
+export type AmountFormatContext = 'summary' | 'detail' | 'compact' | 'row'
 
 export interface FormatAmountOptions {
   currency?: string
-  variant?:  AmountVariant
+  variant?: AmountVariant
+  preference?: AmountFormatPreference
+  context?: AmountFormatContext
 }
 
 const DEFAULT_CURRENCY = 'KES'
@@ -42,17 +51,35 @@ const COMPACT_THRESHOLDS = [
  * formatAmount(-1500, { currency: 'USD', variant: 'compact' }) // '-USD 1.5K'
  */
 export function formatAmount(value: number, options: FormatAmountOptions = {}): string {
-  const { currency = DEFAULT_CURRENCY, variant = 'full' } = options
+  const {
+    currency = DEFAULT_CURRENCY,
+    variant,
+    preference = 'smart',
+    context = 'detail',
+  } = options
 
-  if (variant === 'raw') return String(value)
+  const resolvedVariant = variant ?? resolveVariant(preference, context)
+
+  if (resolvedVariant === 'raw') return String(value)
 
   if (value === 0) return `${currency} 0`
 
   const abs  = Math.abs(value)
   const sign = value < 0 ? '-' : ''
 
-  if (variant === 'compact') return compactFormat(abs, sign, currency)
+  if (resolvedVariant === 'compact') return compactFormat(abs, sign, currency)
   return fullFormat(abs, sign, currency)
+}
+
+function resolveVariant(
+  preference: AmountFormatPreference,
+  context: AmountFormatContext
+): Exclude<AmountVariant, 'raw'> {
+  if (preference === 'full') return 'full'
+  if (preference === 'short') return 'compact'
+
+  if (context === 'detail') return 'full'
+  return 'compact'
 }
 
 // ─── Variants ─────────────────────────────────────────────────

@@ -18,7 +18,8 @@ import { clearPinDeviceState } from '@/lib/actions/pin'
 import { fmt } from '@/lib/finance'
 import { ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
-import { deleteAccountPermanently, savePaySchedule } from './actions'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
+import { deleteAccountPermanently, saveAmountFormatPreference, savePaySchedule } from './actions'
 
 const T = {
   pageBg: '#F8F9FA',
@@ -33,6 +34,15 @@ const T = {
 
 const PAY_DAYS = Array.from({ length: 31 }, (_, i) => i + 1)
 const MONTHLY_DAYS = PAY_DAYS
+const AMOUNT_FORMAT_OPTIONS: Array<{
+  value: AmountFormatPreference
+  label: string
+  description: string
+}> = [
+  { value: 'smart', label: 'Smart', description: 'Balanced for readability' },
+  { value: 'full', label: 'Full', description: 'Show exact amounts' },
+  { value: 'short', label: 'Short', description: 'Use K/M abbreviations' },
+]
 
 function ordinal(day: number): string {
   if (day % 10 === 1 && day % 100 !== 11) return `${day}st`
@@ -62,6 +72,10 @@ function formatScheduleSentence(type: 'monthly' | 'twice_monthly' | null, days: 
   return `You get paid twice a month on the ${ordinal(days[0] ?? 1)} and ${ordinal(days[1] ?? days[0] ?? 1)}.`
 }
 
+function amountFormatLabel(value: AmountFormatPreference) {
+  return AMOUNT_FORMAT_OPTIONS.find((option) => option.value === value)?.label ?? 'Smart'
+}
+
 export default function SettingsPageClient({ data }: { data: SettingsPageData }) {
   const router = useRouter()
   const supabase = createClient()
@@ -84,6 +98,9 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   )
   const [activePayDaySlot, setActivePayDaySlot] = useState<'first' | 'second'>('first')
   const [savingPaySchedule, setSavingPaySchedule] = useState(false)
+  const [showAmountFormat, setShowAmountFormat] = useState(false)
+  const [amountFormatPreference, setAmountFormatPreference] = useState<AmountFormatPreference>(data.amountFormatPreference)
+  const [savingAmountFormat, setSavingAmountFormat] = useState(false)
 
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm'>('idle')
   const [deleting, setDeleting] = useState(false)
@@ -197,6 +214,17 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           value={currencyMeta ? `${currencyMeta.flag}  ${currency}` : currency}
           supportingText="Locked after onboarding to keep totals consistent."
           valueTone="default"
+          isLast
+        />
+      </>)}
+
+      {sectionLabel('Display')}
+      {sectionCard(<>
+        <SettingsRow
+          label="Amount format"
+          value={amountFormatLabel(amountFormatPreference)}
+          supportingText={AMOUNT_FORMAT_OPTIONS.find((option) => option.value === amountFormatPreference)?.description}
+          onClick={() => setShowAmountFormat(true)}
           isLast
         />
       </>)}
@@ -530,6 +558,80 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
               {savingPaySchedule ? 'Saving…' : 'Save'}
             </PrimaryBtn>
           )}
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={showAmountFormat}
+        onClose={() => setShowAmountFormat(false)}
+        title="Amount format"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+            Choose how money appears across the app.
+          </p>
+
+          <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+            {AMOUNT_FORMAT_OPTIONS.map((option) => {
+              const selected = amountFormatPreference === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setAmountFormatPreference(option.value)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-md)',
+                    padding: '14px 16px',
+                    borderRadius: 'var(--radius-md)',
+                    border: selected
+                      ? `var(--border-width) solid ${T.brandDark}`
+                      : `var(--border-width) solid ${T.border}`,
+                    background: selected ? 'var(--brand-mid)' : T.white,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
+                      {option.label}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+                      {option.description}
+                    </span>
+                  </span>
+                  {selected ? (
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.brandDark }}>
+                      Selected
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+
+          <PrimaryBtn
+            size="lg"
+            onClick={async () => {
+              try {
+                setSavingAmountFormat(true)
+                await saveAmountFormatPreference(amountFormatPreference)
+                await refreshProfile()
+                setShowAmountFormat(false)
+                toast('Amount format saved')
+              } catch {
+                toast('Failed to save amount format. Please try again.')
+              } finally {
+                setSavingAmountFormat(false)
+              }
+            }}
+            disabled={savingAmountFormat}
+          >
+            {savingAmountFormat ? 'Saving…' : 'Save amount format'}
+          </PrimaryBtn>
         </div>
       </Sheet>
     </>

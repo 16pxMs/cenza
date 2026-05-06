@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { GoalId, UserProfile } from '@/types/database'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
 export interface GoalsPageGoalData {
   id: GoalId
@@ -22,6 +23,7 @@ export interface GoalMilestoneData {
 
 export interface GoalsPageData {
   currency: string
+  amountFormatPreference: AmountFormatPreference
   goals: GoalId[]
   goalDataList: GoalsPageGoalData[]
   targets: Record<string, number | null>
@@ -144,6 +146,7 @@ export async function loadGoalsPageData(userId: string, profile: UserProfile): P
 
   return {
     currency: profile.currency ?? 'KES',
+    amountFormatPreference: profile.amount_format_preference ?? 'smart',
     goals,
     goalDataList,
     targets,

@@ -5,6 +5,7 @@
 export type GoalId = 'emergency' | 'car' | 'travel' | 'home' | 'education' | 'business' | 'family' | 'other'
 export type Frequency = 'monthly' | 'quarterly' | 'biannual' | 'yearly' | 'weekly'
 export type CategoryType = 'everyday' | 'fixed' | 'subscription' | 'goal' | 'debt' | 'other'
+export type AmountFormatPreference = 'smart' | 'full' | 'short'
 export type SubscriptionStatus = 'yes_known' | 'yes_unknown'
 export type DebtDirection = 'owed_by_me' | 'owed_to_me'
 export type DebtStatus = 'active' | 'cleared' | 'cancelled'
@@ -41,6 +42,7 @@ export interface UserProfile {
   pay_schedule_type:   'monthly' | 'twice_monthly' | null
   pay_schedule_days:   number[] | null
   income_type:         'salaried' | 'variable' | null
+  amount_format_preference: AmountFormatPreference
   goals:               GoalId[]
   onboarding_complete: boolean
   pin_hash:            string | null

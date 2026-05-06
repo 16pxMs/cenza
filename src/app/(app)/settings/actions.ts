@@ -6,6 +6,7 @@ import { clearPinDeviceState } from '@/lib/actions/pin'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deleteMonthlyStorageForUser } from '@/lib/monthly-reminders/storage'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
 export async function saveCurrency(code: string): Promise<void> {
   const { user } = await getAppSession()
@@ -49,6 +50,29 @@ export async function savePaySchedule(
   revalidatePath('/plan')
   revalidatePath('/log')
   revalidatePath('/history')
+}
+
+export async function saveAmountFormatPreference(
+  preference: AmountFormatPreference
+): Promise<void> {
+  const { user } = await getAppSession()
+  if (!user) throw new Error('Not authenticated')
+
+  const supabase = await createServerSupabaseClient()
+  const { error } = await (supabase.from('user_profiles') as any)
+    .update({ amount_format_preference: preference })
+    .eq('id', user.id)
+
+  if (error) {
+    throw new Error(`Failed to save amount format preference: ${error.message}`)
+  }
+
+  revalidatePath('/settings')
+  revalidatePath('/app')
+  revalidatePath('/log')
+  revalidatePath('/history')
+  revalidatePath('/history/debt')
+  revalidatePath('/goals')
 }
 
 export async function deleteAccountPermanently(): Promise<void> {

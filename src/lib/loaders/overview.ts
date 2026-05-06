@@ -15,6 +15,7 @@ import {
   isDebtOpeningBalanceTransaction,
 } from '@/lib/transactions/outflow'
 import type { Debt, GoalId, UserProfile } from '@/types/database'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
 interface ExtraIncomeItem {
   id: string
@@ -208,6 +209,7 @@ export interface OverviewPageData {
 export interface OverviewCriticalData {
   name: string
   currency: string
+  amountFormatPreference: AmountFormatPreference
   incomeType: 'salaried' | 'variable' | null
   paydayDay: number | null
   hasStartedCycleData: boolean
@@ -217,6 +219,7 @@ export interface OverviewCriticalData {
 }
 
 export interface OverviewSecondaryData {
+  amountFormatPreference: AmountFormatPreference
   goals: GoalId[]
   activeDebts: Debt[]
   debtTotal: number
@@ -565,6 +568,7 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
   return {
     name: displayFirstName,
     currency: profile.currency ?? 'KES',
+    amountFormatPreference: profile.amount_format_preference ?? 'smart',
     incomeType: profile.income_type ?? null,
     paydayDay:
       profile.income_type === 'salaried' &&
@@ -806,6 +810,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
   })
 
   return {
+    amountFormatPreference: profile.amount_format_preference ?? 'smart',
     goals,
     activeDebts,
     debtTotal,

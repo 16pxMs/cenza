@@ -8,7 +8,7 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
-import { fmt } from '@/lib/finance'
+import { formatAmount } from '@/lib/formatting/amount'
 import type { LogEntry, LogPageData } from '@/lib/loaders/log'
 
 const T = {
@@ -149,7 +149,11 @@ export default function LogPageClient({ data }: LogPageClientProps) {
             marginLeft: 'var(--space-sm)',
             fontVariantNumeric: 'tabular-nums',
           }}>
-            {fmt(entry.amount, data.currency)}
+            {formatAmount(entry.amount, {
+              currency: data.currency,
+              preference: data.amountFormatPreference,
+              context: 'row',
+            })}
           </span>
         </button>
       </div>
@@ -184,7 +188,11 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           lineHeight: 1.1,
           fontVariantNumeric: 'tabular-nums',
         }}>
-          {fmt(totalLogged, data.currency)}
+          {formatAmount(totalLogged, {
+            currency: data.currency,
+            preference: data.amountFormatPreference,
+            context: 'summary',
+          })}
         </p>
         <p style={{
           margin: 0,
@@ -238,9 +246,13 @@ export default function LogPageClient({ data }: LogPageClientProps) {
                     fontSize: 'var(--text-sm)',
                     fontWeight: 'var(--weight-medium)',
                     color: T.text1,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {fmt(cat.totalAmount, data.currency)}
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                    {formatAmount(cat.totalAmount, {
+                      currency: data.currency,
+                      preference: data.amountFormatPreference,
+                      context: 'summary',
+                    })}
                   </span>
                 </div>
               ))}

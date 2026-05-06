@@ -3,6 +3,7 @@ import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import type { UserProfile } from '@/types/database'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
 interface IncomeRow {
   salary: number | string | null
@@ -15,6 +16,7 @@ export interface SettingsPageData {
   name: string
   email: string
   currency: string
+  amountFormatPreference: AmountFormatPreference
   payScheduleType: 'monthly' | 'twice_monthly' | null
   payScheduleDays: number[]
   incomeType: 'salaried' | 'variable' | null
@@ -48,6 +50,7 @@ export async function loadSettingsPageData(user: User, profile: UserProfile): Pr
     name: profile.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
     email: user.email ?? '',
     currency: profile.currency ?? '',
+    amountFormatPreference: profile.amount_format_preference ?? 'smart',
     payScheduleType: profile.pay_schedule_type ?? null,
     payScheduleDays: profile.pay_schedule_days ?? [],
     incomeType: profile.income_type ?? null,

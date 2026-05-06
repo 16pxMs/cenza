@@ -34,6 +34,7 @@ export default async function GoalDetailPage({ params }: PageProps) {
   return (
     <GoalDetailPageClient
       currency={data.currency}
+      amountFormatPreference={data.amountFormatPreference}
       goal={goal}
     />
   )

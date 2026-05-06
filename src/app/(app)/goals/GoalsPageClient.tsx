@@ -11,7 +11,8 @@ import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryLink } from '@/components/ui/Button/Button'
 import { GOAL_META } from '@/constants/goals'
-import { fmt } from '@/lib/finance'
+import { formatAmount } from '@/lib/formatting/amount'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 import type { GoalId } from '@/types/database'
 import type { GoalsPageData, GoalsPageGoalData } from '@/lib/loaders/goals'
 
@@ -86,8 +87,9 @@ function CelebrationContent({
   goalId,
   saved,
   currency,
+  amountFormatPreference,
   onClose,
-}: { goalId: GoalId; saved: number; currency: string; onClose: () => void }) {
+}: { goalId: GoalId; saved: number; currency: string; amountFormatPreference: AmountFormatPreference; onClose: () => void }) {
   const meta = GOAL_META[goalId]
   return (
     <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
@@ -106,7 +108,7 @@ function CelebrationContent({
         fontWeight: 600,
         color: meta.dark,
       }}>
-        {fmt(saved, currency)} saved
+        {formatAmount(saved, { currency, preference: amountFormatPreference, context: 'summary' })} saved
       </div>
       <p style={{ fontSize: 14, color: '#667085', lineHeight: 1.6, margin: '0 0 24px' }}>
         This is a big deal. You set a goal and you got there.{'\n'}Take a moment to celebrate this.
@@ -147,7 +149,17 @@ function goalDisplayLabel(id: string, destination: string | null | undefined): s
   return GOAL_META[id as GoalId]?.label ?? id
 }
 
-function GoalCard({ goal, currency, onTap }: { goal: GoalsPageGoalData; currency: string; onTap: () => void }) {
+function GoalCard({
+  goal,
+  currency,
+  amountFormatPreference,
+  onTap,
+}: {
+  goal: GoalsPageGoalData
+  currency: string
+  amountFormatPreference: AmountFormatPreference
+  onTap: () => void
+}) {
   const meta = GOAL_META[goal.id]
   const label = goalDisplayLabel(goal.id, goal.destination)
   const pct = goal.target ? Math.min(100, Math.round((goal.totalSaved / goal.target) * 100)) : 0
@@ -212,21 +224,23 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalsPageGoalData; currency
           <>
             <div>
               <div style={{ fontSize: 19, fontWeight: 700, color: T.text1, letterSpacing: -0.3 }}>
-                {fmt(goal.totalSaved, currency)}
+                {formatAmount(goal.totalSaved, { currency, preference: amountFormatPreference, context: 'summary' })}
               </div>
               <div style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>saved</div>
             </div>
             {goal.target != null && !isDone && (
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: T.text3 }}>
-                  {fmt(goal.target - goal.totalSaved, currency)}
+                  {formatAmount(goal.target - goal.totalSaved, { currency, preference: amountFormatPreference, context: 'summary' })}
                 </div>
                 <div style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>to go</div>
               </div>
             )}
             {isDone && goal.target != null && (
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: meta.dark }}>{fmt(goal.target, currency)}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: meta.dark }}>
+                  {formatAmount(goal.target, { currency, preference: amountFormatPreference, context: 'summary' })}
+                </div>
                 <div style={{ fontSize: 11, color: meta.dark, opacity: 0.75, marginTop: 1 }}>target reached</div>
               </div>
             )}
@@ -234,9 +248,9 @@ function GoalCard({ goal, currency, onTap }: { goal: GoalsPageGoalData; currency
         ) : goal.target != null ? (
           <>
             <span style={{ fontSize: 13, color: T.textMuted }}>No contributions yet</span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: T.text2 }}>
-              {fmt(goal.target, currency)} target
-            </span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: T.text2 }}>
+              {formatAmount(goal.target, { currency, preference: amountFormatPreference, context: 'summary' })} target
+              </span>
           </>
         ) : (
           <span style={{ fontSize: 13, color: T.textMuted }}>No target set</span>
@@ -293,9 +307,9 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
         <div style={{ fontSize: 14, color: T.text3, marginBottom: 'var(--space-lg)' }}>
           {data.goals.length} goal{data.goals.length !== 1 ? 's' : ''} ·{' '}
           {data.totalSaved > 0
-            ? `${fmt(data.totalSaved, data.currency)} saved`
+            ? `${formatAmount(data.totalSaved, { currency: data.currency, preference: data.amountFormatPreference, context: 'summary' })} saved`
             : data.totalTargets > 0
-              ? `${fmt(data.totalTargets, data.currency)} in targets`
+              ? `${formatAmount(data.totalTargets, { currency: data.currency, preference: data.amountFormatPreference, context: 'summary' })} in targets`
               : 'No targets set yet'}
         </div>
       )}
@@ -337,9 +351,15 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
           {data.goalDataList.map(goal => (
-            <GoalCard key={goal.id} goal={goal} currency={data.currency} onTap={() => router.push(`/goals/${goal.id}`)} />
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              currency={data.currency}
+              amountFormatPreference={data.amountFormatPreference}
+              onTap={() => router.push(`/goals/${goal.id}`)}
+            />
           ))}
         </div>
       )}
@@ -368,6 +388,7 @@ export default function GoalsPageClient({ data }: GoalsPageClientProps) {
             goalId={celebGoal}
             saved={data.savedByGoal[celebGoal] ?? 0}
             currency={data.currency}
+            amountFormatPreference={data.amountFormatPreference}
             onClose={() => setCelebGoal(null)}
           />
         </Sheet>

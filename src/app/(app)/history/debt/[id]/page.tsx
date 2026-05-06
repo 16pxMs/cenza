@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { fmt, formatDate } from '@/lib/finance'
+import { formatDate } from '@/lib/finance'
+import { formatAmount } from '@/lib/formatting/amount'
 import { getDebtDetailState, isDebtSettled } from '@/lib/debts/state'
 import { deleteDebt, getDebt, getDebtTransactions, isStandardDebtDueDateSupported, type Debt, type DebtTransaction } from '@/lib/supabase/debt-db'
 import { IconBack } from '@/components/ui/Icons'
@@ -226,8 +227,9 @@ function toDisplayTransaction(txn: DebtTransaction, fallbackIndex: number, curre
 }
 
 export default async function DebtDetailPage({ params, searchParams }: PageProps) {
-  const { user } = await getAppSession()
-  if (!user) redirect('/')
+  const { user, profile } = await getAppSession()
+  if (!user || !profile) redirect('/')
+  const amountFormatPreference = profile.amount_format_preference ?? 'smart'
 
   const { id } = await params
   const resolvedSearchParams = searchParams ? await searchParams : {}
@@ -383,7 +385,7 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                 fontWeight: 'var(--weight-medium)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
-                {fmt(detail.balance, detail.currency)}
+                {formatAmount(detail.balance, { currency: detail.currency, preference: amountFormatPreference, context: 'summary' })}
               </p>
               {settled ? (
                 <p style={{
@@ -526,19 +528,19 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Total cost</span>
                 <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-                  {fmt(detail.financingTotalCost, detail.currency)}
+                  {formatAmount(detail.financingTotalCost, { currency: detail.currency, preference: amountFormatPreference, context: 'detail' })}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>You’ve paid</span>
                 <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-                  {fmt(detail.financingPaid, detail.currency)}
+                  {formatAmount(detail.financingPaid, { currency: detail.currency, preference: amountFormatPreference, context: 'detail' })}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Left to pay</span>
                 <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-                  {fmt(detail.financingRemaining, detail.currency)}
+                  {formatAmount(detail.financingRemaining, { currency: detail.currency, preference: amountFormatPreference, context: 'detail' })}
                 </span>
               </div>
             </div>
@@ -570,7 +572,7 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>Pay about</span>
                     <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(detail.financingExpectedMonthly, detail.currency)}/month
+                      {formatAmount(detail.financingExpectedMonthly, { currency: detail.currency, preference: amountFormatPreference, context: 'summary' })}/month
                     </span>
                   </div>
                 ) : null}

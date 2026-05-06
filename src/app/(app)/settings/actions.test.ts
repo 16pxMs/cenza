@@ -61,6 +61,28 @@ describe('settings actions', () => {
     })
   })
 
+  it('saveAmountFormatPreference updates the user profile and revalidates key routes', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null })
+    const update = vi.fn(() => ({ eq }))
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn(() => ({ update })),
+    })
+
+    const { saveAmountFormatPreference } = await import('./actions')
+
+    await saveAmountFormatPreference('short')
+
+    expect(update).toHaveBeenCalledWith({
+      amount_format_preference: 'short',
+    })
+    expect(eq).toHaveBeenCalledWith('id', 'user-1')
+    expect(revalidatePath).toHaveBeenCalledWith('/settings')
+    expect(revalidatePath).toHaveBeenCalledWith('/app')
+    expect(revalidatePath).toHaveBeenCalledWith('/log')
+    expect(revalidatePath).toHaveBeenCalledWith('/history/debt')
+    expect(revalidatePath).toHaveBeenCalledWith('/goals')
+  })
+
   it('deleteAccountPermanently clears user-owned tables, deletes auth, and clears device state', async () => {
     const transactions = makeDeleteBuilder()
     const incomeEntries = makeDeleteBuilder()

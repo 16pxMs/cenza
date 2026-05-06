@@ -10,8 +10,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
 import './OverviewWithData.css'
-import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 import { calculateTotalIncome, calculateRemaining } from '@/lib/math/finance'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
@@ -61,6 +61,7 @@ interface IncomeData {
 interface Props {
   name: string
   currency: string
+  amountFormatPreference: AmountFormatPreference
   hasStartedCycleData?: boolean
   incomeType?: 'salaried' | 'variable' | null
   paydayDay?: number | null
@@ -109,7 +110,7 @@ interface Props {
 }
 
 export function OverviewWithData({
-  name, currency, hasStartedCycleData = false, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
+  name, currency, amountFormatPreference, hasStartedCycleData = false, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, monthlyReminders = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
   secondaryLoaded = false,
@@ -248,7 +249,7 @@ const reference = receivedConfirmed
       return {
         kind: 'overdue' as const,
         title: 'Overdue payment',
-        subtitle: `${overdue.label} · ${fmt(overdue.balance, currency)} left`,
+        subtitle: `${overdue.label} · ${formatAmount(overdue.balance, { currency, preference: amountFormatPreference, context: 'summary' })} left`,
         href: `/history/debt/${overdue.debtId}`,
         tone: 'danger' as const,
       }
@@ -260,7 +261,7 @@ const reference = receivedConfirmed
       return {
         kind: 'due_today' as const,
         title: 'Payment due today',
-        subtitle: `${dueToday.label} · ${fmt(dueToday.balance, currency)} left`,
+        subtitle: `${dueToday.label} · ${formatAmount(dueToday.balance, { currency, preference: amountFormatPreference, context: 'summary' })} left`,
         href: `/history/debt/${dueToday.debtId}`,
         tone: 'warning' as const,
       }
@@ -335,7 +336,9 @@ const reference = receivedConfirmed
                     )}
                   </div>
                   <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
-                    {target > 0 ? `${fmt(saved, currency)} of ${fmt(target, currency)}` : 'Set a target to track this goal'}
+                    {target > 0
+                      ? `${formatAmount(saved, { currency, preference: amountFormatPreference, context: 'summary' })} of ${formatAmount(target, { currency, preference: amountFormatPreference, context: 'summary' })}`
+                      : 'Set a target to track this goal'}
                   </p>
                 </div>
               )
@@ -441,12 +444,12 @@ const reference = receivedConfirmed
     ? 'var(--red-light)'
     : 'var(--progress-track)'
   const snapshotMainCopy = snapshotRemaining < 0
-    ? formatAmount(Math.abs(snapshotRemaining), { currency, variant: 'full' })
-    : formatAmount(snapshotRemaining, { currency, variant: 'full' })
+    ? formatAmount(Math.abs(snapshotRemaining), { currency, preference: amountFormatPreference, context: 'summary' })
+    : formatAmount(snapshotRemaining, { currency, preference: amountFormatPreference, context: 'summary' })
   const snapshotIncomeOnly = snapshotState === 'balance' && hasIncome && totalSpent <= 0
   const snapshotTitle =
     snapshotIncomeOnly
-      ? formatAmount(snapshotReference, { currency, variant: 'full' })
+      ? formatAmount(snapshotReference, { currency, preference: amountFormatPreference, context: 'summary' })
       : snapshotMainCopy
   const snapshotSupportingLabel =
     snapshotIncomeOnly
@@ -458,10 +461,10 @@ const reference = receivedConfirmed
     snapshotIncomeOnly
       ? 'You haven’t logged any spending yet.'
       : snapshotRemaining < 0
-        ? `You’ve used ${formatAmount(totalSpent, { currency, variant: 'full' })} against ${formatAmount(snapshotReference, { currency, variant: 'full' })} income.`
+        ? `You’ve used ${formatAmount(totalSpent, { currency, preference: amountFormatPreference, context: 'detail' })} against ${formatAmount(snapshotReference, { currency, preference: amountFormatPreference, context: 'detail' })} income.`
         : snapshotIsAlmostOut
           ? 'You’re running low for this month'
-          : `You’ve used ${formatAmount(totalSpent, { currency, variant: 'full' })} of ${formatAmount(snapshotReference, { currency, variant: 'full' })} income.`
+          : `You’ve used ${formatAmount(totalSpent, { currency, preference: amountFormatPreference, context: 'detail' })} of ${formatAmount(snapshotReference, { currency, preference: amountFormatPreference, context: 'detail' })} income.`
 
   const obligationPreviewItems = useMemo(() => overviewObligations
     .filter((item) => (
@@ -584,7 +587,7 @@ const reference = receivedConfirmed
                       color: 'var(--text-1)',
                     }}
                   >
-                    {formatAmount(totalSpent, { currency, variant: 'compact' })}
+                    {formatAmount(totalSpent, { currency, preference: amountFormatPreference, context: 'compact' })}
                   </span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
@@ -604,7 +607,7 @@ const reference = receivedConfirmed
                       color: 'var(--text-1)',
                     }}
                   >
-                    {formatAmount(snapshotReference, { currency, variant: 'compact' })}
+                    {formatAmount(snapshotReference, { currency, preference: amountFormatPreference, context: 'compact' })}
                   </span>
                 </div>
               </div>
@@ -654,7 +657,7 @@ const reference = receivedConfirmed
                     {item.name}
                   </p>
                   <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', flexShrink: 0 }}>
-                    {fmt(item.amount, item.currency)}
+                    {formatAmount(item.amount, { currency: item.currency, preference: amountFormatPreference, context: 'row' })}
                   </span>
                 </div>
                 <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
@@ -801,7 +804,7 @@ const reference = receivedConfirmed
                         {item.label}
                       </span>
                       <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-2)', flexShrink: 0 }}>
-                        {fmt(item.monthly, currency)}
+                        {formatAmount(item.monthly, { currency, preference: amountFormatPreference, context: 'row' })}
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>

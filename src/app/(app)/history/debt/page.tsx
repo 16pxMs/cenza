@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAppSession } from '@/lib/auth/app-session'
-import { fmt } from '@/lib/finance'
+import { formatAmount } from '@/lib/formatting/amount'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 import { getDebts, type Debt } from '@/lib/supabase/debt-db'
 import { getDebtListVisibility } from '@/lib/debts/state'
 import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
@@ -28,7 +29,17 @@ function toDisplayDebt(debt: Debt) {
   }
 }
 
-function DebtRow({ debt, showSeparator, returnTo }: { debt: ReturnType<typeof toDisplayDebt>; showSeparator: boolean; returnTo?: string }) {
+function DebtRow({
+  debt,
+  showSeparator,
+  returnTo,
+  amountFormatPreference,
+}: {
+  debt: ReturnType<typeof toDisplayDebt>
+  showSeparator: boolean
+  returnTo?: string
+  amountFormatPreference: AmountFormatPreference
+}) {
   const href = returnTo
     ? `/history/debt/${debt.id}?returnTo=${encodeURIComponent(returnTo)}`
     : `/history/debt/${debt.id}`
@@ -66,15 +77,16 @@ function DebtRow({ debt, showSeparator, returnTo }: { debt: ReturnType<typeof to
         flexShrink: 0,
         fontVariantNumeric: 'tabular-nums',
       }}>
-        {fmt(debt.balance, debt.currency)}
+        {formatAmount(debt.balance, { currency: debt.currency, preference: amountFormatPreference, context: 'row' })}
       </span>
     </Link>
   )
 }
 
 export default async function DebtListPage({ searchParams }: DebtListPageProps) {
-  const { user } = await getAppSession()
-  if (!user) redirect('/')
+  const { user, profile } = await getAppSession()
+  if (!user || !profile) redirect('/')
+  const amountFormatPreference = profile.amount_format_preference ?? 'smart'
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const view = firstValue(resolvedSearchParams.view) === 'settled' ? 'settled' : 'active'
@@ -163,7 +175,7 @@ export default async function DebtListPage({ searchParams }: DebtListPageProps) 
             overflow: 'hidden',
           }}>
             {active.map((debt, i) => (
-              <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} />
+              <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} amountFormatPreference={amountFormatPreference} />
             ))}
           </div>
         ) : null}
@@ -175,7 +187,13 @@ export default async function DebtListPage({ searchParams }: DebtListPageProps) 
             overflow: 'hidden',
           }}>
             {settled.map((debt, i) => (
-              <DebtRow key={debt.id} debt={debt} showSeparator={i > 0} returnTo="/history/debt?view=settled" />
+              <DebtRow
+                key={debt.id}
+                debt={debt}
+                showSeparator={i > 0}
+                returnTo="/history/debt?view=settled"
+                amountFormatPreference={amountFormatPreference}
+              />
             ))}
           </div>
         ) : null}

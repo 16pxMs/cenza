@@ -10,6 +10,7 @@ import {
   isDebtOpeningBalanceTransaction,
 } from '@/lib/transactions/outflow'
 import { deriveCategoryBreakdown, type CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
 export interface LogSubItem {
   key: string
@@ -50,6 +51,7 @@ export interface LogEntry {
 export interface LogPageData {
   cycleLabel: string
   currency: string
+  amountFormatPreference: AmountFormatPreference
   entries: LogEntry[]
   totalOutflow: number
   topOutflowCategories: CategoryBreakdownRow[]
@@ -197,6 +199,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   return {
     cycleLabel: formatCycleLabel(getCycleByDate(new Date(), schedule)),
     currency,
+    amountFormatPreference: profile.amount_format_preference ?? 'smart',
     entries,
     totalOutflow,
     topOutflowCategories,

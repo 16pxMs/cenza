@@ -14,7 +14,8 @@ import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack } from '@/components/ui/Icons'
 import { GOAL_META } from '@/constants/goals'
-import { fmt } from '@/lib/finance'
+import { formatAmount } from '@/lib/formatting/amount'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
 import { getGoalMonthlySavingSuggestion, getGoalPaceStatus } from '@/lib/goals/deadlines'
 import type { GoalId } from '@/types/database'
 import { goalMilestoneTip } from '@/lib/goals/milestones'
@@ -51,10 +52,11 @@ function formatTimelineDate(dateStr: string) {
 
 interface GoalDetailPageClientProps {
   currency: string
+  amountFormatPreference: AmountFormatPreference
   goal: GoalsPageGoalData
 }
 
-export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageClientProps) {
+export default function GoalDetailPageClient({ currency, amountFormatPreference, goal }: GoalDetailPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
   const { toast } = useToast()
@@ -87,11 +89,11 @@ export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageC
   })
 
   const summaryRows = useMemo(() => ([
-    { label: 'Saved', value: fmt(goal.totalSaved, currency) },
-    { label: 'Target', value: goal.target != null ? fmt(goal.target, currency) : 'No target set' },
+    { label: 'Saved', value: formatAmount(goal.totalSaved, { currency, preference: amountFormatPreference, context: 'detail' }) },
+    { label: 'Target', value: goal.target != null ? formatAmount(goal.target, { currency, preference: amountFormatPreference, context: 'detail' }) : 'No target set' },
     { label: 'Complete', value: goal.target != null ? `${percentComplete}%` : '—' },
-    { label: 'Remaining', value: amountRemaining != null ? fmt(amountRemaining, currency) : '—' },
-  ]), [amountRemaining, currency, goal.target, goal.totalSaved, percentComplete])
+    { label: 'Remaining', value: amountRemaining != null ? formatAmount(amountRemaining, { currency, preference: amountFormatPreference, context: 'detail' }) : '—' },
+  ]), [amountFormatPreference, amountRemaining, currency, goal.target, goal.totalSaved, percentComplete])
 
   const handleAddContribution = async () => {
     const amount = parseFloat(contributionAmount)
@@ -265,7 +267,7 @@ export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageC
               fontWeight: 'var(--weight-medium)',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {fmt(goal.totalSaved, currency)}
+              {formatAmount(goal.totalSaved, { currency, preference: amountFormatPreference, context: 'summary' })}
             </p>
           </div>
 
@@ -335,7 +337,7 @@ export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageC
               </div>
               {monthlySavingHint != null && goal.target != null && goal.totalSaved < goal.target ? (
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.55 }}>
-                  Save about <span style={{ color: 'var(--text-1)', fontWeight: 'var(--weight-medium)' }}>{fmt(monthlySavingHint, currency)}/month</span> to reach this on time.
+                  Save about <span style={{ color: 'var(--text-1)', fontWeight: 'var(--weight-medium)' }}>{formatAmount(monthlySavingHint, { currency, preference: amountFormatPreference, context: 'summary' })}/month</span> to reach this on time.
                 </div>
               ) : null}
               <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
@@ -448,6 +450,7 @@ export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageC
               <MilestoneRow
                 key={milestone.id}
                 currency={currency}
+                amountFormatPreference={amountFormatPreference}
                 milestone={milestone}
                 done={goal.totalSaved >= milestone.amount}
               />
@@ -688,10 +691,12 @@ export default function GoalDetailPageClient({ currency, goal }: GoalDetailPageC
 
 function MilestoneRow({
   currency,
+  amountFormatPreference,
   milestone,
   done,
 }: {
   currency: string
+  amountFormatPreference: AmountFormatPreference
   milestone: GoalMilestoneData
   done: boolean
 }) {
@@ -711,7 +716,7 @@ function MilestoneRow({
           {milestone.name}
         </div>
         <div style={{ marginTop: 2, fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
-          {fmt(milestone.amount, currency)}
+          {formatAmount(milestone.amount, { currency, preference: amountFormatPreference, context: 'row' })}
         </div>
         {milestone.targetDate ? (
           <div style={{ marginTop: 2, fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
