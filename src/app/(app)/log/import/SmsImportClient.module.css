@@ -1,0 +1,10 @@
+.focusRing {
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.focusRing:focus,
+.focusRing:focus-visible {
+  outline: none;
+  border-color: var(--brand-deep);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+}

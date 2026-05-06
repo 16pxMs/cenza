@@ -19,6 +19,7 @@ export interface ParsedSmsExpense {
   amount: number
   currency: string
   date: string
+  isImportedMessage: boolean
   include: boolean
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
@@ -354,9 +355,123 @@ export function parseSimpleExpenseLines(
     'ig'
   )
 
+  const parseSimpleAmountToken = (token: string) => {
+    if (!/^[0-9][0-9,]*(?:\.[0-9]{1,2})?$/.test(token)) return null
+    const amount = Number(token.replace(/,/g, ''))
+    return Number.isFinite(amount) && amount > 0 ? amount : null
+  }
+
+  const buildSimpleRow = (
+    line: string,
+    labelSource: string,
+    amount: number,
+    index: number,
+    sourceHash: string
+  ): ParsedSmsExpense | null => {
+    const label = normalize(labelSource)
+    if (!label) return null
+
+    const isIncomeCredit = isCreditMessage(line)
+    const reference = extractReference(line)
+    const blockedLabel = reference
+      ? reference
+      : (label || 'Money received')
+
+    const categoryType = inferCategory(label)
+    const categoryKey = slugify(isIncomeCredit ? blockedLabel : label) || `entry_${index + 1}`
+
+    return {
+      id: `row_${index + 1}_${categoryKey}`,
+      raw: line,
+      label: isIncomeCredit ? blockedLabel : label,
+      categoryType,
+      categoryKey,
+      amount,
+      currency: options.defaultCurrency,
+      date,
+      isImportedMessage: false,
+      include: true,
+      confidence: 'medium',
+      sourceHash,
+      blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
+    }
+  }
+
+  const parseMultiEntryLine = (line: string): ParsedSmsExpense[] | null => {
+    const tokenStream = line
+      .replace(stripCurrencyWord, ' ')
+      .replace(/\bfor\b/gi, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+
+    const amountPositions = tokenStream.reduce<number[]>((positions, token, index) => {
+      if (parseSimpleAmountToken(token) != null) positions.push(index)
+      return positions
+    }, [])
+
+    if (amountPositions.length <= 1) return null
+
+    const memo = new Map<number, Array<{ label: string; amount: number }> | null>()
+
+    const solve = (start: number): Array<{ label: string; amount: number }> | null => {
+      if (start === tokenStream.length) return []
+      if (memo.has(start)) return memo.get(start) ?? null
+
+      let best: Array<{ label: string; amount: number }> | null = null
+
+      const amountAtStart = parseSimpleAmountToken(tokenStream[start])
+      if (amountAtStart != null) {
+        for (let end = start + 1; end < tokenStream.length; end += 1) {
+          if (parseSimpleAmountToken(tokenStream[end]) != null) break
+          const labelTokens = tokenStream.slice(start + 1, end + 1)
+          const remainder = solve(end + 1)
+          if (!remainder || labelTokens.length === 0) continue
+          best = [{ label: labelTokens.join(' '), amount: amountAtStart }, ...remainder]
+          break
+        }
+      } else {
+        for (let end = start + 1; end < tokenStream.length; end += 1) {
+          const amountAtEnd = parseSimpleAmountToken(tokenStream[end])
+          if (amountAtEnd == null) continue
+          const labelTokens = tokenStream.slice(start, end)
+          if (labelTokens.length === 0) continue
+          const remainder = solve(end + 1)
+          if (!remainder) continue
+          best = [{ label: labelTokens.join(' '), amount: amountAtEnd }, ...remainder]
+          break
+        }
+      }
+
+      memo.set(start, best)
+      return best
+    }
+
+    const entries = solve(0)
+    if (!entries || entries.length <= 1) return null
+
+    return entries
+      .map((entry, index) =>
+        buildSimpleRow(
+          line,
+          entry.label,
+          entry.amount,
+          index,
+          hashSmsLine(`${line} :: ${index + 1} :: ${entry.label} :: ${entry.amount}`)
+        )
+      )
+      .filter((row): row is ParsedSmsExpense => row != null)
+  }
+
   const rows: ParsedSmsExpense[] = []
 
   lines.forEach((line, index) => {
+    const multiRows = parseMultiEntryLine(line)
+    if (multiRows && multiRows.length > 0) {
+      rows.push(...multiRows)
+      return
+    }
+
     const amountMatch = line.match(/([0-9][0-9,]*(?:\.[0-9]{1,2})?)/)
     if (!amountMatch || amountMatch.index == null) return
 
@@ -375,29 +490,8 @@ export function parseSimpleExpenseLines(
     const label = normalize(rest)
     if (!label) return
 
-    const isIncomeCredit = isCreditMessage(line)
-    const reference = extractReference(line)
-    const blockedLabel = reference
-      ? reference
-      : (label || 'Money received')
-
-    const categoryType = inferCategory(label)
-    const categoryKey = slugify(isIncomeCredit ? blockedLabel : label) || `entry_${index + 1}`
-
-    rows.push({
-      id: `row_${index + 1}_${categoryKey}`,
-      raw: line,
-      label: isIncomeCredit ? blockedLabel : label,
-      categoryType,
-      categoryKey,
-      amount,
-      currency: options.defaultCurrency,
-      date,
-      include: true,
-      confidence: 'medium',
-      sourceHash: hashSmsLine(line),
-      blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
-    })
+    const row = buildSimpleRow(line, label, amount, index, hashSmsLine(line))
+    if (row) rows.push(row)
   })
 
   return rows
@@ -462,6 +556,7 @@ export function parseSmsBlob(
       amount: amountMatch.amount,
       currency: amountMatch.currency || options.defaultCurrency,
       date: parseDate(line),
+      isImportedMessage: true,
       include: true,
       confidence: dict ? 'high' : 'medium',
       sourceHash: hashSmsLine(line),

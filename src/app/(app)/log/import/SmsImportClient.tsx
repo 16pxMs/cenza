@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
@@ -12,12 +12,28 @@ import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { getCategoryLabel } from '@/lib/categories/config'
 import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import { parseSmsImport, saveParsedSmsExpenses, loadActiveDebts, type ActiveDebtOption } from './actions'
+import {
+  buildNeedsCategoryMetaLabel,
+  buildRowMetaLabel,
+  formatImportedRowDateLabel,
+  getInitialEditStepForRow,
+  getNextEditableRowIndex,
+  getPreviousStepForActiveRow,
+  getSuggestedCategoryOptions,
+  shouldShowRawMessageToggle,
+} from './presentation'
 import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
 import {
   DUPLICATE_MESSAGE,
   getSmsImportReviewState,
   isBlockedIncomeRow,
 } from './state'
+import {
+  getFrequentCategoryOptions,
+  loadRecentCategoryKeys,
+  recordRecentCategoryKey,
+} from './recent-categories'
+import styles from './SmsImportClient.module.css'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
 type EditStep = 'details' | 'category' | 'review'
@@ -31,6 +47,7 @@ interface EditableRow {
   amount: number
   currency: string
   date: string
+  isImportedMessage: boolean
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
   blockedReason?: string | null
@@ -147,7 +164,7 @@ function validateRow(row: EditableRow) {
   if (!Number.isFinite(Number(row.amount)) || Number(row.amount) <= 0) {
     errors.push('Amount must be greater than zero.')
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+  if (row.isImportedMessage && !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
     errors.push('Date is invalid.')
   }
   if (!row.categoryType) {
@@ -160,10 +177,6 @@ function validateRow(row: EditableRow) {
     errors.push('Select which debt this payment is for.')
   }
   return errors
-}
-
-function formatRowDateLabel(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -189,6 +202,20 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+function getReviewCopy(rows: Pick<EditableRow, 'isImportedMessage'>[]) {
+  const hasImportedMessages = rows.some((row) => row.isImportedMessage)
+
+  return hasImportedMessages
+    ? {
+        title: 'Here’s what we found',
+        body: 'Review the expenses from your messages.',
+      }
+    : {
+        title: 'Review expense',
+        body: 'Check the details before saving.',
+      }
+}
+
 export function SmsImportClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -207,6 +234,14 @@ export function SmsImportClient() {
   const [expandedRaw, setExpandedRaw] = useState<Record<string, boolean>>({})
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [editStep, setEditStep] = useState<EditStep | null>(null)
+  const [recentCategoryKeys, setRecentCategoryKeys] = useState<string[]>([])
+  const [frozenRecentKeys, setFrozenRecentKeys] = useState<string[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<ImportCategoryType>('everyday')
+  const [categoryQuery, setCategoryQuery] = useState('')
+
+  useEffect(() => {
+    setRecentCategoryKeys(loadRecentCategoryKeys())
+  }, [])
   const [editDraft, setEditDraft] = useState<{
     label: string
     amount: string
@@ -285,6 +320,60 @@ export function SmsImportClient() {
     hasDuplicateBlockedRows,
     hasSavableClientValidationErrors,
   } = reviewState
+  const reviewCopy = useMemo(() => getReviewCopy(rows), [rows])
+  const editableRowIndices = useMemo(
+    () => rows.reduce<number[]>((indices, row, index) => {
+      if (!isBlockedIncomeRow(row)) indices.push(index)
+      return indices
+    }, []),
+    [rows]
+  )
+  const currentEditingRowIndex = useMemo(
+    () => editingRowId ? rows.findIndex((row) => row.id === editingRowId) : -1,
+    [editingRowId, rows]
+  )
+  const currentEditableQueueIndex = useMemo(
+    () => editableRowIndices.findIndex((index) => index === currentEditingRowIndex),
+    [currentEditingRowIndex, editableRowIndices]
+  )
+  const nextEditableRowIndex = useMemo(
+    () => currentEditingRowIndex >= 0
+      ? getNextEditableRowIndex(currentEditingRowIndex, rows, (row) => !isBlockedIncomeRow(row))
+      : -1,
+    [currentEditingRowIndex, rows]
+  )
+  const nextEditableRow = nextEditableRowIndex >= 0 ? rows[nextEditableRowIndex] : null
+  const suggestedCategoryOptions = useMemo(
+    () => editDraft ? getSuggestedCategoryOptions(editDraft.label, IMPORT_CATEGORY_GROUPS) : [],
+    [editDraft]
+  )
+  const frequentCategoryOptions = useMemo(() => {
+    if (!editDraft) return []
+    const exclude = new Set(suggestedCategoryOptions.map((option) => option.key))
+    return getFrequentCategoryOptions(frozenRecentKeys, IMPORT_CATEGORY_GROUPS, exclude)
+  }, [editDraft, frozenRecentKeys, suggestedCategoryOptions])
+  const filteredCategoryGroup = useMemo(() => {
+    return IMPORT_CATEGORY_GROUPS.find((group) => group.type === categoryFilter) ?? null
+  }, [categoryFilter])
+  const allCategoryOptions = useMemo(() => {
+    return IMPORT_CATEGORY_GROUPS.flatMap((group) => group.options)
+  }, [])
+  const trimmedCategoryQuery = categoryQuery.trim().toLowerCase()
+  const isSearchingCategories = trimmedCategoryQuery.length > 0
+  const categorySearchResults = useMemo(() => {
+    if (!isSearchingCategories) return []
+    return allCategoryOptions.filter((option) =>
+      option.label.toLowerCase().includes(trimmedCategoryQuery),
+    )
+  }, [allCategoryOptions, isSearchingCategories, trimmedCategoryQuery])
+  const tabCategoryOptions = useMemo(() => {
+    if (!filteredCategoryGroup) return []
+    const exclude = new Set<string>([
+      ...suggestedCategoryOptions.map((option) => option.key),
+      ...frequentCategoryOptions.map((option) => option.key),
+    ])
+    return filteredCategoryGroup.options.filter((option) => !exclude.has(option.key))
+  }, [filteredCategoryGroup, suggestedCategoryOptions, frequentCategoryOptions])
 
   const hasExistingMonthlyReminder = (
     input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
@@ -393,7 +482,8 @@ export function SmsImportClient() {
     if (isBlockedIncomeRow(row)) return
 
     setEditingRowId(row.id)
-    setEditStep('details')
+    setEditStep(getInitialEditStepForRow(row))
+    setFrozenRecentKeys(loadRecentCategoryKeys())
     setEditDraft({
       label: row.label,
       amount: String(row.amount),
@@ -410,6 +500,12 @@ export function SmsImportClient() {
     }
   }
 
+  const openEditRowAtIndex = (index: number) => {
+    const row = rows[index]
+    if (!row || isBlockedIncomeRow(row)) return
+    openEditRow(row)
+  }
+
   const closeEditRow = () => {
     setEditingRowId(null)
     setEditStep(null)
@@ -418,6 +514,31 @@ export function SmsImportClient() {
     setEditErrors({})
     setShowCreateDebt(false)
     setCreateDebtError(null)
+  }
+
+  const returnToInputScreen = () => {
+    setRows([])
+    setMonthlyReminderKeys([])
+    setRowErrors({})
+    setRowWarnings({})
+    setExpandedRaw({})
+    setError(null)
+  }
+
+  const goBackWithinEditFlow = () => {
+    if (!editingRow || !editStep) return
+
+    const previousStep = getPreviousStepForActiveRow({
+      currentStep: editStep,
+      isImportedMessage: editingRow.isImportedMessage,
+    })
+
+    if (previousStep) {
+      setEditStep(previousStep)
+      return
+    }
+
+    closeEditRow()
   }
 
   const collectEditErrors = (scope: 'details' | 'category' | 'all') => {
@@ -432,7 +553,7 @@ export function SmsImportClient() {
     if (scope === 'details' || scope === 'all') {
       if (!trimmedLabel) nextErrors.label = 'Name is required.'
       if (!Number.isFinite(amount) || amount <= 0) nextErrors.amount = 'Amount must be greater than zero.'
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) nextErrors.date = 'Enter a valid date.'
+      if (editingRow?.isImportedMessage && !/^\d{4}-\d{2}-\d{2}$/.test(date)) nextErrors.date = 'Enter a valid date.'
     }
 
     if (scope === 'category' || scope === 'all') {
@@ -452,7 +573,36 @@ export function SmsImportClient() {
       return
     }
     setEditErrors({})
+    setCategoryFilter('everyday')
+    setCategoryQuery('')
     setEditStep('category')
+  }
+
+  const selectImportCategory = (option: { key: string; type: string }) => {
+    const nextType = toImportCategoryType(option.type)
+    if (!nextType) return
+    setEditDraft((current) => {
+      if (!current) return current
+      const next = {
+        ...current,
+        categoryType: nextType,
+        categoryKey: option.key,
+      }
+      if (nextType !== 'everyday' && nextType !== 'fixed') {
+        next.repeatsMonthly = false
+      }
+      if (nextType !== 'debt') {
+        next.debtId = null
+      }
+      return next
+    })
+    setEditErrors((current) => ({
+      ...current,
+      category: undefined,
+      debtId: undefined,
+    }))
+    setRecentCategoryKeys(recordRecentCategoryKey(option.key))
+    if (nextType === 'debt') ensureDebtsLoaded()
   }
 
   const goToEditReview = () => {
@@ -465,7 +615,7 @@ export function SmsImportClient() {
     setEditStep('review')
   }
 
-  const saveEditRow = () => {
+  const applyEditRow = () => {
     if (!editingRowId || !editDraft) return
 
     const nextErrors = collectEditErrors('all')
@@ -497,12 +647,28 @@ export function SmsImportClient() {
       debtId: selectedDebt ? selectedDebt.id : null,
       debtName: selectedDebt ? selectedDebt.name : null,
     })
+    return true
+  }
+
+  const saveEditRow = () => {
+    if (!applyEditRow()) return
     closeEditRow()
   }
 
   const deleteEditingRow = () => {
     if (!editingRowId) return
     applyRowsChange((current) => current.filter((row) => row.id !== editingRowId))
+    closeEditRow()
+  }
+
+  const handleReviewRowPrimaryAction = () => {
+    if (!applyEditRow()) return
+
+    if (nextEditableRow) {
+      openEditRowAtIndex(nextEditableRowIndex)
+      return
+    }
+
     closeEditRow()
   }
 
@@ -698,21 +864,14 @@ export function SmsImportClient() {
   const showingEditFlow = !!(editingRow && editDraft && editStep)
   const topBackAction = () => {
     if (!showingEditFlow) {
+      if (showReview) {
+        returnToInputScreen()
+        return
+      }
       router.push(returnTo)
       return
     }
-
-    if (editStep === 'review') {
-      setEditStep('category')
-      return
-    }
-
-    if (editStep === 'category') {
-      setEditStep('details')
-      return
-    }
-
-    closeEditRow()
+    goBackWithinEditFlow()
   }
 
   return (
@@ -755,11 +914,12 @@ export function SmsImportClient() {
                 value={rawText}
                 onChange={(event) => setRawText(event.target.value)}
                 placeholder={smsPlaceholder}
+                className={styles.focusRing}
                 style={{
                   width: '100%',
                   minHeight: 200,
                   borderRadius: 12,
-                  border: `1px solid ${T.border}`,
+                  border: `var(--border-width) solid ${T.border}`,
                   padding: 12,
                   fontSize: 14,
                   color: T.text1,
@@ -767,6 +927,7 @@ export function SmsImportClient() {
                   fontFamily: 'inherit',
                   resize: 'vertical',
                   boxSizing: 'border-box',
+                  outline: 'none',
                 }}
               />
               {error && (
@@ -796,10 +957,10 @@ export function SmsImportClient() {
                 return (
                   <div style={{ marginBottom: 12 }}>
                     <p style={{ margin: '0 0 4px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                      Here&rsquo;s what we found
+                      {reviewCopy.title}
                     </p>
                     <p style={{ margin: 0, fontSize: 13, color: T.text3, lineHeight: 1.5 }}>
-                      Review and save your expenses.
+                      {reviewCopy.body}
                     </p>
                     {needsAttentionCount > 0 && (
                       <p style={{ margin: '4px 0 0', fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
@@ -857,14 +1018,9 @@ export function SmsImportClient() {
                           {row.label}
                         </p>
                         <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.amberDark : T.text3, lineHeight: 1.45 }}>
-                          {needsCategory ? 'Choose a category' : getCategoryLabel(row.categoryKey, categoryLabel(row.categoryType))}
-                          {row.categoryType === 'debt' && row.debtName ? ` · ${row.debtName}` : ''}
-                          {row.categoryType === 'debt' && !row.debtId ? ' · Select a debt' : ''}
-                          {' · '}
-                          {new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </p>
-                        <p style={{ margin: '8px 0 0', fontSize: 14, color: T.text1, fontWeight: 600 }}>
-                          {row.currency} {Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}
+                          {needsCategory
+                            ? buildNeedsCategoryMetaLabel(row)
+                            : buildRowMetaLabel(row)}
                         </p>
                       </button>
                       <button
@@ -925,42 +1081,44 @@ export function SmsImportClient() {
                         )
                       })()}
 
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedRaw((current) => ({ ...current, [row.id]: !current[row.id] }))
-                          }
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            color: T.brandDark,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            textDecoration: 'underline',
-                          }}
-                        >
-                          {expandedRaw[row.id] ? 'Hide message' : 'View message'}
-                        </button>
-                        {expandedRaw[row.id] && (
-                          <div
+                      {shouldShowRawMessageToggle(row) && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedRaw((current) => ({ ...current, [row.id]: !current[row.id] }))
+                            }
                             style={{
-                              marginTop: 8,
-                              borderRadius: 8,
-                              border: `1px solid ${T.borderSubtle}`,
-                              padding: '8px 10px',
-                              background: 'var(--grey-50)',
-                              minWidth: 0,
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              color: T.brandDark,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textDecoration: 'underline',
                             }}
                           >
-                            <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                              {row.raw}
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                            {expandedRaw[row.id] ? 'Hide message' : 'View message'}
+                          </button>
+                          {expandedRaw[row.id] && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                borderRadius: 8,
+                                border: `1px solid ${T.borderSubtle}`,
+                                padding: '8px 10px',
+                                background: 'var(--grey-50)',
+                                minWidth: 0,
+                              }}
+                            >
+                              <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                                {row.raw}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   )
@@ -1043,32 +1201,106 @@ export function SmsImportClient() {
             )}
           </>
         ) : (
+          <>
+            <div style={{ marginBottom: 'var(--space-md)' }}>
+              {editStep !== 'category' && (
+                <p style={{
+                  margin: '0 0 var(--space-2xs)',
+                  fontSize: 'var(--text-xs)',
+                  color: T.text3,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.07em',
+                  fontWeight: 'var(--weight-semibold)',
+                }}>
+                  {editStep === 'details' ? 'Edit row' : 'Review row'}
+                </p>
+              )}
+              {currentEditableQueueIndex >= 0 && editableRowIndices.length > 0 ? (
+                <p style={{
+                  margin: 0,
+                  fontSize: 'var(--text-sm)',
+                  color: T.textMuted,
+                  lineHeight: 1.4,
+                }}>
+                  Entry {currentEditableQueueIndex + 1} of {editableRowIndices.length}
+                </p>
+              ) : null}
+            </div>
+
           <div style={{
             background: T.white,
-            border: `1px solid ${T.border}`,
-            borderRadius: 20,
-            padding: 20,
+            border: `var(--border-width) solid ${T.border}`,
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-lg)',
             display: 'grid',
             gap: 'var(--space-lg)',
           }}>
             <div>
-              <p style={{ margin: '0 0 4px', fontSize: 12, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
-                {editStep === 'details' ? 'Edit row' : editStep === 'category' ? 'Choose category' : 'Review row'}
-              </p>
-              <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
+              <h1 style={{
+                margin: 0,
+                fontSize: 'var(--text-xl)',
+                fontWeight: 'var(--weight-bold)',
+                color: T.text1,
+                letterSpacing: '-0.02em',
+              }}>
                 {editDraft.label.trim() || editingRow.label}
               </h1>
-              <p style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                {editingRow.currency} {(Number(editDraft.amount) || 0).toLocaleString()}
-                {' · '}
-                {editDraft.categoryKey ? getCategoryLabel(editDraft.categoryKey) : 'Choose a category'}
-                {' · '}
-                {formatRowDateLabel(editDraft.date)}
+              <p style={{
+                margin: 'var(--space-xs) 0 0',
+                fontSize: 'var(--text-sm)',
+                color: T.text3,
+                lineHeight: 1.5,
+              }}>
+                {editDraft.categoryKey ? (
+                  buildRowMetaLabel({
+                    amount: Number(editDraft.amount),
+                    currency: editingRow.currency,
+                    categoryKey: editDraft.categoryKey,
+                    categoryType: editDraft.categoryType,
+                    date: editDraft.date,
+                    isImportedMessage: editingRow.isImportedMessage,
+                    debtId: editDraft.debtId,
+                    debtName: editedPreviewRow?.debtName ?? null,
+                  })
+                ) : (
+                  <>
+                    {`${editingRow.currency} ${Number.isFinite(Number(editDraft.amount)) ? Number(editDraft.amount).toLocaleString() : 0}`}
+                    <span aria-hidden="true">{' · '}</span>
+                    <span style={{ color: T.amberDark, fontWeight: 'var(--weight-medium)' }}>
+                      Category not set
+                    </span>
+                  </>
+                )}
               </p>
             </div>
 
+            {editStep === 'category' && (
+              <div style={{
+                paddingTop: 'var(--space-md)',
+                borderTop: `var(--border-width) solid ${T.borderSubtle}`,
+              }}>
+                <h2 style={{
+                  margin: 0,
+                  fontSize: 'var(--text-lg)',
+                  fontWeight: 'var(--weight-semibold)',
+                  color: T.text1,
+                  letterSpacing: '-0.01em',
+                }}>
+                  Pick a category
+                </h2>
+                <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                  Tap one to apply.
+                </p>
+              </div>
+            )}
+
             {editStep === 'details' && (
-              <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+              <div style={{
+                display: 'grid',
+                gap: 0,
+                paddingTop: 'var(--space-md)',
+                borderTop: `var(--border-width) solid ${T.borderSubtle}`,
+              }}>
                 <Input
                   label="Name"
                   value={editDraft.label}
@@ -1092,21 +1324,28 @@ export function SmsImportClient() {
                   error={editErrors.amount}
                 />
 
-                <Input
-                  label="Date"
-                  type="date"
-                  value={editDraft.date}
-                  onChange={(value) => {
-                    setEditDraft((current) => current ? { ...current, date: value } : current)
-                    setEditErrors((current) => ({ ...current, date: undefined }))
-                  }}
-                  autoFocus={false}
-                  error={editErrors.date}
-                />
+                {editingRow.isImportedMessage ? (
+                  <Input
+                    label="Date"
+                    type="date"
+                    value={editDraft.date}
+                    onChange={(value) => {
+                      setEditDraft((current) => current ? { ...current, date: value } : current)
+                      setEditErrors((current) => ({ ...current, date: undefined }))
+                    }}
+                    autoFocus={false}
+                    error={editErrors.date}
+                  />
+                ) : null}
 
                 {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (
-                  <div>
-                    <p style={{ margin: '0 0 6px', fontSize: 12.5, fontWeight: 600, color: T.text2, letterSpacing: '0.2px' }}>
+                  <div style={{ marginBottom: 'var(--space-md)' }}>
+                    <p style={{
+                      margin: '0 0 var(--space-2xs)',
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: T.text2,
+                    }}>
                       Reminder
                     </p>
                     <label style={{
@@ -1133,7 +1372,14 @@ export function SmsImportClient() {
                         <span style={{ display: 'block', color: T.text1 }}>
                           Remind me about this every month
                         </span>
-                        <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-regular)', color: T.text3, lineHeight: 1.4 }}>
+                        <span style={{
+                          display: 'block',
+                          marginTop: 'var(--space-2xs)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 'var(--weight-regular)',
+                          color: T.text3,
+                          lineHeight: 1.4,
+                        }}>
                           We’ll remind you before it’s due
                         </span>
                       </span>
@@ -1141,66 +1387,162 @@ export function SmsImportClient() {
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gap: 'var(--space-sm)', marginTop: 'var(--space-md)' }}>
+                <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
                   <PrimaryBtn size="lg" onClick={goToEditCategory}>
                     Continue
                   </PrimaryBtn>
-                  <SecondaryBtn size="lg" onClick={closeEditRow}>
-                    Back
-                  </SecondaryBtn>
                 </div>
               </div>
             )}
 
             {editStep === 'category' && (
               <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
-                <div>
-                  <p style={{ margin: '0 0 6px', fontSize: 12.5, fontWeight: 600, color: T.text2, letterSpacing: '0.2px' }}>
-                    Category
-                  </p>
-                  <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                    {IMPORT_CATEGORY_GROUPS.map((group) => (
-                      <div key={group.type}>
-                        <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted }}>
-                          {group.label}
-                        </p>
-                        <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                          {group.options.map((option) => (
-                            <SingleSelectChip
-                              key={option.key}
-                              label={option.label}
-                              selected={editDraft.categoryKey === option.key}
-                              onClick={() => {
-                                const nextType = toImportCategoryType(option.type)
-                                if (!nextType) return
-                                setEditDraft((current) => {
-                                  if (!current) return current
-                                  const next = {
-                                    ...current,
-                                    categoryType: nextType,
-                                    categoryKey: option.key,
-                                  }
-                                  if (nextType !== 'everyday' && nextType !== 'fixed') {
-                                    next.repeatsMonthly = false
-                                  }
-                                  if (nextType !== 'debt') {
-                                    next.debtId = null
-                                  }
-                                  return next
-                                })
-                                setEditErrors((current) => ({
-                                  ...current,
-                                  category: undefined,
-                                  debtId: undefined,
-                                }))
-                                if (nextType === 'debt') ensureDebtsLoaded()
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                {!isSearchingCategories && suggestedCategoryOptions.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                    <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                      Suggested
+                    </p>
+                    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                      {suggestedCategoryOptions.map((option) => (
+                        <SingleSelectChip
+                          key={`suggested-${option.key}`}
+                          label={option.label}
+                          selected={editDraft.categoryKey === option.key}
+                          onClick={() => selectImportCategory(option)}
+                        />
+                      ))}
+                    </div>
                   </div>
+                ) : null}
+
+                {!isSearchingCategories && frequentCategoryOptions.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                    <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text2 }}>
+                      Frequent
+                    </p>
+                    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                      {frequentCategoryOptions.map((option) => (
+                        <SingleSelectChip
+                          key={`frequent-${option.key}`}
+                          label={option.label}
+                          selected={editDraft.categoryKey === option.key}
+                          onClick={() => selectImportCategory(option)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <input
+                  type="search"
+                  value={categoryQuery}
+                  onChange={(event) => setCategoryQuery(event.target.value)}
+                  placeholder="Search categories"
+                  aria-label="Search categories"
+                  className={styles.focusRing}
+                  style={{
+                    width: '100%',
+                    height: 40,
+                    borderRadius: 10,
+                    border: `var(--border-width) solid ${T.border}`,
+                    background: T.white,
+                    padding: '0 14px',
+                    fontSize: 'var(--text-sm)',
+                    color: T.text1,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+
+                {isSearchingCategories ? (
+                  categorySearchResults.length > 0 ? (
+                    <div style={{
+                      display: 'flex',
+                      gap: 'var(--space-sm)',
+                      flexWrap: 'wrap',
+                      maxHeight: 200,
+                      overflowY: 'auto',
+                    }}>
+                      {categorySearchResults.map((option) => (
+                        <SingleSelectChip
+                          key={`search-${option.key}`}
+                          label={option.label}
+                          selected={editDraft.categoryKey === option.key}
+                          onClick={() => selectImportCategory(option)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                      No matches.
+                    </p>
+                  )
+                ) : (
+                  <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+                    <div
+                      role="tablist"
+                      aria-label="Category groups"
+                      style={{
+                        display: 'flex',
+                        padding: 3,
+                        borderRadius: 10,
+                        background: 'var(--grey-100)',
+                        width: '100%',
+                      }}
+                    >
+                      {IMPORT_CATEGORY_GROUPS.map((group) => {
+                        const groupType = toImportCategoryType(group.type)
+                        if (!groupType) return null
+                        const active = categoryFilter === groupType
+                        return (
+                          <button
+                            key={`filter-${groupType}`}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => setCategoryFilter(groupType)}
+                            style={{
+                              flex: 1,
+                              height: 30,
+                              borderRadius: 8,
+                              border: 'none',
+                              background: active ? T.white : 'transparent',
+                              color: active ? T.text1 : T.text2,
+                              fontSize: 'var(--text-sm)',
+                              fontWeight: active ? 'var(--weight-semibold)' : 'var(--weight-medium)',
+                              cursor: 'pointer',
+                              boxShadow: active ? '0 1px 2px rgba(16, 24, 40, 0.08)' : 'none',
+                              transition: 'background 140ms ease, color 140ms ease, box-shadow 140ms ease',
+                            }}
+                          >
+                            {group.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {tabCategoryOptions.length > 0 ? (
+                      <div style={{
+                        display: 'flex',
+                        gap: 'var(--space-sm)',
+                        flexWrap: 'wrap',
+                        maxHeight: 200,
+                        overflowY: 'auto',
+                      }}>
+                        {tabCategoryOptions.map((option) => (
+                          <SingleSelectChip
+                            key={`filtered-${option.key}`}
+                            label={option.label}
+                            selected={editDraft.categoryKey === option.key}
+                            onClick={() => selectImportCategory(option)}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                <div>
                   {editErrors.category && (
                     <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.amberDark, lineHeight: 1.4 }}>
                       {editErrors.category}
@@ -1361,13 +1703,21 @@ export function SmsImportClient() {
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                  <PrimaryBtn size="lg" onClick={goToEditReview}>
+                <div style={{
+                  display: 'grid',
+                  gap: 'var(--space-sm)',
+                  position: 'sticky',
+                  bottom: 0,
+                  background: T.white,
+                  paddingTop: 'var(--space-sm)',
+                }}>
+                  <PrimaryBtn
+                    size="lg"
+                    onClick={goToEditReview}
+                    disabled={!editDraft.categoryKey}
+                  >
                     Continue
                   </PrimaryBtn>
-                  <SecondaryBtn size="lg" onClick={() => setEditStep('details')}>
-                    Back
-                  </SecondaryBtn>
                 </div>
               </div>
             )}
@@ -1385,7 +1735,9 @@ export function SmsImportClient() {
                   <SummaryRow label="Name" value={editedPreviewRow.label} />
                   <SummaryRow label="Amount" value={`${editedPreviewRow.currency} ${Number.isFinite(editedPreviewRow.amount) ? editedPreviewRow.amount.toLocaleString() : 0}`} />
                   <SummaryRow label="Category" value={getCategoryLabel(editedPreviewRow.categoryKey, categoryLabel(editedPreviewRow.categoryType))} />
-                  <SummaryRow label="Date" value={formatRowDateLabel(editedPreviewRow.date)} />
+                  {editedPreviewRow.isImportedMessage ? (
+                    <SummaryRow label="Date" value={formatImportedRowDateLabel(editedPreviewRow.date)} />
+                  ) : null}
                   {editedPreviewRow.categoryType === 'debt' ? (
                     <SummaryRow label="Debt" value={editedPreviewRow.debtName ?? 'Select a debt'} />
                   ) : null}
@@ -1431,19 +1783,39 @@ export function SmsImportClient() {
                 ) : null}
 
                 <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                  <PrimaryBtn size="lg" onClick={saveEditRow}>
-                    Done
+                  <PrimaryBtn size="lg" onClick={handleReviewRowPrimaryAction}>
+                    {nextEditableRow ? 'Next entry' : 'Done'}
                   </PrimaryBtn>
-                  <SecondaryBtn size="lg" onClick={() => setEditStep('category')}>
-                    Back
-                  </SecondaryBtn>
-                  <TertiaryBtn size="md" onClick={() => setEditDeleteConfirmOpen(true)} style={{ color: T.redDark }}>
-                    Remove row
-                  </TertiaryBtn>
                 </div>
               </div>
             )}
           </div>
+          {editStep === 'category' && !editingRow.isImportedMessage ? (
+            <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
+              <TertiaryBtn size="md" onClick={() => setEditStep('details')}>
+                Edit details
+              </TertiaryBtn>
+            </div>
+          ) : null}
+
+          {editStep === 'review' ? (
+            <div style={{
+              marginTop: 'var(--space-md)',
+              display: 'grid',
+              justifyItems: 'center',
+              gap: 'var(--space-sm)',
+            }}>
+              {!editingRow.isImportedMessage ? (
+                <TertiaryBtn size="md" onClick={() => setEditStep('details')}>
+                  Edit details
+                </TertiaryBtn>
+              ) : null}
+              <TertiaryBtn size="md" onClick={() => setEditDeleteConfirmOpen(true)} style={{ color: T.redDark }}>
+                Remove row
+              </TertiaryBtn>
+            </div>
+          ) : null}
+          </>
         )}
       </div>
     </div>

@@ -82,6 +82,7 @@ describe('sms import parser', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0].date).toBe('2026-04-30')
+    expect(rows[0].isImportedMessage).toBe(false)
   })
 
   it('blocks credit-like plain text rows in the single-input fallback path', () => {
@@ -127,6 +128,51 @@ describe('sms import parser', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].label).toBe('food')
     expect(rows[0].blockedReason).toBeFalsy()
+    expect(rows[0].isImportedMessage).toBe(false)
+  })
+
+  it('splits amount-first multi-entry quick input into separate rows', () => {
+    const rows = parseSimpleExpenseLines('200 water testbite 500', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ label: 'water', amount: 200, isImportedMessage: false })
+    expect(rows[1]).toMatchObject({ label: 'testbite', amount: 500, isImportedMessage: false })
+    expect(rows[0].sourceHash).not.toBe(rows[1].sourceHash)
+  })
+
+  it('splits label-first multi-entry quick input into separate rows', () => {
+    const rows = parseSimpleExpenseLines('uber 500 lunch 300', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ label: 'uber', amount: 500 })
+    expect(rows[1]).toMatchObject({ label: 'lunch', amount: 300 })
+  })
+
+  it('keeps existing one-entry formats intact', () => {
+    const labelFirst = parseSimpleExpenseLines('groceries 200', { defaultCurrency: 'KES' })
+    const amountFirst = parseSimpleExpenseLines('200 groceries', { defaultCurrency: 'KES' })
+
+    expect(labelFirst).toHaveLength(1)
+    expect(labelFirst[0]).toMatchObject({ label: 'groceries', amount: 200 })
+    expect(amountFirst).toHaveLength(1)
+    expect(amountFirst[0]).toMatchObject({ label: 'groceries', amount: 200 })
+  })
+
+  it('keeps two-word labels as a single entry when there is one amount', () => {
+    const rows = parseSimpleExpenseLines('water bill 200', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ label: 'water bill', amount: 200 })
+  })
+
+  it('marks parsed SMS rows as imported messages', () => {
+    const result = parseSmsBlob(
+      'Your account was debited KES 2,100 at Naivas on 08/04/2026.',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0].isImportedMessage).toBe(true)
   })
 
   it('parses payment import text amount, date, and reference when present', () => {
