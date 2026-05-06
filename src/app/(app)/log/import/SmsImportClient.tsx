@@ -10,6 +10,8 @@ import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectC
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
+import { getCategoryConfig, getCategoryLabel } from '@/lib/categories/config'
+import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import { parseSmsImport, saveParsedSmsExpenses, loadActiveDebts, type ActiveDebtOption } from './actions'
 import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
 
@@ -69,10 +71,11 @@ function categoryLabel(value: ImportCategoryType | null) {
   return 'Spending'
 }
 
-const CATEGORY_HELPER: Record<ImportCategoryType, string> = {
-  everyday: 'For everyday spending like food, transport, or going out',
-  fixed: 'For fixed costs like rent, bills, or subscriptions',
-  debt: 'Money you owe and are paying back',
+const IMPORT_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
+
+function toImportCategoryType(value: string | null | undefined): ImportCategoryType | null {
+  if (value === 'everyday' || value === 'fixed' || value === 'debt') return value
+  return null
 }
 
 function isGenericDebtLabel(label: string) {
@@ -182,6 +185,7 @@ export function SmsImportClient() {
     amount: string
     date: string
     categoryType: ImportCategoryType | null
+    categoryKey: string | null
     repeatsMonthly: boolean
     debtId: string | null
   } | null>(null)
@@ -257,11 +261,7 @@ export function SmsImportClient() {
     applyRowsChange((current) =>
       current.map((row) => {
         if (row.id !== id) return row
-        const next = { ...row, ...patch }
-        if (patch.label != null && patch.categoryKey == null) {
-          next.categoryKey = slugify(next.label) || next.categoryKey
-        }
-        return next
+        return { ...row, ...patch }
       })
     )
   }
@@ -349,6 +349,7 @@ export function SmsImportClient() {
       amount: String(row.amount),
       date: row.date,
       categoryType: row.categoryType,
+      categoryKey: row.categoryKey,
       repeatsMonthly: row.repeatsMonthly,
       debtId: row.debtId,
     })
@@ -374,12 +375,13 @@ export function SmsImportClient() {
     const amount = Number(editDraft.amount)
     const date = editDraft.date.trim()
     const nextCategoryType = editDraft.categoryType
+    const nextCategoryKey = editDraft.categoryKey
     const existingRow = rows.find((row) => row.id === editingRowId) ?? null
 
     if (!trimmedLabel) nextErrors.label = 'Name is required.'
     if (!Number.isFinite(amount) || amount <= 0) nextErrors.amount = 'Amount must be greater than zero.'
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) nextErrors.date = 'Enter a valid date.'
-    if (!nextCategoryType) nextErrors.category = 'Choose a category'
+    if (!nextCategoryType || !nextCategoryKey) nextErrors.category = 'Choose a category'
     if (nextCategoryType === 'debt' && !editDraft.debtId) {
       nextErrors.debtId = 'Select which debt this payment is for.'
     }
@@ -397,7 +399,7 @@ export function SmsImportClient() {
       amount,
       date,
       categoryType: nextCategoryType,
-      categoryKey: slugify(trimmedLabel),
+      categoryKey: nextCategoryKey ?? existingRow?.categoryKey ?? '',
       repeatsMonthly:
         nextCategoryType === 'everyday' || nextCategoryType === 'fixed'
           ? editDraft.repeatsMonthly
@@ -503,7 +505,7 @@ export function SmsImportClient() {
         id: row.id,
         label: row.label.trim(),
         categoryType: row.categoryType as ImportCategoryType,
-        categoryKey: slugify(row.categoryKey || row.label) || `imported_${row.id}`,
+        categoryKey: row.categoryKey,
         amount: Number(row.amount),
         date: row.date,
         sourceHash: row.sourceHash,
@@ -744,7 +746,7 @@ export function SmsImportClient() {
                           {row.label}
                         </p>
                         <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.amberDark : T.text3, lineHeight: 1.45 }}>
-                          {needsCategory ? 'Choose a category' : categoryLabel(row.categoryType)}
+                          {needsCategory ? 'Choose a category' : getCategoryLabel(row.categoryKey, categoryLabel(row.categoryType))}
                           {row.categoryType === 'debt' && row.debtName ? ` · ${row.debtName}` : ''}
                           {row.categoryType === 'debt' && !row.debtId ? ' · Select a debt' : ''}
                           {' · '}
@@ -957,7 +959,7 @@ export function SmsImportClient() {
                     color: T.textMuted,
                     lineHeight: 1.4,
                   }}>
-                    {editDraft.categoryType ? categoryLabel(editDraft.categoryType) : 'Choose a category'}
+                    {editDraft.categoryKey ? getCategoryLabel(editDraft.categoryKey) : 'Choose a category'}
                     {' · '}
                     {new Date(`${editDraft.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </p>
@@ -1055,53 +1057,61 @@ export function SmsImportClient() {
                       }}>
                         Category
                       </p>
-                      <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                        {([
-                          { value: 'everyday', label: 'Spending' },
-                          { value: 'fixed', label: 'Fixed' },
-                          { value: 'debt', label: 'Debt' },
-                        ] as const).map((option) => {
-                          const selected = editDraft.categoryType === option.value
-                          return (
-                            <SingleSelectChip
-                              key={option.value}
-                              label={option.label}
-                              selected={selected}
-                              onClick={() => {
-                                setEditDraft((current) => {
-                                  if (!current) return current
-                                  const next = { ...current, categoryType: option.value }
-                                  if (option.value !== 'everyday' && option.value !== 'fixed') {
-                                    next.repeatsMonthly = false
-                                  }
-                                  if (option.value !== 'debt') {
-                                    next.debtId = null
-                                  }
-                                  return next
-                                })
-                                setEditErrors((current) => ({
-                                  ...current,
-                                  category: undefined,
-                                  debtId: undefined,
-                                }))
-                                if (option.value === 'debt') {
-                                  ensureDebtsLoaded()
-                                }
-                              }}
-                            />
-                          )
-                        })}
+                      <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                        {IMPORT_CATEGORY_GROUPS.map((group) => (
+                          <div key={group.type}>
+                            <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted }}>
+                              {group.label}
+                            </p>
+                            <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                              {group.options.map((option) => (
+                                <SingleSelectChip
+                                  key={option.key}
+                                  label={option.label}
+                                  selected={editDraft.categoryKey === option.key}
+                                  onClick={() => {
+                                    const nextType = toImportCategoryType(option.type)
+                                    if (!nextType) return
+                                    setEditDraft((current) => {
+                                      if (!current) return current
+                                      const next = {
+                                        ...current,
+                                        categoryType: nextType,
+                                        categoryKey: option.key,
+                                      }
+                                      if (nextType !== 'everyday' && nextType !== 'fixed') {
+                                        next.repeatsMonthly = false
+                                      }
+                                      if (nextType !== 'debt') {
+                                        next.debtId = null
+                                      }
+                                      return next
+                                    })
+                                    setEditErrors((current) => ({
+                                      ...current,
+                                      category: undefined,
+                                      debtId: undefined,
+                                    }))
+                                    if (nextType === 'debt') {
+                                      ensureDebtsLoaded()
+                                    }
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                       {editErrors.category && (
                         <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.amberDark, lineHeight: 1.4 }}>
                           {editErrors.category}
                         </p>
                       )}
-	                      {editDraft.categoryType && (
-	                        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
-	                          {CATEGORY_HELPER[editDraft.categoryType]}
-	                        </p>
-	                      )}
+                      {editDraft.categoryKey && (
+                        <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                          {getCategoryLabel(editDraft.categoryKey)}
+                        </p>
+                      )}
 	                    </div>
 
 	                    {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (

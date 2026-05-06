@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
+import { resolveTransactionCategoryForWrite } from '@/lib/supabase/transactions-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { CategoryType, DebtDirection, DebtTransactionEntryType } from '@/types/database'
+import { getCategoryConfig } from '@/lib/categories/config'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { addDebtTransaction, createDebt, getDebt } from '@/lib/supabase/debt-db'
@@ -27,9 +29,7 @@ interface UpdateLogEntryInput {
   amount: number
   date: string
   note?: string
-  label?: string
   categoryKey?: string
-  categoryType?: CategoryType
   removeMonthlyReminderKey?: string
 }
 
@@ -111,15 +111,6 @@ ${JSON.stringify(monthlyReminderEntries, null, 2)}`
   await removeMonthlyReminderEntryForCycle(supabase, userId, cycleId, categoryKey)
 }
 
-function slugifyCategoryKey(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
-
 function isValidDebtDirection(value: string): value is DebtDirection {
   return value === 'owed_by_me' || value === 'owed_to_me'
 }
@@ -180,15 +171,19 @@ async function updateTransactionAsDebtMirror(
   debtName: string,
   entryType: DebtTransactionEntryType
 ) {
-  const categoryKey = entryType === 'principal_increase'
-    ? 'debt_opening_balance'
-    : 'debt_repayment'
+  const category = resolveTransactionCategoryForWrite({
+    categoryType: 'debt',
+    categoryKey: entryType === 'principal_increase'
+      ? 'debt_opening_balance'
+      : 'debt_repayment',
+    categoryLabel: debtName,
+  })
 
   const { error } = await (supabase.from('transactions') as any)
     .update({
-      category_type: 'debt',
-      category_key: categoryKey,
-      category_label: debtName,
+      category_type: category.categoryType,
+      category_key: category.categoryKey,
+      category_label: category.categoryLabel,
     })
     .eq('id', transactionId)
     .eq('user_id', userId)
@@ -357,13 +352,14 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
 
   const supabase = await createServerSupabaseClient()
-  const nextLabel = input.label?.trim()
-  const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : null
-  const baseCategoryKey = nextCategoryKey || input.categoryKey || null
-  const persistedCategoryKey =
-    input.categoryType === 'fixed' && baseCategoryKey
-      ? canonicalizeFixedBillKey(baseCategoryKey)
-      : baseCategoryKey
+  const { data: currentTxn, error: currentTxnError } = await (supabase.from('transactions') as any)
+    .select('category_type')
+    .eq('id', input.id)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (currentTxnError) throw new Error(`Failed to load entry before update: ${currentTxnError.message}`)
+  if (!currentTxn) throw new Error('Entry not found')
 
   const patch: Record<string, unknown> = {
     amount,
@@ -371,15 +367,21 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
     note: input.note?.trim() || null,
   }
 
-  if (input.categoryType) {
-    patch.category_type = input.categoryType
-  }
+  if (input.categoryKey) {
+    const currentCategoryType = String(currentTxn.category_type ?? '').trim()
 
-  if (nextLabel) {
-    patch.category_label = nextLabel
-    patch.category_key = persistedCategoryKey
-  } else if (persistedCategoryKey) {
-    patch.category_key = persistedCategoryKey
+    if (currentCategoryType === 'goal') {
+      patch.category_key = input.categoryKey
+    } else {
+      const resolvedCategory = getCategoryConfig(input.categoryKey)
+      if (!resolvedCategory || resolvedCategory.type === 'goal') {
+        throw new Error(`Unknown category key: ${input.categoryKey.trim()}`)
+      }
+
+      patch.category_type = resolvedCategory.type
+      patch.category_key = resolvedCategory.key
+      patch.category_label = resolvedCategory.label
+    }
   }
 
   const { error } = await (supabase.from('transactions') as any)

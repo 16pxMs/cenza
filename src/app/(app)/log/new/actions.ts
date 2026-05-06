@@ -8,6 +8,7 @@ import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
+import { buildDictionaryCategoryWriteRecord } from '@/lib/categories/dictionary-write'
 import { saveMonthlyReminderEntriesForCycle } from '@/lib/monthly-reminders/storage'
 import { isDebtOpeningBalanceTransaction } from '@/lib/transactions/outflow'
 
@@ -33,16 +34,22 @@ async function rememberDictionaryItem(
   userId: string,
   item: Pick<SaveExpenseInput, 'categoryLabel' | 'categoryKey' | 'categoryType'>
 ) {
-  const normalized = item.categoryLabel.trim().toLowerCase()
+  const dictionaryRecord = buildDictionaryCategoryWriteRecord({
+    nameNormalizedSource: item.categoryLabel,
+    categoryType: item.categoryType,
+    categoryKey: item.categoryKey,
+    categoryLabel: item.categoryLabel,
+  })
+  const normalized = dictionaryRecord.nameNormalized
   const table = supabase.from('item_dictionary') as any
 
   if (typeof table.select !== 'function') {
     const { error } = await table.upsert({
       user_id: userId,
       name_normalized: normalized,
-      label: item.categoryLabel,
-      category_key: item.categoryKey,
-      category_type: item.categoryType,
+      label: dictionaryRecord.label,
+      category_key: dictionaryRecord.categoryKey,
+      category_type: dictionaryRecord.categoryType,
       usage_count: 1,
     }, {
       onConflict: 'user_id,name_normalized',
@@ -70,9 +77,9 @@ async function rememberDictionaryItem(
   const { error } = await table.upsert({
     user_id: userId,
     name_normalized: normalized,
-    label: item.categoryLabel,
-    category_key: item.categoryKey,
-    category_type: item.categoryType,
+    label: dictionaryRecord.label,
+    category_key: dictionaryRecord.categoryKey,
+    category_type: dictionaryRecord.categoryType,
     usage_count: usageCount,
   }, {
     onConflict: 'user_id,name_normalized',

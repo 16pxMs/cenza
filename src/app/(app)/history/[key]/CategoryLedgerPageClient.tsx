@@ -10,6 +10,8 @@ import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Button'
 import { IconBack, IconMore } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
+import { getCategoryLabel } from '@/lib/categories/config'
+import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import type { CategoryType } from '@/types/database'
 import type { HistoryLedgerPageData, LedgerTransaction } from '@/lib/loaders/history-ledger'
 import { deleteHistoryEntry, refundHistoryCategory, updateHistoryEntry } from './actions'
@@ -35,11 +37,7 @@ const T = {
   grey100: 'var(--grey-100)',
 }
 
-const EDIT_TYPE_OPTIONS: Array<{ value: Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>; label: string; helper: string }> = [
-  { value: 'everyday', label: 'Spending', helper: 'For everyday spending like food, transport, or going out' },
-  { value: 'fixed', label: 'Fixed', helper: 'For fixed costs like rent, bills, or subscriptions' },
-  { value: 'debt', label: 'Debt', helper: 'Money you owe and are paying back' },
-]
+const EDITABLE_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
 
 interface CategoryLedgerPageClientProps {
   data: HistoryLedgerPageData
@@ -67,7 +65,7 @@ export default function CategoryLedgerPageClient({
   const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
   const [editLabel, setEditLabel] = useState('')
-  const [editCategoryType, setEditCategoryType] = useState<Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>>('everyday')
+  const [editCategoryKey, setEditCategoryKey] = useState<string | null>(null)
   const [editIsSmsMeta, setEditIsSmsMeta] = useState(false)
   const [focusedField, setFocusedField] = useState<'label' | 'amount' | 'date' | 'note' | null>(null)
   const [saving, setSaving] = useState(false)
@@ -87,13 +85,7 @@ export default function CategoryLedgerPageClient({
     setEditDate(txn.date)
     setEditNote(txn.note ?? '')
     setEditLabel(getEntryTitle(txn))
-    setEditCategoryType(
-      (txn.categoryType as string) === 'essentials'
-        ? 'fixed'
-        : (txn.categoryType === 'everyday' || txn.categoryType === 'fixed' || txn.categoryType === 'debt')
-          ? txn.categoryType
-          : 'everyday'
-    )
+    setEditCategoryKey(categoryKey)
     setEditIsSmsMeta((txn.note ?? '').trim().toLowerCase() === 'imported from sms')
     setFocusedField('label')
     setTimeout(() => labelRef.current?.focus(), 80)
@@ -113,7 +105,7 @@ export default function CategoryLedgerPageClient({
 
   const handleSave = async () => {
     const amount = parseFloat(editAmount) || 0
-    if (!editId || amount <= 0) return
+    if (!editId || amount <= 0 || !editCategoryKey) return
 
     setSaving(true)
     try {
@@ -122,9 +114,7 @@ export default function CategoryLedgerPageClient({
         amount,
         date: editDate,
         note: editNote,
-        label: editLabel,
-        categoryKey: editLabel.trim().toLowerCase().replace(/\s+/g, '_'),
-        categoryType: editCategoryType,
+        categoryKey: editCategoryKey ?? '',
         currentCategoryKey: categoryKey,
       })
       toast('Entry updated')
@@ -561,32 +551,41 @@ export default function CategoryLedgerPageClient({
                               Count this as
                             </div>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              {EDIT_TYPE_OPTIONS.map((option) => {
-                                const active = editCategoryType === option.value
-                                return (
-                                  <button
-                                    key={option.value}
-                                    type="button"
-                                    onClick={() => setEditCategoryType(option.value)}
-                                    style={{
-                                      height: 36,
-                                      borderRadius: 999,
-                                      border: `1px solid ${active ? 'var(--brand-mid)' : 'var(--border)'}`,
-                                      background: active ? 'var(--brand)' : T.white,
-                                      color: active ? T.brandDark : T.text1,
-                                      padding: '0 16px',
-                                      fontSize: 'var(--text-sm)',
-                                      fontWeight: 'var(--weight-semibold)',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    {option.label}
-                                  </button>
-                                )
-                              })}
+                              {EDITABLE_CATEGORY_GROUPS.map((group) => (
+                                <div key={group.type} style={{ width: '100%' }}>
+                                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, marginBottom: 6 }}>
+                                    {group.label}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    {group.options.map((option) => {
+                                      const active = editCategoryKey === option.key
+                                      return (
+                                        <button
+                                          key={option.key}
+                                          type="button"
+                                          onClick={() => setEditCategoryKey(option.key)}
+                                          style={{
+                                            height: 36,
+                                            borderRadius: 999,
+                                            border: `1px solid ${active ? 'var(--brand-mid)' : 'var(--border)'}`,
+                                            background: active ? 'var(--brand)' : T.white,
+                                            color: active ? T.brandDark : T.text1,
+                                            padding: '0 16px',
+                                            fontSize: 'var(--text-sm)',
+                                            fontWeight: 'var(--weight-semibold)',
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          {option.label}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                             <div style={{ fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.45 }}>
-                              {EDIT_TYPE_OPTIONS.find((option) => option.value === editCategoryType)?.helper}
+                              {editCategoryKey ? getCategoryLabel(editCategoryKey) : 'Choose a category'}
                             </div>
                             <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
                               Date

@@ -15,6 +15,7 @@ import {
 } from '@/lib/sms-import/parser'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
+import { buildDictionaryCategoryWriteRecord } from '@/lib/categories/dictionary-write'
 import {
   loadMonthlyReminderEntriesForCycle,
   saveMonthlyReminderEntriesForCycle,
@@ -87,13 +88,20 @@ async function rememberDictionaryItems(
   items: Array<{ label: string; categoryKey: string; categoryType: ImportCategoryType }>
 ) {
   const usageInBatch = new Map<string, number>()
-  const latestItemByNormalized = new Map<string, { label: string; categoryKey: string; categoryType: ImportCategoryType }>()
+  const latestItemByNormalized = new Map<string, ReturnType<typeof buildDictionaryCategoryWriteRecord>>()
 
   for (const item of items) {
-    const normalized = normalize(item.label)
-    if (!normalized) continue
-    usageInBatch.set(normalized, (usageInBatch.get(normalized) ?? 0) + 1)
-    latestItemByNormalized.set(normalized, item)
+    const dictionaryRecord = buildDictionaryCategoryWriteRecord({
+      nameNormalizedSource: item.label,
+      categoryType: item.categoryType,
+      categoryKey: item.categoryKey,
+      categoryLabel: item.label,
+    })
+    usageInBatch.set(
+      dictionaryRecord.nameNormalized,
+      (usageInBatch.get(dictionaryRecord.nameNormalized) ?? 0) + 1
+    )
+    latestItemByNormalized.set(dictionaryRecord.nameNormalized, dictionaryRecord)
   }
 
   const normalizedNames = Array.from(latestItemByNormalized.keys())
@@ -716,16 +724,16 @@ export async function saveParsedSmsExpenses(
         const cycleId = await getCycleIdForDate(supabase as any, user.id, profile as any, txnDate)
 
         const { data: mirrorData, error: mirrorError } = await (supabase.from('transactions') as any)
-          .insert({
-            user_id: user.id,
-            cycle_id: cycleId,
+          .insert(buildTransactionRecord({
+            userId: user.id,
+            cycleId,
             date: dateStr,
-            category_type: 'debt',
-            category_key: 'debt_repayment',
-            category_label: debt.name,
+            categoryType: 'debt',
+            categoryKey: 'debt_repayment',
+            categoryLabel: debt.name,
             amount: row.amount,
             note: 'Imported from SMS',
-          })
+          }))
           .select('id')
           .single()
 

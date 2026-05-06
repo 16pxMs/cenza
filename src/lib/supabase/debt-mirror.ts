@@ -1,6 +1,7 @@
 import { getCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { DebtTransactionEntryType } from '@/types/database'
+import { resolveTransactionCategoryForWrite } from './transactions-db'
 
 type MirrorableDebtEntryType = Extract<
   DebtTransactionEntryType,
@@ -54,15 +55,20 @@ export async function createAndLinkDebtMirrorTransaction(
   const supabase = await createServerSupabaseClient()
   const txnDate = new Date(`${input.date}T00:00:00`)
   const cycleId = await getCycleIdForDate(supabase as any, input.userId, input.profile, txnDate)
+  const category = resolveTransactionCategoryForWrite({
+    categoryType: 'debt',
+    categoryKey: mirrorCategoryKey(input.entryType),
+    categoryLabel: input.debtName,
+  })
 
   const { data, error } = await (supabase.from('transactions') as any)
     .insert({
       user_id: input.userId,
       cycle_id: cycleId,
       date: input.date,
-      category_type: 'debt',
-      category_key: mirrorCategoryKey(input.entryType),
-      category_label: input.debtName,
+      category_type: category.categoryType,
+      category_key: category.categoryKey,
+      category_label: category.categoryLabel,
       amount: input.amount,
       note: input.note,
     })

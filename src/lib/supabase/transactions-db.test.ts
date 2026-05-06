@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCategoryDeleteScope,
   buildTransactionRecord,
+  resolveTransactionCategoryForWrite,
 } from './transactions-db'
 
 describe('buildTransactionRecord', () => {
@@ -38,6 +39,67 @@ describe('buildTransactionRecord', () => {
       amount: -400,
       note: '   ',
     }).note).toBeNull()
+  })
+
+  it('derives canonical type and label from the category config', () => {
+    expect(buildTransactionRecord({
+      userId: 'user-1',
+      cycleId: '2026-03-14',
+      date: '2026-03-20',
+      categoryType: 'fixed',
+      categoryKey: 'wifi',
+      categoryLabel: 'Home WiFi',
+      amount: 1200,
+      note: 'market run',
+    })).toEqual({
+      user_id: 'user-1',
+      cycle_id: '2026-03-14',
+      date: '2026-03-20',
+      category_type: 'fixed',
+      category_key: 'internet',
+      category_label: 'Internet',
+      amount: 1200,
+      note: 'market run',
+    })
+  })
+
+  it('rejects unknown category keys before insert', () => {
+    expect(() =>
+      buildTransactionRecord({
+        userId: 'user-1',
+        cycleId: '2026-03-14',
+        date: '2026-03-20',
+        categoryType: 'everyday',
+        categoryKey: 'custom_dog_food',
+        categoryLabel: 'Dog Food',
+        amount: 1200,
+        note: null,
+      })
+    ).toThrow('Unknown category key: custom_dog_food')
+  })
+})
+
+describe('resolveTransactionCategoryForWrite', () => {
+  it('resolves a valid key to the canonical type and label', () => {
+    expect(resolveTransactionCategoryForWrite({
+      categoryType: 'everyday',
+      categoryKey: 'groceries',
+      categoryLabel: 'Anything',
+    })).toEqual({
+      categoryType: 'everyday',
+      categoryKey: 'groceries',
+      categoryLabel: 'Groceries',
+    })
+  })
+
+  it('rejects unknown keys', () => {
+    expect(() =>
+      resolveTransactionCategoryForWrite({
+        categoryType: 'everyday',
+        categoryKey: 'totally_unknown_key',
+        categoryLabel: 'Anything',
+      })
+    ).toThrow('Unknown category key: totally_unknown_key')
   })
 })
 

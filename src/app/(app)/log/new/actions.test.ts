@@ -4,15 +4,24 @@ const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
 const createServerSupabaseClient = vi.fn()
 const createCycleTransaction = vi.fn()
+const resolveTransactionCategoryForWrite = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
-vi.mock('@/lib/supabase/transactions-db', () => ({ createCycleTransaction }))
+vi.mock('@/lib/supabase/transactions-db', () => ({
+  createCycleTransaction,
+  resolveTransactionCategoryForWrite,
+}))
 
 describe('log/new actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resolveTransactionCategoryForWrite.mockImplementation(({ categoryType, categoryKey }: { categoryType: string; categoryKey: string }) => ({
+      categoryType: categoryType === 'fixed' && categoryKey === 'internet' ? 'fixed' : categoryType,
+      categoryKey,
+      categoryLabel: categoryKey === 'internet' ? 'Internet' : 'Groceries',
+    }))
     getAppSession.mockResolvedValue({
       user: { id: 'user-1' },
       profile: { pay_schedule_type: 'monthly', pay_schedule_days: [25] },
@@ -35,7 +44,7 @@ describe('log/new actions', () => {
     }
   }
 
-  it('saveExpense writes a cycle-aware transaction using the provided category key', async () => {
+  it('saveExpense stores canonical dictionary metadata', async () => {
     const deleteEq = vi.fn().mockResolvedValue({ error: null })
     const deleteBuilder = vi.fn(() => ({ eq: deleteEq }))
     const upsert = vi.fn().mockResolvedValue({ error: null })
@@ -53,9 +62,9 @@ describe('log/new actions', () => {
 
     await saveExpense({
       mode: 'add',
-      categoryType: 'everyday',
-      categoryKey: 'custom_dog_food',
-      categoryLabel: 'Dog Food',
+      categoryType: 'fixed',
+      categoryKey: 'wifi',
+      categoryLabel: 'Home WiFi',
       amount: 450,
       note: 'bulk buy',
       rememberItem: true,
@@ -66,19 +75,19 @@ describe('log/new actions', () => {
       'user-1',
       { pay_schedule_type: 'monthly', pay_schedule_days: [25] },
       {
-        categoryType: 'everyday',
-        categoryKey: 'custom_dog_food',
-        categoryLabel: 'Dog Food',
+        categoryType: 'fixed',
+        categoryKey: 'internet',
+        categoryLabel: 'Home WiFi',
         amount: 450,
         note: 'bulk buy',
       }
     )
     expect(upsert).toHaveBeenCalledWith({
       user_id: 'user-1',
-      name_normalized: 'dog food',
-      label: 'Dog Food',
-      category_key: 'custom_dog_food',
-      category_type: 'everyday',
+      name_normalized: 'home wifi',
+      label: 'Internet',
+      category_key: 'internet',
+      category_type: 'fixed',
       usage_count: 1,
     }, { onConflict: 'user_id,name_normalized' })
   })

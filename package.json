@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "audit:categories": "node --experimental-strip-types scripts/audit-category-data.mjs",
+    "plan:categories": "node --experimental-strip-types scripts/plan-category-migration.mjs",
+    "sql:categories": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/generate-category-migration-sql.mjs",
+    "write:category-sql": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/write-category-migration-sql.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

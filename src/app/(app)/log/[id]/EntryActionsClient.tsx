@@ -13,6 +13,8 @@ import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack, IconChevronX } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
+import { getCategoryConfig, getCategoryLabel } from '@/lib/categories/config'
+import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import type { LogEntry } from '@/lib/loaders/log'
 import {
   createTrackedDebtFromLogEntry,
@@ -39,23 +41,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   goal: 'Goal',
 }
 
-const CATEGORY_HELPER: Record<EditableCategory, string> = {
-  everyday: 'For everyday spending like food, transport, or going out',
-  fixed: 'For fixed costs like rent, bills, or subscriptions',
-  debt: 'Money you owe and are paying back',
-}
-
-type EditableCategory = 'everyday' | 'fixed' | 'debt'
-
-function isEditableCategory(value: string | null | undefined): value is EditableCategory {
-  return value === 'everyday' || value === 'fixed' || value === 'essentials' || value === 'debt'
-}
-
-function toEditableCategory(value: string | null | undefined): EditableCategory {
-  if (value === 'essentials' || value === 'fixed') return 'fixed'
-  if (value === 'debt') return 'debt'
-  return 'everyday'
-}
+const EDITABLE_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
 
 const T = {
   brandDark: 'var(--brand-dark)',
@@ -157,7 +143,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const [editDate, setEditDate] = useState('')
   const [editNote, setEditNote] = useState('')
   const [editLabel, setEditLabel] = useState('')
-  const [editCategoryType, setEditCategoryType] = useState<EditableCategory | null>(null)
+  const [editCategoryKey, setEditCategoryKey] = useState<string | null>(null)
   const [editErrors, setEditErrors] = useState<{
     label?: string
     amount?: string
@@ -205,7 +191,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     setEditDate(entry.date)
     setEditNote(entry.note ?? '')
     setEditLabel(entry.name)
-    setEditCategoryType(isEditableCategory(entry.categoryType) ? toEditableCategory(entry.categoryType) : 'everyday')
+    setEditCategoryKey(entry.categoryKey)
     setEditErrors({})
     setEditDialog(null)
     setActiveFlow('edit')
@@ -254,7 +240,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     (
       editLabel.trim() !== entry.name.trim() ||
       editAmount !== String(entry.amount) ||
-      editCategoryType !== entry.categoryType
+      editCategoryKey !== entry.categoryKey
     )
 
   const requestCloseEdit = () => {
@@ -267,7 +253,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
       return
     }
     setActiveFlow(null)
-    setEditCategoryType(null)
+    setEditCategoryKey(null)
     setEditErrors({})
     setEditDialog(null)
   }
@@ -276,8 +262,9 @@ export function EntryActionsClient({ entry, currency }: Props) {
     const nextErrors: { label?: string; amount?: string; category?: string } = {}
     if (!editLabel.trim()) nextErrors.label = 'Add a name'
     if (!editAmount.trim() || !(parseFloat(editAmount) > 0)) nextErrors.amount = 'Add an amount'
-    if (!editCategoryType) nextErrors.category = 'Choose a category'
-    if (!isDebtEntry && editCategoryType === 'debt') {
+    const selectedCategory = getCategoryConfig(editCategoryKey)
+    if (!selectedCategory || selectedCategory.type === 'goal') nextErrors.category = 'Choose a category'
+    if (!isDebtEntry && selectedCategory?.type === 'debt') {
       nextErrors.category = 'Debt entries need to be linked to a tracked debt.'
     }
     setEditErrors(nextErrors)
@@ -285,14 +272,14 @@ export function EntryActionsClient({ entry, currency }: Props) {
   }
 
   const performSaveEdit = async (removeReminder: boolean) => {
-    if (!entry.id || !editCategoryType) return
+    if (!entry.id || !editCategoryKey) return
     const amount = parseFloat(editAmount)
-    if (!amount || amount <= 0 || !editDate || !editCategoryType) return
+    if (!amount || amount <= 0 || !editDate || !editCategoryKey) return
 
     const transactionDirty =
       editLabel.trim() !== entry.name.trim() ||
       amount !== entry.amount ||
-      editCategoryType !== entry.categoryType
+      editCategoryKey !== entry.categoryKey
 
     setSavingEdit(true)
     try {
@@ -302,9 +289,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
           amount,
           date: editDate,
           note: editNote,
-          label: editLabel,
-          categoryKey: entry.categoryKey,
-          categoryType: editCategoryType,
+          categoryKey: editCategoryKey,
           removeMonthlyReminderKey: removeReminder
             ? (entry.monthlyReminderKey ?? entry.categoryKey)
             : undefined,
@@ -326,9 +311,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
 
     if (
       entry.hasMonthlyReminder &&
-      editCategoryType &&
-      editCategoryType !== 'everyday' &&
-      editCategoryType !== 'fixed'
+      getCategoryConfig(editCategoryKey)?.type === 'debt'
     ) {
       setEditDialog('monthlyReminder')
       return
@@ -381,7 +364,6 @@ export function EntryActionsClient({ entry, currency }: Props) {
           date: debtEditDate,
           note: debtEditNote,
           categoryKey: entry.categoryKey,
-          categoryType: 'goal',
         })
         toast('Goal entry updated')
       } else {
@@ -1083,7 +1065,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
               color: T.text2,
               lineHeight: 1.35,
             }}>
-              {(editCategoryType ? CATEGORY_LABEL[editCategoryType] : CATEGORY_LABEL[entry.categoryType] ?? 'Other')}
+              {editCategoryKey ? getCategoryLabel(editCategoryKey) : CATEGORY_LABEL[entry.categoryType] ?? 'Other'}
               {entry.date ? ` · ${formatDate(entry.date)}` : ''}
             </p>
           </div>
@@ -1127,37 +1109,31 @@ export function EntryActionsClient({ entry, currency }: Props) {
                 }}>
                   Category
                 </p>
-                <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
-                  {([
-                    { value: 'everyday', label: 'Spending' },
-                    { value: 'fixed', label: 'Fixed' },
-                    ...(isDebtEntry ? [{ value: 'debt', label: 'Debt' } as const] : []),
-                  ] as const).map((option) => {
-                    const selected = editCategoryType === option.value
-                    return (
-                      <SingleSelectChip
-                        key={option.value}
-                        label={option.label}
-                        selected={selected}
-                        fill
-                        onClick={() => {
-                          setEditCategoryType(option.value)
-                          setEditErrors((current) => ({ ...current, category: undefined }))
-                        }}
-                      />
-                    )
-                  })}
+                <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                  {EDITABLE_CATEGORY_GROUPS
+                    .filter((group) => isDebtEntry || group.type !== 'debt')
+                    .map((group) => (
+                      <div key={group.type}>
+                        <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted }}>
+                          {group.label}
+                        </p>
+                        <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
+                          {group.options.map((option) => (
+                            <SingleSelectChip
+                              key={option.key}
+                              label={option.label}
+                              selected={editCategoryKey === option.key}
+                              fill
+                              onClick={() => {
+                                setEditCategoryKey(option.key)
+                                setEditErrors((current) => ({ ...current, category: undefined }))
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                 </div>
-                {editCategoryType && (
-                  <p style={{
-                    margin: 'var(--space-xs) 0 0',
-                    fontSize: 'var(--text-sm)',
-                    color: T.text3,
-                    lineHeight: 1.45,
-                  }}>
-                    {CATEGORY_HELPER[editCategoryType]}
-                  </p>
-                )}
                 {editErrors.category && (
                   <p style={{
                     margin: 'var(--space-xs) 0 0',

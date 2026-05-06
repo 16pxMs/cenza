@@ -5,7 +5,7 @@ import { getAppSession } from '@/lib/auth/app-session'
 import { createCycleRefundTransaction } from '@/lib/supabase/transactions-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { CategoryType } from '@/types/database'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
+import { getCategoryConfig } from '@/lib/categories/config'
 
 interface UpdateHistoryEntryInput {
   id: string
@@ -14,17 +14,7 @@ interface UpdateHistoryEntryInput {
   note?: string
   label?: string
   categoryKey: string
-  categoryType: CategoryType
   currentCategoryKey: string
-}
-
-function slugifyCategoryKey(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
 }
 
 interface RefundHistoryEntryInput {
@@ -51,25 +41,21 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   if (!input.currentCategoryKey.trim()) throw new Error('Category key is required')
   if (!input.date.trim()) throw new Error('Entry date is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
+  if (!input.categoryKey.trim()) throw new Error('Category key is required')
 
   const supabase = await createServerSupabaseClient()
-  const nextLabel = input.label?.trim()
-  const nextCategoryKey = nextLabel ? slugifyCategoryKey(nextLabel) : input.categoryKey
-  const persistedCategoryKey =
-    input.categoryType === 'fixed'
-      ? canonicalizeFixedBillKey(nextCategoryKey)
-      : nextCategoryKey
+  const resolvedCategory = getCategoryConfig(input.categoryKey)
+  if (!resolvedCategory || resolvedCategory.type === 'goal') {
+    throw new Error(`Unknown category key: ${input.categoryKey.trim()}`)
+  }
 
   const patch: Record<string, unknown> = {
     amount,
     date: input.date,
     note: input.note?.trim() || null,
-    category_type: input.categoryType,
-    category_key: persistedCategoryKey,
-  }
-
-  if (nextLabel) {
-    patch.category_label = nextLabel
+    category_type: resolvedCategory.type,
+    category_key: resolvedCategory.key,
+    category_label: resolvedCategory.label,
   }
 
   const { error } = await (supabase.from('transactions') as any)
@@ -80,8 +66,8 @@ export async function updateHistoryEntry(input: UpdateHistoryEntryInput): Promis
   if (error) throw new Error(`Failed to update entry: ${error.message}`)
 
   revalidateHistoryPaths(input.currentCategoryKey)
-  if (persistedCategoryKey && persistedCategoryKey !== input.currentCategoryKey) {
-    revalidateHistoryPaths(persistedCategoryKey)
+  if (resolvedCategory.key !== input.currentCategoryKey) {
+    revalidateHistoryPaths(resolvedCategory.key)
   }
 }
 

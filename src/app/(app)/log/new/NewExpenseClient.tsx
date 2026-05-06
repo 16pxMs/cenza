@@ -13,6 +13,8 @@ import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components
 import { saveExpenseBatch } from './actions'
 import { GOAL_META } from '@/constants/goals'
 import type { GoalId } from '@/types/database'
+import { getCategoryConfig, getCategoryLabel } from '@/lib/categories/config'
+import { getGroupedCategoryOptions, type CategoryOptionGroup } from '@/lib/categories/options'
 import { isDebtOpeningBalanceTransaction } from '@/lib/transactions/outflow'
 
 type CategoryType = 'everyday' | 'fixed' | 'debt' | 'goal'
@@ -69,42 +71,34 @@ const T = {
   redDark: 'var(--red-dark)',
 }
 
-const TYPE_COPY: Record<Exclude<CategoryType, 'goal'>, { title: string; helper: string }> = {
-  everyday: {
-    title: 'Spending',
-    helper: 'For everyday spending like food, transport, or going out',
-  },
-  fixed: {
-    title: 'Fixed',
-    helper: 'For fixed costs like rent, bills, or subscriptions',
-  },
-  debt: {
-    title: 'Debt',
-    helper: 'Debt is tracked separately with balances and repayments',
-  },
-}
-
-const DEFAULT_COMMON_ITEMS: Array<{ label: string; categoryType: Exclude<CategoryType, 'goal'> }> = [
-  { label: 'Groceries', categoryType: 'everyday' },
-  { label: 'Transport', categoryType: 'everyday' },
-  { label: 'Eating out', categoryType: 'everyday' },
-  { label: 'Fuel', categoryType: 'everyday' },
-  { label: 'Rent', categoryType: 'fixed' },
-  { label: 'Internet', categoryType: 'fixed' },
-  { label: 'Electricity', categoryType: 'fixed' },
-  { label: 'Water', categoryType: 'fixed' },
-  { label: 'Netflix', categoryType: 'fixed' },
-]
+const DEFAULT_COMMON_ITEM_KEYS = [
+  'groceries',
+  'transport',
+  'eatingOut',
+  'fuel',
+  'rent',
+  'internet',
+  'electricity',
+  'water',
+  'subscriptions',
+] as const
 const QUICK_ENTRY_LIMIT_WITHOUT_INCOME = 3
 
 function buildDefaultCommonItems(): DictEntry[] {
-  return DEFAULT_COMMON_ITEMS.map((item) => ({
-    categoryType: item.categoryType,
-    label: item.label,
-    key: normalizeLabel(item.label).replace(/\s+/g, '_'),
-    usageCount: 0,
-    lastUsed: null,
-  }))
+  return DEFAULT_COMMON_ITEM_KEYS.map((key) => {
+    const category = getCategoryConfig(key)
+    if (!category || category.type === 'goal') {
+      throw new Error(`Unknown default category key: ${key}`)
+    }
+
+    return {
+      categoryType: toSelectableCategoryType(category.type) ?? 'everyday',
+      label: category.label,
+      key: category.key,
+      usageCount: 0,
+      lastUsed: null,
+    }
+  })
 }
 
 function normalizeLabel(value: string) {
@@ -143,6 +137,13 @@ function suggestType(label: string): CategoryType | null {
   return null
 }
 
+const NON_GOAL_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed'])
+
+function toSelectableCategoryType(type: string | null | undefined): Exclude<CategoryType, 'goal'> | null {
+  if (type === 'everyday' || type === 'fixed' || type === 'debt') return type
+  return null
+}
+
 function buildPendingItem(
   label: string,
   source: QueueSource,
@@ -160,7 +161,7 @@ function buildPendingItem(
     label: cleanLabel,
     categoryType: rememberedCategoryType,
     categorySource: rememberedCategoryType ? 'remembered' : null,
-    categoryKey: dictEntry?.key ?? normalized.replace(/\s+/g, '_'),
+    categoryKey: dictEntry?.key ?? null,
     amount: '',
     note: '',
     source,
@@ -236,7 +237,7 @@ export function NewExpenseClient() {
         label: paramLabel,
         categoryType: paramType,
         categorySource: paramType ? 'remembered' : null,
-        categoryKey: paramKey ?? normalizeLabel(paramLabel).replace(/\s+/g, '_'),
+        categoryKey: paramKey ?? null,
         amount: paramAmount ?? '',
         note: '',
         source: 'known',
@@ -374,7 +375,7 @@ export function NewExpenseClient() {
             const entry: DictEntry = {
               categoryType: categoryType ?? suggestType(row.category_label ?? '') ?? 'everyday',
               label: row.category_label,
-              key: row.category_key ?? normalized.replace(/\s+/g, '_'),
+              key: row.category_key ?? null,
               usageCount: 0,
               lastUsed: row.date ?? null,
             }
@@ -403,16 +404,17 @@ export function NewExpenseClient() {
           }
         }
 
-        const starterLabels = new Set(DEFAULT_COMMON_ITEMS.map((item) => normalizeLabel(item.label)))
+        const starterItems = buildDefaultCommonItems()
+        const starterLabels = new Set(starterItems.map((item) => normalizeLabel(item.label)))
 
-        for (const starter of DEFAULT_COMMON_ITEMS) {
+        for (const starter of starterItems) {
           const normalized = normalizeLabel(starter.label)
           if (dict[normalized]) continue
 
           const entry: DictEntry = {
             categoryType: starter.categoryType,
             label: starter.label,
-            key: normalized.replace(/\s+/g, '_'),
+            key: starter.key,
             usageCount: 0,
             lastUsed: null,
           }
@@ -637,7 +639,7 @@ export function NewExpenseClient() {
     setSaveError(null)
 
     try {
-      if (queue.some((item) => !item.categoryType)) {
+      if (queue.some((item) => !item.categoryKey)) {
         setSaveError('Choose a category for each expense before saving.')
         setSaving(false)
         return
@@ -654,17 +656,25 @@ export function NewExpenseClient() {
         return
       }
 
-      const result = await saveExpenseBatch(queue.map((item) => ({
-        mode: 'add',
-        priorEntryId: null,
-        categoryType: item.categoryType as CategoryType,
-        categoryKey: item.categoryKey ?? normalizeLabel(item.label).replace(/\s+/g, '_'),
-        categoryLabel: item.label,
-        amount: parseFloat(item.amount.replace(/,/g, '')) || 0,
-        note: item.note.trim() || null,
-        rememberItem: true,
-        repeatsMonthly: item.categoryType === 'everyday' || item.categoryType === 'fixed' ? item.repeatsMonthly : false,
-      })))
+      const result = await saveExpenseBatch(queue.map((item) => {
+        const category = getCategoryConfig(item.categoryKey)
+        const categoryType = toSelectableCategoryType(category?.type)
+        if (!category || !categoryType) {
+          throw new Error(`Unknown category key: ${item.categoryKey ?? ''}`)
+        }
+
+        return {
+          mode: 'add' as const,
+          priorEntryId: null,
+          categoryType,
+          categoryKey: category.key,
+          categoryLabel: item.label,
+          amount: parseFloat(item.amount.replace(/,/g, '')) || 0,
+          note: item.note.trim() || null,
+          rememberItem: true,
+          repeatsMonthly: categoryType === 'everyday' || categoryType === 'fixed' ? item.repeatsMonthly : false,
+        }
+      }))
 
       if (!result.ok) {
         setSaveError(result.error.message)
@@ -684,7 +694,7 @@ export function NewExpenseClient() {
 
   const isLastItem = activeIndex === queue.length - 1
   const canReviewContinue = queue.length > 0
-  const canAdvance = !!activeItem?.categoryType && parsedAmount > 0 && !!activeItem?.label.trim()
+  const canAdvance = !!activeItem?.categoryKey && parsedAmount > 0 && !!activeItem?.label.trim()
   const requiresIncomeRecovery = !quickEntryStatus.hasIncome && queue.length > remainingQuickEntries
   const recentMatch = activeItem ? recentByLabel[normalizeLabel(activeItem.label)] ?? null : null
 
@@ -812,13 +822,18 @@ export function NewExpenseClient() {
               onAmountChange={(value) => updateActiveItem({ amount: value })}
               onLabelChange={(value) => updateActiveItem({
                 label: value,
-                categoryKey: normalizeLabel(value).replace(/\s+/g, '_'),
               })}
-              onTypeSelect={(type) => updateActiveItem({
-                categoryType: type,
-                categorySource: 'manual',
-                repeatsMonthly: type === 'everyday' || type === 'fixed' ? activeItem.repeatsMonthly : false,
-              })}
+              onCategorySelect={(key) => {
+                const category = getCategoryConfig(key)
+                const nextType = toSelectableCategoryType(category?.type)
+                if (!category || !nextType) return
+                updateActiveItem({
+                  categoryKey: category.key,
+                  categoryType: nextType,
+                  categorySource: 'manual',
+                  repeatsMonthly: nextType === 'everyday' || nextType === 'fixed' ? activeItem.repeatsMonthly : false,
+                })
+              }}
               onRepeatsMonthlyChange={(checked) => updateActiveItem({ repeatsMonthly: checked })}
               onNoteChange={(value) => updateActiveItem({ note: value })}
               onPrevious={handlePrevious}
@@ -877,11 +892,9 @@ function DoneStep({
 
   const todayLabel = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const successEntries: ExpenseAddedSuccessEntry[] = items.map((item) => {
-    const categoryLabel = item.categoryType === 'goal'
-      ? 'Goal'
-      : item.categoryType
-        ? TYPE_COPY[item.categoryType]?.title ?? 'Uncategorized'
-        : 'Uncategorized'
+    const categoryLabel = item.categoryKey
+      ? getCategoryLabel(item.categoryKey, 'Uncategorized')
+      : 'Uncategorized'
 
     return {
       id: item.id,
@@ -1173,7 +1186,7 @@ function ReviewStep({
   previousGroupEntries,
   onAmountChange,
   onLabelChange,
-  onTypeSelect,
+  onCategorySelect,
   onRepeatsMonthlyChange,
   onNoteChange,
   onPrevious,
@@ -1200,7 +1213,7 @@ function ReviewStep({
   previousGroupEntries: PendingExpenseItem[]
   onAmountChange: (value: string) => void
   onLabelChange: (value: string) => void
-  onTypeSelect: (type: CategoryType | null) => void
+  onCategorySelect: (key: string) => void
   onRepeatsMonthlyChange: (checked: boolean) => void
   onNoteChange: (value: string) => void
   onPrevious: () => void
@@ -1409,21 +1422,11 @@ function ReviewStep({
         <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
           Category
         </p>
-        <TypeChips
-          selected={item.categoryType}
-          onSelect={onTypeSelect}
-          types={['everyday', 'fixed']}
+        <CategoryChips
+          selectedKey={item.categoryKey}
+          groups={NON_GOAL_CATEGORY_GROUPS}
+          onSelect={onCategorySelect}
         />
-        {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
-          <p style={{
-            margin: 'var(--space-sm) 0 0',
-            fontSize: 'var(--text-sm)',
-            color: T.text3,
-            lineHeight: 1.5,
-          }}>
-            {TYPE_COPY[item.categoryType].helper}
-          </p>
-        )}
       </div>
 
       {(item.categoryType === 'everyday' || item.categoryType === 'fixed') && (
@@ -1574,22 +1577,33 @@ function ReviewStep({
   )
 }
 
-function TypeChips({ selected, onSelect, types }: {
-  selected: CategoryType | null
-  onSelect: (type: CategoryType | null) => void
-  types?: Array<Exclude<CategoryType, 'goal'>>
+function CategoryChips({
+  selectedKey,
+  groups,
+  onSelect,
+}: {
+  selectedKey: string | null
+  groups: CategoryOptionGroup[]
+  onSelect: (key: string) => void
 }) {
-  const entries = (Object.entries(TYPE_COPY) as [Exclude<CategoryType, 'goal'>, { title: string }][])
-    .filter(([value]) => !types || types.includes(value))
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-      {entries.map(([value, copy]) => (
-        <SingleSelectChip
-          key={value}
-          label={copy.title}
-          selected={selected === value}
-          onClick={() => onSelect(selected === value ? null : value)}
-        />
+    <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+      {groups.map((group) => (
+        <div key={group.type}>
+          <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted }}>
+            {group.label}
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+            {group.options.map((option) => (
+              <SingleSelectChip
+                key={option.key}
+                label={option.label}
+                selected={selectedKey === option.key}
+                onClick={() => onSelect(option.key)}
+              />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   )
