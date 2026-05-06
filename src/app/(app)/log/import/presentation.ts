@@ -200,3 +200,11 @@ export function getReviewRowActionLabel(input: {
   if (input.needsCategory) return 'Add category'
   return 'Ready'
 }
+
+export function shouldShowReviewReminder(input: {
+  categoryType: ImportPresentationCategoryType
+  hasExistingMonthlyReminder: boolean
+}) {
+  if (input.hasExistingMonthlyReminder) return false
+  return input.categoryType === 'everyday' || input.categoryType === 'fixed'
+}

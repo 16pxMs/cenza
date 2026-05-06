@@ -24,6 +24,7 @@ import {
   getQueueSaveHelperCopy,
   getReviewRowActionLabel,
   getSuggestedCategoryOptions,
+  shouldShowReviewReminder,
   shouldAutoOpenSingleQuickTypedCategoryRow,
   shouldShowRawMessageToggle,
 } from './presentation'
@@ -370,6 +371,20 @@ export function SmsImportClient() {
     [currentEditingRowIndex, rows]
   )
   const nextEditableRow = nextEditableRowIndex >= 0 ? rows[nextEditableRowIndex] : null
+  const hasExistingMonthlyReminder = (
+    input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
+  ) => {
+    if (input.categoryType !== 'everyday' && input.categoryType !== 'fixed') return false
+    const canonicalKey = recurringExpenseKey(input.categoryType, slugify(input.categoryKey || input.label))
+    return monthlyReminderKeySet.has(canonicalKey)
+  }
+  const showReviewReminder = useMemo(() => {
+    if (!editedPreviewRow) return false
+    return shouldShowReviewReminder({
+      categoryType: editedPreviewRow.categoryType,
+      hasExistingMonthlyReminder: hasExistingMonthlyReminder(editedPreviewRow),
+    })
+  }, [editedPreviewRow, monthlyReminderKeySet])
   const suggestedCategoryOptions = useMemo(
     () => editDraft ? getSuggestedCategoryOptions(editDraft.label, IMPORT_CATEGORY_GROUPS) : [],
     [editDraft]
@@ -401,14 +416,6 @@ export function SmsImportClient() {
     ])
     return filteredCategoryGroup.options.filter((option) => !exclude.has(option.key))
   }, [filteredCategoryGroup, suggestedCategoryOptions, frequentCategoryOptions])
-
-  const hasExistingMonthlyReminder = (
-    input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
-  ) => {
-    if (input.categoryType !== 'everyday' && input.categoryType !== 'fixed') return false
-    const canonicalKey = recurringExpenseKey(input.categoryType, slugify(input.categoryKey || input.label))
-    return monthlyReminderKeySet.has(canonicalKey)
-  }
 
   const applyRowsChange = (
     mutator: (current: EditableRow[]) => EditableRow[]
@@ -1085,27 +1092,47 @@ export function SmsImportClient() {
                             : buildRowMetaLabel(row)}
                         </p>
                         {rowActionLabel ? (
-                          <p style={{
-                            margin: '6px 0 0',
-                            fontSize: 12,
-                            color: needsCategory ? T.brandDark : T.textMuted,
-                            fontWeight: needsCategory ? 600 : 500,
-                            lineHeight: 1.4,
-                          }}>
-                            {rowActionLabel}
-                          </p>
+                          <div
+                            style={{
+                              marginTop: 6,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: needsCategory ? T.brandDark : T.textMuted,
+                                fontWeight: needsCategory ? 600 : 500,
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {rowActionLabel}
+                            </span>
+                            {!needsCategory && row.repeatsMonthly ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  minHeight: 22,
+                                  padding: '0 8px',
+                                  borderRadius: 999,
+                                  background: T.pageBg,
+                                  border: `1px solid ${T.border}`,
+                                  fontSize: 11,
+                                  color: T.text2,
+                                  fontWeight: 500,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                Reminder on
+                              </span>
+                            ) : null}
+                          </div>
                         ) : null}
                       </button>
-                      {!isBlocked && !needsCategory ? (
-                        <span style={{
-                          color: T.textMuted,
-                          fontSize: 18,
-                          lineHeight: 1,
-                          paddingTop: 2,
-                        }}>
-                          ✓
-                        </span>
-                      ) : null}
                       <button
                         type="button"
                         aria-label="Remove row"
@@ -1773,29 +1800,57 @@ export function SmsImportClient() {
                   ) : null
                 })()}
 
-                {editDeleteConfirmOpen ? (
+                {showReviewReminder ? (
                   <div style={{
-                    border: `1px solid ${T.border}`,
+                    border: `1px solid ${T.borderSubtle}`,
                     borderRadius: 16,
                     padding: 'var(--space-md)',
-                    display: 'grid',
-                    gap: 'var(--space-sm)',
-                    background: 'var(--grey-50)',
+                    background: T.white,
                   }}>
-                    <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
-                      Delete this row?
+                    <p style={{
+                      margin: '0 0 var(--space-2xs)',
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: T.text2,
+                    }}>
+                      Reminder
                     </p>
-                    <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-                      This will remove it from the import list.
-                    </p>
-                    <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                      <SecondaryBtn size="lg" onClick={() => setEditDeleteConfirmOpen(false)}>
-                        Cancel
-                      </SecondaryBtn>
-                      <PrimaryBtn size="lg" onClick={deleteEditingRow} style={{ background: T.redDark, color: T.white }}>
-                        Delete
-                      </PrimaryBtn>
-                    </div>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 'var(--space-sm)',
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: T.text1,
+                      cursor: 'pointer',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={editDraft.repeatsMonthly}
+                        onChange={(event) => {
+                          setEditDraft((current) => current ? {
+                            ...current,
+                            repeatsMonthly: event.target.checked,
+                          } : current)
+                        }}
+                        style={{ width: 18, height: 18, marginTop: 2, accentColor: T.brandDark }}
+                      />
+                      <span>
+                        <span style={{ display: 'block', color: T.text1 }}>
+                          Remind me about this every month
+                        </span>
+                        <span style={{
+                          display: 'block',
+                          marginTop: 'var(--space-2xs)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 'var(--weight-regular)',
+                          color: T.text3,
+                          lineHeight: 1.4,
+                        }}>
+                          We’ll remind you before it’s due
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 ) : null}
 
@@ -1803,6 +1858,14 @@ export function SmsImportClient() {
                   <PrimaryBtn size="lg" onClick={handleReviewRowPrimaryAction}>
                     {nextEditableRow ? 'Next entry' : 'Done'}
                   </PrimaryBtn>
+                  {!editingRow.isImportedMessage ? (
+                    <SecondaryBtn size="lg" onClick={() => {
+                      setDetailsReturnStep('review')
+                      setEditStep('details')
+                    }}>
+                      Edit details
+                    </SecondaryBtn>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -1822,20 +1885,13 @@ export function SmsImportClient() {
             <div style={{
               marginTop: 'var(--space-md)',
               display: 'grid',
-              justifyItems: 'center',
               gap: 'var(--space-sm)',
             }}>
-              {!editingRow.isImportedMessage ? (
-                <TertiaryBtn size="md" onClick={() => {
-                  setDetailsReturnStep('review')
-                  setEditStep('details')
-                }}>
-                  Edit details
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <TertiaryBtn size="md" onClick={() => setEditDeleteConfirmOpen(true)} style={{ color: T.redDark }}>
+                  Remove row
                 </TertiaryBtn>
-              ) : null}
-              <TertiaryBtn size="md" onClick={() => setEditDeleteConfirmOpen(true)} style={{ color: T.redDark }}>
-                Remove row
-              </TertiaryBtn>
+              </div>
             </div>
           ) : null}
           </>
@@ -1950,6 +2006,31 @@ export function SmsImportClient() {
                 No categories in this group.
               </p>
             )}
+          </div>
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={showingEditFlow && editDeleteConfirmOpen}
+        onClose={() => setEditDeleteConfirmOpen(false)}
+        title="Delete row"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+            This will remove this expense from the import list.
+          </p>
+
+          <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+            <PrimaryBtn
+              size="lg"
+              onClick={deleteEditingRow}
+              style={{ background: T.redDark, color: T.white }}
+            >
+              Delete row
+            </PrimaryBtn>
+            <SecondaryBtn size="lg" onClick={() => setEditDeleteConfirmOpen(false)}>
+              Cancel
+            </SecondaryBtn>
           </div>
         </div>
       </Sheet>

@@ -9,6 +9,7 @@ import {
   getQueueSaveHelperCopy,
   getReviewRowActionLabel,
   getSuggestedCategoryOptions,
+  shouldShowReviewReminder,
   shouldAutoOpenSingleQuickTypedCategoryRow,
   shouldShowRawMessageToggle,
 } from './presentation'
@@ -216,6 +217,36 @@ describe('sms import presentation helpers', () => {
         isBlocked: false,
       })
     ).toBe('Ready')
+  })
+
+  it('shows reminder option for eligible review rows', () => {
+    expect(
+      shouldShowReviewReminder({
+        categoryType: 'everyday',
+        hasExistingMonthlyReminder: false,
+      })
+    ).toBe(true)
+
+    expect(
+      shouldShowReviewReminder({
+        categoryType: 'fixed',
+        hasExistingMonthlyReminder: false,
+      })
+    ).toBe(true)
+
+    expect(
+      shouldShowReviewReminder({
+        categoryType: 'debt',
+        hasExistingMonthlyReminder: false,
+      })
+    ).toBe(false)
+
+    expect(
+      shouldShowReviewReminder({
+        categoryType: 'everyday',
+        hasExistingMonthlyReminder: true,
+      })
+    ).toBe(false)
   })
 
   it('auto-opens the category step for a single quick typed unresolved row', () => {
