@@ -30,6 +30,7 @@ interface ParsedRowInput {
   amount: number
   date: string
   sourceHash: string
+  blockedReason?: string | null
   repeatsMonthly?: boolean
   debtId?: string | null
 }
@@ -230,6 +231,11 @@ function validateParsedRow(row: ParsedRowInput) {
   const errors: string[] = []
   const trimmedLabel = row.label.trim()
   const trimmedCategoryKey = row.categoryKey.trim()
+
+  if (row.blockedReason) {
+    errors.push(row.blockedReason)
+    return errors
+  }
 
   if (!trimmedLabel) {
     errors.push('Name is required.')

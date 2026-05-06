@@ -460,7 +460,7 @@ const reference = receivedConfirmed
       : snapshotRemaining < 0
         ? `You’ve used ${formatAmount(totalSpent, { currency, variant: 'full' })} against ${formatAmount(snapshotReference, { currency, variant: 'full' })} income.`
         : snapshotIsAlmostOut
-          ? 'You’re close to your limit.'
+          ? 'You’re running low for this month'
           : `You’ve used ${formatAmount(totalSpent, { currency, variant: 'full' })} of ${formatAmount(snapshotReference, { currency, variant: 'full' })} income.`
 
   const obligationPreviewItems = useMemo(() => overviewObligations
@@ -493,9 +493,6 @@ const reference = receivedConfirmed
       >
         {snapshotState === 'add_income' ? (
           <>
-            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-              This month
-            </p>
             <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
               Add your income
             </p>
@@ -510,9 +507,6 @@ const reference = receivedConfirmed
           </>
         ) : snapshotState === 'confirm_income' ? (
           <>
-            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-              This month
-            </p>
             <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
               Have you received your income?
             </p>
@@ -527,9 +521,6 @@ const reference = receivedConfirmed
           </>
         ) : (
           <>
-            <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-              This month
-            </p>
             {/* Main amount */}
             <p style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-medium)', color: snapshotIsOverspent ? 'var(--red-dark)' : 'var(--text-1)', letterSpacing: '-0.03em' }}>
               {snapshotTitle}

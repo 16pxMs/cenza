@@ -22,6 +22,7 @@ export interface ParsedSmsExpense {
   include: boolean
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
+  blockedReason?: string | null
 }
 
 export function hashSmsLine(raw: string): string {
@@ -65,13 +66,33 @@ const DEBIT_HINTS = [
 const CREDIT_HINTS = [
   'credited',
   'credit',
+  'receive',
   'received',
+  'added',
+  'deposited',
   'deposit',
+  'paid in',
+  'incoming',
   'salary',
   'reversal',
   'refund',
   'inflow',
 ]
+
+export const INCOME_SMS_BLOCKED_MESSAGE =
+  "This looks like money received, so it can’t be saved as an expense."
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hintPattern(hint: string) {
+  const escaped = escapeRegex(hint).replace(/\s+/g, '\\s+')
+  return new RegExp(`\\b${escaped}\\b`, 'i')
+}
+
+const DEBIT_HINT_PATTERNS = DEBIT_HINTS.map(hintPattern)
+const CREDIT_HINT_PATTERNS = CREDIT_HINTS.map(hintPattern)
 
 const CURRENCY_CODES = [
   'KES', 'KSH', 'KSHS',
@@ -97,9 +118,8 @@ function toIsoLocalDate(date: Date) {
 }
 
 function isCreditMessage(text: string) {
-  const lower = text.toLowerCase()
-  const hasCredit = CREDIT_HINTS.some((hint) => lower.includes(hint))
-  const hasDebit = DEBIT_HINTS.some((hint) => lower.includes(hint))
+  const hasCredit = CREDIT_HINT_PATTERNS.some((pattern) => pattern.test(text))
+  const hasDebit = DEBIT_HINT_PATTERNS.some((pattern) => pattern.test(text))
   return hasCredit && !hasDebit
 }
 
@@ -355,13 +375,19 @@ export function parseSimpleExpenseLines(
     const label = normalize(rest)
     if (!label) return
 
+    const isIncomeCredit = isCreditMessage(line)
+    const reference = extractReference(line)
+    const blockedLabel = reference
+      ? reference
+      : (label || 'Money received')
+
     const categoryType = inferCategory(label)
-    const categoryKey = slugify(label) || `entry_${index + 1}`
+    const categoryKey = slugify(isIncomeCredit ? blockedLabel : label) || `entry_${index + 1}`
 
     rows.push({
       id: `row_${index + 1}_${categoryKey}`,
       raw: line,
-      label,
+      label: isIncomeCredit ? blockedLabel : label,
       categoryType,
       categoryKey,
       amount,
@@ -370,6 +396,7 @@ export function parseSimpleExpenseLines(
       include: true,
       confidence: 'medium',
       sourceHash: hashSmsLine(line),
+      blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
     })
   })
 
@@ -412,13 +439,13 @@ export function parseSmsBlob(
   let skippedCredits = 0
 
   lines.forEach((line, index) => {
-    if (isCreditMessage(line)) {
-      skippedCredits += 1
-      return
-    }
-
     const amountMatch = parseAmount(line)
     if (!amountMatch) return
+
+    const isIncomeCredit = isCreditMessage(line)
+    if (isIncomeCredit) {
+      skippedCredits += 1
+    }
 
     const merchant = extractMerchant(line)
     const dict = merchant ? resolveDictionary(merchant, dictionaryMap) : null
@@ -438,6 +465,7 @@ export function parseSmsBlob(
       include: true,
       confidence: dict ? 'high' : 'medium',
       sourceHash: hashSmsLine(line),
+      blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
     })
   })
 

@@ -26,6 +26,7 @@ interface EditableRow {
   date: string
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
+  blockedReason?: string | null
   repeatsMonthly: boolean
   debtId: string | null
   debtName: string | null
@@ -130,6 +131,10 @@ function recomputeRowState(
 function validateRow(row: EditableRow) {
   const errors: string[] = []
 
+  if (row.blockedReason) {
+    return [row.blockedReason]
+  }
+
   if (!row.label.trim()) {
     errors.push('Name is required.')
   }
@@ -149,6 +154,10 @@ function validateRow(row: EditableRow) {
     errors.push('Select which debt this payment is for.')
   }
   return errors
+}
+
+function isBlockedIncomeRow(row: EditableRow) {
+  return Boolean(row.blockedReason)
 }
 
 export function SmsImportClient() {
@@ -195,15 +204,10 @@ export function SmsImportClient() {
   const [creatingDebt, setCreatingDebt] = useState(false)
   const [createDebtError, setCreateDebtError] = useState<string | null>(null)
 
-  const selectedCount = rows.length
   const savedRows = rows
   const monthlyReminderKeySet = useMemo(
     () => new Set(monthlyReminderKeys),
     [monthlyReminderKeys]
-  )
-  const hasClientValidationErrors = useMemo(
-    () => rows.some((row) => validateRow(row).length > 0),
-    [rows]
   )
   const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null
   const smsPlaceholder = [
@@ -212,7 +216,22 @@ export function SmsImportClient() {
     'groceries 2500',
   ].join('\n')
   const hasWarnings = Object.keys(rowWarnings).length > 0
-  const hasHardBlockedRows = Object.keys(rowErrors).length > 0
+  const savableRows = useMemo(
+    () => rows.filter((row) => !isBlockedIncomeRow(row)),
+    [rows]
+  )
+  const hasHardBlockedRows = useMemo(
+    () => Object.entries(rowErrors).some(([rowId, messages]) => {
+      if (messages.length === 0) return false
+      const row = rows.find((item) => item.id === rowId)
+      return row ? !isBlockedIncomeRow(row) : true
+    }),
+    [rowErrors, rows]
+  )
+  const hasSavableClientValidationErrors = useMemo(
+    () => savableRows.some((row) => validateRow(row).length > 0),
+    [savableRows]
+  )
 
   const hasExistingMonthlyReminder = (
     input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
@@ -322,6 +341,8 @@ export function SmsImportClient() {
   }
 
   const openEditRow = (row: EditableRow) => {
+    if (isBlockedIncomeRow(row)) return
+
     setEditingRowId(row.id)
     setEditDraft({
       label: row.label,
@@ -407,18 +428,26 @@ export function SmsImportClient() {
         return
       }
       const data = result.data
-      setMonthlyReminderKeys(data.monthlyReminderKeys ?? [])
-      setRows(
-        data.rows.map((row) => ({
-          ...row,
-          categoryType: row.confidence === 'high' ? row.categoryType : null,
-          repeatsMonthly: false,
-          debtId: null,
-          debtName: null,
-        }))
+      const nextRows = data.rows.map((row) => ({
+        ...row,
+        categoryType: row.blockedReason
+          ? row.categoryType
+          : row.confidence === 'high'
+            ? row.categoryType
+            : null,
+        repeatsMonthly: false,
+        debtId: null,
+        debtName: null,
+      }))
+      const nextBlockedRowErrors = Object.fromEntries(
+        nextRows
+          .filter((row) => row.blockedReason)
+          .map((row) => [row.id, [row.blockedReason as string]])
       )
+      setMonthlyReminderKeys(data.monthlyReminderKeys ?? [])
+      setRows(nextRows)
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
-      setRowErrors({})
+      setRowErrors(nextBlockedRowErrors)
       setRowWarnings({})
       if (data.rows.length === 0) {
         setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
@@ -443,11 +472,20 @@ export function SmsImportClient() {
       const preSubmitStartedAt = performance.now()
       const nextRowErrors: Record<string, string[]> = {}
       for (const row of rows) {
+        if (isBlockedIncomeRow(row)) {
+          nextRowErrors[row.id] = [row.blockedReason as string]
+          continue
+        }
         const issues = validateRow(row)
         if (issues.length > 0) nextRowErrors[row.id] = issues
       }
 
-      if (Object.keys(nextRowErrors).length > 0) {
+      const blockingErrors = Object.entries(nextRowErrors).filter(([rowId]) => {
+        const row = rows.find((item) => item.id === rowId)
+        return row ? !isBlockedIncomeRow(row) : true
+      })
+
+      if (blockingErrors.length > 0) {
         setRowErrors(nextRowErrors)
         setRowWarnings({})
         setError('Review rows marked with issues before saving.')
@@ -459,7 +497,9 @@ export function SmsImportClient() {
         return
       }
 
-      const payload = rows.map((row) => ({
+      const payload = rows
+        .filter((row) => !isBlockedIncomeRow(row))
+        .map((row) => ({
         id: row.id,
         label: row.label.trim(),
         categoryType: row.categoryType as ImportCategoryType,
@@ -467,12 +507,14 @@ export function SmsImportClient() {
         amount: Number(row.amount),
         date: row.date,
         sourceHash: row.sourceHash,
+        blockedReason: row.blockedReason ?? null,
         repeatsMonthly:
           (row.categoryType === 'everyday' || row.categoryType === 'fixed') && !hasExistingMonthlyReminder(row)
             ? row.repeatsMonthly
             : false,
         debtId: row.categoryType === 'debt' ? row.debtId : null,
       }))
+      setRowErrors(nextRowErrors)
       logClientSaveTiming('pre-submit-processing', performance.now() - preSubmitStartedAt, {
         rows: payload.length,
         confirmOverride,
@@ -660,6 +702,7 @@ export function SmsImportClient() {
                   const serverErrors = rowErrors[row.id] ?? []
                   const clientIssues = validateRow(row)
                   const hasHardError = serverErrors.length > 0 || clientIssues.some((i) => i !== 'Choose a category')
+                  const isBlocked = isBlockedIncomeRow(row)
                   const needsCategory = !row.categoryType && !hasHardError
                   const cardBorder = hasHardError ? T.redBorder : needsCategory ? T.amberBorder : T.borderSubtle
                   const cardBg = hasHardError ? T.redLight : needsCategory ? T.amberLight : 'var(--white)'
@@ -684,6 +727,7 @@ export function SmsImportClient() {
                       <button
                         type="button"
                         onClick={() => openEditRow(row)}
+                        disabled={isBlocked}
                         style={{
                           flex: 1,
                           minWidth: 0,
@@ -692,7 +736,8 @@ export function SmsImportClient() {
                           border: 'none',
                           padding: 0,
                           textAlign: 'left',
-                          cursor: 'pointer',
+                          cursor: isBlocked ? 'default' : 'pointer',
+                          opacity: isBlocked ? 0.9 : 1,
                         }}
                       >
                         <p style={{ margin: '0 0 4px', fontSize: 15, color: T.text1, fontWeight: 600, lineHeight: 1.3 }}>
@@ -809,7 +854,7 @@ export function SmsImportClient() {
                 })}
               </div>
 
-              {error && (
+                    {error && (
                 <p style={{ margin: '10px 0 0', fontSize: 13, color: T.redDark, lineHeight: 1.45 }}>
                   {error}
                 </p>
@@ -826,7 +871,7 @@ export function SmsImportClient() {
                   <PrimaryBtn
                     size="lg"
                     onClick={() => handleSave(true)}
-                    disabled={saving || selectedCount === 0 || hasClientValidationErrors}
+                    disabled={saving || savableRows.length === 0 || hasSavableClientValidationErrors}
                   >
                     {saving ? 'Saving…' : 'Save anyway'}
                   </PrimaryBtn>
@@ -834,9 +879,9 @@ export function SmsImportClient() {
                   <PrimaryBtn
                     size="lg"
                     onClick={() => handleSave(false)}
-                    disabled={saving || selectedCount === 0 || hasClientValidationErrors || hasHardBlockedRows}
+                    disabled={saving || savableRows.length === 0 || hasSavableClientValidationErrors || hasHardBlockedRows}
                   >
-                    {saving ? 'Saving…' : `Save ${selectedCount} ${selectedCount === 1 ? 'expense' : 'expenses'}`}
+                    {saving ? 'Saving…' : `Save ${savableRows.length} ${savableRows.length === 1 ? 'expense' : 'expenses'}`}
                   </PrimaryBtn>
                 )}
                 <SecondaryBtn

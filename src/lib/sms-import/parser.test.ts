@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { parsePaymentImportText, parseSimpleExpenseLines, parseSmsBlob } from './parser'
+import {
+  INCOME_SMS_BLOCKED_MESSAGE,
+  parsePaymentImportText,
+  parseSimpleExpenseLines,
+  parseSmsBlob,
+} from './parser'
 
 afterEach(() => {
   vi.useRealTimers()
 })
 
 describe('sms import parser', () => {
-  it('parses debit rows and skips credit rows', () => {
+  it('parses debit rows and returns visible blocked credit rows', () => {
     const result = parseSmsBlob(
       [
         'Your account was debited KES 2,100 at Naivas on 08/04/2026.',
@@ -17,9 +22,10 @@ describe('sms import parser', () => {
 
     expect(result.scanned).toBe(2)
     expect(result.skippedCredits).toBe(1)
-    expect(result.rows).toHaveLength(1)
+    expect(result.rows).toHaveLength(2)
     expect(result.rows[0].amount).toBe(2100)
     expect(result.rows[0].categoryType).toBe('everyday')
+    expect(result.rows[1].blockedReason).toBe(INCOME_SMS_BLOCKED_MESSAGE)
   })
 
   it('uses dictionary match to classify and label', () => {
@@ -76,6 +82,51 @@ describe('sms import parser', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0].date).toBe('2026-04-30')
+  })
+
+  it('blocks credit-like plain text rows in the single-input fallback path', () => {
+    const rows = parseSimpleExpenseLines('received KES 5,000 from John', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].blockedReason).toBe(INCOME_SMS_BLOCKED_MESSAGE)
+    expect(rows[0].amount).toBe(5000)
+  })
+
+  it('blocks common incoming-money wording with word boundaries only', () => {
+    const received = parseSmsBlob(
+      'You have received KES 5,000 from John',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+    const credited = parseSmsBlob(
+      'Account credited with KES 2,000',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+    const deposit = parseSmsBlob(
+      'Deposit KES 1,000 confirmed',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+    const paidRent = parseSmsBlob(
+      'Paid rent KES 10,000',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+    const accredited = parseSmsBlob(
+      'Accredited training KES 500',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(received.rows[0].blockedReason).toBe(INCOME_SMS_BLOCKED_MESSAGE)
+    expect(credited.rows[0].blockedReason).toBe(INCOME_SMS_BLOCKED_MESSAGE)
+    expect(deposit.rows[0].blockedReason).toBe(INCOME_SMS_BLOCKED_MESSAGE)
+    expect(paidRent.rows[0].blockedReason).toBeFalsy()
+    expect(accredited.rows[0].blockedReason).toBeFalsy()
+  })
+
+  it('keeps simple expense input editable', () => {
+    const rows = parseSimpleExpenseLines('food 500', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].label).toBe('food')
+    expect(rows[0].blockedReason).toBeFalsy()
   })
 
   it('parses payment import text amount, date, and reference when present', () => {
