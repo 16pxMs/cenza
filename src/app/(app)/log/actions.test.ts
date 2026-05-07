@@ -73,6 +73,7 @@ describe('log actions', () => {
       id: 'txn-1',
       amount: 200,
       date: '2026-05-06',
+      name: 'Home WiFi',
       note: 'updated',
       categoryKey: 'wifi',
     })
@@ -80,10 +81,51 @@ describe('log actions', () => {
     expect(update).toHaveBeenCalledWith({
       amount: 200,
       date: '2026-05-06',
+      display_name: 'Home WiFi',
       note: 'updated',
       category_type: 'fixed',
       category_key: 'internet',
       category_label: 'Internet',
+    })
+  })
+
+  it('updateLogEntry writes display_name without overwriting canonical category label', async () => {
+    const eqUser = vi.fn().mockResolvedValue({ error: null })
+    const eqId = vi.fn(() => ({ eq: eqUser }))
+    const update = vi.fn(() => ({ eq: eqId }))
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { category_type: 'everyday' },
+      error: null,
+    })
+    const selectEqUser = vi.fn(() => ({ maybeSingle }))
+    const selectEqId = vi.fn(() => ({ eq: selectEqUser }))
+    const select = vi.fn(() => ({ eq: selectEqId }))
+
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn(() => ({
+        select,
+        update,
+      })),
+    })
+
+    const { updateLogEntry } = await import('./actions')
+
+    await updateLogEntry({
+      id: 'txn-1',
+      amount: 1250,
+      date: '2026-05-06',
+      name: 'Uber for Ciiku',
+      categoryKey: 'transport',
+    })
+
+    expect(update).toHaveBeenCalledWith({
+      amount: 1250,
+      date: '2026-05-06',
+      display_name: 'Uber for Ciiku',
+      note: null,
+      category_type: 'everyday',
+      category_key: 'transport',
+      category_label: 'Transport',
     })
   })
 

@@ -28,6 +28,7 @@ interface UpdateLogEntryInput {
   id: string
   amount: number
   date: string
+  name?: string
   note?: string
   categoryKey?: string
   removeMonthlyReminderKey?: string
@@ -351,6 +352,7 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   if (!input.id.trim()) throw new Error('Entry id is required')
   if (!input.date.trim()) throw new Error('Entry date is required')
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero')
+  if (input.name != null && !input.name.trim()) throw new Error('Name is required')
 
   const supabase = await createServerSupabaseClient()
   const { data: currentTxn, error: currentTxnError } = await (supabase.from('transactions') as any)
@@ -366,6 +368,10 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
     amount,
     date: input.date,
     note: input.note?.trim() || null,
+  }
+
+  if (input.name != null) {
+    patch.display_name = input.name.trim()
   }
 
   if (input.categoryKey) {
@@ -403,6 +409,7 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   }
 
   revalidatePath('/log')
+  revalidatePath(`/log/${input.id}`)
   revalidatePath('/history')
   revalidatePath('/app')
   revalidatePath('/goals')

@@ -16,6 +16,7 @@ import { SettingsRow } from '@/components/ui/SettingsRow/SettingsRow'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
 import { fmt } from '@/lib/finance'
+import { formatAmount } from '@/lib/formatting/amount'
 import { ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
@@ -43,6 +44,27 @@ const AMOUNT_FORMAT_OPTIONS: Array<{
   { value: 'full', label: 'Full', description: 'Show exact amounts' },
   { value: 'short', label: 'Short', description: 'Use K/M abbreviations' },
 ]
+
+function amountFormatExample(value: AmountFormatPreference, currency: string) {
+  switch (value) {
+    case 'smart':
+      return {
+        primary: `${formatAmount(338500, { currency, preference: 'smart', context: 'summary' })} in summaries · ${formatAmount(338500, { currency, preference: 'smart', context: 'detail' })} in detail`,
+      }
+    case 'full':
+      return {
+        primary: `${formatAmount(338500, { currency, preference: 'full', context: 'summary' })} everywhere`,
+      }
+    case 'short':
+      return {
+        primary: `${formatAmount(338500, { currency, preference: 'short', context: 'summary' })} across the app`,
+      }
+    default:
+      return {
+        primary: `${formatAmount(338500, { currency, preference: 'smart', context: 'summary' })} in summaries · ${formatAmount(338500, { currency, preference: 'smart', context: 'detail' })} in detail`,
+      }
+  }
+}
 
 function ordinal(day: number): string {
   if (day % 10 === 1 && day % 100 !== 11) return `${day}st`
@@ -99,6 +121,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   const [activePayDaySlot, setActivePayDaySlot] = useState<'first' | 'second'>('first')
   const [savingPaySchedule, setSavingPaySchedule] = useState(false)
   const [showAmountFormat, setShowAmountFormat] = useState(false)
+  const [savedAmountFormatPreference, setSavedAmountFormatPreference] = useState<AmountFormatPreference>(data.amountFormatPreference)
   const [amountFormatPreference, setAmountFormatPreference] = useState<AmountFormatPreference>(data.amountFormatPreference)
   const [savingAmountFormat, setSavingAmountFormat] = useState(false)
 
@@ -116,12 +139,18 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
   const payScheduleDirty =
     scheduleType !== initialScheduleType ||
     scheduleDays.join(',') !== initialScheduleDays.join(',')
+  const amountFormatDirty = amountFormatPreference !== savedAmountFormatPreference
 
   const openPaySchedule = () => {
     setScheduleType(initialScheduleType)
     setScheduleDays(initialScheduleDays)
     setActivePayDaySlot('first')
     setShowPaySchedule(true)
+  }
+
+  const openAmountFormat = () => {
+    setAmountFormatPreference(savedAmountFormatPreference)
+    setShowAmountFormat(true)
   }
 
   const persistPaySchedule = async () => {
@@ -214,17 +243,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           value={currencyMeta ? `${currencyMeta.flag}  ${currency}` : currency}
           supportingText="Locked after onboarding to keep totals consistent."
           valueTone="default"
-          isLast
         />
-      </>)}
-
-      {sectionLabel('Display')}
-      {sectionCard(<>
         <SettingsRow
           label="Amount format"
           value={amountFormatLabel(amountFormatPreference)}
           supportingText={AMOUNT_FORMAT_OPTIONS.find((option) => option.value === amountFormatPreference)?.description}
-          onClick={() => setShowAmountFormat(true)}
+          onClick={openAmountFormat}
           isLast
         />
       </>)}
@@ -563,7 +587,10 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
       <Sheet
         open={showAmountFormat}
-        onClose={() => setShowAmountFormat(false)}
+        onClose={() => {
+          setAmountFormatPreference(savedAmountFormatPreference)
+          setShowAmountFormat(false)
+        }}
         title="Amount format"
       >
         <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
@@ -571,9 +598,16 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             Choose how money appears across the app.
           </p>
 
-          <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+          <div style={{
+            display: 'grid',
+            border: `1px solid ${T.border}`,
+            borderRadius: '18px',
+            overflow: 'hidden',
+            background: T.white,
+          }}>
             {AMOUNT_FORMAT_OPTIONS.map((option) => {
               const selected = amountFormatPreference === option.value
+              const example = amountFormatExample(option.value, currency)
               return (
                 <button
                   key={option.value}
@@ -586,28 +620,47 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                     justifyContent: 'space-between',
                     gap: 'var(--space-md)',
                     padding: '14px 16px',
-                    borderRadius: 'var(--radius-md)',
-                    border: selected
-                      ? `var(--border-width) solid ${T.brandDark}`
-                      : `var(--border-width) solid ${T.border}`,
-                    background: selected ? 'var(--brand-mid)' : T.white,
+                    borderRadius: 0,
+                    border: 'none',
+                    borderTop: option.value === AMOUNT_FORMAT_OPTIONS[0].value ? 'none' : `1px solid ${T.border}`,
+                    background: T.white,
                     cursor: 'pointer',
                     textAlign: 'left',
+                    boxShadow: 'none',
                   }}
                 >
-                  <span style={{ display: 'grid', gap: 4 }}>
-                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
-                      {option.label}
+                  <span style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-md)' }}>
+                      <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
+                        {option.label}
+                      </span>
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          border: selected ? `1px solid ${T.brandDark}` : `1px solid ${T.border}`,
+                          background: selected ? T.brandDark : 'transparent',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      />
                     </span>
                     <span style={{ fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
                       {option.description}
                     </span>
-                  </span>
-                  {selected ? (
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.brandDark }}>
-                      Selected
+                    <span style={{
+                      fontSize: '12px',
+                      color: T.textMuted,
+                      lineHeight: 1.45,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>
+                      {example.primary}
                     </span>
-                  ) : null}
+                  </span>
                 </button>
               )
             })}
@@ -616,10 +669,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           <PrimaryBtn
             size="lg"
             onClick={async () => {
+              if (!amountFormatDirty || savingAmountFormat) return
               try {
                 setSavingAmountFormat(true)
                 await saveAmountFormatPreference(amountFormatPreference)
                 await refreshProfile()
+                setSavedAmountFormatPreference(amountFormatPreference)
                 setShowAmountFormat(false)
                 toast('Amount format saved')
               } catch {
@@ -628,9 +683,9 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                 setSavingAmountFormat(false)
               }
             }}
-            disabled={savingAmountFormat}
+            disabled={savingAmountFormat || !amountFormatDirty}
           >
-            {savingAmountFormat ? 'Saving…' : 'Save amount format'}
+            {savingAmountFormat ? 'Saving…' : amountFormatDirty ? 'Save amount format' : 'Amount format saved'}
           </PrimaryBtn>
         </div>
       </Sheet>

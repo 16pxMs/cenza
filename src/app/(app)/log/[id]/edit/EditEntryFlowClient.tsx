@@ -1,29 +1,37 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
-import Link from 'next/link'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
+import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import { Input } from '@/components/ui/Input/Input'
 import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack } from '@/components/ui/Icons'
-import { fmt, formatDate } from '@/lib/finance'
-import { getCategoryLabel } from '@/lib/categories/config'
 import { getGroupedCategoryOptions } from '@/lib/categories/options'
 import type { LogEntry } from '@/lib/loaders/log'
 import { updateLogEntry } from '../../actions'
+import { getSuggestedCategoryOptions } from '@/app/(app)/log/import/presentation'
+import {
+  getFrequentCategoryOptions,
+  loadRecentCategoryKeys,
+  recordRecentCategoryKey,
+} from '@/app/(app)/log/import/recent-categories'
+import {
+  canEditSave,
+  getEditCategorySummary,
+  getEditDetailsPrimaryLabel,
+  getEditDetailsSecondaryLabel,
+  isEditDetailsValid,
+  resolveEditSuccessHref,
+  type EditDraftEntry,
+} from './presentation'
 
 type Step = 'details' | 'category' | 'review'
+type EditCategoryType = 'everyday' | 'fixed' | 'debt'
 
-interface DraftEntry {
-  name: string
-  amount: string
-  date: string
-  note: string
-  categoryKey: string | null
-}
+interface DraftEntry extends EditDraftEntry {}
 
 interface Props {
   entry: LogEntry
@@ -33,7 +41,16 @@ interface Props {
 
 const STEPS: Step[] = ['details', 'category', 'review']
 
-const CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
+const CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt']) as Array<
+  (ReturnType<typeof getGroupedCategoryOptions>[number] & { type: EditCategoryType })
+>
+
+const CATEGORY_PANEL_TEXT = {
+  title: 'Pick a category',
+  subtitle: 'Tap one to apply.',
+  browserTitle: 'Browse all categories',
+  browserSubtitle: 'Search or browse the full category list',
+}
 
 function parseStep(value: string | null): Step {
   return STEPS.includes(value as Step) ? (value as Step) : 'details'
@@ -56,7 +73,31 @@ export function EditEntryFlowClient({ entry, currency, returnTo }: Props) {
   const [draft, setDraft] = useState<DraftEntry>(() => buildInitialDraft(entry))
   const [error, setError] = useState<string | null>(null)
   const [isSaving, startSave] = useTransition()
-  const successHref = returnTo ?? `/log/${entry.id}`
+  const [recentCategoryKeys, setRecentCategoryKeys] = useState<string[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<EditCategoryType>('everyday')
+  const [categoryQuery, setCategoryQuery] = useState('')
+  const [categoryBrowserOpen, setCategoryBrowserOpen] = useState(false)
+  const successHref = resolveEditSuccessHref(entry.id, returnTo)
+
+  useEffect(() => {
+    setRecentCategoryKeys(loadRecentCategoryKeys())
+  }, [])
+
+  useEffect(() => {
+    if (step !== 'category') {
+      setCategoryBrowserOpen(false)
+      setCategoryQuery('')
+    }
+  }, [step])
+
+  useEffect(() => {
+    if (!draft.categoryKey) return
+    const activeGroup = CATEGORY_GROUPS.find((group) =>
+      group.options.some((option) => option.key === draft.categoryKey)
+    )
+    if (!activeGroup) return
+    setCategoryFilter(activeGroup.type)
+  }, [draft.categoryKey])
 
   const goToStep = (next: Step) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -74,14 +115,8 @@ export function EditEntryFlowClient({ entry, currency, returnTo }: Props) {
   }
 
   const amountValue = parseFloat(draft.amount)
-  const detailsValid =
-    draft.name.trim().length > 0 &&
-    Number.isFinite(amountValue) &&
-    amountValue > 0 &&
-    /^\d{4}-\d{2}-\d{2}$/.test(draft.date)
-
-  const categoryValid = !!draft.categoryKey
-  const canSave = detailsValid && categoryValid
+  const detailsValid = isEditDetailsValid(draft)
+  const canSave = canEditSave(draft)
 
   const handleSave = () => {
     if (!canSave || isSaving) return
@@ -109,6 +144,7 @@ export function EditEntryFlowClient({ entry, currency, returnTo }: Props) {
           id: entry.id,
           amount: amountValue,
           date: draft.date,
+          name: draft.name,
           note: draft.note,
           categoryKey: draft.categoryKey ?? undefined,
         })
@@ -120,64 +156,122 @@ export function EditEntryFlowClient({ entry, currency, returnTo }: Props) {
     })
   }
 
+  const suggestedCategoryOptions = useMemo(() => {
+    return getSuggestedCategoryOptions(draft.name, CATEGORY_GROUPS)
+  }, [draft.name])
+
+  const frequentCategoryOptions = useMemo(() => {
+    return getFrequentCategoryOptions(
+      recentCategoryKeys,
+      CATEGORY_GROUPS,
+      new Set(suggestedCategoryOptions.map((option) => option.key))
+    )
+  }, [recentCategoryKeys, suggestedCategoryOptions])
+
+  const categorySearchResults = useMemo(() => {
+    const query = categoryQuery.trim().toLowerCase()
+    if (!query) return []
+    const seen = new Set<string>()
+    return CATEGORY_GROUPS.flatMap((group) => group.options)
+      .filter((option) => {
+        const matches = option.label.toLowerCase().includes(query)
+          || option.key.toLowerCase().includes(query)
+        if (!matches || seen.has(option.key)) return false
+        seen.add(option.key)
+        return true
+      })
+  }, [categoryQuery])
+
+  const tabCategoryOptions = useMemo(() => {
+    return CATEGORY_GROUPS.find((group) => group.type === categoryFilter)?.options ?? []
+  }, [categoryFilter])
+
+  const handleCategorySelect = (categoryKey: string) => {
+    onChangeAndRememberCategory(categoryKey)
+    goToStep('details')
+  }
+
+  const onChangeAndRememberCategory = (categoryKey: string) => {
+    updateDraft({ categoryKey })
+    setRecentCategoryKeys(recordRecentCategoryKey(categoryKey))
+    setCategoryBrowserOpen(false)
+    setCategoryQuery('')
+  }
+
+  const handleTopBack = () => {
+    if (step === 'category') {
+      goToStep('details')
+      return
+    }
+    router.replace(successHref)
+  }
+
   return (
     <AppSubpageLayout maxWidth={600}>
-      <Link
-        href={`/log/${entry.id}`}
-        aria-label="Back to entry"
+      <button
+        type="button"
+        aria-label={step === 'category' ? 'Back to details' : 'Back to entry'}
+        onClick={handleTopBack}
         style={{
           width: 44,
           height: 44,
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 'var(--space-lg)',
+          marginBottom: 'var(--space-md)',
           color: 'var(--grey-900)',
-          textDecoration: 'none',
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
           flexShrink: 0,
         }}
       >
         <IconBack size={20} />
-      </Link>
+      </button>
 
       {step === 'details' ? (
         <DetailsStep
           draft={draft}
           currency={currency}
           onChange={updateDraft}
-          canContinue={detailsValid}
-          onContinue={() => goToStep('category')}
+          canSave={canSave}
+          isSaving={isSaving}
+          error={error}
+          onOpenCategory={() => goToStep('category')}
+          onCancel={() => router.replace(successHref)}
+          onSave={handleSave}
         />
       ) : null}
 
       {step === 'category' ? (
         <CategoryStep
           draft={draft}
-          onChange={updateDraft}
-          canContinue={categoryValid}
-          onBack={() => goToStep('details')}
-          onContinue={() => goToStep('review')}
-        />
-      ) : null}
-
-      {step === 'review' ? (
-        <ReviewStep
-          draft={draft}
           currency={currency}
-          canSave={canSave}
-          isSaving={isSaving}
-          error={error}
-          onBack={() => goToStep('category')}
-          onSave={handleSave}
+          suggestedCategoryOptions={suggestedCategoryOptions}
+          frequentCategoryOptions={frequentCategoryOptions}
+          categoryFilter={categoryFilter}
+          onCategoryFilterChange={setCategoryFilter}
+          categoryQuery={categoryQuery}
+          onCategoryQueryChange={setCategoryQuery}
+          categorySearchResults={categorySearchResults}
+          tabCategoryOptions={tabCategoryOptions}
+          browserOpen={categoryBrowserOpen}
+          onBrowserOpen={() => setCategoryBrowserOpen(true)}
+          onBrowserClose={() => {
+            setCategoryBrowserOpen(false)
+            setCategoryQuery('')
+          }}
+          onSelectCategory={handleCategorySelect}
         />
       ) : null}
     </AppSubpageLayout>
   )
 }
 
-function StepHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
+function StepHeader({ eyebrow, title, subtitle }: { eyebrow: string; title?: string; subtitle?: string }) {
   return (
-    <div style={{ marginBottom: 'var(--space-lg)' }}>
+    <div style={{ marginBottom: 'var(--space-xl)' }}>
       <p style={{
         margin: '0 0 var(--space-xs)',
         fontSize: 'var(--text-xs)',
@@ -188,22 +282,25 @@ function StepHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: stri
       }}>
         {eyebrow}
       </p>
-      <h1 style={{
-        margin: 0,
-        fontSize: 'var(--text-xl)',
-        fontWeight: 'var(--weight-semibold)',
-        color: 'var(--text-1)',
-        letterSpacing: '-0.02em',
-        lineHeight: 1.15,
-      }}>
-        {title}
-      </h1>
+      {title ? (
+        <h1 style={{
+          margin: 0,
+          fontSize: 'var(--text-2xl)',
+          fontWeight: 'var(--weight-semibold)',
+          color: 'var(--text-1)',
+          letterSpacing: '-0.02em',
+          lineHeight: 1.05,
+        }}>
+          {title}
+        </h1>
+      ) : null}
       {subtitle ? (
         <p style={{
-          margin: 'var(--space-xs) 0 0',
-          fontSize: 'var(--text-sm)',
+          margin: title ? 'var(--space-sm) 0 0' : '0',
+          fontSize: 'var(--text-base)',
           color: 'var(--text-3)',
-          lineHeight: 1.5,
+          lineHeight: 1.55,
+          maxWidth: 480,
         }}>
           {subtitle}
         </p>
@@ -212,237 +309,456 @@ function StepHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: stri
   )
 }
 
+function FormCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: 'var(--white)',
+      border: 'var(--border-width) solid var(--border)',
+      borderRadius: 'var(--radius-xl)',
+      padding: 'var(--space-lg)',
+    }}>
+      {children}
+    </div>
+  )
+}
+
 function DetailsStep({
   draft,
   currency,
   onChange,
-  canContinue,
-  onContinue,
+  canSave,
+  isSaving,
+  error,
+  onOpenCategory,
+  onCancel,
+  onSave,
 }: {
   draft: DraftEntry
   currency: string
   onChange: (patch: Partial<DraftEntry>) => void
-  canContinue: boolean
-  onContinue: () => void
+  canSave: boolean
+  isSaving: boolean
+  error: string | null
+  onOpenCategory: () => void
+  onCancel: () => void
+  onSave: () => void
 }) {
+  const categoryLabel = getEditCategorySummary(draft)
+  const [noteExpanded, setNoteExpanded] = useState(false)
+  const notePreview = draft.note.trim() || 'Add note'
+
   return (
     <div>
-      <StepHeader eyebrow="Edit entry" title="Details" subtitle="Update the basic information for this entry." />
+      <StepHeader eyebrow="Edit entry" subtitle="Update the basic information for this entry." />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-        <Input
-          label="Name"
-          value={draft.name}
-          onChange={(value) => onChange({ name: value })}
-          placeholder="Name"
-          autoFocus
-        />
-        <MoneyInput
-          label="Amount"
-          currency={currency}
-          value={draft.amount}
-          onChange={(value) => onChange({ amount: value })}
-          placeholder="0"
-        />
-        <Input
-          label="Date"
-          type="date"
-          value={draft.date}
-          onChange={(value) => onChange({ date: value })}
-        />
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{
-            fontSize: 'var(--text-sm)',
-            fontWeight: 'var(--weight-medium)',
-            color: 'var(--text-2)',
-          }}>
-            Note
-          </span>
-          <textarea
-            value={draft.note}
-            onChange={(event) => onChange({ note: event.target.value })}
-            placeholder="Optional note"
-            rows={3}
-            style={{
-              borderRadius: 14,
-              border: '1px solid var(--border)',
-              padding: '12px 14px',
-              fontSize: 'var(--text-base)',
-              color: 'var(--text-1)',
-              background: 'var(--white)',
-              outline: 'none',
-              width: '100%',
-              boxSizing: 'border-box',
-              resize: 'vertical',
-              minHeight: 88,
-              fontFamily: 'inherit',
-            }}
+      <FormCard>
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <Input
+            label="Name"
+            value={draft.name}
+            onChange={(value) => onChange({ name: value })}
+            placeholder="Name"
+            flush
           />
-        </label>
-      </div>
+          <MoneyInput
+            label="Amount"
+            currency={currency}
+            value={draft.amount}
+            onChange={(value) => onChange({ amount: value })}
+            placeholder="0"
+            flush
+          />
+          <Input
+            label="Transaction date"
+            hint="When this expense happened"
+            type="date"
+            value={draft.date}
+            onChange={(value) => onChange({ date: value })}
+            flush
+          />
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+            <span style={{
+              fontSize: 'var(--text-sm)',
+              fontWeight: 'var(--weight-medium)',
+              color: 'var(--text-2)',
+            }}>
+              Category
+            </span>
+            <button
+              type="button"
+              onClick={onOpenCategory}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 'var(--space-md)',
+                width: '100%',
+                height: 40,
+                padding: '0 16px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'var(--border-width) solid var(--border)',
+                background: 'var(--white)',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <span style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-regular)',
+                color: draft.categoryKey ? 'var(--text-1)' : 'var(--text-3)',
+                lineHeight: 1.35,
+              }}>
+                {categoryLabel}
+              </span>
+              <span aria-hidden style={{
+                fontSize: '16px',
+                fontWeight: 'var(--weight-semibold)',
+                color: 'var(--text-muted)',
+                lineHeight: 1,
+              }}>
+                ›
+              </span>
+            </button>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+            <span style={{
+              fontSize: 'var(--text-sm)',
+              fontWeight: 'var(--weight-medium)',
+              color: 'var(--text-2)',
+            }}>
+              Note
+            </span>
+            {noteExpanded ? (
+              <textarea
+                value={draft.note}
+                onChange={(event) => onChange({ note: event.target.value })}
+                placeholder="Optional note"
+                rows={3}
+                style={{
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'var(--border-width) solid var(--border)',
+                  padding: '12px 16px',
+                  fontSize: 'var(--text-sm)',
+                  lineHeight: 1.5,
+                  fontWeight: 'var(--weight-regular)',
+                  color: 'var(--text-1)',
+                  background: 'var(--white)',
+                  outline: 'none',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  resize: 'vertical',
+                  minHeight: 88,
+                  fontFamily: 'inherit',
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setNoteExpanded(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-md)',
+                  width: '100%',
+                  minHeight: 40,
+                  padding: '10px 16px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'var(--border-width) solid var(--border)',
+                  background: 'var(--white)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 'var(--weight-regular)',
+                  color: draft.note.trim() ? 'var(--text-1)' : 'var(--text-3)',
+                  lineHeight: 1.4,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  flex: 1,
+                }}>
+                  {notePreview}
+                </span>
+                <span aria-hidden style={{
+                  fontSize: '16px',
+                  fontWeight: 'var(--weight-semibold)',
+                  color: 'var(--text-muted)',
+                  lineHeight: 1,
+                }}>
+                  ›
+                </span>
+              </button>
+            )}
+          </label>
+        </div>
 
-      <div style={{ marginTop: 'var(--space-xxl)' }}>
-        <PrimaryBtn size="lg" onClick={onContinue} disabled={!canContinue}>
-          Continue
-        </PrimaryBtn>
-      </div>
+        {error ? (
+          <p style={{
+            margin: 'var(--space-md) 0 0',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--red-dark)',
+            lineHeight: 1.5,
+          }}>
+            {error}
+          </p>
+        ) : null}
+
+        <div style={{ marginTop: 'var(--space-xl)' }}>
+          <PrimaryBtn size="lg" onClick={onSave} disabled={!canSave || isSaving}>
+            {isSaving ? 'Saving…' : getEditDetailsPrimaryLabel()}
+          </PrimaryBtn>
+        </div>
+        <div style={{ marginTop: 'var(--space-sm)' }}>
+          <SecondaryBtn size="lg" onClick={onCancel} disabled={isSaving}>
+            {getEditDetailsSecondaryLabel()}
+          </SecondaryBtn>
+        </div>
+      </FormCard>
     </div>
   )
 }
 
 function CategoryStep({
   draft,
-  onChange,
-  canContinue,
-  onBack,
-  onContinue,
+  currency,
+  suggestedCategoryOptions,
+  frequentCategoryOptions,
+  categoryFilter,
+  onCategoryFilterChange,
+  categoryQuery,
+  onCategoryQueryChange,
+  categorySearchResults,
+  tabCategoryOptions,
+  browserOpen,
+  onBrowserOpen,
+  onBrowserClose,
+  onSelectCategory,
 }: {
   draft: DraftEntry
-  onChange: (patch: Partial<DraftEntry>) => void
-  canContinue: boolean
-  onBack: () => void
-  onContinue: () => void
+  currency: string
+  suggestedCategoryOptions: Array<(typeof CATEGORY_GROUPS)[number]['options'][number]>
+  frequentCategoryOptions: Array<(typeof CATEGORY_GROUPS)[number]['options'][number]>
+  categoryFilter: EditCategoryType
+  onCategoryFilterChange: (value: EditCategoryType) => void
+  categoryQuery: string
+  onCategoryQueryChange: (value: string) => void
+  categorySearchResults: Array<(typeof CATEGORY_GROUPS)[number]['options'][number]>
+  tabCategoryOptions: Array<(typeof CATEGORY_GROUPS)[number]['options'][number]>
+  browserOpen: boolean
+  onBrowserOpen: () => void
+  onBrowserClose: () => void
+  onSelectCategory: (categoryKey: string) => void
 }) {
+  const isSearchingCategories = categoryQuery.trim().length > 0
+
   return (
     <div>
       <StepHeader eyebrow="Edit entry" title="Category" subtitle="Choose where this entry belongs." />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-        {CATEGORY_GROUPS.map((group) => (
-          <div key={group.type}>
-            <p style={{
-              margin: '0 0 var(--space-sm)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-semibold)',
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.07em',
-            }}>
-              {group.label}
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
-              {group.options.map((option) => (
-                <SingleSelectChip
-                  key={option.key}
-                  label={option.label}
-                  selected={draft.categoryKey === option.key}
-                  onClick={() => onChange({ categoryKey: option.key })}
-                />
-              ))}
+      <FormCard>
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <div style={{
+            border: 'var(--border-width) solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '12px 14px',
+            background: 'var(--white)',
+          }}>
+            <div style={{ display: 'grid', gap: '2px' }}>
+              <span style={{
+                fontSize: 'var(--text-base)',
+                fontWeight: 'var(--weight-semibold)',
+                color: 'var(--text-1)',
+                lineHeight: 1.3,
+              }}>
+                {draft.name.trim() || 'Expense'}
+              </span>
+              <span style={{
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-3)',
+                lineHeight: 1.4,
+              }}>
+                {`${currency} ${Number.isFinite(parseFloat(draft.amount)) ? parseFloat(draft.amount).toLocaleString() : draft.amount || '0'} · ${getEditCategorySummary(draft)}`}
+              </span>
             </div>
           </div>
-        ))}
-      </div>
 
-      <div style={{
-        marginTop: 'var(--space-xxl)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-sm)',
-      }}>
-        <PrimaryBtn size="lg" onClick={onContinue} disabled={!canContinue}>
-          Continue
-        </PrimaryBtn>
-        <SecondaryBtn size="lg" onClick={onBack}>
-          Back
-        </SecondaryBtn>
-      </div>
-    </div>
-  )
-}
+          {suggestedCategoryOptions.length > 0 || frequentCategoryOptions.length > 0 ? (
+            <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+              {suggestedCategoryOptions.length > 0 ? (
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                    Suggested
+                  </p>
+                  <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
+                    {suggestedCategoryOptions.map((option) => (
+                      <SingleSelectChip
+                        key={`suggested-${option.key}`}
+                        label={option.label}
+                        selected={draft.categoryKey === option.key}
+                        onClick={() => onSelectCategory(option.key)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
-function ReviewStep({
-  draft,
-  currency,
-  canSave,
-  isSaving,
-  error,
-  onBack,
-  onSave,
-}: {
-  draft: DraftEntry
-  currency: string
-  canSave: boolean
-  isSaving: boolean
-  error: string | null
-  onBack: () => void
-  onSave: () => void
-}) {
-  const amountValue = useMemo(() => parseFloat(draft.amount) || 0, [draft.amount])
-  const categoryLabel = draft.categoryKey ? getCategoryLabel(draft.categoryKey) : '—'
+              {frequentCategoryOptions.length > 0 ? (
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-2)' }}>
+                    Frequent
+                  </p>
+                  <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
+                    {frequentCategoryOptions.map((option) => (
+                      <SingleSelectChip
+                        key={`frequent-${option.key}`}
+                        label={option.label}
+                        selected={draft.categoryKey === option.key}
+                        onClick={() => onSelectCategory(option.key)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
-  return (
-    <div>
-      <StepHeader eyebrow="Edit entry" title="Review" subtitle="Make sure everything looks right." />
+          <button
+            type="button"
+            onClick={onBrowserOpen}
+            style={{
+              width: '100%',
+              borderRadius: 14,
+              border: 'var(--border-width) solid var(--border)',
+              background: 'var(--white)',
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-sm)',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+            >
+              <span>
+                <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+                  {CATEGORY_PANEL_TEXT.browserTitle}
+                </span>
+                <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.4 }}>
+                  {CATEGORY_PANEL_TEXT.browserSubtitle}
+                </span>
+              </span>
+            <span style={{ color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }}>›</span>
+          </button>
+        </div>
+      </FormCard>
 
-      <section style={{
-        background: 'var(--white)',
-        border: 'var(--border-width) solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-lg)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-sm)',
-      }}>
-        <SummaryRow label="Name" value={draft.name.trim() || '—'} />
-        <SummaryRow
-          label="Amount"
-          value={fmt(amountValue, currency)}
-          monospaced
-        />
-        <SummaryRow label="Date" value={draft.date ? formatDate(draft.date) : '—'} />
-        <SummaryRow label="Category" value={categoryLabel} />
-        <SummaryRow label="Note" value={draft.note.trim() || '—'} />
-      </section>
+      <Sheet open={browserOpen} onClose={onBrowserClose} title="Choose category">
+        <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+            Select a category and we&apos;ll return you to this entry.
+          </p>
 
-      {error ? (
-        <p style={{
-          margin: 'var(--space-md) 0 0',
-          fontSize: 'var(--text-sm)',
-          color: 'var(--red-dark)',
-          lineHeight: 1.5,
-        }}>
-          {error}
-        </p>
-      ) : null}
+          <input
+            type="search"
+            value={categoryQuery}
+            onChange={(event) => onCategoryQueryChange(event.target.value)}
+            placeholder="Search categories"
+            aria-label="Search categories"
+            style={{
+              width: '100%',
+              height: 44,
+              borderRadius: 12,
+              border: 'var(--border-width) solid var(--border)',
+              background: 'var(--white)',
+              padding: '0 14px',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-1)',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
 
-      <div style={{
-        marginTop: 'var(--space-xxl)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-sm)',
-      }}>
-        <PrimaryBtn size="lg" onClick={onSave} disabled={!canSave || isSaving}>
-          {isSaving ? 'Saving…' : 'Save changes'}
-        </PrimaryBtn>
-        <SecondaryBtn size="lg" onClick={onBack} disabled={isSaving}>
-          Back
-        </SecondaryBtn>
-      </div>
-    </div>
-  )
-}
+          {!isSearchingCategories ? (
+            <div
+              role="tablist"
+              aria-label="Category groups"
+              style={{
+                display: 'flex',
+                padding: 3,
+                borderRadius: 10,
+                background: 'var(--grey-100)',
+                width: '100%',
+              }}
+            >
+              {CATEGORY_GROUPS.map((group) => {
+                const active = categoryFilter === group.type
+                return (
+                  <button
+                    key={`modal-filter-${group.type}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => onCategoryFilterChange(group.type)}
+                    style={{
+                      flex: 1,
+                      height: 34,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: active ? 'var(--white)' : 'transparent',
+                      color: active ? 'var(--text-1)' : 'var(--text-2)',
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: active ? 'var(--weight-semibold)' : 'var(--weight-medium)',
+                      cursor: 'pointer',
+                      boxShadow: active ? '0 1px 2px rgba(16, 24, 40, 0.08)' : 'none',
+                    }}
+                  >
+                    {group.label}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
 
-function SummaryRow({ label, value, monospaced = false }: { label: string; value: string; monospaced?: boolean }) {
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'baseline',
-      justifyContent: 'space-between',
-      gap: 'var(--space-md)',
-    }}>
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
-        {label}
-      </span>
-      <span style={{
-        fontSize: 'var(--text-base)',
-        fontWeight: 'var(--weight-medium)',
-        color: 'var(--text-1)',
-        textAlign: 'right',
-        ...(monospaced ? { fontVariantNumeric: 'tabular-nums' } : {}),
-      }}>
-        {value}
-      </span>
+          <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+            {isSearchingCategories ? (
+              categorySearchResults.length > 0 ? (
+                <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                  {categorySearchResults.map((option) => (
+                    <SingleSelectChip
+                      key={`modal-search-${option.key}`}
+                      label={option.label}
+                      selected={draft.categoryKey === option.key}
+                      onClick={() => onSelectCategory(option.key)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                  No matches.
+                </p>
+              )
+            ) : tabCategoryOptions.length > 0 ? (
+              <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                {tabCategoryOptions.map((option) => (
+                  <SingleSelectChip
+                    key={`modal-filtered-${option.key}`}
+                    label={option.label}
+                    selected={draft.categoryKey === option.key}
+                    onClick={() => onSelectCategory(option.key)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                No categories in this group.
+              </p>
+            )}
+          </div>
+        </div>
+      </Sheet>
     </div>
   )
 }

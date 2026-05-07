@@ -700,7 +700,7 @@ function AppShell({ screen }: { screen: DemoScreen }) {
   const goalTargets = (screen === 'app-goals-set' || screen === 'app-expenses-set') ? MOCK.goalTargets : null
 
   const overview = <OverviewWithData
-    name={MOCK.name} currency={MOCK.currency} goals={MOCK.goals}
+    name={MOCK.name} currency={MOCK.currency} amountFormatPreference="smart" goals={MOCK.goals}
     incomeData={incomeData} goalTargets={goalTargets}
     isDesktop={isDesktop}
   />

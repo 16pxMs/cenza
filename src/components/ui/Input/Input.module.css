@@ -16,7 +16,7 @@
 .inputField {
   display: flex;
   align-items: center;
-  height: 48px;
+  height: 40px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--white);
@@ -30,7 +30,7 @@
 
 .inputPrefix {
   padding: 0 0 0 14px;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--text-3);
   font-weight: var(--weight-regular);
   display: flex;
@@ -46,7 +46,7 @@
   border: none;
   outline: none;
   padding: 0 14px;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: var(--weight-regular);
   font-family: var(--font-sans);
   color: var(--text-1);

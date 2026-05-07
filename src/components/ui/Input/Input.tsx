@@ -8,6 +8,7 @@ interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onCha
   prefix?: string
   hint?: string
   error?: string
+  flush?: boolean
   value?: string
   onChange?: (val: string) => void
 }
@@ -19,10 +20,12 @@ function addCommas(raw: string): string {
   return parts.join('.')
 }
 
-export function Input({ label, labelAction, prefix, hint, error, onChange, className, id, type, value, autoFocus, ...props }: Props) {
+export function Input({ label, labelAction, prefix, hint, error, flush = false, onChange, className, id, type, value, autoFocus, ...props }: Props) {
   const inputId = id ?? label.replace(/\s+/g, '-').toLowerCase()
   const isNumeric = type === 'number'
-  const shouldAutoFocus = autoFocus ?? isNumeric
+  // Callers must opt into autofocus explicitly. We do not infer it from input
+  // type because that tends to overfit the UI to one assumed task.
+  const shouldAutoFocus = autoFocus ?? false
 
   const displayValue = isNumeric ? addCommas(value ?? '') : (value ?? '')
 
@@ -38,7 +41,7 @@ export function Input({ label, labelAction, prefix, hint, error, onChange, class
   }
 
   return (
-    <div className={styles.inputWrap}>
+    <div className={styles.inputWrap} style={flush ? { marginBottom: 0 } : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <label className={styles.inputLabel} htmlFor={inputId}>
           {label}

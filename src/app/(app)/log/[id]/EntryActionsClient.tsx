@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/lib/context/ToastContext'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
@@ -13,6 +13,7 @@ import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
 import { IconBack } from '@/components/ui/Icons'
 import { fmt, formatDate } from '@/lib/finance'
+import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import type { LogEntry } from '@/lib/loaders/log'
 import {
   createTrackedDebtFromLogEntry,
@@ -62,7 +63,7 @@ const actionRowButtonStyle: React.CSSProperties = {
 
 const actionRowTitleStyle: React.CSSProperties = {
   fontSize: 'var(--text-base)',
-  fontWeight: 'var(--weight-semibold)',
+  fontWeight: 'var(--weight-medium)',
   color: T.text1,
 }
 
@@ -87,12 +88,14 @@ function ActionRow({
   onClick,
   disabled = false,
   danger = false,
+  trailing,
 }: {
   title: string
   meta: string
   onClick: () => void
   disabled?: boolean
   danger?: boolean
+  trailing?: React.ReactNode
 }) {
   return (
     <button
@@ -103,8 +106,20 @@ function ActionRow({
         cursor: disabled ? 'default' : 'pointer',
       }}
     >
-      <div style={{ ...actionRowTitleStyle, color: danger ? 'var(--red-dark)' : T.text1 }}>
-        {title}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--space-md)',
+      }}>
+        <div style={{ ...actionRowTitleStyle, color: danger ? 'var(--red-dark)' : T.text1 }}>
+          {title}
+        </div>
+        {trailing ? (
+          <div style={{ flexShrink: 0 }}>
+            {trailing}
+          </div>
+        ) : null}
       </div>
       <div style={actionRowMetaStyle}>{meta}</div>
     </button>
@@ -121,7 +136,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const { isDesktop } = useBreakpoint()
   const { toast } = useToast()
 
-  const [activeFlow, setActiveFlow] = useState<'refund' | 'confirm' | 'track' | 'debtEdit' | 'createDebt' | 'linkDebt' | null>(null)
+  const [activeFlow, setActiveFlow] = useState<'refund' | 'confirm' | 'debtEdit' | 'createDebt' | 'linkDebt' | null>(null)
 
   const [refundAmount, setRefundAmount] = useState('')
   const [refundNote, setRefundNote] = useState('')
@@ -144,10 +159,12 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const [linkDebtError, setLinkDebtError] = useState<string | null>(null)
 
   const [savingMonthlyReminder, setSavingMonthlyReminder] = useState(false)
-  const [monthlyReminderAmount, setMonthlyReminderAmount] = useState('')
-  const [monthlyReminderError, setMonthlyReminderError] = useState<string | null>(null)
-
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
+  const [hasMonthlyReminder, setHasMonthlyReminder] = useState(entry.hasMonthlyReminder)
+
+  useEffect(() => {
+    setHasMonthlyReminder(entry.hasMonthlyReminder)
+  }, [entry.hasMonthlyReminder])
 
   const goBack = () => router.push('/log')
   const isDebtEntry = entry.categoryType === 'debt'
@@ -161,6 +178,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const debtEntryLabel = entry.debtEntryType === 'principal_increase'
     ? 'opening balance'
     : 'entry'
+  const monthlyReminderKey = recurringExpenseKey(entry.categoryType, entry.categoryKey)
 
   const openDebtEdit = () => {
     setDebtEditAmount(String(entry.amount))
@@ -365,11 +383,13 @@ export function EntryActionsClient({ entry, currency }: Props) {
   const handleToggleMonthlyReminder = async () => {
     if (entry.categoryType !== 'everyday' && entry.categoryType !== 'fixed') return
 
+    const nextValue = !hasMonthlyReminder
+    setHasMonthlyReminder(nextValue)
     setSavingMonthlyReminder(true)
     try {
-      if (entry.hasMonthlyReminder) {
+      if (hasMonthlyReminder) {
         await removeMonthlyReminder({
-          categoryKey: entry.monthlyReminderKey ?? entry.categoryKey,
+          categoryKey: entry.monthlyReminderKey ?? monthlyReminderKey,
         })
         toast('Monthly reminder removed')
       } else {
@@ -377,13 +397,12 @@ export function EntryActionsClient({ entry, currency }: Props) {
           categoryType: entry.categoryType as 'everyday' | 'fixed',
           categoryKey: entry.categoryKey,
           categoryLabel: entry.name,
-          amount: parseFloat(monthlyReminderAmount),
+          amount: entry.amount,
         })
         toast('Monthly reminder set')
       }
-      router.push('/log')
-      router.refresh()
     } catch {
+      setHasMonthlyReminder(!nextValue)
       toast('Could not update monthly reminder')
     } finally {
       setSavingMonthlyReminder(false)
@@ -419,7 +438,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             background: T.white,
             border: `1px solid ${T.border}`,
             borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-lg)',
+            padding: 'var(--space-xl) var(--space-lg)',
             textAlign: 'center',
           }}
         >
@@ -434,7 +453,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             {entry.name}
           </div>
           <div style={{
-            marginTop: 'var(--space-sm)',
+            marginTop: 'var(--space-md)',
             fontFamily: 'var(--font-display)',
             fontSize: 'var(--text-lg)',
             fontWeight: 'var(--weight-semibold)',
@@ -451,7 +470,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
             gap: 'var(--space-xs)',
             fontSize: 'var(--text-sm)',
             color: T.text2,
-            marginTop: 'var(--space-xs)',
+            marginTop: 'var(--space-sm)',
             lineHeight: 1.25,
             flexWrap: 'wrap',
           }}>
@@ -463,7 +482,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
               </>
             )}
           </div>
-          {entry.hasMonthlyReminder && (
+          {hasMonthlyReminder && (
             <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
               <span style={{
                 display: 'inline-flex',
@@ -478,7 +497,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                 color: T.textMuted,
                 letterSpacing: '0.02em',
               }}>
-                Monthly reminder
+                Reminder active
               </span>
             </div>
           )}
@@ -574,57 +593,72 @@ export function EntryActionsClient({ entry, currency }: Props) {
           <ActionCard>
             <ActionRow
               title="Edit expense"
-              meta="Change amount or category"
+              meta="Change amount, date, category, or note"
               onClick={() => router.push(`/log/${entry.id}/edit?returnTo=/log/${entry.id}`)}
             />
+            {(entry.categoryType === 'everyday' || entry.categoryType === 'fixed') ? (
+              <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+                <ActionRow
+                  title="Monthly reminder"
+                  meta={hasMonthlyReminder
+                    ? 'This expense will remind you each month before it’s due'
+                    : 'Turn on a reminder for this expense each month'}
+                  onClick={handleToggleMonthlyReminder}
+                  disabled={savingMonthlyReminder}
+                  trailing={
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: hasMonthlyReminder ? 'flex-end' : 'flex-start',
+                      width: 44,
+                      height: 24,
+                      borderRadius: 'var(--radius-full)',
+                      padding: 2,
+                      background: hasMonthlyReminder ? T.brandDark : 'var(--grey-200)',
+                      border: `var(--border-width) solid ${hasMonthlyReminder ? T.brandDark : T.borderSubtle}`,
+                      transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                    }}>
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          background: T.white,
+                          boxShadow: '0 1px 2px rgba(16, 24, 40, 0.18)',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                    </span>
+                  }
+                />
+              </div>
+            ) : null}
+            <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
+              <ActionRow
+                title="Refund"
+                meta="Log money returned"
+                onClick={() => { setRefundAmount(''); setRefundNote(''); setActiveFlow('refund') }}
+              />
+            </div>
           </ActionCard>
         )}
 
-        {!isDebtEntry && !isGoalEntry && (entry.categoryType === 'everyday' || entry.categoryType === 'fixed') && (
+        <div style={{ paddingTop: 'var(--space-sm)' }}>
           <ActionCard>
             <ActionRow
-              title={entry.hasMonthlyReminder ? 'Remove monthly reminder' : 'Remind me about this every month'}
-              meta={entry.hasMonthlyReminder
-                ? 'We’ll stop reminding you before it’s due'
-                : 'We’ll remind you before it’s due'}
-              onClick={
-                entry.hasMonthlyReminder
-                  ? handleToggleMonthlyReminder
-                  : () => {
-                      setMonthlyReminderAmount(String(entry.amount))
-                      setMonthlyReminderError(null)
-                      setActiveFlow('track')
-                    }
+              title="Delete entry"
+              meta={
+                isDebtEntry
+                  ? `Remove this debt ${debtEntryLabel}`
+                  : isGoalEntry
+                    ? 'Remove this goal contribution'
+                    : 'Remove this expense'
               }
-              disabled={savingMonthlyReminder}
+              onClick={() => setActiveFlow('confirm')}
+              danger
             />
           </ActionCard>
-        )}
-
-        {!isDebtEntry && !isGoalEntry && (
-          <ActionCard>
-            <ActionRow
-              title="Refund"
-              meta="Log money returned"
-              onClick={() => { setRefundAmount(''); setRefundNote(''); setActiveFlow('refund') }}
-            />
-          </ActionCard>
-        )}
-
-        <ActionCard>
-          <ActionRow
-            title="Delete entry"
-            meta={
-              isDebtEntry
-                ? `Remove this debt ${debtEntryLabel}`
-                : isGoalEntry
-                  ? 'Remove this goal contribution'
-                  : 'Remove this expense'
-            }
-            onClick={() => setActiveFlow('confirm')}
-            danger
-          />
-        </ActionCard>
+        </div>
       </div>
 
       {/* Sub-flow sheets */}
@@ -830,42 +864,6 @@ export function EntryActionsClient({ entry, currency }: Props) {
           </TertiaryBtn>
         </div>
       </Sheet>
-
-      <Sheet
-        open={activeFlow === 'track'}
-        onClose={() => setActiveFlow(null)}
-        title="Monthly reminder"
-      >
-        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-          <MoneyInput
-            label="Monthly amount"
-            currency={currency}
-            value={monthlyReminderAmount}
-            onChange={(value) => {
-              setMonthlyReminderAmount(value)
-              setMonthlyReminderError(null)
-            }}
-            error={monthlyReminderError ?? undefined}
-          />
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
-            We’ll remind you before it’s due.
-          </p>
-          <PrimaryBtn
-            size="lg"
-            onClick={() => {
-              if (!(parseFloat(monthlyReminderAmount) > 0)) {
-                setMonthlyReminderError('Add a monthly amount')
-                return
-              }
-              handleToggleMonthlyReminder()
-            }}
-            disabled={savingMonthlyReminder}
-          >
-            {savingMonthlyReminder ? 'Saving…' : 'Save'}
-          </PrimaryBtn>
-        </div>
-      </Sheet>
-
 
       <Sheet
         open={activeFlow === 'debtEdit'}

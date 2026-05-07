@@ -1,5 +1,6 @@
 'use client'
 import { createContext, useContext, useState, useCallback, useRef } from 'react'
+import { IconCheck, IconChevronX } from '@/components/ui/Icons'
 
 export type ToastType = 'success' | 'error' | 'info'
 
@@ -38,10 +39,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 export const useToast = () => useContext(ToastContext)
 
 // ── Toast stack UI ─────────────────────────────────────────────
-const ICONS: Record<ToastType, string> = {
-  success: '✓',
-  error:   '✕',
-  info:    'i',
+const ICONS: Record<ToastType, React.ReactNode> = {
+  success: <IconCheck size={12} color="#fff" />,
+  error:   <IconChevronX size={12} color="#fff" />,
+  info:    <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>i</span>,
 }
 
 const COLORS: Record<ToastType, { bg: string; icon: string; border: string }> = {
@@ -99,7 +100,6 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
                 width: 22, height: 22, borderRadius: '50%',
                 background: c.icon,
                 color: '#fff',
-                fontSize: 12, fontWeight: 700,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               }}>
