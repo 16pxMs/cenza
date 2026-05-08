@@ -8,8 +8,12 @@ import {
   getQueueGuidanceCopy,
   getQueueSaveHelperCopy,
   getReviewRowActionLabel,
+  getReviewRowPrimaryLabel,
+  getReviewRowPrimaryOutcome,
   getSuggestedCategoryOptions,
+  replaceEditedReviewRow,
   shouldShowReviewReminder,
+  shouldSaveSingleCompletedReviewRow,
   shouldAutoOpenSingleQuickTypedCategoryRow,
   shouldShowRawMessageToggle,
 } from './presentation'
@@ -217,6 +221,105 @@ describe('sms import presentation helpers', () => {
         isBlocked: false,
       })
     ).toBe('Ready')
+  })
+
+  it('uses Save expense for one complete editable review row', () => {
+    const savesImmediately = shouldSaveSingleCompletedReviewRow({
+      totalRows: 1,
+      editableRowCount: 1,
+      isCurrentRowEditable: true,
+      hasNextEditableRow: false,
+      currentRowHasErrors: false,
+      currentRowHasWarnings: false,
+    })
+
+    expect(savesImmediately).toBe(true)
+    expect(
+      getReviewRowPrimaryOutcome({
+        hasNextEditableRow: false,
+        savesImmediately,
+      })
+    ).toBe('save-expense')
+    expect(
+      getReviewRowPrimaryLabel({
+        hasNextEditableRow: false,
+        savesImmediately,
+      })
+    ).toBe('Save expense')
+  })
+
+  it('keeps multi-entry review row primary behavior unchanged', () => {
+    expect(
+      shouldSaveSingleCompletedReviewRow({
+        totalRows: 2,
+        editableRowCount: 2,
+        isCurrentRowEditable: true,
+        hasNextEditableRow: true,
+        currentRowHasErrors: false,
+        currentRowHasWarnings: false,
+      })
+    ).toBe(false)
+
+    expect(
+      getReviewRowPrimaryOutcome({
+        hasNextEditableRow: true,
+        savesImmediately: false,
+      })
+    ).toBe('next-entry')
+    expect(
+      getReviewRowPrimaryLabel({
+        hasNextEditableRow: true,
+        savesImmediately: false,
+      })
+    ).toBe('Next entry')
+  })
+
+  it('keeps Done for single rows that must return to review list states', () => {
+    expect(
+      shouldSaveSingleCompletedReviewRow({
+        totalRows: 1,
+        editableRowCount: 1,
+        isCurrentRowEditable: true,
+        hasNextEditableRow: false,
+        currentRowHasErrors: false,
+        currentRowHasWarnings: true,
+      })
+    ).toBe(false)
+
+    expect(
+      getReviewRowPrimaryOutcome({
+        hasNextEditableRow: false,
+        savesImmediately: false,
+      })
+    ).toBe('done')
+    expect(
+      getReviewRowPrimaryLabel({
+        hasNextEditableRow: false,
+        savesImmediately: false,
+      })
+    ).toBe('Done')
+  })
+
+  it('preserves reminder state in the immediate-save row snapshot', () => {
+    const rows = [
+      {
+        id: 'row-1',
+        label: 'Water',
+        repeatsMonthly: false,
+      },
+    ]
+    const nextRow = {
+      ...rows[0],
+      repeatsMonthly: true,
+    }
+
+    expect(replaceEditedReviewRow(rows, nextRow)).toEqual([
+      {
+        id: 'row-1',
+        label: 'Water',
+        repeatsMonthly: true,
+      },
+    ])
   })
 
   it('shows reminder option for eligible review rows', () => {

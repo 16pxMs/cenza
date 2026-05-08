@@ -23,8 +23,12 @@ import {
   getQueueGuidanceCopy,
   getQueueSaveHelperCopy,
   getReviewRowActionLabel,
+  getReviewRowPrimaryLabel,
+  getReviewRowPrimaryOutcome,
   getSuggestedCategoryOptions,
+  replaceEditedReviewRow,
   shouldShowReviewReminder,
+  shouldSaveSingleCompletedReviewRow,
   shouldAutoOpenSingleQuickTypedCategoryRow,
   shouldShowRawMessageToggle,
 } from './presentation'
@@ -185,22 +189,29 @@ function validateRow(row: EditableRow) {
   return errors
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value, divided = true }: { label: string; value: string; divided?: boolean }) {
   return (
     <div style={{
       display: 'flex',
       alignItems: 'baseline',
       justifyContent: 'space-between',
       gap: 'var(--space-md)',
+      paddingBottom: divided ? 'var(--space-sm)' : 0,
+      borderBottom: divided ? `1px solid ${T.borderSubtle}` : 'none',
     }}>
-      <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>
+      <span style={{
+        fontSize: 'var(--text-sm)',
+        color: T.text3,
+        lineHeight: 1.35,
+      }}>
         {label}
       </span>
       <span style={{
         fontSize: 'var(--text-base)',
-        fontWeight: 'var(--weight-medium)',
+        fontWeight: 'var(--weight-semibold)',
         color: T.text1,
         textAlign: 'right',
+        lineHeight: 1.35,
       }}>
         {value}
       </span>
@@ -234,6 +245,7 @@ export function SmsImportClient() {
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  const [savedRowsSnapshot, setSavedRowsSnapshot] = useState<EditableRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
   const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
@@ -279,7 +291,6 @@ export function SmsImportClient() {
   const [creatingDebt, setCreatingDebt] = useState(false)
   const [createDebtError, setCreateDebtError] = useState<string | null>(null)
 
-  const savedRows = rows
   const monthlyReminderKeySet = useMemo(
     () => new Set(monthlyReminderKeys),
     [monthlyReminderKeys]
@@ -371,6 +382,19 @@ export function SmsImportClient() {
     [currentEditingRowIndex, rows]
   )
   const nextEditableRow = nextEditableRowIndex >= 0 ? rows[nextEditableRowIndex] : null
+  const editedPreviewRowIssues = editedPreviewRow ? validateRow(editedPreviewRow) : []
+  const shouldSaveReviewRowImmediately = shouldSaveSingleCompletedReviewRow({
+    totalRows: rows.length,
+    editableRowCount: editableRowIndices.length,
+    isCurrentRowEditable: !!editedPreviewRow && !isBlockedIncomeRow(editedPreviewRow),
+    hasNextEditableRow: !!nextEditableRow,
+    currentRowHasErrors: editedPreviewRowIssues.length > 0 || (editedPreviewRow ? (rowErrors[editedPreviewRow.id] ?? []).length > 0 : true),
+    currentRowHasWarnings: editedPreviewRow ? (rowWarnings[editedPreviewRow.id] ?? []).length > 0 : true,
+  })
+  const reviewRowPrimaryOutcome = getReviewRowPrimaryOutcome({
+    hasNextEditableRow: !!nextEditableRow,
+    savesImmediately: shouldSaveReviewRowImmediately,
+  })
   const hasExistingMonthlyReminder = (
     input: Pick<EditableRow, 'label' | 'categoryKey' | 'categoryType'>
   ) => {
@@ -681,15 +705,16 @@ export function SmsImportClient() {
   }
 
   const applyEditRow = () => {
-    if (!editingRowId || !editDraft) return
+    if (!editingRowId || !editDraft) return null
 
     const nextErrors = collectEditErrors('all')
     if (Object.keys(nextErrors).length > 0) {
       setEditErrors(nextErrors)
-      return
+      return null
     }
 
     const existingRow = rows.find((row) => row.id === editingRowId) ?? null
+    if (!existingRow) return null
     const nextCategoryType = editDraft.categoryType
     const nextCategoryKey = editDraft.categoryKey
     const trimmedLabel = editDraft.label.trim()
@@ -699,7 +724,8 @@ export function SmsImportClient() {
       ? activeDebts.find((d) => d.id === editDraft.debtId) ?? null
       : null
 
-    updateRow(editingRowId, {
+    const nextRow: EditableRow = {
+      ...existingRow,
       label: trimmedLabel,
       amount,
       date,
@@ -711,8 +737,10 @@ export function SmsImportClient() {
           : false,
       debtId: selectedDebt ? selectedDebt.id : null,
       debtName: selectedDebt ? selectedDebt.name : null,
-    })
-    return true
+    }
+
+    updateRow(editingRowId, nextRow)
+    return nextRow
   }
 
   const saveEditRow = () => {
@@ -726,11 +754,19 @@ export function SmsImportClient() {
     closeEditRow()
   }
 
-  const handleReviewRowPrimaryAction = () => {
-    if (!applyEditRow()) return
+  const handleReviewRowPrimaryAction = async () => {
+    const nextRow = applyEditRow()
+    if (!nextRow) return
 
-    if (nextEditableRow) {
+    if (reviewRowPrimaryOutcome === 'next-entry') {
       openEditRowAtIndex(nextEditableRowIndex)
+      return
+    }
+
+    if (reviewRowPrimaryOutcome === 'save-expense') {
+      const rowsToSave = replaceEditedReviewRow(rows, nextRow)
+      const outcome = await handleSave(false, rowsToSave)
+      if (outcome !== 'success') closeEditRow()
       return
     }
 
@@ -785,7 +821,8 @@ export function SmsImportClient() {
     }
   }
 
-  const handleSave = async (confirmOverride = false) => {
+  const handleSave = async (confirmOverride = false, rowsOverride?: EditableRow[]) => {
+    const rowsToSave = rowsOverride ?? rows
     const saveStartedAt = performance.now()
     const logClientSaveTiming = (step: string, elapsedMs: number, extra?: Record<string, unknown>) => {
       const detail = extra ? ` ${JSON.stringify(extra)}` : ''
@@ -797,7 +834,7 @@ export function SmsImportClient() {
     try {
       const preSubmitStartedAt = performance.now()
       const nextRowErrors: Record<string, string[]> = {}
-      for (const row of rows) {
+      for (const row of rowsToSave) {
         if (isBlockedIncomeRow(row)) {
           nextRowErrors[row.id] = [row.blockedReason as string]
           continue
@@ -807,7 +844,7 @@ export function SmsImportClient() {
       }
 
       const blockingErrors = Object.entries(nextRowErrors).filter(([rowId]) => {
-        const row = rows.find((item) => item.id === rowId)
+        const row = rowsToSave.find((item) => item.id === rowId)
         return row ? !isBlockedIncomeRow(row) : true
       })
 
@@ -817,13 +854,13 @@ export function SmsImportClient() {
         setError('Review rows marked with issues before saving.')
         setSaving(false)
         logClientSaveTiming('pre-submit-validation', performance.now() - preSubmitStartedAt, {
-          rows: rows.length,
+          rows: rowsToSave.length,
           blocked: true,
         })
-        return
+        return 'client-error'
       }
 
-      const payload = rows
+      const payload = rowsToSave
         .filter((row) => !isBlockedIncomeRow(row))
         .map((row) => ({
         id: row.id,
@@ -862,7 +899,7 @@ export function SmsImportClient() {
         logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
           outcome: 'server-error',
         })
-        return
+        return 'error'
       }
       const data = result.data
       if (data.blocked) {
@@ -885,8 +922,10 @@ export function SmsImportClient() {
           outcome: 'blocked',
           duplicates: data.duplicates,
         })
-        return
+        return 'blocked'
       }
+      if (rowsOverride) setRows(rowsToSave)
+      setSavedRowsSnapshot(rowsToSave)
       setSavedCount(data.saved)
       setRowWarnings({})
       logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
@@ -894,11 +933,13 @@ export function SmsImportClient() {
         saved: data.saved,
         duplicates: data.duplicates,
       })
+      return 'success'
     } catch {
       setError("We couldn't save right now. Please try again in a moment.")
       logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
         outcome: 'exception',
       })
+      return 'error'
     } finally {
       setSaving(false)
     }
@@ -906,7 +947,8 @@ export function SmsImportClient() {
 
   if (savedCount > 0) {
     const savedDateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    const successEntries: ExpenseAddedSuccessEntry[] = savedRows.map((row) => ({
+    const successRows = savedRowsSnapshot ?? rows
+    const successEntries: ExpenseAddedSuccessEntry[] = successRows.map((row) => ({
       id: row.id,
       name: row.label,
       amountLabel: `${row.currency} ${row.amount.toLocaleString()}`,
@@ -1360,44 +1402,46 @@ export function SmsImportClient() {
             display: 'grid',
             gap: 'var(--space-lg)',
           }}>
-            <div>
-              <h1 style={{
-                margin: 0,
-                fontSize: 'var(--text-xl)',
-                fontWeight: 'var(--weight-bold)',
-                color: T.text1,
-                letterSpacing: '-0.02em',
-              }}>
-                {editDraft.label.trim() || editingRow.label}
-              </h1>
-              <p style={{
-                margin: 'var(--space-xs) 0 0',
-                fontSize: 'var(--text-sm)',
-                color: T.text3,
-                lineHeight: 1.5,
-              }}>
-                {editDraft.categoryKey ? (
-                  buildRowMetaLabel({
-                    amount: Number(editDraft.amount),
-                    currency: editingRow.currency,
-                    categoryKey: editDraft.categoryKey,
-                    categoryType: editDraft.categoryType,
-                    date: editDraft.date,
-                    isImportedMessage: editingRow.isImportedMessage,
-                    debtId: editDraft.debtId,
-                    debtName: editedPreviewRow?.debtName ?? null,
-                  })
-                ) : (
-                  <>
-                    {`${editingRow.currency} ${Number.isFinite(Number(editDraft.amount)) ? Number(editDraft.amount).toLocaleString() : 0}`}
-                    <span aria-hidden="true">{' · '}</span>
-                    <span style={{ color: T.amberDark, fontWeight: 'var(--weight-medium)' }}>
-                      Category not set
-                    </span>
-                  </>
-                )}
-              </p>
-            </div>
+            {editStep !== 'review' ? (
+              <div>
+                <h1 style={{
+                  margin: 0,
+                  fontSize: 'var(--text-xl)',
+                  fontWeight: 'var(--weight-bold)',
+                  color: T.text1,
+                  letterSpacing: '-0.02em',
+                }}>
+                  {editDraft.label.trim() || editingRow.label}
+                </h1>
+                <p style={{
+                  margin: 'var(--space-xs) 0 0',
+                  fontSize: 'var(--text-sm)',
+                  color: T.text3,
+                  lineHeight: 1.5,
+                }}>
+                  {editDraft.categoryKey ? (
+                    buildRowMetaLabel({
+                      amount: Number(editDraft.amount),
+                      currency: editingRow.currency,
+                      categoryKey: editDraft.categoryKey,
+                      categoryType: editDraft.categoryType,
+                      date: editDraft.date,
+                      isImportedMessage: editingRow.isImportedMessage,
+                      debtId: editDraft.debtId,
+                      debtName: editedPreviewRow?.debtName ?? null,
+                    })
+                  ) : (
+                    <>
+                      {`${editingRow.currency} ${Number.isFinite(Number(editDraft.amount)) ? Number(editDraft.amount).toLocaleString() : 0}`}
+                      <span aria-hidden="true">{' · '}</span>
+                      <span style={{ color: T.amberDark, fontWeight: 'var(--weight-medium)' }}>
+                        Category not set
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+            ) : null}
 
             {editStep === 'category' && (
               <div style={{
@@ -1769,21 +1813,25 @@ export function SmsImportClient() {
             {editStep === 'review' && editedPreviewRow && (
               <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
                 <div style={{
-                  background: 'var(--grey-50)',
-                  border: `1px solid ${T.borderSubtle}`,
-                  borderRadius: 16,
-                  padding: 'var(--space-md)',
                   display: 'grid',
                   gap: 'var(--space-sm)',
                 }}>
                   <SummaryRow label="Name" value={editedPreviewRow.label} />
                   <SummaryRow label="Amount" value={`${editedPreviewRow.currency} ${Number.isFinite(editedPreviewRow.amount) ? editedPreviewRow.amount.toLocaleString() : 0}`} />
-                  <SummaryRow label="Category" value={getCategoryLabel(editedPreviewRow.categoryKey, categoryLabel(editedPreviewRow.categoryType))} />
+                  <SummaryRow
+                    label="Category"
+                    value={getCategoryLabel(editedPreviewRow.categoryKey, categoryLabel(editedPreviewRow.categoryType))}
+                    divided={editedPreviewRow.isImportedMessage || editedPreviewRow.categoryType === 'debt'}
+                  />
                   {editedPreviewRow.isImportedMessage ? (
-                    <SummaryRow label="Date" value={formatImportedRowDateLabel(editedPreviewRow.date)} />
+                    <SummaryRow
+                      label="Date"
+                      value={formatImportedRowDateLabel(editedPreviewRow.date)}
+                      divided={editedPreviewRow.categoryType === 'debt'}
+                    />
                   ) : null}
                   {editedPreviewRow.categoryType === 'debt' ? (
-                    <SummaryRow label="Debt" value={editedPreviewRow.debtName ?? 'Select a debt'} />
+                    <SummaryRow label="Debt" value={editedPreviewRow.debtName ?? 'Select a debt'} divided={false} />
                   ) : null}
                 </div>
 
@@ -1855,8 +1903,11 @@ export function SmsImportClient() {
                 ) : null}
 
                 <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                  <PrimaryBtn size="lg" onClick={handleReviewRowPrimaryAction}>
-                    {nextEditableRow ? 'Next entry' : 'Done'}
+                  <PrimaryBtn size="lg" onClick={handleReviewRowPrimaryAction} disabled={saving}>
+                    {saving ? 'Saving…' : getReviewRowPrimaryLabel({
+                      hasNextEditableRow: !!nextEditableRow,
+                      savesImmediately: shouldSaveReviewRowImmediately,
+                    })}
                   </PrimaryBtn>
                   {!editingRow.isImportedMessage ? (
                     <SecondaryBtn size="lg" onClick={() => {

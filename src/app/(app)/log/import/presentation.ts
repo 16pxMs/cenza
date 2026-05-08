@@ -191,6 +191,47 @@ export function getQueueSaveHelperCopy(unresolvedCount: number) {
   return `Choose categories for ${unresolvedCount} expenses to continue.`
 }
 
+export function shouldSaveSingleCompletedReviewRow(input: {
+  totalRows: number
+  editableRowCount: number
+  isCurrentRowEditable: boolean
+  hasNextEditableRow: boolean
+  currentRowHasErrors: boolean
+  currentRowHasWarnings: boolean
+}) {
+  return (
+    input.totalRows === 1 &&
+    input.editableRowCount === 1 &&
+    input.isCurrentRowEditable &&
+    !input.hasNextEditableRow &&
+    !input.currentRowHasErrors &&
+    !input.currentRowHasWarnings
+  )
+}
+
+export function getReviewRowPrimaryLabel(input: {
+  hasNextEditableRow: boolean
+  savesImmediately: boolean
+}) {
+  const outcome = getReviewRowPrimaryOutcome(input)
+  if (outcome === 'next-entry') return 'Next entry'
+  if (outcome === 'save-expense') return 'Save expense'
+  return 'Done'
+}
+
+export function getReviewRowPrimaryOutcome(input: {
+  hasNextEditableRow: boolean
+  savesImmediately: boolean
+}) {
+  if (input.hasNextEditableRow) return 'next-entry'
+  if (input.savesImmediately) return 'save-expense'
+  return 'done'
+}
+
+export function replaceEditedReviewRow<T extends { id: string }>(rows: T[], nextRow: T) {
+  return rows.map((row) => row.id === nextRow.id ? nextRow : row)
+}
+
 export function getReviewRowActionLabel(input: {
   needsCategory: boolean
   hasHardError: boolean

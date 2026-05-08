@@ -56,29 +56,38 @@ export function ExpenseAddedSuccess({
   const singleEntry = isSingleEntry ? entries[0] : null
 
   return (
-    <div style={{ textAlign: 'center' }}>
+    <div>
       <div
         style={{
           background: T.white,
           border: `var(--border-width) solid ${T.border}`,
           borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-card-md)',
+          padding: 'var(--space-lg)',
+          display: 'grid',
+          gap: 'var(--space-lg)',
         }}
       >
-        <p style={{
-          margin: 0,
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-semibold)',
-          color: T.textMuted,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--space-md)',
         }}>
-          Expense added
-        </p>
+          <p style={{
+            margin: 0,
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}>
+            Expense added
+          </p>
+        </div>
 
-        <div style={{ marginTop: 'var(--space-lg)' }}>
+        <div>
           {singleEntry ? (
-            <>
+            <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
               <p style={{
                 margin: 0,
                 fontSize: 'var(--text-3xl)',
@@ -91,11 +100,11 @@ export function ExpenseAddedSuccess({
                 {singleEntry.amountLabel}
               </p>
               <p style={{
-                margin: 'var(--space-sm) 0 0',
+                margin: 0,
                 fontSize: 'var(--text-base)',
-                fontWeight: 'var(--weight-medium)',
+                fontWeight: 'var(--weight-semibold)',
                 color: T.text1,
-                lineHeight: 1.35,
+                lineHeight: 1.3,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -103,16 +112,15 @@ export function ExpenseAddedSuccess({
                 {singleEntry.name}
               </p>
               <p style={{
-                margin: 'var(--space-xs) 0 0',
-                fontSize: 'var(--text-xs)',
+                margin: 0,
+                fontSize: 'var(--text-sm)',
                 color: T.textMuted,
                 lineHeight: 1.4,
-                letterSpacing: '0.01em',
               }}>
                 {singleEntry.metaLabel}
               </p>
               {singleEntry.hasMonthlyReminder && <MonthlyReminderChip />}
-            </>
+            </div>
           ) : (
             <>
               <p style={{
@@ -125,7 +133,7 @@ export function ExpenseAddedSuccess({
               }}>
                 {entries.length} expenses added
               </p>
-              <div style={{ textAlign: 'left', marginTop: 'var(--space-lg)' }}>
+              <div style={{ marginTop: 'var(--space-lg)' }}>
                 {entries.map((entry, index) => (
                   <div
                     key={entry.id}
@@ -174,7 +182,11 @@ export function ExpenseAddedSuccess({
           )}
         </div>
 
-        <div style={{ display: 'grid', gap: 'var(--space-sm)', marginTop: 'var(--space-xl)' }}>
+        <div style={{
+          display: 'grid',
+          gap: 'var(--space-sm)',
+          paddingTop: 'var(--space-sm)',
+        }}>
           <PrimaryBtn size="lg" onClick={onBack}>
             Back to overview
           </PrimaryBtn>
