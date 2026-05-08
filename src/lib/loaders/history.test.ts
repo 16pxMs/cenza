@@ -174,6 +174,22 @@ describe('history recap loader', () => {
       expect.objectContaining({ key: 'rent', label: 'Rent', amount: 45000, kind: 'fixed' }),
       expect.objectContaining({ key: 'water', label: 'Water', amount: 1500, kind: 'reminder' }),
     ])
+
+    const { deriveHistorySummaryData } = await import('@/lib/history/recap-summary')
+    const summary = deriveHistorySummaryData(data)
+
+    expect(summary.biggestDriver).toEqual(expect.objectContaining({
+      categoryKey: 'rent',
+      categoryLabel: 'House rent',
+      totalAmount: 60000,
+      percentageOfTotal: 60,
+    }))
+    expect(summary.spendingMix.map((group) => group.key)).toEqual(['fixed', 'everyday'])
+    expect(summary.recurringCount).toBe(2)
+    expect(summary.nextRecurringItem).toEqual(expect.objectContaining({
+      key: 'rent',
+      amount: 45000,
+    }))
   })
 
   it('returns empty recap data when there are no included expenses', async () => {
@@ -209,5 +225,13 @@ describe('history recap loader', () => {
     expect(data.spendingGroups).toEqual([])
     expect(data.topTransactions).toEqual([])
     expect(data.recurringItems).toEqual([])
+
+    const { deriveHistorySummaryData } = await import('@/lib/history/recap-summary')
+    expect(deriveHistorySummaryData(data)).toEqual({
+      biggestDriver: null,
+      spendingMix: [],
+      recurringCount: 0,
+      nextRecurringItem: null,
+    })
   })
 })
