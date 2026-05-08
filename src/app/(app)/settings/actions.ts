@@ -8,6 +8,12 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deleteMonthlyStorageForUser } from '@/lib/monthly-reminders/storage'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
+const AMOUNT_FORMAT_PREFERENCES = new Set<AmountFormatPreference>(['smart', 'full', 'short'])
+
+function isAmountFormatPreference(value: unknown): value is AmountFormatPreference {
+  return typeof value === 'string' && AMOUNT_FORMAT_PREFERENCES.has(value as AmountFormatPreference)
+}
+
 export async function saveCurrency(code: string): Promise<void> {
   const { user } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
@@ -53,18 +59,28 @@ export async function savePaySchedule(
 }
 
 export async function saveAmountFormatPreference(
-  preference: AmountFormatPreference
-): Promise<void> {
+  preference: unknown
+): Promise<AmountFormatPreference> {
+  if (!isAmountFormatPreference(preference)) {
+    throw new Error('Invalid amount format preference.')
+  }
+
   const { user } = await getAppSession()
   if (!user) throw new Error('Not authenticated')
 
   const supabase = await createServerSupabaseClient()
-  const { error } = await (supabase.from('user_profiles') as any)
+  const { data, error } = await (supabase.from('user_profiles') as any)
     .update({ amount_format_preference: preference })
     .eq('id', user.id)
+    .select('amount_format_preference')
+    .single()
 
   if (error) {
     throw new Error(`Failed to save amount format preference: ${error.message}`)
+  }
+
+  if (!isAmountFormatPreference(data?.amount_format_preference)) {
+    throw new Error('Failed to save amount format preference.')
   }
 
   revalidatePath('/settings')
@@ -73,6 +89,8 @@ export async function saveAmountFormatPreference(
   revalidatePath('/history')
   revalidatePath('/history/debt')
   revalidatePath('/goals')
+
+  return data.amount_format_preference
 }
 
 export async function deleteAccountPermanently(): Promise<void> {

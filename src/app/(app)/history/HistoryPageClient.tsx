@@ -10,7 +10,8 @@ import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { formatAmount } from '@/lib/formatting/amount'
-import type { HistoryCategoryRow, HistoryPageData } from '@/lib/loaders/history'
+import type { AmountFormatPreference } from '@/lib/formatting/amount'
+import type { HistoryCategoryRow, HistoryPageData, HistorySpendingGroup } from '@/lib/loaders/history'
 
 const T = {
   white: 'var(--white)',
@@ -18,6 +19,7 @@ const T = {
   text2: 'var(--text-2)',
   text3: 'var(--text-3)',
   textMuted: 'var(--text-muted)',
+  brandDark: 'var(--brand-dark)',
 }
 
 interface HistoryPageClientProps {
@@ -26,28 +28,33 @@ interface HistoryPageClientProps {
   currentCycleId: string
 }
 
-function formatHeroAmount(amount: number, currency: string): string {
-  const abs = Math.abs(amount)
-  const sign = amount < 0 ? '-' : ''
-
-  if (abs < 100_000) {
-    return `${sign}${formatAmount(abs, { currency, variant: 'full' })}`
-  }
-
-  if (abs < 1_000_000) {
-    const compact = (abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1).replace(/\.0$/, '')
-    return `${sign}${currency} ${compact}K`
-  }
-
-  const compact = (abs / 1_000_000).toFixed(2).replace(/\.?0+$/, '')
-  return `${sign}${currency} ${compact}M`
+function formatHeroAmount(amount: number, currency: string, preference: AmountFormatPreference): string {
+  return formatAmount(amount, { currency, preference, context: 'summary' })
 }
 
-function categoryColor(type: HistoryCategoryRow['type']) {
-  if (type === 'fixed') return 'var(--category-essentials)'
+const SECTION_TITLE_STYLE: React.CSSProperties = {
+  margin: '0 0 var(--space-md)',
+  fontSize: 'var(--text-base)',
+  fontWeight: 'var(--weight-medium)',
+  color: 'var(--text-1)',
+  lineHeight: 1.35,
+}
+
+function categoryColor(type: HistoryCategoryRow['categoryType'] | HistorySpendingGroup['key']) {
+  if (type === 'fixed' || type === 'subscription') return 'var(--category-essentials)'
   if (type === 'goal') return 'var(--category-goals)'
   if (type === 'debt') return 'var(--category-debt)'
   return 'var(--category-life)'
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return '0%'
+  if (value < 1 && value > 0) return '<1%'
+  return `${Math.round(value)}%`
+}
+
+function formatCount(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`
 }
 
 export default function HistoryPageClient({ data, targetCycleId, currentCycleId }: HistoryPageClientProps) {
@@ -61,7 +68,9 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
   const canGoNext = activeIndex >= 0 && activeIndex < data.availableCycleIds.length - 1
   const currentCycleRoute = activeCycleId === currentCycleId ? '/history' : `/history?cycle=${activeCycleId}`
   const remaining = data.totalIncome - data.totalSpent
-  const canShowSegmentedBar = data.totalSpent > 0 && data.rows.every((row) => row.spent > 0)
+  const amountFormatPreference = data.amountFormatPreference
+  const largestCategoryAmount = data.rows.reduce((max, row) => Math.max(max, row.totalAmount), 0)
+  const largestGroupAmount = data.spendingGroups.reduce((max, group) => Math.max(max, group.amount), 0)
   const periodContext = (() => {
     if (activeCycleId === currentCycleId) {
       return {
@@ -92,14 +101,26 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
 
   function categoryHref(row: HistoryCategoryRow) {
     const params = new URLSearchParams({
-      label: row.label,
-      type: row.type,
+      label: row.categoryLabel,
+      type: row.categoryType,
       returnTo: currentCycleRoute,
     })
     if (activeCycleId !== currentCycleId) {
       params.set('cycle', activeCycleId)
     }
-    return `/history/${row.key}?${params.toString()}`
+    return `/history/${row.categoryKey}?${params.toString()}`
+  }
+
+  function transactionHref(id: string) {
+    return `/log/${id}?returnTo=${encodeURIComponent(currentCycleRoute)}`
+  }
+
+  const cardStyle: React.CSSProperties = {
+    background: T.white,
+    border: 'var(--border-width) solid var(--border)',
+    borderRadius: 'var(--radius-lg)',
+    padding: 'var(--space-card-sm)',
+    marginBottom: 'var(--space-card-md)',
   }
 
   const content = (
@@ -136,15 +157,17 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
       </div>
 
       <div>
-        <div style={{
-          background: T.white,
-          borderRadius: 'var(--radius-card)',
-          boxShadow: 'var(--shadow-sm)',
-          padding: 'var(--space-lg) var(--space-card-md) var(--space-card-sm)',
-          marginBottom: 'var(--space-card-md)',
-        }}>
-          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Remaining
+        <section style={cardStyle}>
+          <p style={SECTION_TITLE_STYLE}>Monthly summary</p>
+          <p style={{
+            margin: '0 0 var(--space-xs)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)',
+            color: T.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}>
+            Total outflow
           </p>
           <p style={{
             margin: '0 0 var(--space-card-sm)',
@@ -154,24 +177,25 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
             letterSpacing: '-0.02em',
             color: T.text1,
           }}>
-            {formatHeroAmount(remaining, data.currency)}
+            {formatHeroAmount(data.totalSpent, data.currency, amountFormatPreference)}
           </p>
 
-          <div style={{ height: 'var(--border-width)', background: 'var(--border-subtle)', marginBottom: 'var(--space-md)' }} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'calc(var(--space-sm) + var(--space-xs))' }}>
-            <div>
-              <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Income</p>
-              <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text2 }}>
-                {formatAmount(data.totalIncome, { currency: data.currency, variant: 'compact' })}
-              </span>
-            </div>
-            <div>
-              <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Outflow</p>
-              <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text2 }}>
-                {formatAmount(data.totalSpent, { currency: data.currency, variant: 'compact' })}
-              </span>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-sm)', marginTop: 'var(--space-md)' }}>
+            {[
+              ['Income', formatAmount(data.totalIncome, { currency: data.currency, preference: amountFormatPreference, context: 'summary' })],
+              ['Remaining', formatHeroAmount(remaining, data.currency, amountFormatPreference)],
+              ['Expenses', String(data.expenseCount)],
+              ['Period', data.cycleLabel],
+            ].map(([label, value]) => (
+              <div key={label} style={{ borderTop: 'var(--border-width) solid var(--border-subtle)', paddingTop: 'var(--space-sm)' }}>
+                <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', color: T.textMuted, fontWeight: 'var(--weight-medium)' }}>
+                  {label}
+                </p>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text1, fontWeight: 'var(--weight-medium)', fontVariantNumeric: 'tabular-nums' }}>
+                  {value}
+                </p>
+              </div>
+            ))}
           </div>
 
           <p style={{ margin: 'var(--space-md) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
@@ -186,7 +210,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
                 padding: 0,
                 background: 'none',
                 border: 'none',
-                color: 'var(--brand-dark)',
+                color: T.brandDark,
                 fontSize: 'var(--text-sm)',
                 fontWeight: 'var(--weight-semibold)',
                 cursor: 'pointer',
@@ -195,105 +219,181 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
               Continue this month
             </button>
           )}
-        </div>
+        </section>
 
-        {data.rows.length > 0 && (
-          <div style={{ marginBottom: 'var(--space-card-md)' }}>
-            <p style={{ margin: '0 0 var(--space-2xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Where your money went
+        {data.expenseCount === 0 ? (
+          <section style={cardStyle}>
+            <p style={SECTION_TITLE_STYLE}>Nothing to recap yet</p>
+            <p style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+              Add expenses during the month and this page will explain where your money went.
             </p>
+            <button
+              type="button"
+              onClick={() => router.push(`/log/new?returnTo=${encodeURIComponent(currentCycleRoute)}`)}
+              style={{
+                width: '100%',
+                height: 'var(--button-height-md)',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                background: T.brandDark,
+                color: 'var(--text-inverse)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-semibold)',
+                cursor: 'pointer',
+              }}
+            >
+              Add expense
+            </button>
+          </section>
+        ) : (
+          <>
+            <section style={cardStyle}>
+              <p style={SECTION_TITLE_STYLE}>Where your money went</p>
+              <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+                {data.rows.map((row) => {
+                  const width = largestCategoryAmount > 0
+                    ? Math.max(6, (row.totalAmount / largestCategoryAmount) * 100)
+                    : 0
 
-            <div style={{ background: T.white, border: 'var(--border-width) solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-              {canShowSegmentedBar && (
-                <div style={{ padding: 'var(--space-card-sm) var(--space-card-sm) var(--space-md)' }}>
-                  <div style={{ display: 'flex', height: 'var(--size-bar-sm)', borderRadius: 'var(--radius-full)', overflow: 'hidden', gap: 'var(--space-2xs)' }}>
-                    {data.rows.map(row => (
-                      <div
-                        key={row.key}
-                        style={{
-                          height: '100%',
-                          width: `${(row.spent / data.totalSpent) * 100}%`,
-                          background: categoryColor(row.type),
-                          borderRadius: 'var(--radius-full)',
-                          minWidth: 'var(--space-2xs)',
-                        }}
-                      />
-                    ))}
-                  </div>
+                  return (
+                    <button
+                      key={row.categoryKey}
+                      type="button"
+                      onClick={() => router.push(categoryHref(row))}
+                      style={{
+                        border: 'none',
+                        padding: 0,
+                        background: 'transparent',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                        <span style={{ minWidth: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {row.categoryLabel}
+                        </span>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                          {formatAmount(row.totalAmount, { currency: data.currency, preference: amountFormatPreference, context: 'summary' })}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 'var(--space-xs)', height: 8, display: 'flex', alignItems: 'center' }}>
+                        <div style={{ width: `${width}%`, minWidth: 24, height: '100%', borderRadius: 'var(--radius-full)', background: categoryColor(row.categoryType) }} />
+                      </div>
+                      <p style={{ margin: 'var(--space-2xs) 0 0', fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                        {formatPercent(row.percentageOfTotal)} of outflow · {formatCount(row.transactionCount, 'transaction')}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section style={cardStyle}>
+              <p style={SECTION_TITLE_STYLE}>Spending groups</p>
+              <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+                {data.spendingGroups.map((group) => {
+                  const width = largestGroupAmount > 0
+                    ? Math.max(6, (group.amount / largestGroupAmount) * 100)
+                    : 0
+
+                  return (
+                    <div key={group.key}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
+                          {group.label}
+                        </span>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums' }}>
+                          {formatAmount(group.amount, { currency: data.currency, preference: amountFormatPreference, context: 'summary' })}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 'var(--space-xs)', height: 8, display: 'flex', alignItems: 'center' }}>
+                        <div style={{ width: `${width}%`, minWidth: 24, height: '100%', borderRadius: 'var(--radius-full)', background: categoryColor(group.key) }} />
+                      </div>
+                      <p style={{ margin: 'var(--space-2xs) 0 0', fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                        {formatPercent(group.percentageOfTotal)} · {group.description}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section style={cardStyle}>
+              <p style={SECTION_TITLE_STYLE}>Largest individual expenses</p>
+              <div>
+                {data.topTransactions.map((txn, index) => (
+                  <button
+                    key={txn.id}
+                    type="button"
+                    onClick={() => router.push(transactionHref(txn.id))}
+                    style={{
+                      width: '100%',
+                      border: 'none',
+                      borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
+                      background: 'transparent',
+                      padding: index === 0 ? '0 0 var(--space-sm)' : 'var(--space-sm) 0',
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      justifyContent: 'space-between',
+                      gap: 'var(--space-md)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {txn.title}
+                      </span>
+                      <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--text-xs)', color: T.text3 }}>
+                        {txn.categoryLabel}
+                      </span>
+                    </span>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                      {formatAmount(txn.amount, { currency: data.currency, preference: amountFormatPreference, context: 'row' })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        <section style={data.recurringItems.length > 0 ? cardStyle : { marginBottom: 'var(--space-card-md)' }}>
+          <p style={SECTION_TITLE_STYLE}>Upcoming and recurring</p>
+          {data.recurringItems.length > 0 ? (
+            <div>
+              {data.recurringItems.slice(0, 5).map((item, index) => (
+                <div
+                  key={`${item.kind}-${item.key}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-md)',
+                    borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
+                    padding: index === 0 ? '0 0 var(--space-sm)' : 'var(--space-sm) 0',
+                  }}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.label}
+                    </span>
+                    <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--text-xs)', color: T.text3 }}>
+                      {item.kind === 'fixed' ? 'Fixed recurring item' : 'Monthly reminder'}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                    {formatAmount(item.amount, { currency: data.currency, preference: amountFormatPreference, context: 'row' })}
+                  </span>
                 </div>
-              )}
-
-              {data.rows.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-subtle)' }} />
-                  {data.rows.map((row, index) => {
-                    const isLast = index === data.rows.length - 1
-
-                    return (
-                      <button
-                        key={row.key}
-                        type="button"
-                        onClick={() => router.push(categoryHref(row))}
-                        style={{
-                          width: '100%',
-                          background: T.white,
-                          border: 'none',
-                          borderBottom: isLast ? 'none' : 'var(--border-width) solid var(--border-subtle)',
-                          cursor: 'pointer',
-                          padding: 'var(--radius-md) var(--space-card-sm)',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', minWidth: 0 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: categoryColor(row.type), flexShrink: 0 }} />
-                          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
-                            {row.label}
-                          </span>
-                        </span>
-                        <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, flexShrink: 0, marginLeft: 'var(--space-md)' }}>
-                          {formatAmount(row.spent, { currency: data.currency, variant: 'compact' })}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </>
-              )}
+              ))}
             </div>
-          </div>
-        )}
-
-        {data.rows.length === 0 && (
-          <div style={{
-            background: T.white,
-            border: 'var(--border-width) solid var(--border)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-card-sm)',
-            marginBottom: 'var(--space-card-md)',
-          }}>
-            <p style={{
-              margin: '0 0 var(--space-xs)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-semibold)',
-              color: T.textMuted,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-            }}>
-              Recap
+          ) : (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+              No fixed recurring items or monthly reminders saved for this period.
             </p>
-            <p style={{
-              margin: '0 0 var(--space-card-sm)',
-              fontSize: 'var(--text-lg)',
-              fontWeight: 'var(--weight-semibold)',
-              color: T.text1,
-              letterSpacing: '-0.01em',
-            }}>
-              Nothing logged yet.
-            </p>
-          </div>
-        )}
+          )}
+        </section>
       </div>
     </AppSubpageLayout>
   )

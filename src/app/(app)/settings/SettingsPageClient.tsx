@@ -15,7 +15,6 @@ import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
 import { SettingsRow } from '@/components/ui/SettingsRow/SettingsRow'
 import { ChangePinSheet } from '@/components/flows/pin/ChangePinSheet'
 import { clearPinDeviceState } from '@/lib/actions/pin'
-import { fmt } from '@/lib/finance'
 import { formatAmount } from '@/lib/formatting/amount'
 import { ALL_CURRENCIES } from '@/lib/locale'
 import type { SettingsPageData } from '@/lib/loaders/settings'
@@ -257,7 +256,13 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       {sectionCard(<>
         <SettingsRow
           label="Income"
-          value={data.monthlyTotal ? fmt(data.monthlyTotal, currency) : 'Not set'}
+          value={data.monthlyTotal
+            ? formatAmount(data.monthlyTotal, {
+              currency,
+              preference: amountFormatPreference,
+              context: 'summary',
+            })
+            : 'Not set'}
           supportingText={formatScheduleValue(
             scheduleConfigured ? initialScheduleType : null,
             scheduleConfigured ? initialScheduleDays : []
@@ -672,13 +677,16 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
               if (!amountFormatDirty || savingAmountFormat) return
               try {
                 setSavingAmountFormat(true)
-                await saveAmountFormatPreference(amountFormatPreference)
+                const savedPreference = await saveAmountFormatPreference(amountFormatPreference)
                 await refreshProfile()
-                setSavedAmountFormatPreference(amountFormatPreference)
+                setSavedAmountFormatPreference(savedPreference)
+                setAmountFormatPreference(savedPreference)
                 setShowAmountFormat(false)
+                router.refresh()
                 toast('Amount format saved')
               } catch {
-                toast('Failed to save amount format. Please try again.')
+                setAmountFormatPreference(savedAmountFormatPreference)
+                toast('Failed to save amount format. Please try again.', 'error')
               } finally {
                 setSavingAmountFormat(false)
               }

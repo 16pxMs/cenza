@@ -61,8 +61,13 @@ describe('settings actions', () => {
     })
   })
 
-  it('saveAmountFormatPreference updates the user profile and revalidates key routes', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: null })
+  it.each(['smart', 'full', 'short'] as const)('saveAmountFormatPreference saves %s for the current user', async (preference) => {
+    const single = vi.fn().mockResolvedValue({
+      data: { amount_format_preference: preference },
+      error: null,
+    })
+    const select = vi.fn(() => ({ single }))
+    const eq = vi.fn(() => ({ select }))
     const update = vi.fn(() => ({ eq }))
     createServerSupabaseClient.mockResolvedValue({
       from: vi.fn(() => ({ update })),
@@ -70,17 +75,28 @@ describe('settings actions', () => {
 
     const { saveAmountFormatPreference } = await import('./actions')
 
-    await saveAmountFormatPreference('short')
+    const result = await saveAmountFormatPreference(preference)
 
     expect(update).toHaveBeenCalledWith({
-      amount_format_preference: 'short',
+      amount_format_preference: preference,
     })
     expect(eq).toHaveBeenCalledWith('id', 'user-1')
+    expect(select).toHaveBeenCalledWith('amount_format_preference')
+    expect(single).toHaveBeenCalled()
+    expect(result).toBe(preference)
     expect(revalidatePath).toHaveBeenCalledWith('/settings')
     expect(revalidatePath).toHaveBeenCalledWith('/app')
     expect(revalidatePath).toHaveBeenCalledWith('/log')
     expect(revalidatePath).toHaveBeenCalledWith('/history/debt')
     expect(revalidatePath).toHaveBeenCalledWith('/goals')
+  })
+
+  it('saveAmountFormatPreference rejects invalid values before writing', async () => {
+    const { saveAmountFormatPreference } = await import('./actions')
+
+    await expect(saveAmountFormatPreference('tiny')).rejects.toThrow('Invalid amount format preference.')
+
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
   })
 
   it('deleteAccountPermanently clears user-owned tables, deletes auth, and clears device state', async () => {
