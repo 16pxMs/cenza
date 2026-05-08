@@ -9,7 +9,6 @@ import {
   deriveOutflowTotalFromCategories,
   isDebtOpeningBalanceTransaction,
 } from '@/lib/transactions/outflow'
-import { deriveCategoryBreakdown, type CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
 export interface LogSubItem {
@@ -54,7 +53,6 @@ export interface LogPageData {
   amountFormatPreference: AmountFormatPreference
   entries: LogEntry[]
   totalOutflow: number
-  topOutflowCategories: CategoryBreakdownRow[]
 }
 
 function titleCase(value: string) {
@@ -151,7 +149,6 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const visibleTxRows = txRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
   const outflowRows = deriveOutflowCategoryRows(visibleTxRows)
   const totalOutflow = deriveOutflowTotalFromCategories(outflowRows)
-  const topOutflowCategories = deriveCategoryBreakdown(visibleTxRows).slice(0, 5)
 
   const monthlyReminderEntriesByKey = new Map(
     monthlyReminderEntries.map((entry) => [entry.key, entry] as const)
@@ -202,7 +199,6 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     amountFormatPreference: profile.amount_format_preference ?? 'smart',
     entries,
     totalOutflow,
-    topOutflowCategories,
   }
 }
 

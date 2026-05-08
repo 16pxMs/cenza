@@ -63,8 +63,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
 
   const pageX = isDesktop ? 'var(--space-page-desktop)' : 'var(--space-page-mobile)'
 
-  const topCategories = data.topOutflowCategories
-
   const logOther = () => {
     router.push('/log/new?isOther=true&returnTo=/log')
   }
@@ -203,63 +201,6 @@ export default function LogPageClient({ data }: LogPageClientProps) {
           {totalEntries} {totalEntries === 1 ? 'expense' : 'expenses'}
         </p>
       </div>
-
-      {/* Top expenses */}
-      {topCategories.length > 0 && (
-        <div style={{
-          padding: `0 ${pageX}`,
-          marginBottom: 'var(--space-lg)',
-        }}>
-          <div style={{
-            background: T.white,
-            borderRadius: 'var(--radius-lg)',
-            padding: 12,
-            border: `var(--border-width) solid ${T.border}`,
-          }}>
-            <p style={{
-              margin: '0 0 var(--space-sm)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              color: T.text1,
-              lineHeight: 1.3,
-            }}>
-              Top expenses
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
-              {topCategories.map(cat => (
-                <div key={cat.categoryKey} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'baseline',
-                  gap: 'var(--space-md)',
-                }}>
-                  <span style={{
-                    fontSize: 'var(--text-sm)',
-                    color: T.text3,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}>
-                    {cat.categoryLabel}
-                  </span>
-                  <span style={{
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-medium)',
-                    color: T.text1,
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
-                    {formatAmount(cat.totalAmount, {
-                      currency: data.currency,
-                      preference: data.amountFormatPreference,
-                      context: 'summary',
-                    })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Filter chips */}
       <div style={{

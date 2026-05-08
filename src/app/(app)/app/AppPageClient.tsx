@@ -73,6 +73,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         spendingBudget={secondaryOverview?.spendingBudget ?? null}
         categorySpend={secondaryOverview?.categorySpend ?? {}}
         recentActivity={secondaryOverview?.recentActivity ?? []}
+        topOutflowCategories={secondaryOverview?.topOutflowCategories ?? []}
         lastCycleRecurringTop={secondaryOverview?.lastCycleRecurringTop ?? null}
         monthlyReminders={secondaryOverview?.monthlyReminders ?? []}
         billsLeftToPay={secondaryOverview?.billsLeftToPay ?? null}

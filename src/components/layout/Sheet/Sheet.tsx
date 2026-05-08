@@ -15,6 +15,7 @@ interface Props {
   children: React.ReactNode
   isDesktop?: boolean
   hideHeader?: boolean
+  hideCloseButton?: boolean
   bodyPadding?: 'default' | 'none'
   variant?: 'default' | 'bottom'
 }
@@ -25,6 +26,7 @@ export function Sheet({
   title,
   children,
   hideHeader = false,
+  hideCloseButton = false,
   bodyPadding = 'default',
   variant = 'default',
 }: Props) {
@@ -45,9 +47,11 @@ export function Sheet({
         {!hideHeader && (
           <div className={styles.header}>
             <h2 className={styles.title}>{title}</h2>
-            <button type="button" className={styles.close} onClick={onClose}>
-              <IconChevronX size={16} color="var(--text-2)" />
-            </button>
+            {!hideCloseButton && (
+              <button type="button" className={styles.close} onClick={onClose}>
+                <IconChevronX size={16} color="var(--text-2)" />
+              </button>
+            )}
           </div>
         )}
         <div className={`${styles.body} ${bodyPadding === 'none' ? styles.bodyNoPad : ''}`}>

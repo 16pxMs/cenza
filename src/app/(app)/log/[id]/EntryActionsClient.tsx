@@ -923,6 +923,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
         open={activeFlow === 'confirm'}
         onClose={() => setActiveFlow(null)}
         title="Are you sure?"
+        hideCloseButton
       >
         <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.6 }}>
@@ -960,7 +961,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
               size="lg"
               onClick={() => setActiveFlow(null)}
             >
-              Go back
+              Cancel
             </SecondaryBtn>
           </div>
         </div>

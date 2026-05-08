@@ -260,5 +260,17 @@ describe('loadOverviewCriticalData', () => {
       expect.objectContaining({ id: 'txn-1', label: 'tennis court' }),
       expect.objectContaining({ id: 'txn-2', label: 'Transport' }),
     ])
+    expect(data.topOutflowCategories).toEqual([
+      expect.objectContaining({
+        categoryKey: 'sports',
+        categoryLabel: 'Sports',
+        totalAmount: 3200,
+      }),
+      expect.objectContaining({
+        categoryKey: 'transport',
+        categoryLabel: 'Transport',
+        totalAmount: 1200,
+      }),
+    ])
   })
 })

@@ -108,21 +108,7 @@ describe('log loader', () => {
       categoryKey: 'transport',
       categoryType: 'everyday',
     })
-    expect(data.topOutflowCategories).toEqual([
-      expect.objectContaining({
-        categoryKey: 'sports',
-        categoryLabel: 'Sports',
-        totalAmount: 3000,
-        transactionCount: 1,
-      }),
-      expect.objectContaining({
-        categoryKey: 'transport',
-        categoryLabel: 'Transport',
-        totalAmount: 2000,
-        transactionCount: 2,
-      }),
-    ])
-    expect(Math.round(data.topOutflowCategories.reduce((sum, row) => sum + row.percentageOfTotal, 0))).toBe(100)
+    expect(data.totalOutflow).toBe(5000)
   })
 
   it('falls back to category label as title when no original name is present', async () => {

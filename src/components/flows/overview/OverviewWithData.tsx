@@ -22,6 +22,7 @@ import { OverviewEmptyState } from './OverviewEmptyState'
 import { removeMonthlyReminder, updateMonthlyReminder } from '@/app/(app)/log/actions'
 import type { MonthlyReminderEntry } from '@/lib/monthly-reminders/storage'
 import type { OverviewObligation } from '@/lib/loaders/overview'
+import type { CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
 
 const OVERVIEW_UPCOMING_PAYMENT_WINDOW_DAYS = 14
 const OBLIGATION_PREVIEW_STATUS_RANK: Record<OverviewObligation['status'], number> = {
@@ -46,6 +47,43 @@ const GOAL_META: Record<string, {
   business:   { label: 'Business',       icon: '💼', lightColor: '#EADFF4', borderColor: '#C9AEE8', darkColor: '#5C3489' },
   family:     { label: 'Family',         icon: '👨‍👩‍👧', lightColor: '#EADFF4', borderColor: '#C9AEE8', darkColor: '#5C3489' },
   other:      { label: 'Other Goal',     icon: '⭐', lightColor: '#EADFF4', borderColor: '#C9AEE8', darkColor: '#5C3489' },
+}
+
+const MONEY_FLOW_BAR_COLORS = {
+  everyday: { fill: '#6366F1' },
+  fixed: { fill: '#2563EB' },
+  debt: { fill: '#DC2626' },
+  goal: { fill: '#059669' },
+  other: { fill: '#64748B' },
+} as const
+
+const MONEY_FLOW_CATEGORY_COLORS: Record<string, { fill: string }> = {
+  emergency: { fill: '#059669' },
+  rent: { fill: '#2563EB' },
+  groceries: { fill: '#7C3AED' },
+  debt_repayment: { fill: '#DC2626' },
+  family_support: { fill: '#DB2777' },
+}
+
+const CONTAINER_TITLE_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontSize: 'var(--text-base)',
+  fontWeight: 'var(--weight-medium)',
+  color: 'var(--text-1)',
+  lineHeight: 1.35,
+}
+
+const RECAP_BREAKDOWN_ROUTE = '/history'
+
+function getMoneyFlowBarColor(category: Pick<CategoryBreakdownRow, 'categoryKey' | 'categoryType'>) {
+  const keyColor = MONEY_FLOW_CATEGORY_COLORS[category.categoryKey]
+  if (keyColor) return keyColor
+
+  if (category.categoryType === 'goal') return MONEY_FLOW_BAR_COLORS.goal
+  if (category.categoryType === 'fixed' || category.categoryType === 'subscription') return MONEY_FLOW_BAR_COLORS.fixed
+  if (category.categoryType === 'debt') return MONEY_FLOW_BAR_COLORS.debt
+  if (category.categoryType === 'everyday') return MONEY_FLOW_BAR_COLORS.everyday
+  return MONEY_FLOW_BAR_COLORS.other
 }
 
 interface IncomeData {
@@ -89,6 +127,7 @@ interface Props {
   spendingBudget?: { categories: any[] } | null
   categorySpend?: Record<string, number>
   recentActivity?: Array<{ id: string; label: string; amount: number; date: string }>
+  topOutflowCategories?: CategoryBreakdownRow[]
   lastCycleRecurringTop?: { label: string; amount: number; total: number } | null
   monthlyReminders?: MonthlyReminderEntry[]
   billsLeftToPay?: {
@@ -113,6 +152,7 @@ export function OverviewWithData({
   name, currency, amountFormatPreference, hasStartedCycleData = false, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
   goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, monthlyReminders = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
+  topOutflowCategories = [],
   secondaryLoaded = false,
 }: Props) {
   const router = useRouter()
@@ -301,7 +341,7 @@ const reference = receivedConfirmed
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 'var(--weight-semibold)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          <p style={CONTAINER_TITLE_STYLE}>
             Goals
           </p>
           <ChevronRight size={16} color="var(--text-muted)" strokeWidth={2.2} style={{ flexShrink: 0 }} />
@@ -394,7 +434,7 @@ const reference = receivedConfirmed
           disabled={!isActionable}
         >
           <div style={{ flex: 1 }}>
-            <p style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', lineHeight: 1.35 }}>
+            <p style={{ ...CONTAINER_TITLE_STYLE, marginBottom: 4 }}>
               {resolvedPriority.title}
             </p>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: 'var(--text-2)' }}>
@@ -496,7 +536,7 @@ const reference = receivedConfirmed
       >
         {snapshotState === 'add_income' ? (
           <>
-            <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+            <p style={CONTAINER_TITLE_STYLE}>
               Add your income
             </p>
             <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
@@ -510,7 +550,7 @@ const reference = receivedConfirmed
           </>
         ) : snapshotState === 'confirm_income' ? (
           <>
-            <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+            <p style={CONTAINER_TITLE_STYLE}>
               Have you received your income?
             </p>
             <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
@@ -618,6 +658,99 @@ const reference = receivedConfirmed
     </div>
   )
 
+  const topOutflowMaxAmount = topOutflowCategories.reduce(
+    (max, category) => Math.max(max, category.totalAmount),
+    0
+  )
+
+  const moneyFlowCard = topOutflowCategories.length > 0 ? (
+    <div style={{ marginTop: 16, ...fade(0.13) }}>
+      <div
+        style={{
+          background: 'var(--white)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          padding: '16px',
+        }}
+      >
+        <p style={{ ...CONTAINER_TITLE_STYLE, marginBottom: 16 }}>
+          Your largest expenses this month
+        </p>
+
+        <div style={{ display: 'grid', gap: 16 }}>
+          {topOutflowCategories.map((category) => {
+            const colors = getMoneyFlowBarColor(category)
+            const width = topOutflowMaxAmount > 0
+              ? Math.max(6, Math.round((category.totalAmount / topOutflowMaxAmount) * 100))
+              : 0
+
+            return (
+              <div key={category.categoryKey} style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{
+                    minWidth: 0,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: 'var(--text-2)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {category.categoryLabel}
+                  </span>
+                  <span style={{
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-semibold)',
+                    color: 'var(--text-1)',
+                    fontVariantNumeric: 'tabular-nums',
+                    flexShrink: 0,
+                  }}>
+                    {formatAmount(category.totalAmount, { currency, preference: amountFormatPreference, context: 'summary' })}
+                  </span>
+                </div>
+                <div aria-hidden="true" style={{ width: '100%', height: 8, display: 'flex', alignItems: 'center' }}>
+                  <div style={{
+                    width: `${width}%`,
+                    minWidth: 24,
+                    height: '100%',
+                    borderRadius: 'var(--radius-full)',
+                    background: colors.fill,
+                  }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <button
+          type="button"
+          aria-label="View monthly recap breakdown"
+          onClick={() => router.push(RECAP_BREAKDOWN_ROUTE)}
+          style={{
+            border: 'none',
+            borderTop: '1px solid var(--border-subtle)',
+            background: 'transparent',
+            padding: '14px 0 0',
+            marginTop: 16,
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            color: 'var(--brand-dark)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 'var(--weight-medium)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <span>View breakdown</span>
+          <ChevronRight size={16} strokeWidth={2.2} />
+        </button>
+      </div>
+    </div>
+  ) : null
+
   const obligationsPreviewCard = (
     <div style={{ marginTop: 16, ...fade(0.14) }}>
       <div
@@ -629,7 +762,7 @@ const reference = receivedConfirmed
         }}
       >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)' }}>
+        <p style={CONTAINER_TITLE_STYLE}>
           Upcoming payments
         </p>
       </div>
@@ -724,6 +857,7 @@ const reference = receivedConfirmed
         <>
           {priorityCard}
           {snapshotCard}
+          {secondaryLoaded ? moneyFlowCard : null}
           {secondaryLoaded ? obligationsPreviewCard : null}
           {secondaryLoaded ? goalsPreviewCard : null}
 

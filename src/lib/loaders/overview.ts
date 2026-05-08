@@ -14,6 +14,7 @@ import {
   deriveOutflowTotalFromCategories,
   isDebtOpeningBalanceTransaction,
 } from '@/lib/transactions/outflow'
+import { deriveCategoryBreakdown, type CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
 import type { Debt, GoalId, UserProfile } from '@/types/database'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
@@ -183,6 +184,7 @@ export interface OverviewPageData {
     amount: number
     date: string
   }>
+  topOutflowCategories: CategoryBreakdownRow[]
   goalTargets: Record<string, number>
   goalSaved: Record<string, number>
   goalLabels: Record<string, string>
@@ -232,6 +234,7 @@ export interface OverviewSecondaryData {
     amount: number
     date: string
   }>
+  topOutflowCategories: CategoryBreakdownRow[]
   goalTargets: Record<string, number>
   goalSaved: Record<string, number>
   goalLabels: Record<string, string>
@@ -754,6 +757,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
       date: txn.date,
     }))
 
+  const topOutflowCategories = deriveCategoryBreakdown(visibleTransactionRows).slice(0, 3)
+
   const spendingBudgetData = spendingBudget
     ? {
         total_budget: Number(spendingBudget.total_budget ?? 0),
@@ -818,6 +823,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     spendingBudget: spendingBudgetData,
     categorySpend,
     recentActivity,
+    topOutflowCategories,
     goalTargets: goalTargetsMap,
     goalSaved: goalSavedMap,
     goalLabels,
