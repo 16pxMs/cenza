@@ -62,7 +62,6 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         goalLabels={secondaryOverview?.goalLabels ?? {}}
         selectedGoal={secondaryOverview?.selectedGoal ?? null}
         debtTotal={secondaryOverview?.debtTotal ?? 0}
-        onReviewDebts={() => router.push('/history/debt?label=Debt&type=debt&returnTo=/app')}
         onConfirmIncome={() => setReceivedSheetOpen(true)}
         onContribGoal={async (goalId, goalLabel, amount, note) => {
           await addGoalContribution({ goalId, goalLabel, amount, note })
@@ -78,6 +77,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
         monthlyReminders={secondaryOverview?.monthlyReminders ?? []}
         billsLeftToPay={secondaryOverview?.billsLeftToPay ?? null}
         overviewObligations={secondaryOverview?.overviewObligations ?? []}
+        commitmentSummary={secondaryOverview?.commitmentSummary ?? null}
         debtReminderCandidates={overview.debtReminderCandidates}
         secondaryLoaded={secondaryOverview != null}
         isDesktop={isDesktop}

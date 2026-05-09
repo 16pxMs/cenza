@@ -7,6 +7,7 @@ import {
   loadMonthlyStorageSnapshotForCycle,
   hasMonthlyStorageForUser,
   readPlannedMonthlyEntries,
+  type PlannedMonthlyEntry,
   type MonthlyReminderEntry,
 } from '@/lib/monthly-reminders/storage'
 import {
@@ -125,6 +126,25 @@ export type OverviewObligation = {
   actionHref: string
 }
 
+export type OverviewCommitmentSummaryState =
+  | 'empty'
+  | 'overdue'
+  | 'due_soon'
+  | 'active_no_due'
+
+export interface OverviewCommitmentSummary {
+  state: OverviewCommitmentSummaryState
+  activeCount: number
+  activeRecurringCount: number
+  reminderOnlyCount: number
+  overdueCount: number
+  dueSoonCount: number
+  remainingAmount: number
+  nearestItem: OverviewObligation | null
+  previewLabels: string[]
+  hasUsedCommitments: boolean
+}
+
 export function deriveBillsLeftToPay(
   fixedEntries: unknown[] | null | undefined,
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
@@ -162,6 +182,68 @@ export function deriveBillsLeftToPay(
   items.sort((a, b) => b.leftToPay - a.leftToPay)
   const totalLeftToPay = items.reduce((sum, item) => sum + item.leftToPay, 0)
   return { items, totalLeftToPay }
+}
+
+export function deriveOverviewCommitmentSummary(input: {
+  plannedEntries: PlannedMonthlyEntry[]
+  monthlyReminders: MonthlyReminderEntry[]
+  billsLeftToPay: BillsLeftToPay
+  overviewObligations: OverviewObligation[]
+}): OverviewCommitmentSummary {
+  const uniqueMonthlyReminders = (() => {
+    const byLabelAndAmount = new Map<string, MonthlyReminderEntry>()
+    for (const item of input.monthlyReminders) {
+      const label = item.label.trim() || item.key
+      const signature = `${label.toLowerCase()}:${Number(item.monthly)}`
+      if (!byLabelAndAmount.has(signature)) {
+        byLabelAndAmount.set(signature, item)
+      }
+    }
+    return Array.from(byLabelAndAmount.values())
+  })()
+  const activeRecurringCount = input.plannedEntries.length
+  const reminderOnlyCount = uniqueMonthlyReminders.length
+  const activeCount = activeRecurringCount + reminderOnlyCount + input.overviewObligations.length
+  const overdueItems = input.overviewObligations.filter((item) => item.status === 'overdue')
+  const dueSoonItems = input.overviewObligations.filter((item) => item.status === 'today' || item.status === 'soon')
+  const statusRank: Record<ObligationStatus, number> = {
+    overdue: 0,
+    today: 1,
+    soon: 2,
+    upcoming: 3,
+  }
+  const nearestItem = [...input.overviewObligations].sort((a, b) => {
+    const byStatus = statusRank[a.status] - statusRank[b.status]
+    if (byStatus !== 0) return byStatus
+    return a.dueDate.localeCompare(b.dueDate)
+  })[0] ?? null
+  const reminderAmount = uniqueMonthlyReminders.reduce((sum, item) => sum + item.monthly, 0)
+  const obligationAmount = input.overviewObligations.reduce((sum, item) => sum + item.amount, 0)
+  const previewLabels = Array.from(new Set([
+    ...overdueItems.map((item) => item.name),
+    ...dueSoonItems.map((item) => item.name),
+    ...input.plannedEntries.map((item) => item.label),
+    ...uniqueMonthlyReminders.map((item) => item.label),
+  ].map((label) => label.trim()).filter(Boolean))).slice(0, 3)
+
+  return {
+    state: overdueItems.length > 0
+      ? 'overdue'
+      : dueSoonItems.length > 0
+        ? 'due_soon'
+        : activeCount > 0
+          ? 'active_no_due'
+          : 'empty',
+    activeCount,
+    activeRecurringCount,
+    reminderOnlyCount,
+    overdueCount: overdueItems.length,
+    dueSoonCount: dueSoonItems.length,
+    remainingAmount: input.billsLeftToPay.totalLeftToPay + reminderAmount + obligationAmount,
+    nearestItem,
+    previewLabels,
+    hasUsedCommitments: activeCount > 0,
+  }
 }
 
 export interface OverviewPageData {
@@ -206,6 +288,7 @@ export interface OverviewPageData {
   billsLeftToPay: BillsLeftToPay
   debtReminderCandidates: DebtReminderCandidate[]
   overviewObligations: OverviewObligation[]
+  commitmentSummary: OverviewCommitmentSummary
 }
 
 export interface OverviewCriticalData {
@@ -255,6 +338,7 @@ export interface OverviewSecondaryData {
   monthlyReminders: MonthlyReminderEntry[]
   billsLeftToPay: BillsLeftToPay
   overviewObligations: OverviewObligation[]
+  commitmentSummary: OverviewCommitmentSummary
 }
 
 function parseDate(value: string | null) {
@@ -286,7 +370,7 @@ function deriveObligationStatus(daysUntil: number): ObligationStatus {
   return 'upcoming'
 }
 
-function deriveOverviewObligations(input: {
+export function deriveOverviewObligations(input: {
   debts: Debt[]
   currency: string
   cycleTransactions: Array<Pick<OverviewTransactionRow, 'amount' | 'category_key' | 'category_type'>>
@@ -813,6 +897,16 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     currency: profile.currency ?? 'KES',
     cycleTransactions: transactionRows,
   })
+  const billsLeftToPay = deriveBillsLeftToPay(
+    plannedMonthlyEntries,
+    transactionRows
+  )
+  const commitmentSummary = deriveOverviewCommitmentSummary({
+    plannedEntries: plannedMonthlyEntries,
+    monthlyReminders,
+    billsLeftToPay,
+    overviewObligations,
+  })
 
   return {
     amountFormatPreference: profile.amount_format_preference ?? 'smart',
@@ -830,10 +924,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     selectedGoal,
     lastCycleRecurringTop,
     monthlyReminders,
-    billsLeftToPay: deriveBillsLeftToPay(
-      plannedMonthlyEntries,
-      transactionRows
-    ),
+    billsLeftToPay,
     overviewObligations,
+    commitmentSummary,
   }
 }

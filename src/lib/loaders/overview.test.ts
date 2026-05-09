@@ -274,3 +274,114 @@ describe('loadOverviewCriticalData', () => {
     ])
   })
 })
+
+describe('deriveOverviewCommitmentSummary', () => {
+  it('returns an empty state when there are no recurring commitments yet', async () => {
+    const { deriveOverviewCommitmentSummary } = await import('./overview')
+
+    const summary = deriveOverviewCommitmentSummary({
+      plannedEntries: [],
+      monthlyReminders: [],
+      billsLeftToPay: { items: [], totalLeftToPay: 0 },
+      overviewObligations: [],
+    })
+
+    expect(summary).toMatchObject({
+      state: 'empty',
+      activeCount: 0,
+      hasUsedCommitments: false,
+    })
+  })
+
+  it('summarizes active recurring items even when nothing is due soon', async () => {
+    const { deriveOverviewCommitmentSummary } = await import('./overview')
+
+    const summary = deriveOverviewCommitmentSummary({
+      plannedEntries: [
+        { key: 'internet', label: 'Internet', monthly: 5000, entry_type: 'planned' },
+        { key: 'rent', label: 'Rent', monthly: 60000, entry_type: 'planned' },
+      ],
+      monthlyReminders: [],
+      billsLeftToPay: {
+        items: [
+          { key: 'internet', label: 'Internet', expected: 5000, paid: 0, leftToPay: 5000 },
+          { key: 'rent', label: 'Rent', expected: 60000, paid: 60000, leftToPay: 0 },
+        ],
+        totalLeftToPay: 5000,
+      },
+      overviewObligations: [],
+    })
+
+    expect(summary).toMatchObject({
+      state: 'active_no_due',
+      activeCount: 2,
+      activeRecurringCount: 2,
+      remainingAmount: 5000,
+    })
+  })
+
+  it('prioritizes overdue obligations', async () => {
+    const { deriveOverviewCommitmentSummary } = await import('./overview')
+
+    const summary = deriveOverviewCommitmentSummary({
+      plannedEntries: [],
+      monthlyReminders: [],
+      billsLeftToPay: { items: [], totalLeftToPay: 0 },
+      overviewObligations: [
+        {
+          id: 'rent',
+          source: 'debt',
+          name: 'Rent',
+          amount: 61000,
+          currency: 'KES',
+          dueDate: '2026-05-01',
+          daysUntilDue: -2,
+          status: 'overdue',
+          actionHref: '/history/debt/rent',
+        },
+      ],
+    })
+
+    expect(summary.state).toBe('overdue')
+    expect(summary.overdueCount).toBe(1)
+    expect(summary.nearestItem?.name).toBe('Rent')
+  })
+
+  it('deduplicates preview labels for repeated recurring labels', async () => {
+    const { deriveOverviewCommitmentSummary } = await import('./overview')
+
+    const summary = deriveOverviewCommitmentSummary({
+      plannedEntries: [
+        { key: 'internet', label: 'Internet', monthly: 5000, entry_type: 'planned' },
+      ],
+      monthlyReminders: [
+        { key: 'internet_reminder', label: 'Internet', monthly: 5000, reminder: true, entry_type: 'monthly_reminder' },
+      ],
+      billsLeftToPay: { items: [], totalLeftToPay: 0 },
+      overviewObligations: [],
+    })
+
+    expect(summary.previewLabels).toEqual(['Internet'])
+    expect(summary.activeCount).toBe(2)
+  })
+
+  it('deduplicates exact duplicate monthly reminders by label and amount', async () => {
+    const { deriveOverviewCommitmentSummary } = await import('./overview')
+
+    const summary = deriveOverviewCommitmentSummary({
+      plannedEntries: [],
+      monthlyReminders: [
+        { key: 'internet', label: 'Internet', monthly: 3000, reminder: true, entry_type: 'monthly_reminder' },
+        { key: 'spending_internet', label: 'Internet', monthly: 3000, reminder: true, entry_type: 'monthly_reminder' },
+        { key: 'claude', label: 'Claude subscription', monthly: 2700, reminder: true, entry_type: 'monthly_reminder' },
+      ],
+      billsLeftToPay: { items: [], totalLeftToPay: 0 },
+      overviewObligations: [],
+    })
+
+    expect(summary.activeCount).toBe(2)
+    expect(summary.reminderOnlyCount).toBe(2)
+    expect(summary.remainingAmount).toBe(5700)
+    expect(summary.previewLabels).toEqual(['Internet', 'Claude subscription'])
+  })
+})

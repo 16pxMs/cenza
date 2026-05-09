@@ -21,16 +21,8 @@ import { GoalContribSheet } from './GoalContribSheet'
 import { OverviewEmptyState } from './OverviewEmptyState'
 import { removeMonthlyReminder, updateMonthlyReminder } from '@/app/(app)/log/actions'
 import type { MonthlyReminderEntry } from '@/lib/monthly-reminders/storage'
-import type { OverviewObligation } from '@/lib/loaders/overview'
+import type { OverviewCommitmentSummary, OverviewObligation } from '@/lib/loaders/overview'
 import type { CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
-
-const OVERVIEW_UPCOMING_PAYMENT_WINDOW_DAYS = 14
-const OBLIGATION_PREVIEW_STATUS_RANK: Record<OverviewObligation['status'], number> = {
-  overdue: 0,
-  today: 1,
-  soon: 2,
-  upcoming: 3,
-}
 
 const GOAL_META: Record<string, {
   label: string
@@ -74,6 +66,7 @@ const CONTAINER_TITLE_STYLE: React.CSSProperties = {
 }
 
 const RECAP_BREAKDOWN_ROUTE = '/history'
+const COMMITMENTS_ROUTE = '/commitments'
 
 function getMoneyFlowBarColor(category: Pick<CategoryBreakdownRow, 'categoryKey' | 'categoryType'>) {
   const keyColor = MONEY_FLOW_CATEGORY_COLORS[category.categoryKey]
@@ -118,7 +111,6 @@ interface Props {
     lastContributionAt: string | null
     contributionCount: number
   } | null
-  onReviewDebts?: () => void
   onConfirmIncome?: () => void
   onContribGoal?: (goalId: string, goalLabel: string, amount: number, note: string) => Promise<void>
   totalSpent?: number
@@ -135,6 +127,7 @@ interface Props {
     totalLeftToPay: number
   } | null
   overviewObligations?: OverviewObligation[]
+  commitmentSummary?: OverviewCommitmentSummary | null
   debtReminderCandidates?: Array<{
     debtId: string
     label: string
@@ -150,8 +143,9 @@ interface Props {
 
 export function OverviewWithData({
   name, currency, amountFormatPreference, hasStartedCycleData = false, incomeType = null, paydayDay = null, goals, activeDebts = [], incomeData,
-  goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onReviewDebts, onConfirmIncome, onContribGoal,
+  goalTargets, goalSaved = {}, goalLabels = {}, selectedGoal = null, onConfirmIncome, onContribGoal,
   totalSpent = 0, debtTotal = 0, fixedTotal = 0, spendingBudget = null, categorySpend = {}, recentActivity = [], lastCycleRecurringTop = null, monthlyReminders = [], billsLeftToPay = null, overviewObligations = [], debtReminderCandidates = [], isDesktop,
+  commitmentSummary = null,
   topOutflowCategories = [],
   secondaryLoaded = false,
 }: Props) {
@@ -207,6 +201,43 @@ export function OverviewWithData({
     if (byState !== 0) return byState
     return a.dueDate.localeCompare(b.dueDate)
   }), [debtReminderCandidates])
+
+  const formatCommitmentDueText = (item: OverviewObligation) => {
+    if (item.status === 'overdue') return `${item.name} is overdue`
+    if (item.status === 'today') return `${item.name} is due today`
+    if (item.daysUntilDue === 1) return `${item.name} due tomorrow`
+    return `${item.name} due in ${item.daysUntilDue} days`
+  }
+
+  const commitmentsCardCopy = (() => {
+    if (!commitmentSummary || commitmentSummary.state === 'empty') {
+      return {
+        state: 'No recurring commitments yet',
+        meta: 'Turn reminders on for recurring expenses',
+      }
+    }
+
+    if (commitmentSummary.state === 'overdue' && commitmentSummary.nearestItem) {
+      return {
+        state: commitmentSummary.overdueCount === 1
+          ? formatCommitmentDueText(commitmentSummary.nearestItem)
+          : `${commitmentSummary.overdueCount} commitments overdue`,
+        meta: `${commitmentSummary.activeCount} active monthly ${commitmentSummary.activeCount === 1 ? 'commitment' : 'commitments'}`,
+      }
+    }
+
+    if (commitmentSummary.state === 'due_soon' && commitmentSummary.nearestItem) {
+      return {
+        state: formatCommitmentDueText(commitmentSummary.nearestItem),
+        meta: `${commitmentSummary.activeCount} active monthly ${commitmentSummary.activeCount === 1 ? 'commitment' : 'commitments'}`,
+      }
+    }
+
+    return {
+      state: 'Nothing due soon',
+      meta: `${commitmentSummary.activeCount} active monthly ${commitmentSummary.activeCount === 1 ? 'commitment' : 'commitments'}`,
+    }
+  })()
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
@@ -506,24 +537,6 @@ const reference = receivedConfirmed
           ? 'You’re running low for this month'
           : `You’ve used ${formatAmount(totalSpent, { currency, preference: amountFormatPreference, context: 'detail' })} of ${formatAmount(snapshotReference, { currency, preference: amountFormatPreference, context: 'detail' })} income.`
 
-  const obligationPreviewItems = useMemo(() => overviewObligations
-    .filter((item) => (
-      item.status === 'overdue' ||
-      item.status === 'today' ||
-      item.status === 'soon' ||
-      item.daysUntilDue <= OVERVIEW_UPCOMING_PAYMENT_WINDOW_DAYS
-    ))
-    .sort((a, b) => {
-      const byStatus = OBLIGATION_PREVIEW_STATUS_RANK[a.status] - OBLIGATION_PREVIEW_STATUS_RANK[b.status]
-      if (byStatus !== 0) return byStatus
-
-      const byDueDate = a.dueDate.localeCompare(b.dueDate)
-      if (byDueDate !== 0) return byDueDate
-
-      return b.amount - a.amount
-    })
-    .slice(0, 3), [overviewObligations])
-
   const snapshotCard = (
     <div style={{ marginTop: 16, ...fade(0.12) }}>
       <div
@@ -754,68 +767,40 @@ const reference = receivedConfirmed
   const obligationsPreviewCard = (
     <div style={{ marginTop: 16, ...fade(0.14) }}>
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="View commitments"
+        onClick={() => router.push(COMMITMENTS_ROUTE)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            router.push(COMMITMENTS_ROUTE)
+          }
+        }}
         style={{
           background: 'var(--white)',
           border: '1px solid var(--border)',
           borderRadius: 16,
-          padding: '16px',
+          padding: '14px 16px',
+          cursor: 'pointer',
         }}
       >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <p style={CONTAINER_TITLE_STYLE}>
-          Upcoming payments
-        </p>
-      </div>
-
-        <div>
-          {obligationPreviewItems.length > 0 ? (
-            obligationPreviewItems.map((item, index) => (
-              <button
-                key={`${item.source}-${item.id}`}
-                onClick={() => router.push(item.actionHref)}
-                style={{
-                  width: '100%',
-                  display: 'grid',
-                  gap: 6,
-                  padding: index === 0 ? '0 0 12px' : '12px 0',
-                  border: 'none',
-                  borderTop: index === 0 ? 'none' : '1px solid var(--border-subtle)',
-                  background: 'transparent',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-regular)', color: 'var(--text-1)', minWidth: 0 }}>
-                    {item.name}
-                  </p>
-                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--text-1)', flexShrink: 0 }}>
-                    {formatAmount(item.amount, { currency: item.currency, preference: amountFormatPreference, context: 'row' })}
-                  </span>
-                </div>
-                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
-                  {item.status === 'overdue'
-                    ? 'Overdue'
-                    : item.status === 'today'
-                      ? 'Due today'
-                      : `Due in ${item.daysUntilDue} ${item.daysUntilDue === 1 ? 'day' : 'days'}`}
-                </p>
-              </button>
-            ))
-          ) : (
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-3)' }}>
-              Nothing due soon
-            </p>
-          )}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+          <p style={{ ...CONTAINER_TITLE_STYLE, fontSize: 'var(--text-sm)' }}>
+            Upcoming commitments
+          </p>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--brand-dark)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', flexShrink: 0 }}>
+            View all
+            <ChevronRight size={12} color="var(--text-3)" strokeWidth={2.2} />
+          </span>
         </div>
 
-        {obligationPreviewItems.length > 0 && (
-          <div style={{ marginTop: 4 }}>
-            <TertiaryBtn size="sm" onClick={onReviewDebts} style={{ width: 'auto', padding: 0 }}>
-              Open things to pay
-            </TertiaryBtn>
-          </div>
-        )}
+        <p style={{ margin: '0 0 3px', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: commitmentSummary?.state === 'overdue' ? 'var(--red-dark)' : 'var(--text-1)', lineHeight: 1.35 }}>
+          {commitmentsCardCopy.state}
+        </p>
+        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
+          {commitmentsCardCopy.meta}
+        </p>
       </div>
     </div>
   )
