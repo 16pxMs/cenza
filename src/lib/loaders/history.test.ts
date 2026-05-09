@@ -227,11 +227,158 @@ describe('history recap loader', () => {
     expect(data.recurringItems).toEqual([])
 
     const { deriveHistorySummaryData } = await import('@/lib/history/recap-summary')
-    expect(deriveHistorySummaryData(data)).toEqual({
+    expect(deriveHistorySummaryData(data)).toMatchObject({
+      heroInsight: {
+        kind: 'no_expenses',
+        headline: 'No spending recorded yet',
+        category: null,
+        group: null,
+      },
+      insights: [
+        expect.objectContaining({
+          kind: 'no_expenses',
+          headline: 'No spending recorded yet',
+        }),
+      ],
       biggestDriver: null,
       spendingMix: [],
       recurringCount: 0,
       nextRecurringItem: null,
     })
+  })
+
+  it('keeps category totals, group totals, monthly total, and individual top expenses mathematically distinct', async () => {
+    loadMonthlyStorageSnapshotForCycle.mockResolvedValue({
+      plannedTotal: 0,
+      plannedEntries: [],
+      reminderEntries: [],
+    })
+    createServerSupabaseClient.mockResolvedValue(makeHistorySupabase([
+      {
+        id: 'family-1',
+        category_type: 'everyday',
+        category_key: 'family_support',
+        category_label: 'Family support',
+        display_name: 'Family support',
+        amount: 18400,
+        date: '2026-05-01',
+        created_at: '2026-05-01T08:00:00Z',
+      },
+      {
+        id: 'family-2',
+        category_type: 'everyday',
+        category_key: 'family_support',
+        category_label: 'Family support',
+        display_name: 'Family support top-up',
+        amount: 6000,
+        date: '2026-05-02',
+        created_at: '2026-05-02T08:00:00Z',
+      },
+      {
+        id: 'family-3',
+        category_type: 'everyday',
+        category_key: 'family_support',
+        category_label: 'Family support',
+        display_name: 'Family support',
+        amount: 3500,
+        date: '2026-05-03',
+        created_at: '2026-05-03T08:00:00Z',
+      },
+      {
+        id: 'family-4',
+        category_type: 'everyday',
+        category_key: 'family_support',
+        category_label: 'Family support',
+        display_name: 'Family support',
+        amount: 2000,
+        date: '2026-05-04',
+        created_at: '2026-05-04T08:00:00Z',
+      },
+      {
+        id: 'rent-1',
+        category_type: 'fixed',
+        category_key: 'rent',
+        category_label: 'Rent',
+        display_name: 'Rent',
+        amount: 61000,
+        date: '2026-05-05',
+        created_at: '2026-05-05T08:00:00Z',
+      },
+      {
+        id: 'opening',
+        category_type: 'debt',
+        category_key: 'debt_opening_balance',
+        category_label: 'Debt opening balance',
+        display_name: 'Opening balance',
+        amount: 90000,
+        date: '2026-05-06',
+        created_at: '2026-05-06T08:00:00Z',
+      },
+      {
+        id: 'transfer-1',
+        category_type: 'transfer',
+        category_key: 'savings_transfer',
+        category_label: 'Savings transfer',
+        display_name: 'Savings transfer',
+        amount: 50000,
+        date: '2026-05-07',
+        created_at: '2026-05-07T08:00:00Z',
+      },
+      {
+        id: 'refund-1',
+        category_type: 'everyday',
+        category_key: 'family_support',
+        category_label: 'Family support',
+        display_name: 'Family support refund',
+        amount: -1000,
+        date: '2026-05-08',
+        created_at: '2026-05-08T08:00:00Z',
+      },
+      {
+        id: 'zero-1',
+        category_type: 'everyday',
+        category_key: 'family_support',
+        category_label: 'Family support',
+        display_name: 'Zero row',
+        amount: 0,
+        date: '2026-05-09',
+        created_at: '2026-05-09T08:00:00Z',
+      },
+    ]))
+
+    const { loadHistoryPageData } = await import('./history')
+    const data = await loadHistoryPageData('user-1', {
+      currency: 'KES',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [25],
+    } as any, undefined, ['2026-05-01'])
+
+    const categoryTotal = data.rows.reduce((sum, row) => sum + row.totalAmount, 0)
+    const groupTotal = data.spendingGroups.reduce((sum, group) => sum + group.amount, 0)
+    const familySupport = data.rows.find((row) => row.categoryKey === 'family_support')
+
+    expect(familySupport).toEqual(expect.objectContaining({
+      categoryLabel: 'Family support',
+      totalAmount: 29900,
+      transactionCount: 4,
+    }))
+    expect(data.totalSpent).toBe(90900)
+    expect(categoryTotal).toBe(data.totalSpent)
+    expect(groupTotal).toBe(data.totalSpent)
+    expect(data.expenseCount).toBe(5)
+    expect(data.rows.find((row) => row.categoryKey === 'debt_opening_balance')).toBeUndefined()
+    expect(data.rows.find((row) => row.categoryKey === 'savings_transfer')).toBeUndefined()
+    expect(data.spendingGroups.find((group) => group.key === 'debt')).toBeUndefined()
+    expect(data.topTransactions.map((txn) => txn.id)).toEqual([
+      'rent-1',
+      'family-1',
+      'family-2',
+      'family-3',
+      'family-4',
+    ])
+    expect(data.topTransactions.find((txn) => txn.id === 'family-1')).toEqual(expect.objectContaining({
+      title: 'Family support',
+      amount: 18400,
+    }))
   })
 })

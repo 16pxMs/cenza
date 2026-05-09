@@ -138,6 +138,13 @@ function buildSpendingGroups(rows: HistoryTransaction[], totalOutflow: number): 
     .sort((a, b) => b.amount - a.amount)
 }
 
+function isIncludedHistoryOutflow(row: HistoryTransaction): boolean {
+  if (isDebtOpeningBalanceTransaction(row)) return false
+  if (row.category_type === 'transfer') return false
+  if (!Number.isFinite(row.amount) || row.amount <= 0) return false
+  return true
+}
+
 async function loadHistoryAvailableCycleIds(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string
@@ -219,11 +226,7 @@ export async function loadHistoryPageData(
     date: String(row.date ?? ''),
     created_at: String(row.created_at ?? ''),
   }))
-  const includedExpenseRows = rows.filter((row) => (
-    !isDebtOpeningBalanceTransaction(row) &&
-    Number.isFinite(row.amount) &&
-    row.amount > 0
-  ))
+  const includedExpenseRows = rows.filter(isIncludedHistoryOutflow)
   const labelByCategoryKey = new Map<string, string>()
   for (const row of includedExpenseRows) {
     if (!labelByCategoryKey.has(row.category_key)) {

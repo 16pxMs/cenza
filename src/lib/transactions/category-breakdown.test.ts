@@ -154,6 +154,23 @@ describe('deriveCategoryBreakdown', () => {
     expect(rows[0].totalAmount).toBeCloseTo(2000.5, 6)
   })
 
+  it('can produce a category total greater than any single transaction in that category', () => {
+    const rows = deriveCategoryBreakdown([
+      txn({ category_type: 'everyday', category_key: 'family_support', category_label: 'Family support', amount: 18400 }),
+      txn({ category_type: 'everyday', category_key: 'family_support', category_label: 'Family support', amount: 6000 }),
+      txn({ category_type: 'everyday', category_key: 'family_support', category_label: 'Family support', amount: 3500 }),
+      txn({ category_type: 'everyday', category_key: 'family_support', category_label: 'Family support', amount: 2000 }),
+    ])
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      categoryKey: 'family_support',
+      categoryLabel: 'Family support',
+      totalAmount: 29900,
+      transactionCount: 4,
+    })
+  })
+
   it('falls back to row label/type when key is unknown to CATEGORY_CONFIG', () => {
     const rows = deriveCategoryBreakdown([
       txn({

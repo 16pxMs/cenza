@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { AppSubpageHeader } from '@/components/layout/AppSubpageHeader/AppSubpageHeader'
 import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpageLayout'
@@ -12,7 +12,7 @@ import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { SegmentedControl } from '@/components/ui/SegmentedControl/SegmentedControl'
 import { formatAmount } from '@/lib/formatting/amount'
-import { deriveHistorySummaryData } from '@/lib/history/recap-summary'
+import { deriveHistorySummaryData, type HistoryHeroInsight } from '@/lib/history/recap-summary'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
 import type { HistoryCategoryRow, HistoryPageData, HistorySpendingGroup } from '@/lib/loaders/history'
 
@@ -82,10 +82,85 @@ function formatCount(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
+function formatInsightHeadline(
+  data: HistoryPageData,
+  preference: AmountFormatPreference,
+  insight: HistoryHeroInsight
+) {
+  if (insight.kind === 'low_remaining') {
+    const usedShare = insight.percentage ?? (data.totalIncome > 0 ? (data.totalSpent / data.totalIncome) * 100 : 0)
+    return `You’ve used ${formatPercent(usedShare)} of your income this period`
+  }
+
+  if (insight.kind === 'upcoming_burden' && insight.amount && insight.amount > 0) {
+    return `${formatAmount(insight.amount, { currency: data.currency, preference, context: 'summary' })} in recurring expenses is still coming up`
+  }
+
+  return insight.headline
+}
+
+function formatHeroInsightSupport(
+  data: HistoryPageData,
+  preference: AmountFormatPreference,
+  heroInsight: HistoryHeroInsight
+) {
+  if (heroInsight.kind === 'no_expenses') {
+    return 'Add your first expense to start building this month’s recap.'
+  }
+
+  if (heroInsight.kind === 'quiet_month') {
+    return `${formatCount(data.expenseCount, 'expense')} logged so far, totaling ${formatHeroAmount(data.totalSpent, data.currency, preference)}.`
+  }
+
+  if (heroInsight.kind === 'low_remaining') {
+    const remainingAmount = heroInsight.amount ?? (data.totalIncome - data.totalSpent)
+    const formattedIncome = formatHeroAmount(data.totalIncome, data.currency, preference)
+    if (remainingAmount < 0) {
+      return `You spent ${formatAmount(Math.abs(remainingAmount), { currency: data.currency, preference, context: 'summary' })} more than your ${formattedIncome} income.`
+    }
+    return `Only ${formatAmount(remainingAmount, { currency: data.currency, preference, context: 'summary' })} remains from ${formattedIncome} income.`
+  }
+
+  if (heroInsight.kind === 'debt_dominant' && heroInsight.group) {
+    return `${formatAmount(heroInsight.group.amount, { currency: data.currency, preference, context: 'summary' })} went to debt, or ${formatPercent(heroInsight.group.percentageOfTotal)} of outflow.`
+  }
+
+  if (heroInsight.kind === 'fixed_dominant' && heroInsight.group) {
+    return `${formatAmount(heroInsight.group.amount, { currency: data.currency, preference, context: 'summary' })} went to fixed costs, or ${formatPercent(heroInsight.group.percentageOfTotal)} of outflow.`
+  }
+
+  if (heroInsight.kind === 'category_dominant' && heroInsight.category) {
+    return `${formatAmount(heroInsight.category.totalAmount, { currency: data.currency, preference, context: 'summary' })} went there, or ${formatPercent(heroInsight.category.percentageOfTotal)} of your ${formatHeroAmount(data.totalSpent, data.currency, preference)} outflow.`
+  }
+
+  if (heroInsight.kind === 'evenly_distributed' && heroInsight.category) {
+    return `Your largest category was ${heroInsight.category.categoryLabel} at ${formatPercent(heroInsight.category.percentageOfTotal)} of outflow.`
+  }
+
+  if (heroInsight.kind === 'upcoming_burden' && heroInsight.recurringItem) {
+    const dueLabels = Array.from(new Set(data.recurringItems.map((item) => item.label))).slice(0, 2)
+    if (dueLabels.length >= 2) {
+      return `${dueLabels[0]} and ${dueLabels[1]} are still due this period.`
+    }
+    return `${heroInsight.recurringItem.label} is still due this period.`
+  }
+
+  return ''
+}
+
+function insightAccent(insight: HistoryHeroInsight) {
+  if (insight.category) return categoryAccent(insight.category.categoryType)
+  if (insight.group) return categoryAccent(insight.group.key)
+  if (insight.kind === 'low_remaining') return { bg: '#FFF7ED', border: '#FED7AA', text: '#9A3412', bar: '#D97706' }
+  if (insight.kind === 'upcoming_burden') return { bg: '#F8FAFC', border: '#D9DEE7', text: '#475467', bar: '#8A94A6' }
+  return { bg: '#F8FAFC', border: '#E4E7EC', text: 'var(--text-2)', bar: 'var(--grey-400)' }
+}
+
 export default function HistoryPageClient({ data, targetCycleId, currentCycleId }: HistoryPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
   const [viewMode, setViewMode] = useState<RecapViewMode>('summary')
+  const [isRecurringInsightExpanded, setIsRecurringInsightExpanded] = useState(false)
 
   const activeCycleId = targetCycleId ?? currentCycleId
   const activeIndex = data.availableCycleIds.indexOf(activeCycleId)
@@ -96,6 +171,8 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
   const remaining = data.totalIncome - data.totalSpent
   const amountFormatPreference = data.amountFormatPreference
   const summaryData = deriveHistorySummaryData(data)
+  const heroSupportText = formatHeroInsightSupport(data, amountFormatPreference, summaryData.heroInsight)
+  const supportingInsights = summaryData.insights.slice(1)
   const largestCategoryAmount = data.rows.reduce((max, row) => Math.max(max, row.totalAmount), 0)
   const largestGroupAmount = data.spendingGroups.reduce((max, group) => Math.max(max, group.amount), 0)
   const periodContext = (() => {
@@ -279,101 +356,144 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
                 letterSpacing: '-0.02em',
                 color: 'var(--text-inverse)',
               }}>
-                You spent {formatHeroAmount(data.totalSpent, data.currency, amountFormatPreference)}
+                {formatInsightHeadline(data, amountFormatPreference, summaryData.heroInsight)}
               </p>
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.76)', lineHeight: 1.5 }}>
-                {summaryData.biggestDriver
-                  ? `${summaryData.biggestDriver.categoryLabel} was your biggest driver at ${formatPercent(summaryData.biggestDriver.percentageOfTotal)} of outflow.`
-                  : 'Once you add expenses, this recap will turn your month into a clear story.'}
-              </p>
+              {heroSupportText && (
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.76)', lineHeight: 1.5 }}>
+                  {heroSupportText}
+                </p>
+              )}
             </section>
 
-            {data.expenseCount === 0 ? (
-              <section style={cardStyle}>
-                <p style={SECTION_TITLE_STYLE}>Nothing to recap yet</p>
-                <p style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                  Add expenses during the month and this page will explain where your money went.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/log/new?returnTo=${encodeURIComponent(currentCycleRoute)}`)}
+            {supportingInsights.map((insight) => {
+              const accent = insightAccent(insight)
+              const supportText = formatHeroInsightSupport(data, amountFormatPreference, insight)
+              const isExpandableRecurring = insight.kind === 'upcoming_burden' && data.recurringItems.length > 0
+              const recurringInsightId = 'summary-recurring-insight-list'
+              return (
+                <section
+                  key={insight.kind}
+                  role={isExpandableRecurring ? 'button' : undefined}
+                  tabIndex={isExpandableRecurring ? 0 : undefined}
+                  aria-expanded={isExpandableRecurring ? isRecurringInsightExpanded : undefined}
+                  aria-controls={isExpandableRecurring ? recurringInsightId : undefined}
+                  onClick={isExpandableRecurring ? () => setIsRecurringInsightExpanded((current) => !current) : undefined}
+                  onKeyDown={isExpandableRecurring
+                    ? (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setIsRecurringInsightExpanded((current) => !current)
+                      }
+                    }
+                    : undefined}
                   style={{
-                    width: '100%',
-                    height: 'var(--button-height-md)',
-                    borderRadius: 'var(--radius-md)',
-                    border: 'none',
-                    background: T.brandDark,
-                    color: 'var(--text-inverse)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-semibold)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Add expense
-                </button>
-              </section>
-            ) : (
-              <>
-                {summaryData.biggestDriver && (
-                  (() => {
-                    const accent = categoryAccent(summaryData.biggestDriver.categoryType)
-                    return (
-                  <section style={{
                     ...cardStyle,
                     background: accent.bg,
                     border: `var(--border-width) solid ${accent.border}`,
-                  }}>
-                    <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: accent.text, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      Biggest money moment
+                    cursor: isExpandableRecurring ? 'pointer' : undefined,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                    <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: accent.text, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      Worth noting
                     </p>
-                    <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', lineHeight: 1.12, color: T.text1 }}>
-                      {summaryData.biggestDriver.categoryLabel}
-                    </p>
-                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', lineHeight: 1, color: T.text1, fontVariantNumeric: 'tabular-nums' }}>
-                      {formatAmount(summaryData.biggestDriver.totalAmount, { currency: data.currency, preference: amountFormatPreference, context: 'summary' })}
-                    </p>
-                    <div style={{ marginTop: 'var(--space-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
-                      <span style={{ fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.4 }}>
-                        {formatCount(summaryData.biggestDriver.transactionCount, 'transaction')}
-                      </span>
-                      <span style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', color: accent.text }}>
-                        {formatPercent(summaryData.biggestDriver.percentageOfTotal)}
-                      </span>
-                    </div>
-                  </section>
-                    )
-                  })()
-                )}
-
-                <section style={cardStyle}>
-                  <p style={SECTION_TITLE_STYLE}>Top 5 expenses</p>
-                  <div>
-                    {data.topTransactions.map((txn, index) => (
-                      <button
-                        key={txn.id}
-                        type="button"
-                        onClick={() => router.push(transactionHref(txn.id))}
+                    {isExpandableRecurring && (
+                      <ChevronDown
+                        size={18}
+                        color={accent.text}
+                        aria-hidden="true"
                         style={{
-                          width: '100%',
-                          border: 'none',
-                          borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
-                          background: 'transparent',
-                          padding: index === 0 ? '0 0 var(--space-sm)' : 'var(--space-sm) 0',
-                          display: 'grid',
-                          gridTemplateColumns: 'auto minmax(0, 1fr) auto',
-                          alignItems: 'center',
-                          gap: 'var(--space-sm)',
-                          textAlign: 'left',
-                          cursor: 'pointer',
+                          transform: isRecurringInsightExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 160ms ease',
+                          flexShrink: 0,
                         }}
-                      >
+                      />
+                    )}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', lineHeight: 1.18, color: T.text1 }}>
+                    {formatInsightHeadline(data, amountFormatPreference, insight)}
+                  </p>
+                  {supportText && (
+                    <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.45 }}>
+                      {supportText}
+                    </p>
+                  )}
+                  {isExpandableRecurring && isRecurringInsightExpanded && (
+                    <div
+                      id={recurringInsightId}
+                      style={{
+                        marginTop: 'var(--space-sm)',
+                        borderTop: 'var(--border-width) solid var(--border-subtle)',
+                        paddingTop: 'var(--space-xs)',
+                      }}
+                    >
+                      {data.recurringItems.map((item, index) => (
+                        <div
+                          key={`${item.kind}-${item.key}-${index}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            justifyContent: 'space-between',
+                            gap: 'var(--space-md)',
+                            padding: index === 0 ? '0 0 var(--space-xs)' : 'var(--space-xs) 0',
+                            borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
+                          }}
+                        >
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.label}
+                            </span>
+                            <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--text-xs)', color: T.text3 }}>
+                              {item.kind === 'fixed' ? 'Fixed recurring item' : 'Monthly reminder'}
+                            </span>
+                          </span>
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                            {formatAmount(item.amount, { currency: data.currency, preference: amountFormatPreference, context: 'row' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+
+            {summaryData.largestExpensePreview.length > 0 && (
+              <section style={{ ...cardStyle, padding: 'var(--space-card-sm)' }}>
+                <div style={{ marginBottom: 'var(--space-sm)' }}>
+                  <p style={{ ...SECTION_TITLE_STYLE, marginBottom: 'var(--space-2xs)' }}>Largest expenses</p>
+                  <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                    Single transactions, not category totals.
+                  </p>
+                </div>
+                <div>
+                  {summaryData.largestExpensePreview.map((txn, index) => (
+                    <button
+                      key={txn.id}
+                      type="button"
+                      onClick={() => router.push(transactionHref(txn.id))}
+                      style={{
+                        width: '100%',
+                        border: 'none',
+                        borderTop: index === 0 ? 'none' : 'var(--border-width) solid var(--border-subtle)',
+                        background: 'transparent',
+                        padding: index === 0 ? '0 0 var(--space-xs)' : 'var(--space-xs) 0',
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
+                        alignItems: 'center',
+                        gap: 'var(--space-md)',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
                         <span style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
+                          width: 28,
+                          height: 28,
+                          borderRadius: 'var(--radius-full)',
                           background: 'var(--grey-100)',
-                          color: T.text2,
-                          display: 'flex',
+                          color: T.text3,
+                          display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           fontSize: 'var(--text-xs)',
@@ -387,84 +507,15 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
                             {txn.title}
                           </span>
                         </span>
-                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                          {formatAmount(txn.amount, { currency: data.currency, preference: amountFormatPreference, context: 'row' })}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                <section style={cardStyle}>
-                  <p style={SECTION_TITLE_STYLE}>Your spending mix</p>
-                  <div style={{ display: 'flex', height: 12, gap: 3, marginBottom: 'var(--space-md)' }}>
-                    {summaryData.spendingMix.map((group) => {
-                      const accent = categoryAccent(group.key)
-                      return (
-                        <div
-                          key={group.key}
-                          title={`${group.label}: ${formatPercent(group.percentageOfTotal)}`}
-                          style={{
-                            flex: Math.max(group.amount, 1),
-                            minWidth: 12,
-                            borderRadius: 'var(--radius-full)',
-                            background: accent.bar,
-                          }}
-                        />
-                      )
-                    })}
-                  </div>
-                  <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                    {summaryData.spendingMix.map((group) => {
-                      const accent = categoryAccent(group.key)
-                      return (
-                        <div key={group.key} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
-                          <span style={{ minWidth: 0 }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)', minWidth: 0 }}>
-                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: accent.bar, flexShrink: 0 }} />
-                              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {group.label}
-                              </span>
-                            </span>
-                            <p style={{ margin: '2px 0 0 calc(7px + var(--space-xs))', fontSize: 'var(--text-xs)', color: T.text3 }}>
-                              {formatPercent(group.percentageOfTotal)} of outflow
-                            </p>
-                          </span>
-                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                            {formatAmount(group.amount, { currency: data.currency, preference: amountFormatPreference, context: 'summary' })}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              </>
-            )}
-
-            <section style={cardStyle}>
-              <p style={SECTION_TITLE_STYLE}>Next up</p>
-              {summaryData.nextRecurringItem ? (
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-md)' }}>
-                  <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {summaryData.nextRecurringItem.label}
-                    </span>
-                    <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--text-xs)', color: T.text3 }}>
-                      {summaryData.recurringCount === 1
-                        ? '1 upcoming item'
-                        : `${summaryData.recurringCount} upcoming items`}
-                    </span>
-                  </span>
-                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                    {formatAmount(summaryData.nextRecurringItem.amount, { currency: data.currency, preference: amountFormatPreference, context: 'row' })}
-                  </span>
+                      </span>
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                        {formatAmount(txn.amount, { currency: data.currency, preference: amountFormatPreference, context: 'row' })}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                  No fixed recurring items or monthly reminders saved for this period.
-                </p>
-              )}
-            </section>
+              </section>
+            )}
           </>
         ) : (
           <>
@@ -567,7 +618,10 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
                 </section>
 
                 <section style={cardStyle}>
-                  <p style={SECTION_TITLE_STYLE}>Largest individual expenses</p>
+                  <p style={{ ...SECTION_TITLE_STYLE, marginBottom: 'var(--space-2xs)' }}>Largest individual expenses</p>
+                  <p style={{ margin: '0 0 var(--space-md)', fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                    Single transactions, not category totals.
+                  </p>
                   <div>
                     {data.topTransactions.map((txn, index) => (
                       <button
