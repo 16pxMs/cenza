@@ -64,7 +64,7 @@ export default function LogPageClient({ data }: LogPageClientProps) {
   const pageX = isDesktop ? 'var(--space-page-desktop)' : 'var(--space-page-mobile)'
 
   const logOther = () => {
-    router.push('/log/new?isOther=true&returnTo=/log')
+    router.push('/log/import?returnTo=/log')
   }
 
   useEffect(() => {

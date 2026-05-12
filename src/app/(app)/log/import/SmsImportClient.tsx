@@ -962,7 +962,7 @@ export function SmsImportClient() {
           <ExpenseAddedSuccess
             entries={successEntries}
             onBack={() => { router.refresh(); router.push('/app') }}
-            onAddAnother={() => router.push('/log/new?returnTo=/app')}
+            onAddAnother={() => router.push('/log/import?returnTo=/app')}
           />
         </div>
 
@@ -1054,7 +1054,7 @@ export function SmsImportClient() {
                 disabled={parsing || rawText.trim().length === 0}
                 style={{ marginTop: 12 }}
               >
-                {parsing ? 'Reading…' : 'See my expenses'}
+                {parsing ? 'Reading…' : 'Continue'}
               </PrimaryBtn>
             </>
           ) : (
@@ -1355,17 +1355,6 @@ export function SmsImportClient() {
             </>
           )}
             </div>
-
-            {!showReview && (
-              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
-                <TertiaryBtn
-                  size="md"
-                  onClick={() => router.push(`/log/new?isOther=true&returnTo=${encodeURIComponent(returnTo)}`)}
-                >
-                  Add manually
-                </TertiaryBtn>
-              </div>
-            )}
           </>
         ) : (
           <>

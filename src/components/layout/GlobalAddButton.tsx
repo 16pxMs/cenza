@@ -14,7 +14,7 @@ export function GlobalAddButton({ returnTo }: Props) {
     <button
       type="button"
       aria-label="Add expense"
-      onClick={() => router.push(`/log/new?returnTo=${encodeURIComponent(returnTo)}`)}
+      onClick={() => router.push(`/log/import?returnTo=${encodeURIComponent(returnTo)}`)}
       style={{
         position: 'fixed',
         right: 'var(--space-lg)',
