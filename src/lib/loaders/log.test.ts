@@ -142,4 +142,45 @@ describe('log loader', () => {
       categoryKey: 'sports',
     })
   })
+
+  it('selects only the transaction columns needed for the log list and entry detail', async () => {
+    const transactionSelects: string[] = []
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'transactions') {
+          throw new Error(`Unexpected table ${table}`)
+        }
+
+        return {
+          select: vi.fn((columns: string) => {
+            transactionSelects.push(columns)
+            return {
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn().mockResolvedValue({ data: [] }),
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                })),
+              })),
+            }
+          }),
+        }
+      }),
+    })
+
+    const { loadLogPageData, loadEntryById } = await import('./log')
+    const profile = {
+      currency: 'KES',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [25],
+    } as any
+
+    await loadLogPageData('user-1', profile)
+    await loadEntryById('user-1', profile, 'txn-1')
+
+    expect(transactionSelects).toEqual([
+      'id, display_name, category_key, category_label, custom_category_id, category_type, amount, date, note, created_at',
+      'id, display_name, category_key, category_label, custom_category_id, category_type, amount, date, note, created_at',
+    ])
+    expect(transactionSelects).not.toContain('*')
+  })
 })

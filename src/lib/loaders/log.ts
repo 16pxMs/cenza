@@ -132,7 +132,12 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const schedule = profileToPaySchedule(profile)
-  const transactionSelection = selectTransactionsInCycleDateRange(supabase, userId, profile, '*')
+  const transactionSelection = selectTransactionsInCycleDateRange(
+    supabase,
+    userId,
+    profile,
+    'id, display_name, category_key, category_label, custom_category_id, category_type, amount, date, note, created_at'
+  )
 
   const [{ data: txns }, monthlyReminderEntries] = await Promise.all([
     transactionSelection.query
@@ -220,7 +225,7 @@ export async function loadEntryById(
 
   const [{ data: txn }, monthlyReminderEntries] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('*')
+      .select('id, display_name, category_key, category_label, custom_category_id, category_type, amount, date, note, created_at')
       .eq('id', entryId)
       .eq('user_id', userId)
       .maybeSingle(),

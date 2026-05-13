@@ -469,4 +469,56 @@ describe('saveParsedSmsExpenses import visibility', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/app')
     expect(after).toHaveBeenCalled()
   })
+
+  it('parses a single simple entry through the fast path without database enrichment reads', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('food 500')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({
+        label: 'food',
+        amount: 500,
+        currency: 'KES',
+        isImportedMessage: false,
+        confidence: 'medium',
+        sourceHash: expect.any(String),
+      }),
+    ])
+    expect(result.ok ? result.data.usedFallback : false).toBe(true)
+    expect(result.ok ? result.data.monthlyReminderKeys : ['unexpected']).toEqual([])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+    expect(loadMonthlyReminderEntriesForCycle).not.toHaveBeenCalled()
+  })
+
+  it('keeps terse merchant-style manual entries on the fast path', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('mpesa 200')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows[0] : null).toEqual(expect.objectContaining({
+      label: 'mpesa',
+      amount: 200,
+      isImportedMessage: false,
+    }))
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('keeps structured SMS imports on the enriched database-backed path', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('M-PESA confirmed. KES 2,100 paid to Naivas. Ref ABC123. Balance KES 8,000')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows[0] : null).toEqual(expect.objectContaining({
+      label: 'Naivas.',
+      amount: 2100,
+      isImportedMessage: true,
+      sourceHash: expect.any(String),
+    }))
+    expect(createServerSupabaseClient).toHaveBeenCalledTimes(1)
+    expect(loadMonthlyReminderEntriesForCycle).toHaveBeenCalledTimes(1)
+  })
 })

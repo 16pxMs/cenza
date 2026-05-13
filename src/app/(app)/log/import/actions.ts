@@ -417,6 +417,31 @@ function computeHasLowConfidence(rows: ParsedSmsExpense[]): boolean {
   return false
 }
 
+const STRUCTURED_SMS_MARKERS = [
+  /\bconfirmed\b/i,
+  /\btransaction\b/i,
+  /\b(?:receipt|ref|reference|txn)\b/i,
+  /\b(?:balance|bal|available|avail|account|acct|a\/c)\b/i,
+  /\bnew\s+balance\b/i,
+  /\b(?:paid|sent|withdrawn|withdrawal|debited|credited|received|deposited)\s+(?:to|from|at|via|by)\b/i,
+  /\b(?:debited|credited|withdrawn|deposited)\b/i,
+]
+
+function countNonEmptyLines(input: string) {
+  return input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length
+}
+
+function shouldUseSimpleEntryFastPath(input: string, rows: ParsedSmsExpense[]) {
+  if (rows.length === 0) return false
+  const lines = input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length === 0) return false
+
+  return lines.every((line) => {
+    if (!/[A-Za-z]/.test(line) || !/[0-9]/.test(line)) return false
+    return !STRUCTURED_SMS_MARKERS.some((marker) => marker.test(line))
+  })
+}
+
 export async function parseSmsImport(rawText: string): Promise<ActionResult<ParseSmsImportData>> {
   return runAction<ParseSmsImportData>(async () => {
     const { user, profile } = await getAppSession()
@@ -431,6 +456,20 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         hasLowConfidence: false,
         monthlyReminderKeys: [],
         usedFallback: false,
+      })
+    }
+
+    const simpleRows = parseSimpleExpenseLines(input, {
+      defaultCurrency: profile.currency || 'USD',
+    })
+    if (shouldUseSimpleEntryFastPath(input, simpleRows)) {
+      return ok({
+        rows: simpleRows,
+        scanned: countNonEmptyLines(input),
+        skippedCredits: 0,
+        hasLowConfidence: computeHasLowConfidence(simpleRows),
+        monthlyReminderKeys: [],
+        usedFallback: true,
       })
     }
 
@@ -769,17 +808,18 @@ export async function saveParsedSmsExpenses(
   )
   const resolvedDebts = new Map<string, Awaited<ReturnType<typeof getDebt>>>()
   const existingDebtTransactions = new Map<string, Awaited<ReturnType<typeof addDebtTransaction>>[] | any[]>()
+  const uniqueDebtIds = Array.from(new Set(
+    debtLinkedMeta.map(({ row }) => row.debtId!).filter(Boolean)
+  ))
 
-  for (const { row } of debtLinkedMeta) {
-    const debtId = row.debtId!
-    if (resolvedDebts.has(debtId)) continue
-    resolvedDebts.set(debtId, await getDebt(debtId))
-  }
-  for (const { row } of debtLinkedMeta) {
-    const debtId = row.debtId!
-    if (existingDebtTransactions.has(debtId)) continue
-    existingDebtTransactions.set(debtId, await getDebtTransactions(debtId))
-  }
+  const debtDetails = await Promise.all(
+    uniqueDebtIds.map(async (debtId) => [debtId, await getDebt(debtId)] as const)
+  )
+  const debtTransactions = await Promise.all(
+    uniqueDebtIds.map(async (debtId) => [debtId, await getDebtTransactions(debtId)] as const)
+  )
+  for (const [debtId, debt] of debtDetails) resolvedDebts.set(debtId, debt)
+  for (const [debtId, transactions] of debtTransactions) existingDebtTransactions.set(debtId, transactions)
   mark('debt-resolve')
 
   // Running balance per debt tracks cumulative repayments within this batch
