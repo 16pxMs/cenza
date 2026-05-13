@@ -1,6 +1,7 @@
 'use client'
 
-import { SecondaryBtn } from '@/components/ui/Button/Button'
+import { PrimaryLink, SecondaryBtn } from '@/components/ui/Button/Button'
+import styles from './OverviewEmptyState.module.css'
 
 interface Props {
   onCreateGoal?: () => void
@@ -28,36 +29,55 @@ export function OverviewEmptyState({ onCreateGoal }: Props) {
         padding: 20,
         marginBottom: 14,
       }}>
-        <p style={{
-          margin: '0 0 14px',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-semibold)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.07em',
-          color: 'var(--text-muted)',
-        }}>
-          Your spending
-        </p>
+        <div className={styles.spendingSplit}>
+          <div className={styles.spendingPreview}>
+            <p style={{
+              margin: '0 0 14px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-semibold)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.07em',
+              color: 'var(--text-muted)',
+            }}>
+              Your spending
+            </p>
 
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 14 }}>
-          {[14, 22, 18, 34, 20, 26, 19].map((h, i) => (
-            <span
-              key={i}
-              style={{
-                width: 34,
-                height: h,
-                borderRadius: 6,
-                background: 'var(--grey-100)',
-                display: 'inline-block',
-              }}
-            />
-          ))}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 14 }}>
+              {[14, 22, 18, 34, 20, 26, 19].map((h, i) => (
+                <span
+                  key={i}
+                  style={{
+                    width: 34,
+                    height: h,
+                    borderRadius: 6,
+                    background: 'var(--grey-100)',
+                    display: 'inline-block',
+                  }}
+                />
+              ))}
+            </div>
+
+            <p style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--text-2)' }}>
+              Your spending will appear here.
+            </p>
+          </div>
+
+          <div className={styles.spendingCta}>
+            <p className={styles.spendingCtaTitle}>
+              Ready to get started?
+            </p>
+            <p className={styles.spendingCtaBody}>
+              Add your first expense to see where your money goes.
+            </p>
+            <PrimaryLink
+              href="/log/import?returnTo=%2Fapp"
+              size="md"
+              className={styles.spendingCtaButton}
+            >
+              + Add expense
+            </PrimaryLink>
+          </div>
         </div>
-
-        <p style={{ margin: '0 0 14px', fontSize: 'var(--text-md)', color: 'var(--text-2)' }}>
-          Your spending will appear here.
-        </p>
-
       </div>
 
       <p style={{

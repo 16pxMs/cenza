@@ -550,24 +550,24 @@ const reference = receivedConfirmed
         {snapshotState === 'add_income' ? (
           <>
             <p style={CONTAINER_TITLE_STYLE}>
-              Add your income
+              Add your usual income
             </p>
             <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
-              to see what you have this month
+              to plan future months and estimate what is left
             </p>
             <div style={{ marginTop: 12 }}>
               <PrimaryBtn size="md" onClick={() => router.push('/income/new?returnTo=/app')} style={{ width: '100%' }}>
-                Add income
+                Add usual income
               </PrimaryBtn>
             </div>
           </>
         ) : snapshotState === 'confirm_income' ? (
           <>
             <p style={CONTAINER_TITLE_STYLE}>
-              Have you received your income?
+              Confirm this month’s income
             </p>
             <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
-              Confirm it to start this month
+              This updates this month only
             </p>
             <div style={{ marginTop: 12 }}>
               <PrimaryBtn size="md" onClick={onConfirmIncome} style={{ width: '100%' }}>

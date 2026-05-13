@@ -68,23 +68,25 @@ export default function IncomeFlowPageClient({
     if (resolvedMode === 'new') {
       return {
         eyebrow: 'Income',
-        title: 'Set up your income',
-        subtitle: 'Add your salary and any extra income',
+        title: 'Set your usual income',
+        subtitle: 'We’ll use this to plan future months. You can change this anytime.',
       }
     }
 
     if (resolvedMode === 'returning') {
       return {
         eyebrow: 'Income',
-        title: 'Add your income',
-        subtitle: 'Set what you expect this month',
+        title: 'Add this month’s income',
+        subtitle: 'This updates the current month without changing past months.',
       }
     }
 
     return {
       eyebrow: 'Income',
-      title: 'Update your income',
-      subtitle: 'Change your salary or income details',
+      title: hasCurrentCycleIncome ? 'Update this month’s income' : 'Update your usual income',
+      subtitle: hasCurrentCycleIncome
+        ? 'This won’t change your usual income or previous months.'
+        : 'This updates the amount we use for future planning.',
     }
   })()
 

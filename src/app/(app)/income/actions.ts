@@ -61,6 +61,15 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
         : profile.pay_schedule_days,
   }
   const cycleId = await getCurrentCycleId(supabase as any, user.id, scheduleProfileForCycle)
+  const { data: existingCurrentIncome, error: existingIncomeError } = await (supabase.from('income_entries') as any)
+    .select('received, received_confirmed_at')
+    .eq('user_id', user.id)
+    .eq('cycle_id', cycleId)
+    .maybeSingle()
+
+  if (existingIncomeError) {
+    throw new Error(`Failed to read current income: ${existingIncomeError.message}`)
+  }
 
   const salary = Number(input.income)
   const cycleStartMode = input.cycleStartMode === 'mid_month' ? 'mid_month' : 'full_month'
@@ -84,6 +93,14 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
       amount: Number(item.amount),
     }))
 
+  const preservedReceivedFields =
+    existingCurrentIncome?.received != null || existingCurrentIncome?.received_confirmed_at != null
+      ? {
+          received: existingCurrentIncome.received ?? null,
+          received_confirmed_at: existingCurrentIncome.received_confirmed_at ?? null,
+        }
+      : {}
+
   const { error: incomeError } = await (supabase.from('income_entries') as any).upsert({
     user_id: user.id,
     cycle_id: cycleId,
@@ -94,6 +111,7 @@ export async function saveIncome(input: SaveIncomeInput): Promise<void> {
       : salary + extraIncome.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
     cycle_start_mode: cycleStartMode,
     opening_balance: cycleStartMode === 'mid_month' ? openingBalance : null,
+    ...preservedReceivedFields,
   }, { onConflict: 'user_id,cycle_id' })
 
   if (incomeError) {

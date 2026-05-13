@@ -14,6 +14,7 @@ import { setupPin } from '@/lib/actions/pin'
 import { PinPad } from '@/components/ui/PinPad'
 
 type Step = 'enter' | 'confirm'
+const CLIENT_PERF_ENABLED = process.env.NEXT_PUBLIC_PERF_DEBUG === 'true'
 
 interface Props {
   redirectTo: string
@@ -46,7 +47,19 @@ export function PinSetupClient({ redirectTo, isReset = false }: Props) {
   }, [confirmPin, step]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConfirm = async (pin: string) => {
+    const startedAt = Date.now()
+    const logClientPerf = (step: string, meta: Record<string, string | number | boolean | null | undefined> = {}) => {
+      if (!CLIENT_PERF_ENABLED) return
+      console.info('[perf]', {
+        flow: isReset ? 'pin.reset.client' : 'pin.setup.client',
+        step,
+        durationMs: Date.now() - startedAt,
+        ...meta,
+      })
+    }
+
     if (pin !== firstPin) {
+      logClientPerf('pin-mismatch', { digitCount: pin.length })
       setShake(true)
       setError("PINs didn't match. Try again.")
       setTimeout(() => {
@@ -61,10 +74,13 @@ export function PinSetupClient({ redirectTo, isReset = false }: Props) {
 
     setSaving(true)
     try {
+      logClientPerf('submit-start', { onboarding: !isReset })
       // When isReset=false (onboarding), setupPin also sets onboarding_complete = true
       // in the same server-side DB write. No client-side Supabase write needed.
       await setupPin(firstPin, { onboarding: !isReset })
+      logClientPerf('setup-action', { onboarding: !isReset })
       router.push(redirectTo)
+      logClientPerf('navigation-push', { destination: redirectTo })
     } catch {
       setError('Something went wrong. Please try again.')
       setSaving(false)

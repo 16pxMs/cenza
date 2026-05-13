@@ -146,7 +146,7 @@ export function AddIncomeFlow({
 
   const handleSave = () => {
     if (!salary || isNaN(salaryNum) || salaryNum <= 0) {
-      setError(isMidMonth ? 'Please enter what you currently have left' : 'Please enter your monthly income')
+      setError(isMidMonth ? 'Please enter what you currently have left' : 'Please enter your usual income')
       return
     }
     if (needsPayday && !selectedPayday) {
@@ -173,7 +173,7 @@ export function AddIncomeFlow({
 
   const handleContinueFromAmount = () => {
     if (!salary || isNaN(salaryNum) || salaryNum <= 0) {
-      setError(isMidMonth ? 'Please enter what you currently have left' : 'Please enter your monthly income')
+      setError(isMidMonth ? 'Please enter what you currently have left' : 'Please enter your usual income')
       return
     }
     setError(null)
@@ -242,7 +242,7 @@ export function AddIncomeFlow({
                 ? 'Money left right now'
                 : activeType === 'variable'
                   ? 'Expected income this month'
-                  : 'Monthly income'
+                  : 'Usual monthly income'
             }
             value={salary}
             onChange={v => { setSalary(v); if (error) setError(null) }}
@@ -254,7 +254,7 @@ export function AddIncomeFlow({
                 ? 'Use what you currently have so your starting balance is accurate.'
                 : activeType === 'variable'
                 ? 'Use your best estimate. You can adjust with actual money received later.'
-                : 'Your regular take-home amount.'
+                : 'Use what you normally expect. You can enter a different amount for any month.'
             }
             error={error ?? undefined}
           />
@@ -309,7 +309,7 @@ export function AddIncomeFlow({
 
           {total > 0 && (
             <div className="income-total">
-              <span className="income-total__label">Total income</span>
+              <span className="income-total__label">{isMidMonth ? 'This month starting balance' : 'Usual total income'}</span>
               <span className="income-total__amount">{fmt(total, currency)}</span>
             </div>
           )}
@@ -386,7 +386,7 @@ export function AddIncomeFlow({
               lineHeight: 1.45,
             }}
           >
-            This helps us start your month from the right balance.
+            This only sets up the current month. Your usual income stays available for future planning.
           </p>
           <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
             <button
@@ -410,7 +410,7 @@ export function AddIncomeFlow({
                 Yes, I&apos;ve been paid
               </p>
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: cycleStartMode === 'full_month' ? 'var(--brand-dark)' : 'var(--text-3)', lineHeight: 1.4 }}>
-                Start from full monthly income.
+                Start this month from your usual income.
               </p>
             </button>
             <button
@@ -445,12 +445,12 @@ export function AddIncomeFlow({
         <>
           <div style={{ marginBottom: 16 }}>
             <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>
-              What day do you usually get paid?
+              Usual payday
             </p>
             <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
               {flowMode === 'returning'
-                ? 'We prefilled your usual payday. Change it only if this month is different.'
-                : 'Pick the day your salary normally comes in.'}
+                ? 'We prefilled your usual payday. Changing it updates future cycle planning, not past months.'
+                : 'We’ll use this to know when your money cycle starts. You can change it later.'}
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
               {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
@@ -477,7 +477,7 @@ export function AddIncomeFlow({
               })}
             </div>
             <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-3)' }}>
-              We’ll use this for your monthly income confirmation reminder.
+              We’ll use this for reminders and future month planning.
             </p>
             {error && (
               <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--red-dark)' }}>

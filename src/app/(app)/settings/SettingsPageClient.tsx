@@ -255,7 +255,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       {sectionLabel('Income')}
       {sectionCard(<>
         <SettingsRow
-          label="Income"
+          label="Usual income"
           value={data.monthlyTotal
             ? formatAmount(data.monthlyTotal, {
               currency,
@@ -263,10 +263,10 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
               context: 'summary',
             })
             : 'Not set'}
-          supportingText={formatScheduleValue(
+          supportingText={`${formatScheduleValue(
             scheduleConfigured ? initialScheduleType : null,
             scheduleConfigured ? initialScheduleDays : []
-          ).replace('Monthly ·', 'Paid monthly ·').replace('Twice a month ·', 'Paid twice a month ·')}
+          ).replace('Monthly ·', 'Paid monthly ·').replace('Twice a month ·', 'Paid twice a month ·')} · Future planning only`}
           onClick={() => router.push('/income/new?returnTo=/settings&mode=edit')}
           isLast
         />

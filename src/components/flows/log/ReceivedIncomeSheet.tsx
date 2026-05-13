@@ -111,11 +111,9 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
   }
 
   return (
-    <Sheet open={open} onClose={handleClose} title={isVariable ? 'Money received this month' : "Confirm this month's income"}>
+    <Sheet open={open} onClose={handleClose} title="Confirm this month’s income">
       <p style={{ margin: '0 0 12px', fontSize: 14, color: T.text2, lineHeight: 1.65 }}>
-        {isVariable
-          ? 'Keep this month accurate by logging what actually came in. You can update this anytime.'
-          : 'Quick check-in so your remaining balance reflects reality.'}
+        This only updates the current month. Your usual income stays the same.
       </p>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -181,7 +179,7 @@ export function ReceivedIncomeSheet({ open, onClose, declaredTotal, currency, in
               marginBottom: 10,
             }}
           >
-            {saving ? 'Saving…' : 'I received full income'}
+            {saving ? 'Saving…' : 'I received the usual amount'}
           </button>
           <TertiaryBtn
             size="sm"

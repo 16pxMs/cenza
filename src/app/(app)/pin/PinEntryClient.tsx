@@ -16,6 +16,7 @@ import { PinPad } from '@/components/ui/PinPad'
 
 const LOCK_AFTER = 5   // wrong attempts before lockout
 const LOCK_SECS  = 30  // lockout duration in seconds
+const CLIENT_PERF_ENABLED = process.env.NEXT_PUBLIC_PERF_DEBUG === 'true'
 
 interface Props {
   name: string
@@ -40,11 +41,25 @@ export function PinEntryClient({ name }: Props) {
   }, [pin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleVerify = async (enteredPin: string) => {
+    const startedAt = Date.now()
+    const logClientPerf = (step: string, meta: Record<string, string | number | boolean | null | undefined> = {}) => {
+      if (!CLIENT_PERF_ENABLED) return
+      console.info('[perf]', {
+        flow: 'pin.client',
+        step,
+        durationMs: Date.now() - startedAt,
+        ...meta,
+      })
+    }
+
+    logClientPerf('submit-start', { digitCount: enteredPin.length })
     setSubmitting(true)
     const ok = await verifyPin(enteredPin)
+    logClientPerf('validation-action', { matched: ok })
 
     if (ok) {
       router.replace('/app')
+      logClientPerf('navigation-replace', { destination: '/app' })
       return
     }
 

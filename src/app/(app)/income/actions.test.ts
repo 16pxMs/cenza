@@ -10,11 +10,15 @@ vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 vi.mock('@/lib/supabase/cycles-db', () => ({ getCurrentCycleId }))
 
-function makeSupabase() {
+function makeSupabase(existingIncome: Record<string, unknown> | null = null) {
   const profileEq = vi.fn().mockResolvedValue({ error: null })
   const update = vi.fn(() => ({ eq: profileEq }))
 
   const incomeUpsert = vi.fn().mockResolvedValue({ error: null })
+  const incomeMaybeSingle = vi.fn().mockResolvedValue({ data: existingIncome, error: null })
+  const incomeEqCycle = vi.fn(() => ({ maybeSingle: incomeMaybeSingle }))
+  const incomeEqUser = vi.fn(() => ({ eq: incomeEqCycle }))
+  const incomeSelect = vi.fn(() => ({ eq: incomeEqUser }))
   const fixedUpsert = vi.fn().mockResolvedValue({ error: null })
   const fixedMaybeSingle = vi.fn().mockResolvedValue({ data: { entries: [] }, error: null })
   const fixedEqCycle = vi.fn(() => ({ maybeSingle: fixedMaybeSingle }))
@@ -24,7 +28,7 @@ function makeSupabase() {
 
   const supabase = {
     from: vi.fn((table: string) => {
-      if (table === 'income_entries') return { upsert: incomeUpsert }
+      if (table === 'income_entries') return { select: incomeSelect, upsert: incomeUpsert }
       if (table === 'fixed_expenses') return { select: fixedSelect, upsert: fixedUpsert }
       if (table === 'spending_budgets') return { upsert: budgetUpsert }
       if (table === 'user_profiles') return { update }
@@ -32,7 +36,7 @@ function makeSupabase() {
     }),
   }
 
-  return { supabase, incomeUpsert, fixedUpsert, budgetUpsert, update, profileEq }
+  return { supabase, incomeUpsert, incomeSelect, incomeMaybeSingle, fixedUpsert, budgetUpsert, update, profileEq }
 }
 
 describe('income actions', () => {
@@ -149,6 +153,88 @@ describe('income actions', () => {
       cycle_start_mode: 'mid_month',
       opening_balance: 1200,
     }, { onConflict: 'user_id,cycle_id' })
+  })
+
+  it('saveIncome preserves confirmed current-month received income when usual income changes', async () => {
+    const { supabase, incomeUpsert } = makeSupabase({
+      received: 2800,
+      received_confirmed_at: '2026-05-13T09:00:00.000Z',
+    })
+    createServerSupabaseClient.mockResolvedValue(supabase)
+
+    const { saveIncome } = await import('./actions')
+
+    await saveIncome({
+      income: 3200,
+      extraIncome: [],
+      total: 3200,
+      incomeType: 'salaried',
+      paydayDay: 23,
+    })
+
+    expect(incomeUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        salary: 3200,
+        total: 3200,
+        received: 2800,
+        received_confirmed_at: '2026-05-13T09:00:00.000Z',
+      }),
+      { onConflict: 'user_id,cycle_id' }
+    )
+  })
+
+  it('saveIncome updates expected current-month income when received income is unconfirmed', async () => {
+    const { supabase, incomeUpsert } = makeSupabase({
+      received: null,
+      received_confirmed_at: null,
+    })
+    createServerSupabaseClient.mockResolvedValue(supabase)
+
+    const { saveIncome } = await import('./actions')
+
+    await saveIncome({
+      income: 4200,
+      extraIncome: [],
+      total: 4200,
+      incomeType: 'salaried',
+      paydayDay: 23,
+    })
+
+    expect(incomeUpsert).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        received: expect.anything(),
+        received_confirmed_at: expect.anything(),
+      }),
+      { onConflict: 'user_id,cycle_id' }
+    )
+    expect(incomeUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        salary: 4200,
+        total: 4200,
+      }),
+      { onConflict: 'user_id,cycle_id' }
+    )
+  })
+
+  it('saveIncome only reads and writes the current cycle income row', async () => {
+    const { supabase } = makeSupabase()
+    createServerSupabaseClient.mockResolvedValue(supabase)
+
+    const { saveIncome } = await import('./actions')
+
+    await saveIncome({
+      income: 5000,
+      extraIncome: [],
+      total: 5000,
+      incomeType: 'salaried',
+      paydayDay: 23,
+    })
+
+    const incomeTable = supabase.from.mock.results
+      .map((result: any) => result.value)
+      .find((table: any) => table.select)
+    expect(incomeTable.select).toHaveBeenCalledWith('received, received_confirmed_at')
+    expect(incomeTable.select).not.toHaveBeenCalledWith('*')
   })
 
   it('saveFixedExpenses writes monthly totals for the current cycle', async () => {

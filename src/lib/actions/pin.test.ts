@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const cookies = vi.fn()
+const createServerSupabaseClient = vi.fn()
 
 vi.mock('next/headers', () => ({ cookies }))
+vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 
 function makeCookieJar() {
   return { set: vi.fn() }
@@ -39,6 +41,10 @@ describe('PIN validation', () => {
 })
 
 describe('PIN cookie clearing', () => {
+  beforeEach(() => {
+    createServerSupabaseClient.mockReset()
+  })
+
   it('clearPinVerified only clears the verification cookie', async () => {
     const jar = makeCookieJar()
     cookies.mockResolvedValue(jar)
@@ -76,5 +82,19 @@ describe('PIN cookie clearing', () => {
       '',
       expect.objectContaining({ httpOnly: false, maxAge: 0 })
     )
+  })
+})
+
+describe('verifyPin guardrails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('rejects malformed PINs before auth or database work', async () => {
+    const { verifyPin } = await import('./pin')
+
+    await expect(verifyPin('12ab')).resolves.toBe(false)
+
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
   })
 })
