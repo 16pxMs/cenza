@@ -104,7 +104,7 @@ function formatDebtSummaryLine(direction: Debt['direction'], status: Debt['statu
 function formatDebtTransactionLabel(entryType: DebtTransaction['entry_type']) {
   switch (entryType) {
     case 'principal_increase':
-      return 'Starting balance'
+      return 'Money I owe'
     case 'payment_in':
       return 'Payment received'
     case 'payment_out':
@@ -628,7 +628,7 @@ export default async function DebtDetailPage({ params, searchParams }: PageProps
                     This debt is saved, but it has no entries yet.
                   </p>
                   <p style={{ margin: '0 0 var(--space-card-sm)', fontSize: 'var(--text-base)', color: 'var(--text-2)', lineHeight: 1.6 }}>
-                    Add an opening balance to start tracking it again. We keep the debt record for now so you do not lose the name, direction, or financing details.
+                    Add Money I owe to start tracking it again.
                   </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
                     <AddOpeningBalanceSheet

@@ -789,6 +789,11 @@ export async function saveParsedSmsExpenses(
   }
   mark('db-write-fixed-expenses')
 
+  revalidatePath('/log')
+  revalidatePath('/history')
+  revalidatePath('/app')
+  mark('post-save-revalidate')
+
   mark('response-ready')
   const overridden = confirmOverride && duplicates > 0
   logSaveTiming(
@@ -811,10 +816,6 @@ export async function saveParsedSmsExpenses(
         }))
       )
       backgroundTiming.mark('db-write-dictionary')
-
-      revalidatePath('/log')
-      revalidatePath('/app')
-      backgroundTiming.mark('post-save-revalidate')
 
       logSaveTiming('saveParsedSmsExpenses:background', backgroundStartedAt, backgroundTiming.marks)
     } catch (error) {

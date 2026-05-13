@@ -57,7 +57,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const cycleParam = isValidCycleParam(rawCycleParam) ? rawCycleParam : undefined
 
   const currentCycleId = deriveCurrentCycleId(profile)
-  const availableCycleIds = await loadHistoryAvailableCycleIdsForUser(user.id)
+  const availableCycleIds = await loadHistoryAvailableCycleIdsForUser(user.id, profile)
   const resolvedCycle = resolveRequestedCycle(cycleParam, availableCycleIds, currentCycleId)
 
   if (rawCycleParam && cycleParam !== rawCycleParam) {

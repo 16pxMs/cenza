@@ -18,4 +18,22 @@ describe('category options', () => {
       )
     )
   })
+
+  it('shows both debt categories in the debt group', () => {
+    const [debtGroup] = getGroupedCategoryOptions(['debt'])
+
+    expect(debtGroup?.label).toBe('Debt')
+    expect(debtGroup?.options).toEqual([
+      expect.objectContaining({
+        key: 'debt_repayment',
+        label: 'Debt repayment',
+        type: 'debt',
+      }),
+      expect.objectContaining({
+        key: 'debt_opening_balance',
+        label: 'Money I owe',
+        type: 'debt',
+      }),
+    ])
+  })
 })

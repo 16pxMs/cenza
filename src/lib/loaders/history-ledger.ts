@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
+import { selectTransactionsInCycleDateRange } from '@/lib/loaders/transactions'
 import { formatCycleLabel, getCurrentCycle, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
 import {
   isDebtOpeningBalanceTransaction,
@@ -50,10 +51,13 @@ export async function loadHistoryLedgerPageData(
     ? deriveCycleIdForDate(profile, targetDate)
     : deriveCurrentCycleId(profile)
 
-  const baseQuery = (supabase.from('transactions') as any)
-    .select('id, date, amount, note, display_name, category_key, category_label, category_type')
-    .eq('user_id', userId)
-    .eq('cycle_id', cycleId)
+  const baseQuery = selectTransactionsInCycleDateRange(
+    supabase,
+    userId,
+    profile,
+    'id, date, amount, note, display_name, category_key, category_label, category_type',
+    targetDate
+  ).query
 
   let scopedQuery = baseQuery
   const outflowBucketType =

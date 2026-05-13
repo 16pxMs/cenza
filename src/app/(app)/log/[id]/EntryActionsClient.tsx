@@ -176,7 +176,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
     : '/history/debt'
   const isUnlinkedDebtEntry = isDebtEntry && !hasLinkedDebt
   const debtEntryLabel = entry.debtEntryType === 'principal_increase'
-    ? 'opening balance'
+    ? 'Money I owe'
     : 'entry'
   const monthlyReminderKey = recurringExpenseKey(entry.categoryType, entry.categoryKey)
 
@@ -541,7 +541,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
                   )}
                   <div style={{ borderTop: `var(--border-width) solid ${T.borderSubtle}` }}>
                     <ActionRow
-                      title={entry.debtEntryType === 'principal_increase' ? 'Edit opening balance' : 'Edit entry'}
+                      title={entry.debtEntryType === 'principal_increase' ? 'Edit Money I owe' : 'Edit entry'}
                       meta={`Update the debt ${debtEntryLabel}`}
                       onClick={openDebtEdit}
                     />
@@ -872,7 +872,7 @@ export function EntryActionsClient({ entry, currency }: Props) {
           isGoalEntry
             ? 'Edit goal entry'
             : entry.debtEntryType === 'principal_increase'
-              ? 'Edit opening balance'
+              ? 'Edit Money I owe'
               : 'Edit debt entry'
         }
       >

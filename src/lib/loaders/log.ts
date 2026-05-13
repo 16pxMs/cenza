@@ -1,9 +1,11 @@
 import { formatCycleLabel, getCycleByDate, profileToPaySchedule } from '@/lib/cycles'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId } from '@/lib/supabase/cycles-db'
+import { selectTransactionsInCycleDateRange } from '@/lib/loaders/transactions'
 import type { UserProfile } from '@/types/database'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { loadMonthlyReminderEntriesForCycle } from '@/lib/monthly-reminders/storage'
+import { getCategoryLabel } from '@/lib/categories/config'
 import {
   deriveOutflowCategoryRows,
   deriveOutflowTotalFromCategories,
@@ -77,9 +79,14 @@ function resolveCategoryLabel(row: {
   category_label?: string | null
   category_key?: string | null
 }) {
+  const categoryKey = row.category_key || 'Expense'
+  if (categoryKey === 'debt_opening_balance') {
+    return getCategoryLabel(categoryKey, 'Money I owe')
+  }
+
   const categoryLabel = typeof row.category_label === 'string' ? row.category_label.trim() : ''
   if (categoryLabel) return categoryLabel
-  return titleCase(row.category_key || 'Expense')
+  return titleCase(categoryKey)
 }
 
 function normalizeCategoryType(value: string | null | undefined) {
@@ -124,12 +131,10 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const schedule = profileToPaySchedule(profile)
+  const transactionSelection = selectTransactionsInCycleDateRange(supabase, userId, profile, '*')
 
   const [{ data: txns }, monthlyReminderEntries] = await Promise.all([
-    (supabase.from('transactions') as any)
-      .select('*')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
+    transactionSelection.query
       .order('created_at', { ascending: false }),
     loadMonthlyReminderEntriesForCycle(supabase, userId, cycleId),
   ])

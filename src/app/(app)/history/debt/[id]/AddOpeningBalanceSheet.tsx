@@ -42,7 +42,7 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
       return
     }
     if (!date.trim()) {
-      setError('Opening balance date is required')
+      setError('Date is required')
       return
     }
 
@@ -58,7 +58,7 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
         setOpen(false)
         router.refresh()
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Failed to add opening balance')
+        setError(caught instanceof Error ? caught.message : 'Failed to add Money I owe')
       }
     })
   }
@@ -73,10 +73,10 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
           justifyContent: 'center',
         }}
       >
-        Add opening balance
+        Add Money I owe
       </PrimaryBtn>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Add opening balance">
+      <Sheet open={open} onClose={() => setOpen(false)} title="Add Money I owe">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <p
@@ -96,7 +96,7 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
                 color: 'var(--text-3)',
               }}
             >
-              Start tracking this debt with its first balance in {currency}.
+              Money I owe.
             </p>
           </div>
 
@@ -188,7 +188,7 @@ export function AddOpeningBalanceSheet({ debtId, debtName, currency }: Props) {
               Cancel
             </SecondaryBtn>
             <PrimaryBtn size="lg" onClick={handleSubmit} disabled={isPending} style={{ flex: 1 }}>
-              {isPending ? 'Saving…' : 'Save balance'}
+              {isPending ? 'Saving…' : 'Save Money I owe'}
             </PrimaryBtn>
           </div>
         </div>

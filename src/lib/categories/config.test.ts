@@ -28,6 +28,15 @@ describe('category config', () => {
     expect(getCategoryTypeFromKey('debt_repayment')).toBe('debt')
   })
 
+  it('keeps debt opening balance canonical while presenting it as money I owe', () => {
+    expect(getCategoryConfig('debt_opening_balance')).toEqual({
+      key: 'debt_opening_balance',
+      label: 'Money I owe',
+      type: 'debt',
+    })
+    expect(getCategoryLabel('debt_opening_balance', 'Fallback label')).toBe('Money I owe')
+  })
+
   it('maps medicine to everyday', () => {
     expect(getCategoryConfig('medicine')).toEqual({
       key: 'medicine',

@@ -1,6 +1,7 @@
 import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
+import { selectTransactionsInCycleDateRange } from '@/lib/loaders/transactions'
 import {
   formatCycleLabel,
   getCurrentCycle,
@@ -17,6 +18,7 @@ import {
   type OutflowCategoryType,
 } from '@/lib/transactions/outflow'
 import { deriveCategoryBreakdown, type CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
+import { getCategoryLabel } from '@/lib/categories/config'
 import type { UserProfile } from '@/types/database'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
 
@@ -90,6 +92,10 @@ function resolveTransactionTitle(row: Pick<HistoryTransaction, 'display_name' | 
 }
 
 function resolveCategoryDisplayLabel(row: Pick<HistoryTransaction, 'category_label' | 'category_key'>) {
+  if (row.category_key === 'debt_opening_balance') {
+    return getCategoryLabel(row.category_key, 'Money I owe')
+  }
+
   const label = typeof row.category_label === 'string' ? row.category_label.trim() : ''
   return label || titleFromKey(row.category_key || 'Expense')
 }
@@ -147,7 +153,8 @@ function isIncludedHistoryOutflow(row: HistoryTransaction): boolean {
 
 async function loadHistoryAvailableCycleIds(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
-  userId: string
+  userId: string,
+  profile: UserProfile
 ): Promise<string[]> {
   const [
     { data: txnCycles },
@@ -156,7 +163,7 @@ async function loadHistoryAvailableCycleIds(
     { data: budgetCycles },
   ] = await Promise.all([
     (supabase.from('transactions') as any)
-      .select('cycle_id')
+      .select('cycle_id, date')
       .eq('user_id', userId),
     (supabase.from('income_entries') as any)
       .select('cycle_id')
@@ -176,12 +183,22 @@ async function loadHistoryAvailableCycleIds(
     ]
       .map((row: any) => typeof row?.cycle_id === 'string' ? row.cycle_id : null)
       .filter((cycleId): cycleId is string => !!cycleId)
+      .concat(
+        (txnCycles ?? [])
+          .map((row: any) => {
+            if (typeof row?.date !== 'string') return null
+            const date = new Date(`${row.date}T00:00:00`)
+            if (Number.isNaN(date.getTime())) return null
+            return deriveCycleIdForDate(profile, date)
+          })
+          .filter((cycleId: string | null): cycleId is string => !!cycleId)
+      )
   )).sort()
 }
 
-export async function loadHistoryAvailableCycleIdsForUser(userId: string): Promise<string[]> {
+export async function loadHistoryAvailableCycleIdsForUser(userId: string, profile: UserProfile): Promise<string[]> {
   const supabase = await createServerSupabaseClient()
-  return loadHistoryAvailableCycleIds(supabase, userId)
+  return loadHistoryAvailableCycleIds(supabase, userId, profile)
 }
 
 export async function loadHistoryPageData(
@@ -194,6 +211,13 @@ export async function loadHistoryPageData(
   const cycleId = targetDate
     ? deriveCycleIdForDate(profile, targetDate)
     : deriveCurrentCycleId(profile)
+  const transactionSelection = selectTransactionsInCycleDateRange(
+    supabase,
+    userId,
+    profile,
+    'id, category_type, category_key, category_label, display_name, amount, date, created_at',
+    targetDate
+  )
 
   const [
     { data: txnRows },
@@ -201,10 +225,7 @@ export async function loadHistoryPageData(
     monthlyStorage,
     availableCycleIds,
   ] = await Promise.all([
-    (supabase.from('transactions') as any)
-      .select('id, category_type, category_key, category_label, display_name, amount, date, created_at')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId),
+    transactionSelection.query,
     (supabase.from('income_entries') as any)
       .select('salary, extra_income, total, cycle_start_mode, opening_balance')
       .eq('user_id', userId)
@@ -213,7 +234,7 @@ export async function loadHistoryPageData(
     loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
     availableCycleIdsOverride
       ? Promise.resolve(availableCycleIdsOverride)
-      : loadHistoryAvailableCycleIds(supabase, userId),
+      : loadHistoryAvailableCycleIds(supabase, userId, profile),
   ])
 
   const rows: HistoryTransaction[] = (txnRows ?? []).map((row: any) => ({

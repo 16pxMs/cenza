@@ -252,6 +252,7 @@ export function SmsImportClient() {
   const [expandedRaw, setExpandedRaw] = useState<Record<string, boolean>>({})
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [editStep, setEditStep] = useState<EditStep | null>(null)
+  const [editedRowIds, setEditedRowIds] = useState<string[]>([])
   const [editOpenedFromReviewList, setEditOpenedFromReviewList] = useState(false)
   const [detailsReturnStep, setDetailsReturnStep] = useState<EditStep | null>(null)
   const [recentCategoryKeys, setRecentCategoryKeys] = useState<string[]>([])
@@ -259,6 +260,7 @@ export function SmsImportClient() {
   const [categoryFilter, setCategoryFilter] = useState<ImportCategoryType>('everyday')
   const [categoryQuery, setCategoryQuery] = useState('')
   const [categoryBrowserOpen, setCategoryBrowserOpen] = useState(false)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
 
   useEffect(() => {
     setRecentCategoryKeys(loadRecentCategoryKeys())
@@ -583,13 +585,41 @@ export function SmsImportClient() {
     setCategoryBrowserOpen(false)
   }
 
-  const returnToInputScreen = () => {
+  const clearImportReviewState = () => {
     setRows([])
     setMonthlyReminderKeys([])
     setRowErrors({})
     setRowWarnings({})
     setExpandedRaw({})
+    setEditedRowIds([])
     setError(null)
+  }
+
+  const resetImportSession = () => {
+    setRawText('')
+    setParseMeta({ scanned: 0, skippedCredits: 0 })
+    clearImportReviewState()
+    closeEditRow()
+    setCancelConfirmOpen(false)
+    setParsing(false)
+    setSaving(false)
+  }
+
+  const shouldConfirmImportCancel = () => (
+    rows.length > 1 &&
+    (editedRowIds.length > 0 || rows.some((row) => row.categoryType || row.repeatsMonthly || row.debtId))
+  )
+
+  const requestCancelImport = () => {
+    if (shouldConfirmImportCancel()) {
+      setCancelConfirmOpen(true)
+      return
+    }
+    resetImportSession()
+  }
+
+  const returnToInputScreen = () => {
+    clearImportReviewState()
   }
 
   const goBackWithinEditFlow = () => {
@@ -740,6 +770,7 @@ export function SmsImportClient() {
     }
 
     updateRow(editingRowId, nextRow)
+    setEditedRowIds((current) => current.includes(editingRowId) ? current : [...current, editingRowId])
     return nextRow
   }
 
@@ -1308,13 +1339,7 @@ export function SmsImportClient() {
                 ) : validSavableRows.length === 0 ? (
                   <PrimaryBtn
                     size="lg"
-                    onClick={() => {
-                      setRows([])
-                      setMonthlyReminderKeys([])
-                      setRowErrors({})
-                      setRowWarnings({})
-                      setError(null)
-                    }}
+                    onClick={resetImportSession}
                   >
                     Paste again
                   </PrimaryBtn>
@@ -1340,15 +1365,9 @@ export function SmsImportClient() {
                 {showReview ? (
                   <SecondaryBtn
                     size="lg"
-                    onClick={() => {
-                      setRows([])
-                      setMonthlyReminderKeys([])
-                      setRowErrors({})
-                      setRowWarnings({})
-                      setError(null)
-                    }}
+                    onClick={requestCancelImport}
                   >
-                    Paste again
+                    Cancel
                   </SecondaryBtn>
                 ) : null}
               </div>
@@ -1549,6 +1568,9 @@ export function SmsImportClient() {
                   <PrimaryBtn size="lg" onClick={goToEditCategory}>
                     Continue
                   </PrimaryBtn>
+                  <SecondaryBtn size="lg" onClick={requestCancelImport}>
+                    Cancel
+                  </SecondaryBtn>
                 </div>
               </div>
             )}
@@ -1683,7 +1705,7 @@ export function SmsImportClient() {
                         </div>
 
                         <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.5 }}>
-                          You&apos;re recording a payment of {editDraft.amount ? Number(editDraft.amount).toLocaleString() : '0'} for this debt.
+                          Money I owe. You&apos;re recording a payment of {editDraft.amount ? Number(editDraft.amount).toLocaleString() : '0'} for this debt.
                         </p>
 
                         {createDebtError && (
@@ -1795,6 +1817,9 @@ export function SmsImportClient() {
                   >
                     Continue
                   </PrimaryBtn>
+                  <SecondaryBtn size="lg" onClick={requestCancelImport}>
+                    Cancel
+                  </SecondaryBtn>
                 </div>
               </div>
             )}
@@ -1906,6 +1931,9 @@ export function SmsImportClient() {
                       Edit details
                     </SecondaryBtn>
                   ) : null}
+                  <SecondaryBtn size="lg" onClick={requestCancelImport}>
+                    Cancel
+                  </SecondaryBtn>
                 </div>
               </div>
             )}
@@ -2070,6 +2098,31 @@ export function SmsImportClient() {
             </PrimaryBtn>
             <SecondaryBtn size="lg" onClick={() => setEditDeleteConfirmOpen(false)}>
               Cancel
+            </SecondaryBtn>
+          </div>
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        title="Cancel import?"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.5 }}>
+            This will clear the pasted text and all rows you have reviewed.
+          </p>
+
+          <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+            <PrimaryBtn
+              size="lg"
+              onClick={resetImportSession}
+              style={{ background: T.redDark, color: T.white }}
+            >
+              Cancel import
+            </PrimaryBtn>
+            <SecondaryBtn size="lg" onClick={() => setCancelConfirmOpen(false)}>
+              Keep working
             </SecondaryBtn>
           </div>
         </div>

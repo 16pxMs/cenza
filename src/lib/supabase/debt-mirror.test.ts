@@ -89,7 +89,7 @@ describe('debt mirror transactions', () => {
       date: '2026-05-06',
       category_type: 'debt',
       category_key: 'debt_opening_balance',
-      category_label: 'Debt opening balance',
+      category_label: 'Money I owe',
       display_name: 'Visa card balance',
       amount: 12000,
       note: null,

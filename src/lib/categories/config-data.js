@@ -42,7 +42,7 @@ export const CATEGORY_CONFIG = {
   family: { key: 'family', label: 'Family', type: 'goal' },
 
   debt_repayment: { key: 'debt_repayment', label: 'Debt repayment', type: 'debt' },
-  debt_opening_balance: { key: 'debt_opening_balance', label: 'Debt opening balance', type: 'debt' },
+  debt_opening_balance: { key: 'debt_opening_balance', label: 'Money I owe', type: 'debt' },
 }
 
 export const CATEGORY_ALIASES = {

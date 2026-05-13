@@ -2,6 +2,7 @@ import { GOAL_META } from '@/constants/goals'
 import { deriveIncomeTotal } from '@/lib/income/derived'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { deriveCurrentCycleId, derivePrevCycleId } from '@/lib/supabase/cycles-db'
+import { getCycleDateRange, selectTransactionsInCycleDateRange } from '@/lib/loaders/transactions'
 import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
 import {
   loadMonthlyStorageSnapshotForCycle,
@@ -577,6 +578,12 @@ export async function loadOverviewPageData(userId: string, profile: UserProfile)
 export async function loadOverviewCriticalData(userId: string, profile: UserProfile): Promise<OverviewCriticalData> {
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
+  const transactionSelection = selectTransactionsInCycleDateRange(
+    supabase,
+    userId,
+    profile,
+    'amount, category_type, category_key'
+  )
 
   const [
     { data: txns },
@@ -588,10 +595,7 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     { data: historicalDebtRow },
     { data: goalTargetExistsRow },
   ] = await Promise.all([
-    (supabase.from('transactions') as any)
-      .select('amount, category_type, category_key')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId),
+    transactionSelection.query,
     (supabase.from('income_entries') as any)
       .select('salary, extra_income, total, cycle_start_mode, opening_balance, received, received_confirmed_at')
       .eq('user_id', userId)
@@ -687,13 +691,27 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
   const supabase = await createServerSupabaseClient()
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
+  const currentTransactionSelection = selectTransactionsInCycleDateRange(
+    supabase,
+    userId,
+    profile,
+    'id, amount, category_key, category_type, category_label, display_name, date'
+  )
+  const previousCycleTargetDate = (() => {
+    const currentRange = getCycleDateRange(profile)
+    const previous = new Date(`${currentRange.startDate}T00:00:00`)
+    previous.setDate(previous.getDate() - 1)
+    return previous
+  })()
   const goals = (profile.goals ?? []) as GoalId[]
   const prevCycleRecurringPromise = prevCycleId
-    ? (supabase.from('transactions') as any)
-        .select('amount, category_key, category_label, category_type')
-        .eq('user_id', userId)
-        .eq('cycle_id', prevCycleId)
-        .in('category_type', ['fixed', 'subscription'])
+    ? selectTransactionsInCycleDateRange(
+        supabase,
+        userId,
+        profile,
+        'amount, category_key, category_label, category_type',
+        previousCycleTargetDate
+      ).query.in('category_type', ['fixed', 'subscription'])
     : Promise.resolve({ data: [] as OverviewPrevCycleTransactionRow[] })
 
   const [
@@ -705,10 +723,7 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
     { data: prevCycleRecurringRows },
     { data: goalContributionRows },
   ] = await Promise.all([
-    (supabase.from('transactions') as any)
-      .select('id, amount, category_key, category_type, category_label, display_name, date')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId),
+    currentTransactionSelection.query,
     loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
     (supabase.from('spending_budgets') as any)
       .select('total_budget, categories')

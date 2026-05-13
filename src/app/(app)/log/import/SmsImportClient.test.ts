@@ -19,6 +19,15 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).not.toContain('See my expenses')
   })
 
+  it('has a true cancel path that clears pasted input and reviewed rows', () => {
+    expect(importSource).toContain('Cancel')
+    expect(importSource).toContain('Cancel import?')
+    expect(importSource).toContain('requestCancelImport')
+    expect(importSource).toContain("setRawText('')")
+    expect(importSource).toContain('setRows([])')
+    expect(importSource).toContain('setParseMeta({ scanned: 0, skippedCredits: 0 })')
+  })
+
   it('routes default add-entry affordances to import while preserving manual route infrastructure elsewhere', () => {
     expect(globalAddSource).toContain('/log/import?returnTo=')
     expect(legacyFirstSource).toContain('/log/import?returnTo=/app')
