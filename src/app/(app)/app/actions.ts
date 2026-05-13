@@ -2,10 +2,16 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAppSession } from '@/lib/auth/app-session'
-import { loadOverviewSecondaryData } from '@/lib/loaders/overview'
+import {
+  loadOverviewSecondaryData,
+  parseOverviewProfileSnapshot,
+  type OverviewProfileSnapshot,
+} from '@/lib/loaders/overview'
 import { createCycleTransaction } from '@/lib/supabase/transactions-db'
 import { getCurrentCycleId } from '@/lib/supabase/cycles-db'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { logPerfSpan, timePerf } from '@/lib/perf/debug'
+import type { UserProfile } from '@/types/database'
 
 interface AddGoalContributionInput {
   goalId: string
@@ -96,8 +102,59 @@ export async function confirmReceivedIncome(received: number, receivedDate?: str
   revalidatePath('/plan')
 }
 
-export async function loadOverviewSecondary(): Promise<Awaited<ReturnType<typeof loadOverviewSecondaryData>>> {
-  const { user, profile } = await getAppSession()
+async function loadOverviewProfileFallback(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  userId: string
+): Promise<UserProfile | null> {
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('id, currency, pay_schedule_type, pay_schedule_days, amount_format_preference, goals')
+    .eq('id', userId)
+    .maybeSingle()
+
+  return profile ?? null
+}
+
+export async function loadOverviewSecondary(
+  snapshot?: OverviewProfileSnapshot | null
+): Promise<Awaited<ReturnType<typeof loadOverviewSecondaryData>>> {
+  const startedAt = Date.now()
+  const supabase = await timePerf('overview.secondary-action', 'supabase-init', async () => createServerSupabaseClient())
+  const { user, profile, usedProfileSnapshot } = await timePerf('overview.secondary-action', 'auth-profile-load', async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { user: null, profile: null, usedProfileSnapshot: false }
+
+    const parsedSnapshot = parseOverviewProfileSnapshot(snapshot)
+    const snapshotMatchesUser = parsedSnapshot?.id === user.id
+    logPerfSpan('overview.secondary-action', 'snapshot-validation', Date.now(), {
+      hasSnapshot: !!snapshot,
+      snapshotValid: !!parsedSnapshot,
+      snapshotMatchesUser,
+    })
+
+    if (parsedSnapshot && snapshotMatchesUser) {
+      logPerfSpan('overview.secondary-action', 'profile-fetch-skipped', Date.now(), {
+        usedProfileSnapshot: true,
+      })
+      return { user, profile: parsedSnapshot, usedProfileSnapshot: true }
+    }
+
+    const fallbackProfile = await timePerf('overview.secondary-action', 'fallback-profile-fetch', async () =>
+      loadOverviewProfileFallback(supabase, user.id)
+    )
+    return { user, profile: fallbackProfile, usedProfileSnapshot: false }
+  })
   if (!user || !profile) throw new Error('Not authenticated')
-  return loadOverviewSecondaryData(user.id, profile)
+  const data = await timePerf('overview.secondary-action', 'secondary-loader', async () =>
+    loadOverviewSecondaryData(user.id, profile)
+  )
+  logPerfSpan('overview.secondary-action', 'total', startedAt, {
+    recentActivityCount: data.recentActivity.length,
+    topCategoryCount: data.topOutflowCategories.length,
+    activeDebtCount: data.activeDebts.length,
+    usedProfileSnapshot,
+  })
+  return data
 }

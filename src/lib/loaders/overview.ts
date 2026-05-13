@@ -19,6 +19,7 @@ import {
 import { deriveCategoryBreakdown, type CategoryBreakdownRow } from '@/lib/transactions/category-breakdown'
 import type { Debt, GoalId, UserProfile } from '@/types/database'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
+import { logPerfSpan, timePerf } from '@/lib/perf/debug'
 
 interface ExtraIncomeItem {
   id: string
@@ -344,6 +345,54 @@ export interface OverviewSecondaryData {
   commitmentSummary: OverviewCommitmentSummary
 }
 
+export type OverviewProfileSnapshot = Pick<
+  UserProfile,
+  'id' | 'currency' | 'pay_schedule_type' | 'pay_schedule_days' | 'amount_format_preference' | 'goals'
+>
+
+export function createOverviewProfileSnapshot(profile: UserProfile): OverviewProfileSnapshot {
+  return {
+    id: profile.id,
+    currency: profile.currency ?? 'KES',
+    pay_schedule_type: profile.pay_schedule_type ?? null,
+    pay_schedule_days: Array.isArray(profile.pay_schedule_days)
+      ? profile.pay_schedule_days.map((day) => Number(day)).filter((day) => Number.isFinite(day))
+      : null,
+    amount_format_preference: profile.amount_format_preference ?? 'smart',
+    goals: Array.isArray(profile.goals) ? profile.goals : [],
+  }
+}
+
+export function parseOverviewProfileSnapshot(value: unknown): OverviewProfileSnapshot | null {
+  if (!value || typeof value !== 'object') return null
+  const snapshot = value as Partial<OverviewProfileSnapshot>
+  if (typeof snapshot.id !== 'string' || snapshot.id.trim() === '') return null
+
+  const payScheduleType =
+    snapshot.pay_schedule_type === 'monthly' || snapshot.pay_schedule_type === 'twice_monthly'
+      ? snapshot.pay_schedule_type
+      : null
+  const payScheduleDays = Array.isArray(snapshot.pay_schedule_days)
+    ? snapshot.pay_schedule_days.map((day) => Number(day)).filter((day) => Number.isFinite(day))
+    : null
+  const amountFormatPreference =
+    snapshot.amount_format_preference === 'full' || snapshot.amount_format_preference === 'short'
+      ? snapshot.amount_format_preference
+      : 'smart'
+  const goals = Array.isArray(snapshot.goals)
+    ? snapshot.goals.filter((goal): goal is GoalId => typeof goal === 'string' && !!GOAL_META[goal as GoalId])
+    : []
+
+  return {
+    id: snapshot.id,
+    currency: typeof snapshot.currency === 'string' && snapshot.currency.trim() ? snapshot.currency : 'KES',
+    pay_schedule_type: payScheduleType,
+    pay_schedule_days: payScheduleDays,
+    amount_format_preference: amountFormatPreference,
+    goals,
+  }
+}
+
 function parseDate(value: string | null) {
   if (!value) return null
   const parsed = new Date(`${value}T00:00:00`)
@@ -364,6 +413,36 @@ function resolveVisibleTransactionLabel(row: Pick<OverviewTransactionRow, 'displ
   if (categoryLabel) return categoryLabel
 
   return titleFromKey(row.category_key || 'Expense')
+}
+
+function compareRecentActivityRows(a: Pick<OverviewTransactionRow, 'id' | 'date'>, b: Pick<OverviewTransactionRow, 'id' | 'date'>) {
+  if (a.date === b.date) return Number(b.id) - Number(a.id)
+  return b.date.localeCompare(a.date)
+}
+
+function takeRecentActivityRows(rows: OverviewTransactionRow[], count: number) {
+  const recent: OverviewTransactionRow[] = []
+
+  for (const row of rows) {
+    let inserted = false
+    for (let index = 0; index < recent.length; index += 1) {
+      if (compareRecentActivityRows(row, recent[index]) < 0) {
+        recent.splice(index, 0, row)
+        inserted = true
+        break
+      }
+    }
+
+    if (!inserted && recent.length < count) {
+      recent.push(row)
+    }
+
+    if (recent.length > count) {
+      recent.length = count
+    }
+  }
+
+  return recent
 }
 
 function deriveObligationStatus(daysUntil: number): ObligationStatus {
@@ -566,20 +645,37 @@ function selectOverviewGoal(input: {
 }
 
 export async function loadOverviewPageData(userId: string, profile: UserProfile): Promise<OverviewPageData> {
+  const startedAt = Date.now()
   const [critical, secondary] = await Promise.all([
     loadOverviewCriticalData(userId, profile),
     loadOverviewSecondaryData(userId, profile),
   ])
 
-  return {
+  const responseStartedAt = Date.now()
+  const response = {
     ...critical,
     ...secondary,
   }
+  logPerfSpan('overview.full', 'response-shaping', responseStartedAt, {
+    hasStartedCycleData: response.hasStartedCycleData,
+    recentActivityCount: response.recentActivity.length,
+    topCategoryCount: response.topOutflowCategories.length,
+  })
+  logPerfSpan('overview.full', 'total', startedAt, {
+    hasStartedCycleData: response.hasStartedCycleData,
+  })
+  return response
 }
 
 export async function loadOverviewCriticalData(userId: string, profile: UserProfile): Promise<OverviewCriticalData> {
-  const supabase = await createServerSupabaseClient()
+  const startedAt = Date.now()
+  const flow = 'overview.critical'
+  const supabase = await timePerf(flow, 'supabase-init', async () => createServerSupabaseClient())
+  const cycleStartedAt = Date.now()
   const cycleId = deriveCurrentCycleId(profile)
+  logPerfSpan(flow, 'current-cycle-derivation', cycleStartedAt, {
+    hasPaySchedule: Array.isArray(profile.pay_schedule_days) && profile.pay_schedule_days.length > 0,
+  })
   const transactionSelection = selectTransactionsInCycleDateRange(
     supabase,
     userId,
@@ -592,54 +688,103 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     { data: income },
     hasMonthlyStorage,
     { data: activeDebtRows },
-    { data: historicalTransactionRow },
-    { data: historicalIncomeRow },
-    { data: historicalDebtRow },
-    { data: goalTargetExistsRow },
   ] = await Promise.all([
-    transactionSelection.query,
-    (supabase.from('income_entries') as any)
-      .select('salary, extra_income, total, cycle_start_mode, opening_balance, received, received_confirmed_at')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
-    hasMonthlyStorageForUser(supabase, userId),
-    (supabase.from('debts') as any)
-      .select('id, name, status, current_balance, debt_kind, standard_due_date, financing_target_date, currency')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .gt('current_balance', 0),
-    (supabase.from('transactions') as any)
-      .select('id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle(),
-    (supabase.from('income_entries') as any)
-      .select('cycle_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle(),
-    (supabase.from('debts') as any)
-      .select('id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle(),
-    (supabase.from('goal_targets') as any)
-      .select('goal_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle(),
+    timePerf(flow, 'current-cycle-transaction-read', async () => transactionSelection.query),
+    timePerf(flow, 'income-planning-read', async () =>
+      (supabase.from('income_entries') as any)
+        .select('salary, extra_income, total, cycle_start_mode, opening_balance, received, received_confirmed_at')
+        .eq('user_id', userId)
+        .eq('cycle_id', cycleId)
+        .maybeSingle()
+    ),
+    timePerf(flow, 'monthly-storage-presence-read', async () => hasMonthlyStorageForUser(supabase, userId)),
+    timePerf(flow, 'debt-candidate-read', async () =>
+      (supabase.from('debts') as any)
+        .select('id, name, status, current_balance, debt_kind, standard_due_date, financing_target_date, currency')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gt('current_balance', 0)
+    ),
   ])
 
   const transactionRows = (txns ?? []) as Array<Pick<OverviewTransactionRow, 'amount' | 'category_type' | 'category_key'>>
   const visibleTransactionRows = transactionRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
   const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const debtRows = (activeDebtRows ?? []) as Debt[]
+  const hasProfileGoals = (profile.goals?.length ?? 0) > 0
+  const hasCurrentCycleTransactions = transactionRows.length > 0
+  const hasCurrentCycleIncome = !!incomeRow
+  const hasActiveDebtRows = debtRows.length > 0
+  const skippedOnboardingRead = <T,>(step: string, data: T | null) => {
+    logPerfSpan(flow, step, Date.now(), { skipped: true })
+    return Promise.resolve({ data })
+  }
+  const onboardingStartedAt = Date.now()
+  const [
+    { data: historicalTransactionRow },
+    { data: historicalIncomeRow },
+    { data: historicalDebtRow },
+    { data: goalTargetExistsRow },
+  ] = await Promise.all([
+    hasCurrentCycleTransactions
+      ? skippedOnboardingRead('onboarding-transaction-exists-read', { id: 'current-cycle' })
+      : timePerf(flow, 'onboarding-transaction-exists-read', async () =>
+          (supabase.from('transactions') as any)
+            .select('id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle()
+        ),
+    hasCurrentCycleIncome
+      ? skippedOnboardingRead('onboarding-income-exists-read', { cycle_id: cycleId })
+      : timePerf(flow, 'onboarding-income-exists-read', async () =>
+          (supabase.from('income_entries') as any)
+            .select('cycle_id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle()
+        ),
+    hasActiveDebtRows
+      ? skippedOnboardingRead('onboarding-debt-exists-read', { id: 'active-debt' })
+      : timePerf(flow, 'onboarding-debt-exists-read', async () =>
+          (supabase.from('debts') as any)
+            .select('id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle()
+        ),
+    hasProfileGoals
+      ? skippedOnboardingRead('onboarding-goal-exists-read', { goal_id: 'profile-goal' })
+      : timePerf(flow, 'onboarding-goal-exists-read', async () =>
+          (supabase.from('goal_targets') as any)
+            .select('goal_id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle()
+        ),
+  ])
+  logPerfSpan(flow, 'onboarding-existence-reads', onboardingStartedAt, {
+    skippedTransactionRead: hasCurrentCycleTransactions,
+    skippedIncomeRead: hasCurrentCycleIncome,
+    skippedDebtRead: hasActiveDebtRows,
+    skippedGoalRead: hasProfileGoals,
+  })
+  logPerfSpan(flow, 'data-read-counts', startedAt, {
+    transactionRowCount: transactionRows.length,
+    visibleTransactionRowCount: visibleTransactionRows.length,
+    activeDebtCount: debtRows.length,
+    hasIncome: !!incomeRow,
+    hasMonthlyStorage,
+  })
 
+  const aggregationStartedAt = Date.now()
   const totalSpent = (() => {
     const outflowRows = deriveOutflowCategoryRows(visibleTransactionRows)
     return deriveOutflowTotalFromCategories(outflowRows)
   })()
+  logPerfSpan(flow, 'category-outflow-aggregation', aggregationStartedAt, {
+    visibleTransactionRowCount: visibleTransactionRows.length,
+  })
 
   const incomeTotal = deriveIncomeTotal(incomeRow)
   const openingBalance = incomeRow?.opening_balance != null ? Number(incomeRow.opening_balance) : null
@@ -656,9 +801,15 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     hasMonthlyStorage
 
   const displayFirstName = profile.name?.trim().split(/\s+/)[0] || 'there'
+  const debtCandidateStartedAt = Date.now()
   const debtReminderCandidates = deriveDebtReminderCandidates(debtRows)
+  logPerfSpan(flow, 'debt-reminder-candidate-derivation', debtCandidateStartedAt, {
+    activeDebtCount: debtRows.length,
+    debtReminderCandidateCount: debtReminderCandidates.length,
+  })
 
-  return {
+  const responseStartedAt = Date.now()
+  const response = {
     name: displayFirstName,
     currency: profile.currency ?? 'KES',
     amountFormatPreference: profile.amount_format_preference ?? 'smart',
@@ -687,12 +838,32 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     totalSpent,
     debtReminderCandidates,
   }
+  logPerfSpan(flow, 'response-shaping', responseStartedAt, {
+    hasStartedCycleData: response.hasStartedCycleData,
+    debtReminderCandidateCount: response.debtReminderCandidates.length,
+  })
+  logPerfSpan(flow, 'total', startedAt, {
+    transactionRowCount: transactionRows.length,
+    activeDebtCount: debtRows.length,
+    hasStartedCycleData: response.hasStartedCycleData,
+  })
+  return response
 }
 
-export async function loadOverviewSecondaryData(userId: string, profile: UserProfile): Promise<OverviewSecondaryData> {
-  const supabase = await createServerSupabaseClient()
+export async function loadOverviewSecondaryData(
+  userId: string,
+  profile: UserProfile | OverviewProfileSnapshot
+): Promise<OverviewSecondaryData> {
+  const startedAt = Date.now()
+  const flow = 'overview.secondary'
+  const supabase = await timePerf(flow, 'supabase-init', async () => createServerSupabaseClient())
+  const cycleStartedAt = Date.now()
   const cycleId = deriveCurrentCycleId(profile)
   const prevCycleId = derivePrevCycleId(profile)
+  logPerfSpan(flow, 'cycle-derivation', cycleStartedAt, {
+    hasPreviousCycle: !!prevCycleId,
+    hasPaySchedule: Array.isArray(profile.pay_schedule_days) && profile.pay_schedule_days.length > 0,
+  })
   const currentTransactionSelection = selectTransactionsInCycleDateRange(
     supabase,
     userId,
@@ -725,27 +896,44 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
     { data: prevCycleRecurringRows },
     { data: goalContributionRows },
   ] = await Promise.all([
-    currentTransactionSelection.query,
-    loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId),
-    (supabase.from('spending_budgets') as any)
-      .select('total_budget, categories')
-      .eq('user_id', userId)
-      .eq('cycle_id', cycleId)
-      .maybeSingle(),
-    (supabase.from('goal_targets') as any)
-      .select('goal_id, amount, added_at, created_at, destination')
-      .eq('user_id', userId),
-    (supabase.from('debts') as any)
-      .select('id, name, status, current_balance, debt_kind, standard_due_date, financing_target_date, currency')
-      .eq('user_id', userId),
-    prevCycleRecurringPromise,
+    timePerf(flow, 'current-cycle-transaction-read', async () => currentTransactionSelection.query),
+    timePerf(flow, 'monthly-reminder-read', async () =>
+      loadMonthlyStorageSnapshotForCycle(supabase, userId, cycleId)
+    ),
+    timePerf(flow, 'spending-budget-read', async () =>
+      (supabase.from('spending_budgets') as any)
+        .select('total_budget, categories')
+        .eq('user_id', userId)
+        .eq('cycle_id', cycleId)
+        .maybeSingle()
+    ),
+    timePerf(flow, 'goal-target-read', async () =>
+      (supabase.from('goal_targets') as any)
+        .select('goal_id, amount, added_at, created_at, destination')
+        .eq('user_id', userId)
+    ),
+    timePerf(flow, 'debt-read', async () =>
+      (supabase.from('debts') as any)
+        .select('id, name, status, current_balance, debt_kind, standard_due_date, financing_target_date, currency')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gt('current_balance', 0)
+    ),
+    timePerf(flow, 'previous-cycle-recurring-read', async () => prevCycleRecurringPromise, {
+      hasPreviousCycle: !!prevCycleId,
+    }),
     goals.length === 0
       ? Promise.resolve({ data: [] as OverviewGoalContributionRow[] })
-      : (supabase.from('transactions') as any)
-          .select('category_key, amount, date, created_at')
-          .eq('user_id', userId)
-          .eq('category_type', 'goal')
-          .in('category_key', goals),
+      : timePerf(flow, 'goal-contribution-read', async () =>
+          (supabase.from('transactions') as any)
+            .select('category_key, amount, date, created_at')
+            .eq('user_id', userId)
+            .eq('category_type', 'goal')
+            .in('category_key', goals),
+          {
+            goalCount: goals.length,
+          }
+        ),
   ])
 
   const transactionRows = (txns ?? []) as OverviewTransactionRow[]
@@ -755,6 +943,17 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
   const fixedTotal = monthlyStorage.plannedTotal
   const plannedMonthlyEntries = monthlyStorage.plannedEntries
   const monthlyReminders = monthlyStorage.reminderEntries
+  logPerfSpan(flow, 'data-read-counts', startedAt, {
+    transactionRowCount: transactionRows.length,
+    visibleTransactionRowCount: visibleTransactionRows.length,
+    goalTargetCount: goalTargetRows.length,
+    debtCount: debtRows.length,
+    previousCycleRecurringCount: (prevCycleRecurringRows ?? []).length,
+    goalContributionCount: (goalContributionRows ?? []).length,
+    plannedEntryCount: plannedMonthlyEntries.length,
+    monthlyReminderCount: monthlyReminders.length,
+    hasSpendingBudget: !!spendingBudget,
+  })
 
   if (process.env.NEXT_PUBLIC_DEBUG_OVERVIEW === 'true') {
     const fixedTxnDebug = transactionRows
@@ -778,6 +977,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     )
   }
 
+  const priorityStartedAt = Date.now()
   const goalTargetsMap: Record<string, number> = {}
   const goalLabels: Record<string, string> = {}
   const goalAddedAtMap: Record<string, string> = {}
@@ -817,6 +1017,7 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     }
   }
 
+  const aggregationStartedAt = Date.now()
   const [categorySpend, goalSavedMap] = (() => {
     const nextCategorySpend: Record<string, number> = {}
     const nextGoalSavedMap: Record<string, number> = {}
@@ -836,6 +1037,11 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
 
     return [nextCategorySpend, nextGoalSavedMap] as const
   })()
+  logPerfSpan(flow, 'category-outflow-aggregation', aggregationStartedAt, {
+    visibleTransactionRowCount: visibleTransactionRows.length,
+    categorySpendCount: Object.keys(categorySpend).length,
+    goalSavedCount: Object.keys(goalSavedMap).length,
+  })
 
   const activeDebts = debtRows.filter(
     (debt) => debt.status === 'active' && Number(debt.current_balance) > 0
@@ -845,12 +1051,8 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     0
   )
 
-  const recentActivity = [...visibleTransactionRows]
-    .sort((a, b) => {
-      if (a.date === b.date) return Number(b.id) - Number(a.id)
-      return b.date.localeCompare(a.date)
-    })
-    .slice(0, 3)
+  const responsePartsStartedAt = Date.now()
+  const recentActivity = takeRecentActivityRows(visibleTransactionRows, 3)
     .map((txn) => ({
       id: String(txn.id),
       label: resolveVisibleTransactionLabel(txn),
@@ -859,6 +1061,11 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     }))
 
   const topOutflowCategories = deriveCategoryBreakdown(visibleTransactionRows).slice(0, 3)
+  logPerfSpan(flow, 'activity-and-category-shaping', responsePartsStartedAt, {
+    visibleTransactionRowCount: visibleTransactionRows.length,
+    recentActivityCount: recentActivity.length,
+    topCategoryCount: topOutflowCategories.length,
+  })
 
   const spendingBudgetData = spendingBudget
     ? {
@@ -909,6 +1116,13 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     contributionCount: goalContributionCountMap,
     totalSaved: goalTotalSavedMap,
   })
+  logPerfSpan(flow, 'priority-card-derivation', priorityStartedAt, {
+    goalCount: goals.length,
+    goalTargetCount: goalTargetRows.length,
+    goalContributionCount: goalContributionRowsTyped.length,
+    hasSelectedGoal: !!selectedGoal,
+  })
+  const obligationStartedAt = Date.now()
   const overviewObligations = deriveOverviewObligations({
     debts: debtRows,
     currency: profile.currency ?? 'KES',
@@ -924,8 +1138,17 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     billsLeftToPay,
     overviewObligations,
   })
+  logPerfSpan(flow, 'commitment-derivation', obligationStartedAt, {
+    debtCount: debtRows.length,
+    transactionRowCount: transactionRows.length,
+    plannedEntryCount: plannedMonthlyEntries.length,
+    monthlyReminderCount: monthlyReminders.length,
+    obligationCount: overviewObligations.length,
+    hasCommitmentSummary: !!commitmentSummary,
+  })
 
-  return {
+  const responseStartedAt = Date.now()
+  const response = {
     amountFormatPreference: profile.amount_format_preference ?? 'smart',
     goals,
     activeDebts,
@@ -945,4 +1168,18 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     overviewObligations,
     commitmentSummary,
   }
+  logPerfSpan(flow, 'response-shaping', responseStartedAt, {
+    recentActivityCount: response.recentActivity.length,
+    topCategoryCount: response.topOutflowCategories.length,
+    activeDebtCount: response.activeDebts.length,
+    obligationCount: response.overviewObligations.length,
+    monthlyReminderCount: response.monthlyReminders.length,
+  })
+  logPerfSpan(flow, 'total', startedAt, {
+    transactionRowCount: transactionRows.length,
+    visibleTransactionRowCount: visibleTransactionRows.length,
+    activeDebtCount: activeDebts.length,
+    goalCount: goals.length,
+  })
+  return response
 }

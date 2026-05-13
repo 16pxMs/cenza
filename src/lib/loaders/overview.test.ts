@@ -155,7 +155,33 @@ describe('loadOverviewCriticalData', () => {
     expect(data.incomeData.total).toBe(300000)
   })
 
+  it('reuses current overview data instead of repeating onboarding existence reads', async () => {
+    const supabase = makeSupabaseForCriticalData()
+    createServerSupabaseClient.mockResolvedValue(supabase)
+    const { loadOverviewCriticalData } = await import('./overview')
+
+    const data = await loadOverviewCriticalData('user-1', {
+      name: 'Test User',
+      currency: 'KES',
+      income_type: 'salaried',
+      pay_schedule_days: [25],
+      goals: [],
+    } as any)
+
+    expect(data.hasStartedCycleData).toBe(true)
+    expect(supabase.from).toHaveBeenCalledWith('transactions')
+    expect(supabase.from.mock.calls.filter(([table]) => table === 'transactions')).toHaveLength(1)
+    expect(supabase.from.mock.calls.filter(([table]) => table === 'income_entries')).toHaveLength(1)
+  })
+
   it('uses display_name for recent activity labels and falls back to category label', async () => {
+    const debtBalanceGt = vi.fn().mockResolvedValue({ data: [] })
+    const debtStatusEq = vi.fn(() => ({
+      gt: debtBalanceGt,
+    }))
+    const debtUserEq = vi.fn(() => ({
+      eq: debtStatusEq,
+    }))
     createServerSupabaseClient.mockResolvedValue({
       from: vi.fn((table: string) => {
         if (table === 'transactions') {
@@ -238,7 +264,7 @@ describe('loadOverviewCriticalData', () => {
         if (table === 'debts') {
           return {
             select: vi.fn(() => ({
-              eq: vi.fn().mockResolvedValue({ data: [] }),
+              eq: debtUserEq,
             })),
           }
         }
@@ -260,6 +286,9 @@ describe('loadOverviewCriticalData', () => {
       expect.objectContaining({ id: 'txn-1', label: 'tennis court' }),
       expect.objectContaining({ id: 'txn-2', label: 'Transport' }),
     ])
+    expect(debtUserEq).toHaveBeenCalledWith('user_id', 'user-1')
+    expect(debtStatusEq).toHaveBeenCalledWith('status', 'active')
+    expect(debtBalanceGt).toHaveBeenCalledWith('current_balance', 0)
     expect(data.topOutflowCategories).toEqual([
       expect.objectContaining({
         categoryKey: 'sports',

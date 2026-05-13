@@ -4,12 +4,14 @@ const revalidatePath = vi.fn()
 const getAppSession = vi.fn()
 const createServerSupabaseClient = vi.fn()
 const getCurrentCycleId = vi.fn()
+const deriveCurrentCycleId = vi.fn()
+const derivePrevCycleId = vi.fn()
 const createCycleTransaction = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
-vi.mock('@/lib/supabase/cycles-db', () => ({ getCurrentCycleId }))
+vi.mock('@/lib/supabase/cycles-db', () => ({ getCurrentCycleId, deriveCurrentCycleId, derivePrevCycleId }))
 vi.mock('@/lib/supabase/transactions-db', () => ({ createCycleTransaction }))
 
 function makeSupabase(existingRow: { id: string } | null) {
@@ -37,6 +39,102 @@ function makeSupabase(existingRow: { id: string } | null) {
   return { supabase, update, upsert, maybeSingle }
 }
 
+function makeOverviewSupabase(options: {
+  userId?: string
+  fallbackProfile?: Record<string, unknown> | null
+} = {}) {
+  const userId = options.userId ?? 'user-1'
+  const fallbackProfile = options.fallbackProfile ?? {
+    id: userId,
+    currency: 'KES',
+    pay_schedule_type: 'monthly',
+    pay_schedule_days: [25],
+    amount_format_preference: 'smart',
+    goals: [],
+  }
+  const userProfilesMaybeSingle = vi.fn().mockResolvedValue({ data: fallbackProfile, error: null })
+  const userProfilesEq = vi.fn(() => ({ maybeSingle: userProfilesMaybeSingle }))
+  const fixedExpensesMaybeSingle = vi.fn().mockResolvedValue({ data: { entries: [] }, error: null })
+  const fixedExpensesEqCycle = vi.fn(() => ({ maybeSingle: fixedExpensesMaybeSingle }))
+  const fixedExpensesEqUser = vi.fn(() => ({ eq: fixedExpensesEqCycle }))
+  const spendingBudgetMaybeSingle = vi.fn().mockResolvedValue({ data: null })
+  const spendingBudgetEqCycle = vi.fn(() => ({ maybeSingle: spendingBudgetMaybeSingle }))
+  const spendingBudgetEqUser = vi.fn(() => ({ eq: spendingBudgetEqCycle }))
+  const debtBalanceGt = vi.fn().mockResolvedValue({ data: [] })
+  const debtStatusEq = vi.fn(() => ({ gt: debtBalanceGt }))
+  const debtUserEq = vi.fn(() => ({ eq: debtStatusEq }))
+
+  const supabase = {
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: userId } } }),
+    },
+    from: vi.fn((table: string) => {
+      if (table === 'user_profiles') {
+        return {
+          select: vi.fn(() => ({ eq: userProfilesEq })),
+        }
+      }
+      if (table === 'transactions') {
+        return {
+          select: vi.fn((query: string) => {
+            if (query === 'id, amount, category_key, category_type, category_label, custom_category_id, display_name, date') {
+              return {
+                eq: vi.fn(() => ({
+                  eq: vi.fn().mockResolvedValue({ data: [] }),
+                })),
+              }
+            }
+            if (query === 'category_key, amount, date, created_at') {
+              return {
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn().mockResolvedValue({ data: [] }),
+                  })),
+                })),
+              }
+            }
+            if (query === 'amount, category_key, category_label, category_type, custom_category_id') {
+              return {
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn().mockResolvedValue({ data: [] }),
+                  })),
+                })),
+              }
+            }
+            throw new Error(`Unexpected transactions select ${query}`)
+          }),
+        }
+      }
+      if (table === 'fixed_expenses') {
+        return {
+          select: vi.fn(() => ({ eq: fixedExpensesEqUser })),
+        }
+      }
+      if (table === 'spending_budgets') {
+        return {
+          select: vi.fn(() => ({ eq: spendingBudgetEqUser })),
+        }
+      }
+      if (table === 'goal_targets') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn().mockResolvedValue({ data: [] }),
+          })),
+        }
+      }
+      if (table === 'debts') {
+        return {
+          select: vi.fn(() => ({ eq: debtUserEq })),
+        }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    }),
+  }
+
+  return { supabase, userProfilesMaybeSingle }
+}
+
 describe('app actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -45,6 +143,8 @@ describe('app actions', () => {
       profile: { pay_schedule_type: 'monthly', pay_schedule_days: [25] },
     })
     getCurrentCycleId.mockResolvedValue('2026-04-01')
+    deriveCurrentCycleId.mockReturnValue('2026-04-01')
+    derivePrevCycleId.mockReturnValue(null)
   })
 
   it('confirmReceivedIncome updates received fields without overwriting saved income row', async () => {
@@ -107,5 +207,53 @@ describe('app actions', () => {
         note: 'May top-up',
       }
     )
+  })
+
+  it('loadOverviewSecondary reuses a valid profile snapshot without fetching user_profiles', async () => {
+    const { supabase, userProfilesMaybeSingle } = makeOverviewSupabase()
+    createServerSupabaseClient.mockResolvedValue(supabase)
+
+    const { loadOverviewSecondary } = await import('./actions')
+    const data = await loadOverviewSecondary({
+      id: 'user-1',
+      currency: 'KES',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [25],
+      amount_format_preference: 'smart',
+      goals: [],
+    })
+
+    expect(data.recentActivity).toEqual([])
+    expect(supabase.auth.getUser).toHaveBeenCalled()
+    expect(userProfilesMaybeSingle).not.toHaveBeenCalled()
+  })
+
+  it('loadOverviewSecondary falls back to a profile fetch for a mismatched snapshot', async () => {
+    const { supabase, userProfilesMaybeSingle } = makeOverviewSupabase()
+    createServerSupabaseClient.mockResolvedValue(supabase)
+
+    const { loadOverviewSecondary } = await import('./actions')
+    await loadOverviewSecondary({
+      id: 'other-user',
+      currency: 'KES',
+      pay_schedule_type: 'monthly',
+      pay_schedule_days: [25],
+      amount_format_preference: 'smart',
+      goals: [],
+    })
+
+    expect(supabase.auth.getUser).toHaveBeenCalled()
+    expect(userProfilesMaybeSingle).toHaveBeenCalled()
+  })
+
+  it('loadOverviewSecondary falls back to a profile fetch for a malformed snapshot', async () => {
+    const { supabase, userProfilesMaybeSingle } = makeOverviewSupabase()
+    createServerSupabaseClient.mockResolvedValue(supabase)
+
+    const { loadOverviewSecondary } = await import('./actions')
+    await loadOverviewSecondary({ id: '' } as any)
+
+    expect(supabase.auth.getUser).toHaveBeenCalled()
+    expect(userProfilesMaybeSingle).toHaveBeenCalled()
   })
 })

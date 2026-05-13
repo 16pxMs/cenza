@@ -1262,6 +1262,7 @@ export function SmsImportClient() {
     const rowsToSave = rowsOverride ?? rows
     const saveStartedAt = performance.now()
     const logClientSaveTiming = (step: string, elapsedMs: number, extra?: Record<string, unknown>) => {
+      if (process.env.NEXT_PUBLIC_PERF_DEBUG !== 'true') return
       const detail = extra ? ` ${JSON.stringify(extra)}` : ''
       console.info(`[sms-import] client-save ${step}=${elapsedMs.toFixed(1)}ms${detail}`)
     }

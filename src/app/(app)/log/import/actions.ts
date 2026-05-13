@@ -33,6 +33,7 @@ import {
 } from '@/lib/monthly-reminders/storage'
 import { deriveCurrentCycleId, getCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { addDebtTransaction, getDebt, getDebtTransactions } from '@/lib/supabase/debt-db'
+import { logPerfSpan, timePerf } from '@/lib/perf/debug'
 
 interface ParsedRowInput {
   id: string
@@ -185,6 +186,8 @@ export async function createSmsCustomCategory(input: {
   type: 'everyday' | 'fixed'
 }): Promise<ActionResult<CustomCategoryOption>> {
   return runAction<CustomCategoryOption>(async () => {
+    const startedAt = Date.now()
+    const flow = 'sms-import.custom-category'
     const { user } = await getAppSession()
     if (!user) return unauthorized()
 
@@ -197,18 +200,25 @@ export async function createSmsCustomCategory(input: {
       throw new Error('Category type is invalid.')
     }
 
-    const supabase = await createServerSupabaseClient()
-    const existing = await loadActiveCustomCategories(supabase, user.id)
+    const supabase = await timePerf(flow, 'supabase-init', async () => createServerSupabaseClient())
+    const existing = await timePerf(flow, 'custom-category-load', async () =>
+      loadActiveCustomCategories(supabase, user.id)
+    )
     const duplicate = existing.find((category) =>
       category.type === type &&
       normalize(category.label) === normalize(label)
     )
     if (duplicate) {
-      return ok({
+      const response = ok({
         ...duplicate,
         customCategoryId: duplicate.id,
-        source: 'custom',
+        source: 'custom' as const,
       })
+      logPerfSpan(flow, 'total', startedAt, {
+        duplicate: true,
+        existingCount: existing.length,
+      })
+      return response
     }
 
     const usedKeys = new Set(existing.map((category) => category.key))
@@ -221,15 +231,17 @@ export async function createSmsCustomCategory(input: {
       suffix += 1
     }
 
-    const { data, error } = await (supabase.from('custom_categories') as any)
-      .insert({
-        user_id: user.id,
-        key,
-        label,
-        type,
-      })
-      .select('id,user_id,key,label,type,archived_at,created_at,updated_at')
-      .single()
+    const { data, error } = await timePerf(flow, 'custom-category-insert', async () =>
+      (supabase.from('custom_categories') as any)
+        .insert({
+          user_id: user.id,
+          key,
+          label,
+          type,
+        })
+        .select('id,user_id,key,label,type,archived_at,created_at,updated_at')
+        .single()
+    )
 
     if (error) {
       if (error.code === '23505') {
@@ -238,7 +250,7 @@ export async function createSmsCustomCategory(input: {
       throw new Error(`Failed to create custom category: ${error.message}`)
     }
 
-    return ok({
+    const response = ok({
       id: String(data.id),
       user_id: String(data.user_id),
       key: String(data.key),
@@ -248,8 +260,13 @@ export async function createSmsCustomCategory(input: {
       created_at: String(data.created_at ?? ''),
       updated_at: String(data.updated_at ?? ''),
       customCategoryId: String(data.id),
-      source: 'custom',
+      source: 'custom' as const,
     })
+    logPerfSpan(flow, 'total', startedAt, {
+      duplicate: false,
+      existingCount: existing.length,
+    })
+    return response
   })
 }
 
@@ -291,20 +308,33 @@ function logSaveTiming(
   startedAt: number,
   marks: Array<{ step: string; ms: number }>
 ) {
-  const totalMs = Date.now() - startedAt
-  const summary = marks.map((mark) => `${mark.step}=${mark.ms}ms`).join(' | ')
-  console.info(`[sms-import] ${label} total=${totalMs}ms${summary ? ` | ${summary}` : ''}`)
+  const outcome = label.split(':')[1] ?? label
+  logPerfSpan('sms-import.save', 'total', startedAt, {
+    outcome,
+    markCount: marks.length,
+  })
 }
 
-function createTimingMarks(startedAt: number) {
+function createTimingMarks(
+  startedAt: number,
+  flow?: string,
+  baseMeta?: Record<string, string | number | boolean | null | undefined>
+) {
   const marks: Array<{ step: string; ms: number }> = []
   let lastMark = startedAt
 
   return {
     marks,
-    mark(step: string) {
+    mark(step: string, meta?: Record<string, string | number | boolean | null | undefined>) {
       const now = Date.now()
-      marks.push({ step, ms: now - lastMark })
+      const durationMs = now - lastMark
+      marks.push({ step, ms: durationMs })
+      if (flow) {
+        logPerfSpan(flow, step, lastMark, {
+          ...baseMeta,
+          ...meta,
+        })
+      }
       lastMark = now
     },
   }
@@ -444,12 +474,15 @@ function shouldUseSimpleEntryFastPath(input: string, rows: ParsedSmsExpense[]) {
 
 export async function parseSmsImport(rawText: string): Promise<ActionResult<ParseSmsImportData>> {
   return runAction<ParseSmsImportData>(async () => {
+    const startedAt = Date.now()
+    const flow = 'sms-import.parse'
     const { user, profile } = await getAppSession()
     if (!user || !profile) return unauthorized()
 
     const input = rawText?.trim() ?? ''
+    const lineCount = countNonEmptyLines(input)
     if (!input) {
-      return ok({
+      const response = ok({
         rows: [],
         scanned: 0,
         skippedCredits: 0,
@@ -457,23 +490,54 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         monthlyReminderKeys: [],
         usedFallback: false,
       })
+      logPerfSpan(flow, 'total', startedAt, {
+        lineCount,
+        rowCount: 0,
+        fastPath: false,
+        structured: false,
+      })
+      return response
     }
 
+    const simpleParserStartedAt = Date.now()
     const simpleRows = parseSimpleExpenseLines(input, {
       defaultCurrency: profile.currency || 'USD',
     })
-    if (shouldUseSimpleEntryFastPath(input, simpleRows)) {
-      return ok({
+    logPerfSpan(flow, 'simple-parser', simpleParserStartedAt, {
+      lineCount,
+      rowCount: simpleRows.length,
+    })
+    const classifierStartedAt = Date.now()
+    const useSimpleFastPath = shouldUseSimpleEntryFastPath(input, simpleRows)
+    logPerfSpan(flow, 'fast-path-classifier', classifierStartedAt, {
+      lineCount,
+      rowCount: simpleRows.length,
+      fastPath: useSimpleFastPath,
+    })
+    if (useSimpleFastPath) {
+      const responseStartedAt = Date.now()
+      const response = ok({
         rows: simpleRows,
-        scanned: countNonEmptyLines(input),
+        scanned: lineCount,
         skippedCredits: 0,
         hasLowConfidence: computeHasLowConfidence(simpleRows),
         monthlyReminderKeys: [],
         usedFallback: true,
       })
+      logPerfSpan(flow, 'response-shaping', responseStartedAt, {
+        rowCount: simpleRows.length,
+        fastPath: true,
+      })
+      logPerfSpan(flow, 'total', startedAt, {
+        lineCount,
+        rowCount: simpleRows.length,
+        fastPath: true,
+        structured: false,
+      })
+      return response
     }
 
-    const supabase = await createServerSupabaseClient()
+    const supabase = await timePerf(flow, 'supabase-init', async () => createServerSupabaseClient())
     const cycleId = deriveCurrentCycleId(profile)
     const [
       { data: dictionaryRows, error: dictionaryError },
@@ -481,17 +545,25 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
       { data: recentRows, error: recentRowsError },
       monthlyReminderEntries,
     ] = await Promise.all([
-      (supabase.from('item_dictionary') as any)
-        .select('name_normalized,label,category_type,category_key,custom_category_id,usage_count')
-        .eq('user_id', user.id)
-        .limit(300),
-      loadActiveCustomCategories(supabase, user.id),
-      (supabase.from('transactions') as any)
-        .select('category_label,category_type')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false })
-        .limit(300),
-      loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId),
+      timePerf(flow, 'dictionary-load', async () =>
+        (supabase.from('item_dictionary') as any)
+          .select('name_normalized,label,category_type,category_key,custom_category_id,usage_count')
+          .eq('user_id', user.id)
+          .limit(300)
+      ),
+      timePerf(flow, 'custom-category-load', async () =>
+        loadActiveCustomCategories(supabase, user.id)
+      ),
+      timePerf(flow, 'recent-transaction-load', async () =>
+        (supabase.from('transactions') as any)
+          .select('category_label,category_type')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(300)
+      ),
+      timePerf(flow, 'monthly-reminder-load', async () =>
+        loadMonthlyReminderEntriesForCycle(supabase, user.id, cycleId)
+      ),
     ])
 
     if (dictionaryError) {
@@ -548,20 +620,32 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
       }]
     })
 
+    const structuredParserStartedAt = Date.now()
     const parsed = parseSmsBlob(input, {
       defaultCurrency: profile.currency || 'USD',
       dictionary: trustedDictionaryRows,
+    })
+    logPerfSpan(flow, 'structured-parser', structuredParserStartedAt, {
+      lineCount,
+      rowCount: parsed.rows.length,
+      dictionaryCount: trustedDictionaryRows.length,
     })
 
     // Fallback: when the SMS parser finds nothing in non-empty input, try a
     // plain-language parser ("500 for food"). Never mixed with SMS results —
     // only used when SMS parsing returns zero rows.
     if (parsed.rows.length === 0) {
+      const fallbackParserStartedAt = Date.now()
       const fallbackRows = parseSimpleExpenseLines(input, {
         defaultCurrency: profile.currency || 'USD',
       })
+      logPerfSpan(flow, 'simple-parser-fallback', fallbackParserStartedAt, {
+        lineCount,
+        rowCount: fallbackRows.length,
+      })
       if (fallbackRows.length > 0) {
-        return ok({
+        const responseStartedAt = Date.now()
+        const response = ok({
           rows: fallbackRows,
           scanned: parsed.scanned,
           skippedCredits: parsed.skippedCredits,
@@ -569,15 +653,38 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
           monthlyReminderKeys,
           usedFallback: true,
         })
+        logPerfSpan(flow, 'response-shaping', responseStartedAt, {
+          rowCount: fallbackRows.length,
+          fastPath: false,
+        })
+        logPerfSpan(flow, 'total', startedAt, {
+          lineCount,
+          rowCount: fallbackRows.length,
+          fastPath: false,
+          structured: false,
+        })
+        return response
       }
     }
 
-    return ok({
+    const responseStartedAt = Date.now()
+    const response = ok({
       ...parsed,
       hasLowConfidence: computeHasLowConfidence(parsed.rows),
       monthlyReminderKeys,
       usedFallback: false,
     })
+    logPerfSpan(flow, 'response-shaping', responseStartedAt, {
+      rowCount: parsed.rows.length,
+      fastPath: false,
+    })
+    logPerfSpan(flow, 'total', startedAt, {
+      lineCount,
+      rowCount: parsed.rows.length,
+      fastPath: false,
+      structured: true,
+    })
+    return response
   })
 }
 
@@ -587,7 +694,10 @@ export async function saveParsedSmsExpenses(
 ): Promise<ActionResult<SaveParsedSmsExpensesResult>> {
   return runAction<SaveParsedSmsExpensesResult>(async () => {
   const startedAt = Date.now()
-  const blockingTiming = createTimingMarks(startedAt)
+  const blockingTiming = createTimingMarks(startedAt, 'sms-import.save', {
+    rowCount: rows.length,
+    confirmOverride: opts?.confirmOverride === true,
+  })
   const mark = blockingTiming.mark
 
   const { user, profile } = await getAppSession()
@@ -607,7 +717,7 @@ export async function saveParsedSmsExpenses(
     amount: Number(row.amount),
     sourceHash: (row.sourceHash ?? '').trim(),
   }))
-  mark('client-payload-normalize')
+  mark('client-payload-normalize', { rowCount: selectedRows.length })
 
   if (selectedRows.length === 0) {
     logSaveTiming('saveParsedSmsExpenses:write', startedAt, blockingTiming.marks)
@@ -647,10 +757,13 @@ export async function saveParsedSmsExpenses(
       rowErrors[row.id] = errors
     }
   }
-  mark('server-validate')
+  mark('server-validate', {
+    rowCount: selectedRows.length,
+    errorCount: Object.keys(rowErrors).length,
+  })
 
   const supabase = await createServerSupabaseClient()
-  mark('create-client')
+  mark('supabase-init')
 
   // ── HARD BLOCK: exact-same SMS already imported (in-batch or cross-batch)
   const hashesToCheck = Array.from(
@@ -671,7 +784,10 @@ export async function saveParsedSmsExpenses(
       if (r?.source_hash) importedHashes.add(String(r.source_hash))
     }
   }
-  mark('duplicate-hash-check')
+  mark('duplicate-hash-check', {
+    hashCount: hashesToCheck.length,
+    duplicateCount: importedHashes.size,
+  })
 
   const seenHashInBatch = new Set<string>()
   for (const { row } of rowMeta) {
@@ -739,7 +855,10 @@ export async function saveParsedSmsExpenses(
       seenFingerprintInBatch.add(meta.fingerprint)
     }
   }
-  mark('duplicate-fingerprint-check')
+  mark('duplicate-fingerprint-check', {
+    rowCount: selectedRows.length,
+    duplicateCount: duplicates,
+  })
 
   if (Object.keys(rowWarnings).length > 0 && !confirmOverride) {
     logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
@@ -756,7 +875,13 @@ export async function saveParsedSmsExpenses(
   const customCategoryIds = selectedRows
     .map((row) => row.customCategoryId)
     .filter((id): id is string => !!id)
-  const customCategoriesById = await loadCustomCategoryMap(supabase, user.id, customCategoryIds)
+  const customCategoriesById = await timePerf('sms-import.save', 'custom-category-validate-load', async () =>
+    loadCustomCategoryMap(supabase, user.id, customCategoryIds),
+    {
+      rowCount: selectedRows.length,
+      customCategoryCount: customCategoryIds.length,
+    }
+  )
 
   for (const { row } of rowMeta) {
     if (!row.customCategoryId) continue
@@ -776,7 +901,10 @@ export async function saveParsedSmsExpenses(
       rowWarnings: {},
     })
   }
-  mark('custom-category-validate')
+  mark('custom-category-validate', {
+    customCategoryCount: customCategoryIds.length,
+    errorCount: Object.keys(rowErrors).length,
+  })
 
   const persistedRows = rowMeta.map(({ row, entryDate, cycleId }) => {
     const customCategory = row.customCategoryId
@@ -820,7 +948,10 @@ export async function saveParsedSmsExpenses(
   )
   for (const [debtId, debt] of debtDetails) resolvedDebts.set(debtId, debt)
   for (const [debtId, transactions] of debtTransactions) existingDebtTransactions.set(debtId, transactions)
-  mark('debt-resolve')
+  mark('debt-resolve', {
+    debtRowCount: debtLinkedMeta.length,
+    debtCount: uniqueDebtIds.length,
+  })
 
   // Running balance per debt tracks cumulative repayments within this batch
   // so two rows targeting the same debt cannot exceed its balance together.
@@ -879,10 +1010,13 @@ export async function saveParsedSmsExpenses(
       rowWarnings: {},
     })
   }
-  mark('debt-validate')
+  mark('debt-validate', {
+    debtRowCount: debtLinkedMeta.length,
+    errorCount: Object.keys(rowErrors).length,
+  })
 
   await ensureCycleRows(supabase, user.id, profile as any, persistedRows)
-  mark('db-write-cycles')
+  mark('cycle-write', { rowCount: persistedRows.length })
 
   // Split: debt rows with a linked debtId go through the debt engine;
   // everything else uses the generic batch insert.
@@ -906,7 +1040,13 @@ export async function saveParsedSmsExpenses(
       })
     )
 
-    const { error: transactionInsertError } = await (supabase.from('transactions') as any).insert(transactionRecords)
+    const { error: transactionInsertError } = await timePerf('sms-import.save', 'transaction-insert', async () =>
+      (supabase.from('transactions') as any).insert(transactionRecords),
+      {
+        rowCount: transactionRecords.length,
+        debtRowCount: debtLinkedMeta.length,
+      }
+    )
     if (transactionInsertError) {
       throw new Error(`Failed to insert transactions: ${transactionInsertError.message}`)
     }
@@ -957,7 +1097,11 @@ export async function saveParsedSmsExpenses(
       }
     }
   }
-  mark('db-write-transactions')
+  mark('transaction-write', {
+    rowCount: persistedRows.length,
+    genericRowCount: genericRows.length,
+    debtRowCount: debtLinkedMeta.length,
+  })
 
   const importRows = persistedRows
     .map(({ row }) => row.sourceHash)
@@ -970,7 +1114,7 @@ export async function saveParsedSmsExpenses(
       throw new Error(`Failed to record imported messages: ${importInsertError.message}`)
     }
   }
-  mark('db-write-import-lines')
+  mark('import-line-write', { rowCount: importRows.length })
 
   const trackingRowsByCycle = new Map<string, Array<{ key: string; label: string; monthly: number }>>()
   for (const { row, cycleId, persistedKey } of persistedRows) {
@@ -990,15 +1134,24 @@ export async function saveParsedSmsExpenses(
 
   if (trackingRowsByCycle.size > 0) {
     for (const [cycleId, trackingRows] of trackingRowsByCycle.entries()) {
-      await saveMonthlyReminderEntriesForCycle(supabase, user.id, cycleId, trackingRows)
+      await timePerf('sms-import.save', 'reminder-write', async () =>
+        saveMonthlyReminderEntriesForCycle(supabase, user.id, cycleId, trackingRows),
+        {
+          cycleCount: trackingRowsByCycle.size,
+          reminderCount: trackingRows.length,
+        }
+      )
     }
   }
-  mark('db-write-fixed-expenses')
+  mark('reminder-writes', {
+    cycleCount: trackingRowsByCycle.size,
+    reminderCount: Array.from(trackingRowsByCycle.values()).reduce((sum, entries) => sum + entries.length, 0),
+  })
 
   revalidatePath('/log')
   revalidatePath('/history')
   revalidatePath('/app')
-  mark('post-save-revalidate')
+  mark('revalidation', { pathCount: 3 })
 
   mark('response-ready')
   const overridden = confirmOverride && duplicates > 0
@@ -1010,7 +1163,9 @@ export async function saveParsedSmsExpenses(
 
   const backgroundStartedAt = Date.now()
   after(async () => {
-    const backgroundTiming = createTimingMarks(backgroundStartedAt)
+    const backgroundTiming = createTimingMarks(backgroundStartedAt, 'sms-import.save.background', {
+      rowCount: persistedRows.length,
+    })
     try {
       await rememberDictionaryItems(
         supabase,
@@ -1022,7 +1177,7 @@ export async function saveParsedSmsExpenses(
           customCategory: resolvedCustomCategory,
         }))
       )
-      backgroundTiming.mark('db-write-dictionary')
+      backgroundTiming.mark('dictionary-write', { rowCount: persistedRows.length })
 
       logSaveTiming('saveParsedSmsExpenses:background', backgroundStartedAt, backgroundTiming.marks)
     } catch (error) {

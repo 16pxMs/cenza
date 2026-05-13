@@ -8,14 +8,15 @@ import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
 import { OverviewWithData } from '@/components/flows/overview/OverviewWithData'
 import { ReceivedIncomeSheet } from '@/components/flows/log/ReceivedIncomeSheet'
-import type { OverviewCriticalData, OverviewSecondaryData } from '@/lib/loaders/overview'
+import type { OverviewCriticalData, OverviewProfileSnapshot, OverviewSecondaryData } from '@/lib/loaders/overview'
 import { addGoalContribution, confirmReceivedIncome, loadOverviewSecondary } from './actions'
 
 interface AppPageClientProps {
   overview: OverviewCriticalData
+  overviewProfileSnapshot: OverviewProfileSnapshot
 }
 
-export default function AppPageClient({ overview }: AppPageClientProps) {
+export default function AppPageClient({ overview, overviewProfileSnapshot }: AppPageClientProps) {
   const router = useRouter()
   const { isDesktop } = useBreakpoint()
   const [receivedSheetOpen, setReceivedSheetOpen] = useState(false)
@@ -25,7 +26,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
     if (!overview.hasStartedCycleData) return
 
     let cancelled = false
-    loadOverviewSecondary()
+    loadOverviewSecondary(overviewProfileSnapshot)
       .then((data) => {
         if (!cancelled) {
           setSecondaryOverview(data)
@@ -43,6 +44,7 @@ export default function AppPageClient({ overview }: AppPageClientProps) {
     overview.totalSpent,
     overview.incomeData.total,
     overview.incomeData.receivedConfirmedAt,
+    overviewProfileSnapshot,
   ])
 
   const screen = (
