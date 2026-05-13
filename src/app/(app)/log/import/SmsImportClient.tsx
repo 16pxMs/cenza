@@ -12,7 +12,15 @@ import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { getCategoryLabel } from '@/lib/categories/config'
 import { getGroupedCategoryOptions } from '@/lib/categories/options'
-import { parseSmsImport, saveParsedSmsExpenses, loadActiveDebts, type ActiveDebtOption } from './actions'
+import {
+  createSmsCustomCategory,
+  loadSmsCustomCategories,
+  parseSmsImport,
+  saveParsedSmsExpenses,
+  loadActiveDebts,
+  type ActiveDebtOption,
+  type CustomCategoryOption,
+} from './actions'
 import {
   buildNeedsCategoryMetaLabel,
   buildRowMetaLabel,
@@ -29,7 +37,7 @@ import {
   replaceEditedReviewRow,
   shouldShowReviewReminder,
   shouldSaveSingleCompletedReviewRow,
-  shouldAutoOpenSingleQuickTypedCategoryRow,
+  shouldAutoOpenSingleEntryEditFlow,
   shouldShowRawMessageToggle,
 } from './presentation'
 import { createDebtWithOpeningBalance } from '@/app/(app)/history/debt/new/actions'
@@ -46,7 +54,8 @@ import {
 import styles from './SmsImportClient.module.css'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
-type EditStep = 'details' | 'category' | 'review'
+type EditStep = 'details' | 'category' | 'review' | 'changeCategory'
+type CategoryBrowserMode = 'select' | 'create'
 
 interface EditableRow {
   id: string
@@ -54,6 +63,7 @@ interface EditableRow {
   label: string
   categoryType: ImportCategoryType | null
   categoryKey: string
+  customCategoryId: string | null
   amount: number
   currency: string
   date: string
@@ -104,6 +114,10 @@ function categoryLabel(value: ImportCategoryType | null) {
 }
 
 const IMPORT_CATEGORY_GROUPS = getGroupedCategoryOptions(['everyday', 'fixed', 'debt'])
+type ImportCategoryOption = (typeof IMPORT_CATEGORY_GROUPS)[number]['options'][number] & {
+  customCategoryId?: string | null
+  source?: 'canonical' | 'custom'
+}
 
 function toImportCategoryType(value: string | null | undefined): ImportCategoryType | null {
   if (value === 'everyday' || value === 'fixed' || value === 'debt') return value
@@ -260,10 +274,37 @@ export function SmsImportClient() {
   const [categoryFilter, setCategoryFilter] = useState<ImportCategoryType>('everyday')
   const [categoryQuery, setCategoryQuery] = useState('')
   const [categoryBrowserOpen, setCategoryBrowserOpen] = useState(false)
+  const [categoryBrowserMode, setCategoryBrowserMode] = useState<CategoryBrowserMode>('select')
+  const [customCategories, setCustomCategories] = useState<CustomCategoryOption[]>([])
+  const [customCategoriesLoaded, setCustomCategoriesLoaded] = useState(false)
+  const [createCategoryLabel, setCreateCategoryLabel] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [createCategoryError, setCreateCategoryError] = useState<string | null>(null)
+  const [categoryBrowserNotice, setCategoryBrowserNotice] = useState<string | null>(null)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [pickerDraftSelection, setPickerDraftSelection] = useState<{
+    categoryType: ImportCategoryType | null
+    categoryKey: string | null
+    customCategoryId: string | null
+  } | null>(null)
+  const [addAnotherOpen, setAddAnotherOpen] = useState(false)
+  const [addAnotherText, setAddAnotherText] = useState('')
+  const [addAnotherParsing, setAddAnotherParsing] = useState(false)
+  const [addAnotherError, setAddAnotherError] = useState<string | null>(null)
 
   useEffect(() => {
     setRecentCategoryKeys(loadRecentCategoryKeys())
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    loadSmsCustomCategories().then((result) => {
+      if (cancelled) return
+      if (result.ok) setCustomCategories(result.data)
+      setCustomCategoriesLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
   const [editDraft, setEditDraft] = useState<{
     label: string
@@ -271,6 +312,7 @@ export function SmsImportClient() {
     date: string
     categoryType: ImportCategoryType | null
     categoryKey: string | null
+    customCategoryId: string | null
     repeatsMonthly: boolean
     debtId: string | null
   } | null>(null)
@@ -312,6 +354,7 @@ export function SmsImportClient() {
       date: editDraft.date.trim(),
       categoryType: editDraft.categoryType,
       categoryKey: editDraft.categoryKey ?? editingRow.categoryKey,
+      customCategoryId: editDraft.customCategoryId,
       repeatsMonthly:
         editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed'
           ? editDraft.repeatsMonthly
@@ -411,6 +454,23 @@ export function SmsImportClient() {
       hasExistingMonthlyReminder: hasExistingMonthlyReminder(editedPreviewRow),
     })
   }, [editedPreviewRow, monthlyReminderKeySet])
+  const importCategoryGroups = useMemo(() => {
+    return IMPORT_CATEGORY_GROUPS.map((group) => {
+      const customOptions: ImportCategoryOption[] = customCategories
+        .filter((category) => category.type === group.type)
+        .map((category) => ({
+          key: category.key,
+          label: category.label,
+          type: category.type,
+          customCategoryId: category.customCategoryId,
+          source: 'custom',
+        }))
+      return {
+        ...group,
+        options: [...group.options, ...customOptions],
+      }
+    })
+  }, [customCategories])
   const suggestedCategoryOptions = useMemo(
     () => editDraft ? getSuggestedCategoryOptions(editDraft.label, IMPORT_CATEGORY_GROUPS) : [],
     [editDraft]
@@ -418,14 +478,26 @@ export function SmsImportClient() {
   const frequentCategoryOptions = useMemo(() => {
     if (!editDraft) return []
     const exclude = new Set(suggestedCategoryOptions.map((option) => option.key))
-    return getFrequentCategoryOptions(frozenRecentKeys, IMPORT_CATEGORY_GROUPS, exclude)
-  }, [editDraft, frozenRecentKeys, suggestedCategoryOptions])
+    return getFrequentCategoryOptions(frozenRecentKeys, importCategoryGroups, exclude)
+  }, [editDraft, frozenRecentKeys, importCategoryGroups, suggestedCategoryOptions])
   const filteredCategoryGroup = useMemo(() => {
-    return IMPORT_CATEGORY_GROUPS.find((group) => group.type === categoryFilter) ?? null
-  }, [categoryFilter])
-  const allCategoryOptions = useMemo(() => {
-    return IMPORT_CATEGORY_GROUPS.flatMap((group) => group.options)
-  }, [])
+    return importCategoryGroups.find((group) => group.type === categoryFilter) ?? null
+  }, [categoryFilter, importCategoryGroups])
+  const allCategoryOptions = useMemo<ImportCategoryOption[]>(() => {
+    return importCategoryGroups.flatMap((group) => group.options as ImportCategoryOption[])
+  }, [importCategoryGroups])
+  const recentCustomCategoryOptions = useMemo<ImportCategoryOption[]>(() => {
+    return [...customCategories]
+      .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
+      .slice(0, 10)
+      .map((category) => ({
+        key: category.key,
+        label: category.label,
+        type: category.type,
+        customCategoryId: category.customCategoryId,
+        source: 'custom',
+      }))
+  }, [customCategories])
   const trimmedCategoryQuery = categoryQuery.trim().toLowerCase()
   const isSearchingCategories = trimmedCategoryQuery.length > 0
   const categorySearchResults = useMemo(() => {
@@ -434,14 +506,47 @@ export function SmsImportClient() {
       option.label.toLowerCase().includes(trimmedCategoryQuery),
     )
   }, [allCategoryOptions, isSearchingCategories, trimmedCategoryQuery])
-  const tabCategoryOptions = useMemo(() => {
+  const normalizedCreateCategoryLabel = normalize(createCategoryLabel)
+  const createCategoryMatches = useMemo<ImportCategoryOption[]>(() => {
+    if (!normalizedCreateCategoryLabel) return recentCustomCategoryOptions
+
+    return allCategoryOptions
+      .filter((option) => {
+        const normalizedOption = normalize(option.label)
+        return (
+          normalizedOption.includes(normalizedCreateCategoryLabel) ||
+          normalizedCreateCategoryLabel.includes(normalizedOption)
+        )
+      })
+      .slice(0, 10)
+  }, [allCategoryOptions, normalizedCreateCategoryLabel, recentCustomCategoryOptions])
+  const exactCreateCategoryMatch = useMemo(() => {
+    if (!normalizedCreateCategoryLabel) return null
+    return allCategoryOptions.find((option) => normalize(option.label) === normalizedCreateCategoryLabel) ?? null
+  }, [allCategoryOptions, normalizedCreateCategoryLabel])
+  const tabCategoryOptions = useMemo<ImportCategoryOption[]>(() => {
     if (!filteredCategoryGroup) return []
     const exclude = new Set<string>([
       ...suggestedCategoryOptions.map((option) => option.key),
       ...frequentCategoryOptions.map((option) => option.key),
     ])
-    return filteredCategoryGroup.options.filter((option) => !exclude.has(option.key))
+    return (filteredCategoryGroup.options as ImportCategoryOption[]).filter((option) => !exclude.has(option.key))
   }, [filteredCategoryGroup, suggestedCategoryOptions, frequentCategoryOptions])
+  const resolveImportCategoryLabel = (
+    categoryKey: string,
+    categoryType: ImportCategoryType | null,
+    customCategoryId?: string | null
+  ) => {
+    const custom = customCategoryId
+      ? customCategories.find((category) => category.customCategoryId === customCategoryId)
+      : null
+    if (custom) return custom.label
+    const option = allCategoryOptions.find((candidate) =>
+      candidate.key === categoryKey &&
+      (!customCategoryId || candidate.customCategoryId === customCategoryId)
+    )
+    return option?.label ?? getCategoryLabel(categoryKey, categoryLabel(categoryType))
+  }
 
   const applyRowsChange = (
     mutator: (current: EditableRow[]) => EditableRow[]
@@ -538,13 +643,14 @@ export function SmsImportClient() {
     }
   }
 
-  const beginEditRow = (row: EditableRow, fromReviewList: boolean) => {
+  const beginEditRow = (row: EditableRow, fromReviewList: boolean, editableRowCount: number) => {
     if (isBlockedIncomeRow(row)) return
 
+    const isSingleEntry = editableRowCount === 1
     setEditingRowId(row.id)
     setEditOpenedFromReviewList(fromReviewList)
     setDetailsReturnStep(null)
-    setEditStep(getInitialEditStepForRow(row))
+    setEditStep(getInitialEditStepForRow(row, { isSingleEntry }))
     setFrozenRecentKeys(loadRecentCategoryKeys())
     setEditDraft({
       label: row.label,
@@ -552,6 +658,7 @@ export function SmsImportClient() {
       date: row.date,
       categoryType: row.categoryType,
       categoryKey: row.categoryKey,
+      customCategoryId: row.customCategoryId,
       repeatsMonthly: row.repeatsMonthly,
       debtId: row.debtId,
     })
@@ -563,7 +670,7 @@ export function SmsImportClient() {
   }
 
   const openEditRow = (row: EditableRow) => {
-    beginEditRow(row, true)
+    beginEditRow(row, true, editableRowIndices.length)
   }
 
   const openEditRowAtIndex = (index: number) => {
@@ -583,6 +690,20 @@ export function SmsImportClient() {
     setShowCreateDebt(false)
     setCreateDebtError(null)
     setCategoryBrowserOpen(false)
+    setPickerDraftSelection(null)
+  }
+
+  const resetEditDraftToRow = (row: EditableRow) => {
+    setEditDraft({
+      label: row.label,
+      amount: String(row.amount),
+      date: row.date,
+      categoryType: row.categoryType,
+      categoryKey: row.categoryKey,
+      customCategoryId: row.customCategoryId,
+      repeatsMonthly: row.repeatsMonthly,
+      debtId: row.debtId,
+    })
   }
 
   const clearImportReviewState = () => {
@@ -625,17 +746,29 @@ export function SmsImportClient() {
   const goBackWithinEditFlow = () => {
     if (!editingRow || !editStep) return
 
+    const isSingleEntry = editableRowIndices.length === 1
     const previousStep = getPreviousStepForActiveRow({
       currentStep: editStep,
       isImportedMessage: editingRow.isImportedMessage,
       detailsReturnStep,
+      isSingleEntry,
     })
 
     if (previousStep) {
+      if (editStep === 'details' && previousStep === 'review') {
+        resetEditDraftToRow(editingRow)
+        setEditErrors({})
+      }
       if (editStep === 'details') {
         setDetailsReturnStep(null)
       }
       setEditStep(previousStep)
+      return
+    }
+
+    if (isSingleEntry && (editStep === 'category' || editStep === 'details')) {
+      returnToInputScreen()
+      closeEditRow()
       return
     }
 
@@ -673,30 +806,116 @@ export function SmsImportClient() {
     return nextErrors
   }
 
-  const goToEditCategory = () => {
-    const nextErrors = collectEditErrors('details')
-    if (Object.keys(nextErrors).length > 0) {
-      setEditErrors(nextErrors)
+  const openEditDetailsFromReview = () => {
+    setDetailsReturnStep('review')
+    setEditStep('details')
+    setEditErrors({})
+  }
+
+  const openChangeCategoryFromDetails = () => {
+    setEditErrors({})
+    setCategoryFilter(editDraft?.categoryType === 'fixed' || editDraft?.categoryType === 'debt' ? editDraft.categoryType : 'everyday')
+    setCategoryQuery('')
+    setCategoryBrowserMode('select')
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
+    setPickerDraftSelection(
+      editDraft
+        ? {
+          categoryType: editDraft.categoryType,
+          categoryKey: editDraft.categoryKey,
+          customCategoryId: editDraft.customCategoryId,
+        }
+        : null,
+    )
+    setCategoryBrowserOpen(true)
+    setEditStep('changeCategory')
+  }
+
+  const cancelDetailsEdit = () => {
+    if (!editingRow) return
+    if (editableRowIndices.length === 1) {
+      returnToInputScreen()
+      closeEditRow()
       return
     }
+    resetEditDraftToRow(editingRow)
     setEditErrors({})
-    setCategoryFilter('everyday')
-    setCategoryQuery('')
-    setEditStep('category')
+    setDetailsReturnStep(null)
+    setEditStep('review')
   }
 
   const openCategoryBrowser = () => {
     setCategoryFilter(editDraft?.categoryType === 'fixed' || editDraft?.categoryType === 'debt' ? editDraft.categoryType : 'everyday')
     setCategoryQuery('')
+    setCategoryBrowserMode('select')
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
     setCategoryBrowserOpen(true)
   }
 
   const closeCategoryBrowser = () => {
     setCategoryBrowserOpen(false)
     setCategoryQuery('')
+    setCategoryBrowserMode('select')
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
+    setPickerDraftSelection(null)
+    if (editStep === 'changeCategory') {
+      setEditStep('details')
+    }
   }
 
-  const selectImportCategory = (option: { key: string; type: string }) => {
+  const selectCategoryInPicker = (option: { key: string; type: string; customCategoryId?: string | null }) => {
+    const nextType = toImportCategoryType(option.type)
+    if (!nextType) return
+    setPickerDraftSelection({
+      categoryType: nextType,
+      categoryKey: option.key,
+      customCategoryId: option.customCategoryId ?? null,
+    })
+    if (nextType === 'debt') ensureDebtsLoaded()
+  }
+
+  const commitPickerSelectionToDraft = () => {
+    if (!pickerDraftSelection || !pickerDraftSelection.categoryType || !pickerDraftSelection.categoryKey) return
+    const nextType = pickerDraftSelection.categoryType
+    const nextKey = pickerDraftSelection.categoryKey
+    const nextCustomId = pickerDraftSelection.customCategoryId
+    setEditDraft((current) => {
+      if (!current) return current
+      const next = {
+        ...current,
+        categoryType: nextType,
+        categoryKey: nextKey,
+        customCategoryId: nextCustomId,
+      }
+      if (nextType !== 'everyday' && nextType !== 'fixed') {
+        next.repeatsMonthly = false
+      }
+      if (nextType !== 'debt') {
+        next.debtId = null
+      }
+      return next
+    })
+    setEditErrors((current) => ({ ...current, category: undefined, debtId: undefined }))
+    setRecentCategoryKeys(recordRecentCategoryKey(nextKey))
+    setPickerDraftSelection(null)
+    setCategoryBrowserOpen(false)
+    setCategoryQuery('')
+    setCategoryBrowserMode('select')
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
+    if (editStep === 'changeCategory') {
+      setEditStep('details')
+    }
+  }
+
+  const selectImportCategory = (option: { key: string; type: string; customCategoryId?: string | null }) => {
     const nextType = toImportCategoryType(option.type)
     if (!nextType) return
     setEditDraft((current) => {
@@ -705,6 +924,7 @@ export function SmsImportClient() {
         ...current,
         categoryType: nextType,
         categoryKey: option.key,
+        customCategoryId: option.customCategoryId ?? null,
       }
       if (nextType !== 'everyday' && nextType !== 'fixed') {
         next.repeatsMonthly = false
@@ -721,7 +941,75 @@ export function SmsImportClient() {
     }))
     setRecentCategoryKeys(recordRecentCategoryKey(option.key))
     if (nextType === 'debt') ensureDebtsLoaded()
-    setCategoryBrowserOpen(false)
+    if (editStep === 'changeCategory') {
+      setCategoryBrowserOpen(false)
+      setCategoryQuery('')
+      setCategoryBrowserMode('select')
+      setCreateCategoryLabel('')
+      setCreateCategoryError(null)
+      setCategoryBrowserNotice(null)
+      setPickerDraftSelection(null)
+      setEditStep('details')
+    }
+  }
+
+  const selectCategoryFromCreateMode = (option: ImportCategoryOption) => {
+    selectImportCategory(option)
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserMode('select')
+    setCategoryBrowserNotice(`${option.label} selected`)
+  }
+
+  const openCreateCategoryMode = () => {
+    setCreateCategoryLabel(categoryQuery.trim())
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
+    setCategoryBrowserMode('create')
+  }
+
+  const returnToCategorySelection = () => {
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserMode('select')
+  }
+
+  const handleCreateCustomCategory = async () => {
+    const label = (createCategoryLabel || categoryQuery || editDraft?.label || '').trim()
+    if (!label) {
+      setCreateCategoryError('Category name is required.')
+      return
+    }
+
+    setCreatingCategory(true)
+    setCreateCategoryError(null)
+    try {
+      if (exactCreateCategoryMatch) {
+        selectCategoryFromCreateMode(exactCreateCategoryMatch)
+        return
+      }
+
+      const result = await createSmsCustomCategory({ label, type: 'everyday' })
+      if (!result.ok) {
+        setCreateCategoryError(
+          result.error.kind === 'unauthorized'
+            ? result.error.message
+            : "We couldn't create that category."
+        )
+        return
+      }
+      setCustomCategories((current) => {
+        const withoutExisting = current.filter((category) => category.customCategoryId !== result.data.customCategoryId)
+        return [...withoutExisting, result.data].sort((a, b) => a.label.localeCompare(b.label))
+      })
+      selectCategoryFromCreateMode(result.data)
+      setCategoryQuery('')
+      setCategoryBrowserNotice(`${result.data.label} created`)
+    } catch (err) {
+      setCreateCategoryError(err instanceof Error ? err.message : "We couldn't create that category.")
+    } finally {
+      setCreatingCategory(false)
+    }
   }
 
   const goToEditReview = () => {
@@ -730,11 +1018,18 @@ export function SmsImportClient() {
       setEditErrors(nextErrors)
       return
     }
+    const nextRow = applyEditRow()
+    if (!nextRow) return
     setEditErrors({})
+    if (editableRowIndices.length === 1) {
+      setDetailsReturnStep('category')
+      setEditStep('details')
+      return
+    }
     setEditStep('review')
   }
 
-  const applyEditRow = () => {
+  const buildEditedRowFromDraft = () => {
     if (!editingRowId || !editDraft) return null
 
     const nextErrors = collectEditErrors('all')
@@ -761,6 +1056,7 @@ export function SmsImportClient() {
       date,
       categoryType: nextCategoryType,
       categoryKey: nextCategoryKey ?? existingRow?.categoryKey ?? '',
+      customCategoryId: editDraft.customCategoryId,
       repeatsMonthly:
         nextCategoryType === 'everyday' || nextCategoryType === 'fixed'
           ? editDraft.repeatsMonthly
@@ -769,14 +1065,121 @@ export function SmsImportClient() {
       debtName: selectedDebt ? selectedDebt.name : null,
     }
 
+    return nextRow
+  }
+
+  const applyEditRow = () => {
+    const nextRow = buildEditedRowFromDraft()
+    if (!nextRow || !editingRowId) return null
     updateRow(editingRowId, nextRow)
     setEditedRowIds((current) => current.includes(editingRowId) ? current : [...current, editingRowId])
     return nextRow
   }
 
-  const saveEditRow = () => {
-    if (!applyEditRow()) return
+  const saveDetailsChanges = async () => {
+    const detailsErrors = collectEditErrors('details')
+    if (Object.keys(detailsErrors).length > 0) {
+      setEditErrors(detailsErrors)
+      return
+    }
+
+    if (!editDraft?.categoryType || !editDraft.categoryKey) {
+      setEditErrors({})
+      setEditStep('category')
+      return
+    }
+
+    const nextRow = applyEditRow()
+    if (!nextRow) return
+
+    if (editableRowIndices.length === 1) {
+      const rowsToSave = replaceEditedReviewRow(rows, nextRow)
+      const outcome = await handleSave(false, rowsToSave)
+      if (outcome !== 'success') closeEditRow()
+      return
+    }
+
+    setDetailsReturnStep(null)
+    setEditStep('review')
+  }
+
+  const closeAddAnotherInput = () => {
+    setAddAnotherOpen(false)
+    setAddAnotherText('')
+    setAddAnotherError(null)
+    setAddAnotherParsing(false)
+    const editable = rows.filter((row) => !isBlockedIncomeRow(row))
+    if (editable.length === 1) {
+      beginEditRow(editable[0], false, 1)
+    }
+  }
+
+  const addAnotherExpenseFromEditFlow = () => {
+    if (editingRow && editDraft) {
+      const committed = applyEditRow()
+      if (!committed) return
+    }
     closeEditRow()
+    setAddAnotherText('')
+    setAddAnotherError(null)
+    setAddAnotherParsing(false)
+    setAddAnotherOpen(true)
+  }
+
+  const submitAddAnotherExpense = async () => {
+    const text = addAnotherText.trim()
+    if (!text) return
+    setAddAnotherParsing(true)
+    setAddAnotherError(null)
+    try {
+      const result = await parseSmsImport(text)
+      if (!result.ok) {
+        setAddAnotherError(
+          result.error.kind === 'unauthorized'
+            ? result.error.message
+            : "We couldn't read that. Please try again."
+        )
+        return
+      }
+      const data = result.data
+      if (data.rows.length === 0) {
+        setAddAnotherError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
+        return
+      }
+      const parsedRows: EditableRow[] = data.rows.map((row) => ({
+        ...row,
+        categoryType: row.blockedReason
+          ? row.categoryType
+          : row.confidence === 'high'
+            ? row.categoryType
+            : null,
+        customCategoryId: row.blockedReason || row.confidence === 'high'
+          ? row.customCategoryId ?? null
+          : null,
+        repeatsMonthly: false,
+        debtId: null,
+        debtName: null,
+      }))
+      applyRowsChange((current) => [...current, ...parsedRows])
+      setMonthlyReminderKeys((current) => {
+        const merged = new Set<string>([...current, ...(data.monthlyReminderKeys ?? [])])
+        return Array.from(merged)
+      })
+      setRowErrors((current) => {
+        const next = { ...current }
+        for (const row of parsedRows) {
+          if (row.blockedReason) {
+            next[row.id] = [row.blockedReason]
+          }
+        }
+        return next
+      })
+      closeAddAnotherInput()
+    } catch {
+      setAddAnotherError("We couldn't read that. Please try again.")
+    } finally {
+      setAddAnotherParsing(false)
+    }
   }
 
   const deleteEditingRow = () => {
@@ -825,6 +1228,9 @@ export function SmsImportClient() {
           : row.confidence === 'high'
             ? row.categoryType
             : null,
+        customCategoryId: row.blockedReason || row.confidence === 'high'
+          ? row.customCategoryId ?? null
+          : null,
         repeatsMonthly: false,
         debtId: null,
         debtName: null,
@@ -839,8 +1245,8 @@ export function SmsImportClient() {
       setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
       setRowErrors(nextBlockedRowErrors)
       setRowWarnings({})
-      if (shouldAutoOpenSingleQuickTypedCategoryRow(nextRows)) {
-        beginEditRow(nextRows[0], false)
+      if (shouldAutoOpenSingleEntryEditFlow(nextRows)) {
+        beginEditRow(nextRows[0], false, 1)
       }
       if (data.rows.length === 0) {
         setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
@@ -898,6 +1304,7 @@ export function SmsImportClient() {
         label: row.label.trim(),
         categoryType: row.categoryType as ImportCategoryType,
         categoryKey: row.categoryKey,
+        customCategoryId: row.customCategoryId,
         amount: Number(row.amount),
         date: row.date,
         sourceHash: row.sourceHash,
@@ -983,7 +1390,7 @@ export function SmsImportClient() {
       id: row.id,
       name: row.label,
       amountLabel: `${row.currency} ${row.amount.toLocaleString()}`,
-      metaLabel: `${getCategoryLabel(row.categoryKey, categoryLabel(row.categoryType))} · ${savedDateLabel(row.date)}`,
+      metaLabel: `${resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId)} · ${savedDateLabel(row.date)}`,
       hasMonthlyReminder: row.repeatsMonthly,
     }))
 
@@ -993,7 +1400,11 @@ export function SmsImportClient() {
           <ExpenseAddedSuccess
             entries={successEntries}
             onBack={() => { router.refresh(); router.push('/app') }}
-            onAddAnother={() => router.push('/log/import?returnTo=/app')}
+            onAddAnother={() => {
+              setSavedCount(0)
+              setSavedRowsSnapshot(null)
+              resetImportSession()
+            }}
           />
         </div>
 
@@ -1003,7 +1414,12 @@ export function SmsImportClient() {
 
   const showReview = rows.length > 0
   const showingEditFlow = !!(editingRow && editDraft && editStep)
+  const showingAddAnother = addAnotherOpen && !showingEditFlow
   const topBackAction = () => {
+    if (showingAddAnother) {
+      closeAddAnotherInput()
+      return
+    }
     if (!showingEditFlow) {
       if (showReview) {
         returnToInputScreen()
@@ -1028,7 +1444,70 @@ export function SmsImportClient() {
           <IconBack size={20} />
         </button>
 
-        {!showingEditFlow ? (
+        {showingAddAnother ? (
+          <>
+            <p style={{ margin: '8px 0 2px', fontSize: 'var(--text-xs)', color: T.text3, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 'var(--weight-semibold)' }}>
+              Add another expense
+            </p>
+            <h1 style={{ margin: '0 0 16px', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
+              Paste another message
+            </h1>
+
+            <div style={{
+              background: T.white,
+              border: `1px solid ${T.border}`,
+              borderRadius: 20,
+              padding: 20,
+            }}>
+              <textarea
+                value={addAnotherText}
+                onChange={(event) => {
+                  setAddAnotherText(event.target.value)
+                  if (addAnotherError) setAddAnotherError(null)
+                }}
+                placeholder="Paste a message or type something like 'food 500'"
+                autoFocus
+                className={styles.focusRing}
+                style={{
+                  width: '100%',
+                  minHeight: 120,
+                  borderRadius: 12,
+                  border: `var(--border-width) solid ${T.border}`,
+                  padding: 12,
+                  fontSize: 14,
+                  color: T.text1,
+                  background: 'var(--white)',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                }}
+              />
+              {addAnotherError && (
+                <p style={{ margin: '10px 0 0', fontSize: 13, color: T.redDark, lineHeight: 1.45 }}>
+                  {addAnotherError}
+                </p>
+              )}
+
+              <div style={{ display: 'grid', gap: 'var(--space-sm)', marginTop: 14 }}>
+                <PrimaryBtn
+                  size="lg"
+                  onClick={submitAddAnotherExpense}
+                  disabled={addAnotherParsing || addAnotherText.trim().length === 0}
+                >
+                  {addAnotherParsing ? 'Reading…' : 'Add expense'}
+                </PrimaryBtn>
+                <SecondaryBtn
+                  size="lg"
+                  onClick={closeAddAnotherInput}
+                  disabled={addAnotherParsing}
+                >
+                  Cancel
+                </SecondaryBtn>
+              </div>
+            </div>
+          </>
+        ) : !showingEditFlow ? (
           <>
             <p style={{ margin: '8px 0 2px', fontSize: 'var(--text-xs)', color: T.text3 }}>
               {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
@@ -1162,7 +1641,10 @@ export function SmsImportClient() {
                         <p style={{ margin: 0, fontSize: 12, color: needsCategory ? T.text2 : T.text3, lineHeight: 1.45 }}>
                           {needsCategory
                             ? buildNeedsCategoryMetaLabel(row)
-                            : buildRowMetaLabel(row)}
+                            : buildRowMetaLabel({
+                              ...row,
+                              categoryLabel: resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId),
+                            })}
                         </p>
                         {rowActionLabel ? (
                           <div
@@ -1378,7 +1860,7 @@ export function SmsImportClient() {
         ) : (
           <>
             <div style={{ marginBottom: 'var(--space-md)' }}>
-              {editStep !== 'category' && (
+              {editStep !== 'category' && editStep !== 'changeCategory' && (
                 <p style={{
                   margin: '0 0 var(--space-2xs)',
                   fontSize: 'var(--text-xs)',
@@ -1387,7 +1869,7 @@ export function SmsImportClient() {
                   letterSpacing: '0.07em',
                   fontWeight: 'var(--weight-semibold)',
                 }}>
-                  {editStep === 'details' ? 'Edit row' : 'Review row'}
+                  {editStep === 'details' ? 'Edit details' : 'Review row'}
                 </p>
               )}
               {currentEditableQueueIndex >= 0 && editableRowIndices.length > 0 ? (
@@ -1410,17 +1892,50 @@ export function SmsImportClient() {
             display: 'grid',
             gap: 'var(--space-lg)',
           }}>
-            {editStep !== 'review' ? (
+            {editStep !== 'changeCategory' ? (
               <div>
-                <h1 style={{
-                  margin: 0,
-                  fontSize: 'var(--text-xl)',
-                  fontWeight: 'var(--weight-bold)',
-                  color: T.text1,
-                  letterSpacing: '-0.02em',
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-sm)',
                 }}>
-                  {editDraft.label.trim() || editingRow.label}
-                </h1>
+                  <h1 style={{
+                    margin: 0,
+                    fontSize: 'var(--text-xl)',
+                    fontWeight: 'var(--weight-bold)',
+                    color: T.text1,
+                    letterSpacing: '-0.02em',
+                    minWidth: 0,
+                    wordBreak: 'break-word',
+                  }}>
+                    {editDraft.label.trim() || editingRow.label}
+                  </h1>
+                  <button
+                    type="button"
+                    aria-label="Remove row"
+                    onClick={() => setEditDeleteConfirmOpen(true)}
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      marginTop: -2,
+                      marginRight: -4,
+                      padding: 0,
+                      border: 'none',
+                      background: 'none',
+                      color: T.text3,
+                      fontSize: 20,
+                      lineHeight: 1,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
                 <p style={{
                   margin: 'var(--space-xs) 0 0',
                   fontSize: 'var(--text-sm)',
@@ -1433,6 +1948,12 @@ export function SmsImportClient() {
                       currency: editingRow.currency,
                       categoryKey: editDraft.categoryKey,
                       categoryType: editDraft.categoryType,
+                      customCategoryId: editDraft.customCategoryId,
+                      categoryLabel: resolveImportCategoryLabel(
+                        editDraft.categoryKey,
+                        editDraft.categoryType,
+                        editDraft.customCategoryId,
+                      ),
                       date: editDraft.date,
                       isImportedMessage: editingRow.isImportedMessage,
                       debtId: editDraft.debtId,
@@ -1448,6 +1969,13 @@ export function SmsImportClient() {
                     </>
                   )}
                 </p>
+                {editStep === 'review' ? (
+                  <div style={{ marginTop: 'var(--space-md)' }}>
+                    <TertiaryBtn size="md" onClick={openEditDetailsFromReview}>
+                      Edit details
+                    </TertiaryBtn>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1485,7 +2013,7 @@ export function SmsImportClient() {
                     setEditDraft((current) => current ? { ...current, label: value } : current)
                     setEditErrors((current) => ({ ...current, label: undefined }))
                   }}
-                  autoFocus
+                  autoFocus={false}
                   error={editErrors.label}
                 />
 
@@ -1515,23 +2043,67 @@ export function SmsImportClient() {
                   />
                 ) : null}
 
-                {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (
-                  <div style={{ marginBottom: 'var(--space-md)' }}>
+                <div
+                  data-section="edit-details-category"
+                  style={{
+                    marginBottom: 'var(--space-md)',
+                    padding: '10px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-sm)',
+                    borderBottom: `var(--border-width) solid ${T.borderSubtle}`,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
                     <p style={{
-                      margin: '0 0 var(--space-2xs)',
-                      fontSize: 'var(--text-sm)',
+                      margin: '0 0 2px',
+                      fontSize: 'var(--text-xs)',
                       fontWeight: 'var(--weight-medium)',
-                      color: T.text2,
+                      color: T.text3,
+                      lineHeight: 1.3,
                     }}>
-                      Reminder
+                      Category
                     </p>
+                    <p style={{
+                      margin: 0,
+                      fontSize: 'var(--text-base)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: editDraft.categoryKey ? T.text1 : T.text3,
+                      lineHeight: 1.35,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {editDraft.categoryKey
+                        ? resolveImportCategoryLabel(
+                          editDraft.categoryKey,
+                          editDraft.categoryType,
+                          editDraft.customCategoryId,
+                        )
+                        : 'Not set'}
+                    </p>
+                  </div>
+                  <TertiaryBtn size="md" onClick={openChangeCategoryFromDetails}>
+                    {editDraft.categoryKey ? 'Change' : 'Choose'}
+                  </TertiaryBtn>
+                </div>
+
+                {(editDraft.categoryType === 'everyday' || editDraft.categoryType === 'fixed') && (
+                  <div
+                    data-section="edit-details-reminder"
+                    style={{
+                      marginBottom: 'var(--space-md)',
+                      padding: '8px 0 0',
+                    }}
+                  >
                     <label style={{
                       display: 'flex',
                       alignItems: 'flex-start',
                       gap: 'var(--space-sm)',
                       fontSize: 'var(--text-sm)',
-                      fontWeight: 'var(--weight-medium)',
-                      color: T.text1,
+                      fontWeight: 'var(--weight-regular)',
+                      color: T.text2,
                       cursor: 'pointer',
                     }}>
                       <input
@@ -1546,14 +2118,13 @@ export function SmsImportClient() {
                         style={{ width: 18, height: 18, marginTop: 2, accentColor: T.brandDark }}
                       />
                       <span>
-                        <span style={{ display: 'block', color: T.text1 }}>
+                        <span style={{ display: 'block', color: T.text2 }}>
                           Remind me about this every month
                         </span>
                         <span style={{
                           display: 'block',
                           marginTop: 'var(--space-2xs)',
                           fontSize: 'var(--text-xs)',
-                          fontWeight: 'var(--weight-regular)',
                           color: T.text3,
                           lineHeight: 1.4,
                         }}>
@@ -1564,11 +2135,17 @@ export function SmsImportClient() {
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                  <PrimaryBtn size="lg" onClick={goToEditCategory}>
-                    Continue
+                <div style={{ display: 'grid', gap: 'var(--space-sm)', marginTop: 'var(--space-md)' }}>
+                  <PrimaryBtn size="lg" onClick={saveDetailsChanges} disabled={saving}>
+                    {saving
+                      ? 'Saving…'
+                      : !editDraft.categoryKey
+                        ? 'Continue'
+                        : editableRowIndices.length === 1
+                          ? 'Save expense'
+                          : 'Save changes'}
                   </PrimaryBtn>
-                  <SecondaryBtn size="lg" onClick={requestCancelImport}>
+                  <SecondaryBtn size="lg" onClick={cancelDetailsEdit} disabled={saving}>
                     Cancel
                   </SecondaryBtn>
                 </div>
@@ -1813,7 +2390,7 @@ export function SmsImportClient() {
                   <PrimaryBtn
                     size="lg"
                     onClick={goToEditReview}
-                    disabled={!editDraft.categoryKey}
+                    disabled={!editDraft.categoryType || !editDraft.categoryKey}
                   >
                     Continue
                   </PrimaryBtn>
@@ -1834,7 +2411,11 @@ export function SmsImportClient() {
                   <SummaryRow label="Amount" value={`${editedPreviewRow.currency} ${Number.isFinite(editedPreviewRow.amount) ? editedPreviewRow.amount.toLocaleString() : 0}`} />
                   <SummaryRow
                     label="Category"
-                    value={getCategoryLabel(editedPreviewRow.categoryKey, categoryLabel(editedPreviewRow.categoryType))}
+                    value={resolveImportCategoryLabel(
+                      editedPreviewRow.categoryKey,
+                      editedPreviewRow.categoryType,
+                      editedPreviewRow.customCategoryId,
+                    )}
                     divided={editedPreviewRow.isImportedMessage || editedPreviewRow.categoryType === 'debt'}
                   />
                   {editedPreviewRow.isImportedMessage ? (
@@ -1923,14 +2504,6 @@ export function SmsImportClient() {
                       savesImmediately: shouldSaveReviewRowImmediately,
                     })}
                   </PrimaryBtn>
-                  {!editingRow.isImportedMessage ? (
-                    <SecondaryBtn size="lg" onClick={() => {
-                      setDetailsReturnStep('review')
-                      setEditStep('details')
-                    }}>
-                      Edit details
-                    </SecondaryBtn>
-                  ) : null}
                   <SecondaryBtn size="lg" onClick={requestCancelImport}>
                     Cancel
                   </SecondaryBtn>
@@ -1938,28 +2511,11 @@ export function SmsImportClient() {
               </div>
             )}
           </div>
-          {editStep === 'category' && !editingRow.isImportedMessage ? (
-            <div style={{ marginTop: 'var(--space-md)', display: 'flex', justifyContent: 'center' }}>
-              <TertiaryBtn size="md" onClick={() => {
-                setDetailsReturnStep('category')
-                setEditStep('details')
-              }}>
-                Edit details
+          {editStep === 'review' || (editStep === 'details' && editableRowIndices.length === 1 && !!editDraft.categoryKey) ? (
+            <div style={{ marginTop: 'var(--space-lg)', display: 'flex', justifyContent: 'center' }}>
+              <TertiaryBtn size="md" onClick={addAnotherExpenseFromEditFlow}>
+                + Add another expense
               </TertiaryBtn>
-            </div>
-          ) : null}
-
-          {editStep === 'review' ? (
-            <div style={{
-              marginTop: 'var(--space-md)',
-              display: 'grid',
-              gap: 'var(--space-sm)',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <TertiaryBtn size="md" onClick={() => setEditDeleteConfirmOpen(true)} style={{ color: T.redDark }}>
-                  Remove row
-                </TertiaryBtn>
-              </div>
             </div>
           ) : null}
           </>
@@ -1967,114 +2523,230 @@ export function SmsImportClient() {
       </div>
 
       <Sheet
-        open={showingEditFlow && editStep === 'category' && categoryBrowserOpen}
+        open={showingEditFlow && (editStep === 'category' || editStep === 'changeCategory') && categoryBrowserOpen}
         onClose={closeCategoryBrowser}
-        title="Choose category"
+        title={categoryBrowserMode === 'create' ? 'Create category' : 'Choose category'}
       >
         <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-            Select a category and we&apos;ll return you to this entry.
-          </p>
+          {categoryBrowserMode === 'select' ? (
+            <>
+              <input
+                type="search"
+                value={categoryQuery}
+                onChange={(event) => {
+                  setCategoryQuery(event.target.value)
+                  setCategoryBrowserNotice(null)
+                }}
+                placeholder="Search categories"
+                aria-label="Search categories"
+                className={styles.focusRing}
+                style={{
+                  width: '100%',
+                  height: 44,
+                  borderRadius: 12,
+                  border: `var(--border-width) solid ${T.border}`,
+                  background: T.white,
+                  padding: '0 14px',
+                  fontSize: 'var(--text-sm)',
+                  color: T.text1,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
 
-          <input
-            type="search"
-            value={categoryQuery}
-            onChange={(event) => setCategoryQuery(event.target.value)}
-            placeholder="Search categories"
-            aria-label="Search categories"
-            className={styles.focusRing}
-            style={{
-              width: '100%',
-              height: 44,
-              borderRadius: 12,
-              border: `var(--border-width) solid ${T.border}`,
-              background: T.white,
-              padding: '0 14px',
-              fontSize: 'var(--text-sm)',
-              color: T.text1,
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
-
-          {!isSearchingCategories ? (
-            <div
-              role="tablist"
-              aria-label="Category groups"
-              style={{
-                display: 'flex',
-                padding: 3,
-                borderRadius: 10,
-                background: 'var(--grey-100)',
-                width: '100%',
-              }}
-            >
-              {IMPORT_CATEGORY_GROUPS.map((group) => {
-                const groupType = toImportCategoryType(group.type)
-                if (!groupType) return null
-                const active = categoryFilter === groupType
-                return (
-                  <button
-                    key={`modal-filter-${groupType}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setCategoryFilter(groupType)}
-                    style={{
-                      flex: 1,
-                      height: 34,
-                      borderRadius: 8,
-                      border: 'none',
-                      background: active ? T.white : 'transparent',
-                      color: active ? T.text1 : T.text2,
-                      fontSize: 'var(--text-sm)',
-                      fontWeight: active ? 'var(--weight-semibold)' : 'var(--weight-medium)',
-                      cursor: 'pointer',
-                      boxShadow: active ? '0 1px 2px rgba(16, 24, 40, 0.08)' : 'none',
-                    }}
-                  >
-                    {group.label}
-                  </button>
-                )
-              })}
-            </div>
-          ) : null}
-
-          <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-            {isSearchingCategories ? (
-              categorySearchResults.length > 0 ? (
-                <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                  {categorySearchResults.map((option) => (
-                    <SingleSelectChip
-                      key={`modal-search-${option.key}`}
-                      label={option.label}
-                      selected={editDraft?.categoryKey === option.key}
-                      onClick={() => selectImportCategory(option)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                  No matches.
+              {categoryBrowserNotice ? (
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.brandDark, fontWeight: 600, lineHeight: 1.4 }}>
+                  {categoryBrowserNotice}
                 </p>
-              )
-            ) : tabCategoryOptions.length > 0 ? (
-              <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                {tabCategoryOptions.map((option) => (
-                  <SingleSelectChip
-                    key={`modal-filtered-${option.key}`}
-                    label={option.label}
-                    selected={editDraft?.categoryKey === option.key}
-                    onClick={() => selectImportCategory(option)}
-                  />
-                ))}
+              ) : null}
+
+              {!isSearchingCategories ? (
+                <div
+                  role="tablist"
+                  aria-label="Category groups"
+                  style={{
+                    display: 'flex',
+                    padding: 3,
+                    borderRadius: 10,
+                    background: 'var(--grey-100)',
+                    width: '100%',
+                  }}
+                >
+                  {importCategoryGroups.map((group) => {
+                    const groupType = toImportCategoryType(group.type)
+                    if (!groupType) return null
+                    const active = categoryFilter === groupType
+                    return (
+                      <button
+                        key={`modal-filter-${groupType}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setCategoryFilter(groupType)}
+                        style={{
+                          flex: 1,
+                          height: 34,
+                          borderRadius: 8,
+                          border: 'none',
+                          background: active ? T.white : 'transparent',
+                          color: active ? T.text1 : T.text2,
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: active ? 'var(--weight-semibold)' : 'var(--weight-medium)',
+                          cursor: 'pointer',
+                          boxShadow: active ? '0 1px 2px rgba(16, 24, 40, 0.08)' : 'none',
+                        }}
+                      >
+                        {group.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+                {(() => {
+                  const isChangeCategory = editStep === 'changeCategory'
+                  const selectedKey = isChangeCategory
+                    ? pickerDraftSelection?.categoryKey ?? null
+                    : editDraft?.categoryKey ?? null
+                  const selectedCustomId = isChangeCategory
+                    ? pickerDraftSelection?.customCategoryId ?? null
+                    : editDraft?.customCategoryId ?? null
+                  const handleChipClick = (option: ImportCategoryOption) => {
+                    if (isChangeCategory) {
+                      selectCategoryInPicker(option)
+                    } else {
+                      selectImportCategory(option)
+                    }
+                  }
+
+                  if (isSearchingCategories) {
+                    if (categorySearchResults.length === 0) {
+                      return (
+                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                          No matches.
+                        </p>
+                      )
+                    }
+                    return (
+                      <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                        {categorySearchResults.map((option) => (
+                          <SingleSelectChip
+                            key={`modal-search-${option.customCategoryId ?? option.key}`}
+                            label={option.label}
+                            selected={
+                              selectedKey === option.key &&
+                              selectedCustomId === (option.customCategoryId ?? null)
+                            }
+                            onClick={() => handleChipClick(option)}
+                          />
+                        ))}
+                      </div>
+                    )
+                  }
+
+                  if (tabCategoryOptions.length === 0) {
+                    return (
+                      <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                        No categories in this group.
+                      </p>
+                    )
+                  }
+
+                  return (
+                    <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                      {tabCategoryOptions.map((option) => (
+                        <SingleSelectChip
+                          key={`modal-filtered-${option.customCategoryId ?? option.key}`}
+                          label={option.label}
+                          selected={
+                            selectedKey === option.key &&
+                            selectedCustomId === (option.customCategoryId ?? null)
+                          }
+                          onClick={() => handleChipClick(option)}
+                        />
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
-            ) : (
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-                No categories in this group.
-              </p>
-            )}
-          </div>
+
+              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                {editStep === 'changeCategory' ? (
+                  <PrimaryBtn
+                    size="lg"
+                    onClick={commitPickerSelectionToDraft}
+                    disabled={
+                      !pickerDraftSelection?.categoryType ||
+                      !pickerDraftSelection?.categoryKey
+                    }
+                  >
+                    Continue
+                  </PrimaryBtn>
+                ) : (
+                  <PrimaryBtn
+                    size="lg"
+                    onClick={closeCategoryBrowser}
+                    disabled={!editDraft?.categoryKey}
+                  >
+                    Continue
+                  </PrimaryBtn>
+                )}
+                <SecondaryBtn size="lg" onClick={openCreateCategoryMode}>
+                  + Create category
+                </SecondaryBtn>
+                {!customCategoriesLoaded ? (
+                  <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: T.text3, lineHeight: 1.4 }}>
+                    Loading your categories…
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <Input
+                label="Category name"
+                value={createCategoryLabel}
+                onChange={(value) => {
+                  setCreateCategoryLabel(value)
+                  setCreateCategoryError(null)
+                }}
+                autoFocus
+                error={createCategoryError ?? undefined}
+              />
+              {createCategoryMatches.length > 0 ? (
+                <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 600, color: T.text1 }}>
+                    {normalizedCreateCategoryLabel ? 'Matching categories' : 'Recent custom categories'}
+                  </p>
+                  <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                    {createCategoryMatches.map((option) => (
+                      <SingleSelectChip
+                        key={`create-match-${option.customCategoryId ?? option.key}`}
+                        label={option.label}
+                        selected={false}
+                        onClick={() => selectCategoryFromCreateMode(option)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                {!exactCreateCategoryMatch ? (
+                  <PrimaryBtn
+                    size="lg"
+                    onClick={handleCreateCustomCategory}
+                    disabled={creatingCategory || !createCategoryLabel.trim()}
+                  >
+                    {creatingCategory ? 'Saving…' : 'Save category'}
+                  </PrimaryBtn>
+                ) : null}
+                <SecondaryBtn size="lg" onClick={returnToCategorySelection} disabled={creatingCategory}>
+                  Back
+                </SecondaryBtn>
+              </div>
+            </>
+          )}
         </div>
       </Sheet>
 

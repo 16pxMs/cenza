@@ -29,6 +29,7 @@ function category(
 ): HistoryPageData['rows'][number] {
   return {
     categoryKey,
+    customCategoryId: null,
     categoryLabel,
     categoryType,
     totalAmount,

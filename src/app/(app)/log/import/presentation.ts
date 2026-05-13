@@ -3,7 +3,7 @@ import type { CategoryConfig } from '@/lib/categories/config'
 import type { CategoryOptionGroup } from '@/lib/categories/options'
 
 export type ImportPresentationCategoryType = 'everyday' | 'fixed' | 'debt' | null
-export type ImportPresentationEditStep = 'details' | 'category' | 'review'
+export type ImportPresentationEditStep = 'details' | 'category' | 'review' | 'changeCategory'
 
 function broadCategoryLabel(value: ImportPresentationCategoryType) {
   if (!value) return 'Not set'
@@ -25,6 +25,8 @@ export function buildRowMetaLabel(row: {
   currency: string
   categoryKey: string
   categoryType: ImportPresentationCategoryType
+  categoryLabel?: string | null
+  customCategoryId?: string | null
   date: string
   isImportedMessage: boolean
   debtName?: string | null
@@ -32,7 +34,7 @@ export function buildRowMetaLabel(row: {
 }) {
   const parts = [
     `${row.currency} ${Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0}`,
-    getCategoryLabel(row.categoryKey, broadCategoryLabel(row.categoryType)),
+    row.categoryLabel?.trim() || getCategoryLabel(row.categoryKey, broadCategoryLabel(row.categoryType)),
   ]
 
   if (row.categoryType === 'debt' && row.debtName) {
@@ -69,50 +71,49 @@ export function getNextEditableRowIndex<T>(
   return -1
 }
 
-export function getInitialEditStepForRow(row: {
-  isImportedMessage: boolean
-  label: string
-  amount: number
-  categoryType?: ImportPresentationCategoryType
-  categoryKey?: string | null
-}): ImportPresentationEditStep {
-  if (row.isImportedMessage) return 'details'
-
+export function getInitialEditStepForRow(
+  row: {
+    isImportedMessage: boolean
+    label: string
+    amount: number
+    categoryType?: ImportPresentationCategoryType
+    categoryKey?: string | null
+  },
+  options?: { isSingleEntry?: boolean }
+): ImportPresentationEditStep {
   const hasValidLabel = row.label.trim().length > 0
   const hasValidAmount = Number.isFinite(row.amount) && row.amount > 0
   if (!hasValidLabel || !hasValidAmount) return 'details'
 
-  return row.categoryType && row.categoryKey ? 'review' : 'category'
+  const hasCategory = !!(row.categoryType && row.categoryKey)
+  if (!hasCategory) return 'category'
+  return options?.isSingleEntry ? 'details' : 'review'
 }
 
 export function getPreviousStepForActiveRow(input: {
   currentStep: ImportPresentationEditStep
   isImportedMessage: boolean
   detailsReturnStep?: ImportPresentationEditStep | null
+  isSingleEntry?: boolean
 }): ImportPresentationEditStep | null {
   if (input.currentStep === 'details') {
     return input.detailsReturnStep ?? null
   }
-  if (input.currentStep === 'review') return 'category'
+  if (input.currentStep === 'review') return null
+  if (input.currentStep === 'changeCategory') return 'details'
   if (input.currentStep === 'category') {
+    if (input.isSingleEntry) return null
     return input.isImportedMessage ? 'details' : null
   }
   return null
 }
 
-export function shouldAutoOpenSingleQuickTypedCategoryRow<T extends {
-  isImportedMessage: boolean
-  label: string
-  amount: number
-  categoryType?: ImportPresentationCategoryType
-  categoryKey?: string | null
+export function shouldAutoOpenSingleEntryEditFlow<T extends {
   blockedReason?: string | null
 }>(rows: T[]) {
   if (rows.length !== 1) return false
   const [row] = rows
-  if (row.isImportedMessage) return false
   if (row.blockedReason) return false
-
   return true
 }
 

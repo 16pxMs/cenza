@@ -212,6 +212,9 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
     if (activeCycleId !== currentCycleId) {
       params.set('cycle', activeCycleId)
     }
+    if (row.customCategoryId) {
+      params.set('customCategoryId', row.customCategoryId)
+    }
     return `/history/${row.categoryKey}?${params.toString()}`
   }
 
@@ -556,7 +559,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
 
                       return (
                         <button
-                          key={row.categoryKey}
+                          key={row.customCategoryId ?? row.categoryKey}
                           type="button"
                           onClick={() => router.push(categoryHref(row))}
                           style={{

@@ -16,6 +16,16 @@ import {
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
 import { canonicalizeFixedBillKey, recurringExpenseKey } from '@/lib/fixed-bills/canonical'
 import { buildDictionaryCategoryWriteRecord } from '@/lib/categories/dictionary-write'
+import {
+  loadActiveCustomCategories,
+  loadCustomCategoryMap,
+  normalizeCustomCategoryType,
+  resolveCustomCategoryForWrite,
+  slugifyCustomCategoryLabel,
+  type CategoryOption,
+  type ResolvedWriteCategory,
+} from '@/lib/categories/catalog'
+import { getCategoryConfig } from '@/lib/categories/config'
 import { DUPLICATE_MESSAGE } from './state'
 import {
   loadMonthlyReminderEntriesForCycle,
@@ -29,12 +39,18 @@ interface ParsedRowInput {
   label: string
   categoryType: ImportCategoryType
   categoryKey: string
+  customCategoryId?: string | null
   amount: number
   date: string
   sourceHash: string
   blockedReason?: string | null
   repeatsMonthly?: boolean
   debtId?: string | null
+}
+
+export interface CustomCategoryOption extends CategoryOption {
+  type: Extract<ImportCategoryType, 'everyday' | 'fixed'>
+  created_at?: string
 }
 
 export interface ActiveDebtOption {
@@ -86,7 +102,12 @@ function normalizeCategoryType(value: string | null | undefined): ImportCategory
 async function rememberDictionaryItems(
   supabase: any,
   userId: string,
-  items: Array<{ label: string; categoryKey: string; categoryType: ImportCategoryType }>
+  items: Array<{
+    label: string
+    categoryKey: string
+    categoryType: ImportCategoryType
+    customCategory?: ResolvedWriteCategory | null
+  }>
 ) {
   const usageInBatch = new Map<string, number>()
   const latestItemByNormalized = new Map<string, ReturnType<typeof buildDictionaryCategoryWriteRecord>>()
@@ -97,6 +118,7 @@ async function rememberDictionaryItems(
       categoryType: item.categoryType,
       categoryKey: item.categoryKey,
       categoryLabel: item.label,
+      customCategory: item.customCategory,
     })
     usageInBatch.set(
       dictionaryRecord.nameNormalized,
@@ -132,6 +154,7 @@ async function rememberDictionaryItems(
       label: item.label,
       category_key: item.categoryKey,
       category_type: item.categoryType,
+      custom_category_id: item.customCategoryId,
       usage_count: (existingUsage.get(normalized) ?? 0) + (usageInBatch.get(normalized) ?? 0),
     }
   })
@@ -140,6 +163,94 @@ async function rememberDictionaryItems(
   if (error) {
     throw new Error(`Failed to remember items: ${error.message}`)
   }
+}
+
+export async function loadSmsCustomCategories(): Promise<ActionResult<CustomCategoryOption[]>> {
+  return runAction<CustomCategoryOption[]>(async () => {
+    const { user } = await getAppSession()
+    if (!user) return unauthorized()
+
+    const supabase = await createServerSupabaseClient()
+    const categories = await loadActiveCustomCategories(supabase, user.id)
+    return ok(categories.map((category) => ({
+      ...category,
+      customCategoryId: category.id,
+      source: 'custom' as const,
+    })))
+  })
+}
+
+export async function createSmsCustomCategory(input: {
+  label: string
+  type: 'everyday' | 'fixed'
+}): Promise<ActionResult<CustomCategoryOption>> {
+  return runAction<CustomCategoryOption>(async () => {
+    const { user } = await getAppSession()
+    if (!user) return unauthorized()
+
+    const label = input.label.trim().replace(/\s+/g, ' ')
+    const type = normalizeCustomCategoryType(input.type)
+    if (!label) {
+      throw new Error('Category name is required.')
+    }
+    if (!type) {
+      throw new Error('Category type is invalid.')
+    }
+
+    const supabase = await createServerSupabaseClient()
+    const existing = await loadActiveCustomCategories(supabase, user.id)
+    const duplicate = existing.find((category) =>
+      category.type === type &&
+      normalize(category.label) === normalize(label)
+    )
+    if (duplicate) {
+      return ok({
+        ...duplicate,
+        customCategoryId: duplicate.id,
+        source: 'custom',
+      })
+    }
+
+    const usedKeys = new Set(existing.map((category) => category.key))
+    let baseKey = slugifyCustomCategoryLabel(label) || 'custom_category'
+    if (getCategoryConfig(baseKey)) baseKey = `custom_${baseKey}`
+    let key = baseKey
+    let suffix = 2
+    while (usedKeys.has(key) || getCategoryConfig(key)) {
+      key = `${baseKey}_${suffix}`
+      suffix += 1
+    }
+
+    const { data, error } = await (supabase.from('custom_categories') as any)
+      .insert({
+        user_id: user.id,
+        key,
+        label,
+        type,
+      })
+      .select('id,user_id,key,label,type,archived_at,created_at,updated_at')
+      .single()
+
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error('That category already exists.')
+      }
+      throw new Error(`Failed to create custom category: ${error.message}`)
+    }
+
+    return ok({
+      id: String(data.id),
+      user_id: String(data.user_id),
+      key: String(data.key),
+      label: String(data.label),
+      type,
+      archived_at: data.archived_at ?? null,
+      created_at: String(data.created_at ?? ''),
+      updated_at: String(data.updated_at ?? ''),
+      customCategoryId: String(data.id),
+      source: 'custom',
+    })
+  })
 }
 
 function validateDate(date: string) {
@@ -327,13 +438,15 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
     const cycleId = deriveCurrentCycleId(profile)
     const [
       { data: dictionaryRows, error: dictionaryError },
+      customCategories,
       { data: recentRows, error: recentRowsError },
       monthlyReminderEntries,
     ] = await Promise.all([
       (supabase.from('item_dictionary') as any)
-        .select('name_normalized,label,category_type,category_key,usage_count')
+        .select('name_normalized,label,category_type,category_key,custom_category_id,usage_count')
         .eq('user_id', user.id)
         .limit(300),
+      loadActiveCustomCategories(supabase, user.id),
       (supabase.from('transactions') as any)
         .select('category_label,category_type')
         .eq('user_id', user.id)
@@ -361,8 +474,24 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
       categoryCountsByLabel.set(normalized, counts)
     }
 
+    const activeCustomIds = new Set(customCategories.map((category) => category.id))
     const trustedDictionaryRows = (dictionaryRows ?? []).flatMap((row: any) => {
       const normalized = normalize(row.name_normalized ?? '')
+      const customCategoryId = typeof row.custom_category_id === 'string' ? row.custom_category_id : null
+      const customCategory = customCategoryId
+        ? customCategories.find((category) => category.id === customCategoryId) ?? null
+        : null
+      if (customCategoryId && activeCustomIds.has(customCategoryId) && customCategory) {
+        return [{
+          nameNormalized: normalized,
+          label: row.label,
+          categoryType: customCategory.type,
+          categoryKey: customCategory.key,
+          customCategoryId,
+          usageCount: Number(row.usage_count ?? 0),
+        }]
+      }
+
       const counts = categoryCountsByLabel.get(normalized)
       if (!counts) return []
 
@@ -375,6 +504,7 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         label: row.label,
         categoryType,
         categoryKey: row.category_key,
+        customCategoryId: null,
         usageCount: total,
       }]
     })
@@ -434,6 +564,7 @@ export async function saveParsedSmsExpenses(
     ...row,
     label: row.label.trim(),
     categoryKey: row.categoryKey.trim(),
+    customCategoryId: row.customCategoryId?.trim() || null,
     amount: Number(row.amount),
     sourceHash: (row.sourceHash ?? '').trim(),
   }))
@@ -583,9 +714,42 @@ export async function saveParsedSmsExpenses(
     })
   }
 
+  const customCategoryIds = selectedRows
+    .map((row) => row.customCategoryId)
+    .filter((id): id is string => !!id)
+  const customCategoriesById = await loadCustomCategoryMap(supabase, user.id, customCategoryIds)
+
+  for (const { row } of rowMeta) {
+    if (!row.customCategoryId) continue
+    const customCategory = customCategoriesById.get(row.customCategoryId)
+    if (!customCategory || customCategory.archived_at) {
+      rowErrors[row.id] = [...(rowErrors[row.id] ?? []), 'Choose an active custom category.']
+    }
+  }
+  if (Object.keys(rowErrors).length > 0) {
+    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
+    return ok({
+      saved: 0,
+      duplicates: 0,
+      blocked: true,
+      overridden: false,
+      rowErrors,
+      rowWarnings: {},
+    })
+  }
+  mark('custom-category-validate')
+
   const persistedRows = rowMeta.map(({ row, entryDate, cycleId }) => {
+    const customCategory = row.customCategoryId
+      ? customCategoriesById.get(row.customCategoryId) ?? null
+      : null
+    const resolvedCustomCategory = customCategory
+      ? resolveCustomCategoryForWrite(customCategory)
+      : null
     const persistedKey =
-      row.categoryType === 'fixed'
+      resolvedCustomCategory
+        ? resolvedCustomCategory.categoryKey
+        : row.categoryType === 'fixed'
         ? canonicalizeFixedBillKey(row.categoryKey)
         : row.categoryKey
 
@@ -594,6 +758,7 @@ export async function saveParsedSmsExpenses(
       entryDate,
       cycleId,
       persistedKey,
+      resolvedCustomCategory,
     }
   })
 
@@ -686,14 +851,15 @@ export async function saveParsedSmsExpenses(
   )
 
   if (genericRows.length > 0) {
-    const transactionRecords = genericRows.map(({ row, cycleId, entryDate, persistedKey }) =>
+    const transactionRecords = genericRows.map(({ row, cycleId, entryDate, persistedKey, resolvedCustomCategory }) =>
       buildTransactionRecord({
         userId: user.id,
         cycleId,
         date: toLocalDateStr(entryDate),
-        categoryType: row.categoryType,
+        categoryType: resolvedCustomCategory?.categoryType ?? row.categoryType,
         categoryKey: persistedKey,
-        categoryLabel: row.label,
+        categoryLabel: resolvedCustomCategory?.categoryLabel ?? row.label,
+        customCategory: resolvedCustomCategory,
         displayName: row.label,
         amount: row.amount,
         note: 'Imported from SMS',
@@ -809,10 +975,11 @@ export async function saveParsedSmsExpenses(
       await rememberDictionaryItems(
         supabase,
         user.id,
-        persistedRows.map(({ row, persistedKey }) => ({
+        persistedRows.map(({ row, persistedKey, resolvedCustomCategory }) => ({
           label: row.label,
           categoryKey: persistedKey,
-          categoryType: row.categoryType,
+          categoryType: (resolvedCustomCategory?.categoryType ?? row.categoryType) as ImportCategoryType,
+          customCategory: resolvedCustomCategory,
         }))
       )
       backgroundTiming.mark('db-write-dictionary')

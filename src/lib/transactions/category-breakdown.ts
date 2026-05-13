@@ -5,11 +5,13 @@ export interface CategoryBreakdownTransaction {
   category_type?: string | null
   category_key?: string | null
   category_label?: string | null
+  custom_category_id?: string | null
   amount?: number | string | null
 }
 
 export interface CategoryBreakdownRow {
   categoryKey: string
+  customCategoryId: string | null
   categoryLabel: string
   categoryType: CategoryType
   totalAmount: number
@@ -44,17 +46,19 @@ interface InternalBucket {
   count: number
   rawType: string | null
   rawLabel: string | null
+  rawKey: string
+  customCategoryId: string | null
 }
 
 /**
- * Groups transactions by canonical `category_key` and returns rows with
- * label/type sourced from CATEGORY_CONFIG.
+ * Groups transactions by custom category id when present, otherwise by
+ * canonical `category_key`.
  *
  * Rules:
  * - Excludes `debt_opening_balance` (accounting entry, not spending).
  * - Excludes any row with `category_type === 'transfer'` (defensive).
  * - Excludes non-positive amounts (refunds/credits).
- * - Groups by `category_key` only — never by label, never fuzzy.
+ * - Groups by custom category id first, then `category_key` — never by label.
  * - Sorts by `totalAmount` descending; ties broken by key ascending.
  */
 export function deriveCategoryBreakdown(
@@ -66,19 +70,26 @@ export function deriveCategoryBreakdown(
   for (const txn of txns) {
     if (!isSpendingTransaction(txn)) continue
 
-    const key = (txn.category_key as string).trim()
+    const rawKey = (txn.category_key as string).trim()
+    const customCategoryId =
+      typeof txn.custom_category_id === 'string' && txn.custom_category_id.trim()
+        ? txn.custom_category_id.trim()
+        : null
+    const bucketKey = customCategoryId ? `custom:${customCategoryId}` : rawKey
     const amount = Number(txn.amount ?? 0)
-    const bucket = buckets.get(key)
+    const bucket = buckets.get(bucketKey)
 
     if (bucket) {
       bucket.total += amount
       bucket.count += 1
     } else {
-      buckets.set(key, {
+      buckets.set(bucketKey, {
         total: amount,
         count: 1,
         rawType: typeof txn.category_type === 'string' ? txn.category_type : null,
         rawLabel: typeof txn.category_label === 'string' ? txn.category_label : null,
+        rawKey,
+        customCategoryId,
       })
     }
 
@@ -86,15 +97,19 @@ export function deriveCategoryBreakdown(
   }
 
   const rows: CategoryBreakdownRow[] = []
-  for (const [key, bucket] of buckets.entries()) {
+  for (const [bucketKey, bucket] of buckets.entries()) {
+    const key = bucket.rawKey || bucketKey
     const config = getCategoryConfig(key)
-    const label = config?.label ?? bucket.rawLabel?.trim() ?? key
+    const label = bucket.customCategoryId
+      ? bucket.rawLabel?.trim() ?? key
+      : config?.label ?? bucket.rawLabel?.trim() ?? key
     const type: CategoryType = (config?.type
       ?? (bucket.rawType as CategoryType | null)
       ?? 'other')
 
     rows.push({
       categoryKey: key,
+      customCategoryId: bucket.customCategoryId,
       categoryLabel: label,
       categoryType: type,
       totalAmount: bucket.total,

@@ -36,6 +36,7 @@ export interface LogEntry {
   name: string
   categoryLabel: string
   categoryKey: string
+  customCategoryId: string | null
   categoryType: string
   amount: number
   date: string
@@ -145,6 +146,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
     display_name?: string | null
     category_key: string
     category_label: string
+    custom_category_id?: string | null
     category_type: string
     amount: number | string
     date: string
@@ -184,6 +186,7 @@ export async function loadLogPageData(userId: string, profile: UserProfile): Pro
         name: resolveTransactionTitle(txn),
         categoryLabel: resolveCategoryLabel(txn),
         categoryKey: txn.category_key,
+        customCategoryId: txn.custom_category_id ?? null,
         categoryType: categoryType ?? 'other',
         amount: Number(txn.amount),
         date: txn.date,
@@ -253,6 +256,7 @@ export async function loadEntryById(
     name: resolveTransactionTitle(txn),
     categoryLabel: resolveCategoryLabel(txn),
     categoryKey: txn.category_key,
+    customCategoryId: txn.custom_category_id ?? null,
     categoryType: normalizedCategoryType ?? 'other',
     amount: Number(txn.amount),
     date: txn.date,

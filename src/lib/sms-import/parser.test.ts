@@ -52,6 +52,34 @@ describe('sms import parser', () => {
     expect(result.rows[0].confidence).toBe('high')
   })
 
+  it('preserves remembered custom category ids from dictionary matches', () => {
+    const result = parseSmsBlob(
+      'Payment confirmed. Debited KES 875 to DOG FOOD on Apr 2.',
+      {
+        defaultCurrency: 'KES',
+        dictionary: [
+          {
+            nameNormalized: 'dog food',
+            label: 'Dog food',
+            categoryType: 'everyday',
+            categoryKey: 'pets',
+            customCategoryId: 'custom-pets',
+            usageCount: 1,
+          },
+        ],
+      }
+    )
+
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      label: 'Dog food',
+      categoryType: 'everyday',
+      categoryKey: 'pets',
+      customCategoryId: 'custom-pets',
+      confidence: 'high',
+    }))
+  })
+
+
   it('falls back to unknown label when merchant cannot be inferred', () => {
     const result = parseSmsBlob(
       'Debit alert: KES 750 on 09/04/2026. Ref 889201.',

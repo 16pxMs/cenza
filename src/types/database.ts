@@ -92,6 +92,17 @@ export interface SpendingCategory {
   updated_at: string
 }
 
+export interface CustomCategory {
+  id: string
+  user_id: string
+  key: string
+  label: string
+  type: Extract<CategoryType, 'everyday' | 'fixed'>
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface SpendingBudget {
   id:           string
   user_id:      string
@@ -148,6 +159,7 @@ export interface Transaction {
   category_type:  CategoryType
   category_key:   string
   category_label: string
+  custom_category_id: string | null
   display_name:   string | null
   amount:         number
   note:           string | null
@@ -161,6 +173,7 @@ export interface ItemDictionary {
   label:           string
   category_key:    string
   category_type:   CategoryType
+  custom_category_id: string | null
   usage_count:     number
   created_at:      string
   updated_at:      string
@@ -209,6 +222,7 @@ export interface Database {
       income_entries:      { Row: IncomeEntry;        Insert: Omit<IncomeEntry, 'id' | 'total' | 'created_at' | 'updated_at'>; Update: Partial<IncomeEntry> }
       fixed_expenses:      { Row: FixedExpense;       Insert: Omit<FixedExpense, 'id' | 'created_at' | 'updated_at'>; Update: Partial<FixedExpense> }
       spending_categories: { Row: SpendingCategory;   Insert: Omit<SpendingCategory, 'id' | 'created_at' | 'updated_at'>; Update: Partial<SpendingCategory> }
+      custom_categories:   { Row: CustomCategory;     Insert: Omit<CustomCategory, 'id' | 'created_at' | 'updated_at' | 'archived_at'> & Partial<Pick<CustomCategory, 'archived_at'>>; Update: Partial<CustomCategory> }
       spending_budgets:    { Row: SpendingBudget;     Insert: Omit<SpendingBudget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<SpendingBudget> }
       subscriptions:       { Row: Subscription;       Insert: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Subscription> }
       goal_targets:        { Row: GoalTarget;         Insert: Omit<GoalTarget, 'id' | 'created_at' | 'updated_at'>; Update: Partial<GoalTarget> }

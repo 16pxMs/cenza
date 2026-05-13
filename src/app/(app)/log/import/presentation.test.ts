@@ -14,7 +14,7 @@ import {
   replaceEditedReviewRow,
   shouldShowReviewReminder,
   shouldSaveSingleCompletedReviewRow,
-  shouldAutoOpenSingleQuickTypedCategoryRow,
+  shouldAutoOpenSingleEntryEditFlow,
   shouldShowRawMessageToggle,
 } from './presentation'
 
@@ -114,7 +114,7 @@ describe('sms import presentation helpers', () => {
     ).toBe('category')
   })
 
-  it('sends quick typed rows with a category straight to review step', () => {
+  it('sends multi-entry quick typed rows with a category straight to per-row review step', () => {
     expect(
       getInitialEditStepForRow({
         isImportedMessage: false,
@@ -124,6 +124,21 @@ describe('sms import presentation helpers', () => {
         categoryKey: 'transport',
       })
     ).toBe('review')
+  })
+
+  it('sends single-entry quick typed rows with a category straight to edit details, skipping per-row review', () => {
+    expect(
+      getInitialEditStepForRow(
+        {
+          isImportedMessage: false,
+          label: 'uber',
+          amount: 1200,
+          categoryType: 'everyday',
+          categoryKey: 'transport',
+        },
+        { isSingleEntry: true }
+      )
+    ).toBe('details')
   })
 
   it('keeps quick typed rows without a real selected category on category step even if a key exists', () => {
@@ -150,7 +165,7 @@ describe('sms import presentation helpers', () => {
     ).toBe('details')
   })
 
-  it('keeps imported rows on the full details flow', () => {
+  it('sends multi-entry imported rows with a category straight to per-row review step', () => {
     expect(
       getInitialEditStepForRow({
         isImportedMessage: true,
@@ -159,7 +174,34 @@ describe('sms import presentation helpers', () => {
         categoryType: 'everyday',
         categoryKey: 'groceries',
       })
+    ).toBe('review')
+  })
+
+  it('sends single-entry imported rows with a category straight to edit details', () => {
+    expect(
+      getInitialEditStepForRow(
+        {
+          isImportedMessage: true,
+          label: 'Naivas',
+          amount: 2100,
+          categoryType: 'everyday',
+          categoryKey: 'groceries',
+        },
+        { isSingleEntry: true }
+      )
     ).toBe('details')
+  })
+
+  it('sends imported rows without a selected category to category step', () => {
+    expect(
+      getInitialEditStepForRow({
+        isImportedMessage: true,
+        label: 'Naivas',
+        amount: 2100,
+        categoryType: null,
+        categoryKey: '',
+      })
+    ).toBe('category')
   })
 
   it('sends quick typed category back to the review list', () => {
@@ -180,13 +222,42 @@ describe('sms import presentation helpers', () => {
     ).toBe('details')
   })
 
-  it('sends review back to category', () => {
+  it('skips the details detour for single-entry imported category and falls through to close', () => {
+    expect(
+      getPreviousStepForActiveRow({
+        currentStep: 'category',
+        isImportedMessage: true,
+        isSingleEntry: true,
+      })
+    ).toBeNull()
+  })
+
+  it('returns null from single-entry quick typed category as well so back closes to input', () => {
+    expect(
+      getPreviousStepForActiveRow({
+        currentStep: 'category',
+        isImportedMessage: false,
+        isSingleEntry: true,
+      })
+    ).toBeNull()
+  })
+
+  it('does not send review back to category selection', () => {
     expect(
       getPreviousStepForActiveRow({
         currentStep: 'review',
         isImportedMessage: false,
       })
-    ).toBe('category')
+    ).toBeNull()
+  })
+
+  it('sends change category back to details', () => {
+    expect(
+      getPreviousStepForActiveRow({
+        currentStep: 'changeCategory',
+        isImportedMessage: false,
+      })
+    ).toBe('details')
   })
 
   it('returns single unresolved queue guidance copy', () => {
@@ -352,94 +423,33 @@ describe('sms import presentation helpers', () => {
     ).toBe(false)
   })
 
-  it('auto-opens the category step for a single quick typed unresolved row', () => {
+  it('auto-opens single-entry quick typed rows so they skip the review-list wrapper', () => {
     expect(
-      shouldAutoOpenSingleQuickTypedCategoryRow([
-        {
-          isImportedMessage: false,
-          label: 'rice',
-          amount: 200,
-          categoryType: null,
-          categoryKey: '',
-          blockedReason: null,
-        },
+      shouldAutoOpenSingleEntryEditFlow([
+        { blockedReason: null },
       ])
     ).toBe(true)
   })
 
-  it('also auto-opens single quick typed rows that will land on details or review instead of the review list', () => {
+  it('auto-opens single-entry imported rows so single-entry never goes through the review-list', () => {
     expect(
-      shouldAutoOpenSingleQuickTypedCategoryRow([
-        {
-          isImportedMessage: false,
-          label: 'rice',
-          amount: 0,
-          categoryType: null,
-          categoryKey: '',
-          blockedReason: null,
-        },
-      ])
-    ).toBe(true)
-
-    expect(
-      shouldAutoOpenSingleQuickTypedCategoryRow([
-        {
-          isImportedMessage: false,
-          label: 'uber',
-          amount: 1200,
-          categoryType: 'everyday',
-          categoryKey: 'transport',
-          blockedReason: null,
-        },
+      shouldAutoOpenSingleEntryEditFlow([
+        { blockedReason: null },
       ])
     ).toBe(true)
   })
 
-  it('does not auto-open category for imported, blocked, or multi-row results', () => {
+  it('does not auto-open multi-row or blocked single rows', () => {
     expect(
-      shouldAutoOpenSingleQuickTypedCategoryRow([
-        {
-          isImportedMessage: true,
-          label: 'Naivas',
-          amount: 200,
-          categoryType: null,
-          categoryKey: '',
-          blockedReason: null,
-        },
+      shouldAutoOpenSingleEntryEditFlow([
+        { blockedReason: null },
+        { blockedReason: null },
       ])
     ).toBe(false)
 
     expect(
-      shouldAutoOpenSingleQuickTypedCategoryRow([
-        {
-          isImportedMessage: false,
-          label: 'rice',
-          amount: 200,
-          categoryType: null,
-          categoryKey: '',
-          blockedReason: null,
-        },
-        {
-          isImportedMessage: false,
-          label: 'beans',
-          amount: 100,
-          categoryType: null,
-          categoryKey: '',
-          blockedReason: null,
-        },
-      ])
-    ).toBe(false)
-
-    expect(
-      shouldAutoOpenSingleQuickTypedCategoryRow([
-        {
-          isImportedMessage: false,
-          label: 'rice',
-          amount: 200,
-          categoryType: null,
-          categoryKey: '',
-          blockedReason: 'blocked',
-        },
+      shouldAutoOpenSingleEntryEditFlow([
+        { blockedReason: 'blocked' },
       ])
     ).toBe(false)
   })

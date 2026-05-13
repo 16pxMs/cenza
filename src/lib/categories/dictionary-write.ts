@@ -1,11 +1,13 @@
 import type { CategoryType } from '@/types/database'
 import { resolveTransactionCategoryForWrite } from '@/lib/supabase/transactions-db'
+import type { ResolvedWriteCategory } from './catalog'
 
 export interface DictionaryCategoryWriteInput {
   nameNormalizedSource: string
   categoryType: CategoryType
   categoryKey: string
   categoryLabel?: string | null
+  customCategory?: ResolvedWriteCategory | null
 }
 
 export interface DictionaryCategoryWriteRecord {
@@ -13,6 +15,7 @@ export interface DictionaryCategoryWriteRecord {
   label: string
   categoryKey: string
   categoryType: CategoryType
+  customCategoryId: string | null
 }
 
 function normalizeDictionaryName(value: string) {
@@ -31,6 +34,7 @@ export function buildDictionaryCategoryWriteRecord(
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
+    customCategory: input.customCategory,
   })
 
   return {
@@ -38,5 +42,6 @@ export function buildDictionaryCategoryWriteRecord(
     label: category.categoryLabel,
     categoryKey: category.categoryKey,
     categoryType: category.categoryType,
+    customCategoryId: category.customCategoryId,
   }
 }

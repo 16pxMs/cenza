@@ -161,7 +161,7 @@ describe('loadOverviewCriticalData', () => {
         if (table === 'transactions') {
           return {
             select: vi.fn((query: string) => {
-              if (query === 'id, amount, category_key, category_type, category_label, display_name, date') {
+              if (query === 'id, amount, category_key, category_type, category_label, custom_category_id, display_name, date') {
                 return {
                   eq: vi.fn(() => ({
                     eq: vi.fn().mockResolvedValue({
@@ -200,7 +200,7 @@ describe('loadOverviewCriticalData', () => {
                 }
               }
 
-              if (query === 'amount, category_key, category_label, category_type') {
+              if (query === 'amount, category_key, category_label, category_type, custom_category_id') {
                 return {
                   eq: vi.fn(() => ({
                     eq: vi.fn(() => ({

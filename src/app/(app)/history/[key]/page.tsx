@@ -35,6 +35,7 @@ export default async function CategoryLedgerPage({ params, searchParams }: PageP
   const planned = Number(readSearchParam(resolvedSearchParams, 'planned') ?? 0)
   const categoryType = (readSearchParam(resolvedSearchParams, 'type') ?? 'everyday') as CategoryType
   const scope = readSearchParam(resolvedSearchParams, 'scope') === 'label' ? 'label' : 'key'
+  const customCategoryId = readSearchParam(resolvedSearchParams, 'customCategoryId')
   const returnTo = readSearchParam(resolvedSearchParams, 'returnTo') ?? '/history'
   const rawCycleParam = readSearchParam(resolvedSearchParams, 'cycle')
   const cycleParam = rawCycleParam && /^\d{4}-\d{2}-\d{2}$/.test(rawCycleParam) ? rawCycleParam : undefined
@@ -47,6 +48,7 @@ export default async function CategoryLedgerPage({ params, searchParams }: PageP
     scope,
     categoryLabel,
     targetDate,
+    customCategoryId,
   )
 
   return (

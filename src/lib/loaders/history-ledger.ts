@@ -17,6 +17,7 @@ export interface LedgerTransaction {
   displayName: string | null
   categoryLabel: string | null
   categoryType: CategoryType | null
+  customCategoryId: string | null
 }
 
 export interface HistoryLedgerPageData {
@@ -45,6 +46,7 @@ export async function loadHistoryLedgerPageData(
   scope: 'key' | 'label' = 'key',
   categoryLabel?: string,
   targetDate?: Date,
+  customCategoryId?: string | null,
 ): Promise<HistoryLedgerPageData> {
   const supabase = await createServerSupabaseClient()
   const cycleId = targetDate
@@ -55,7 +57,7 @@ export async function loadHistoryLedgerPageData(
     supabase,
     userId,
     profile,
-    'id, date, amount, note, display_name, category_key, category_label, category_type',
+    'id, date, amount, note, display_name, category_key, category_label, category_type, custom_category_id',
     targetDate
   ).query
 
@@ -65,7 +67,9 @@ export async function loadHistoryLedgerPageData(
       ? resolveOutflowBucketType(categoryKey, categoryType)
       : null
 
-  if (scope === 'label' && categoryLabel) {
+  if (customCategoryId) {
+    scopedQuery = scopedQuery.eq('custom_category_id', customCategoryId)
+  } else if (scope === 'label' && categoryLabel) {
     scopedQuery = scopedQuery
       .eq('category_type', categoryType ?? 'everyday')
       .eq('category_label', categoryLabel)
@@ -91,6 +95,7 @@ export async function loadHistoryLedgerPageData(
     displayName: typeof row.display_name === 'string' && row.display_name.trim() ? row.display_name.trim() : null,
     categoryLabel: row.category_label ?? null,
     categoryType: row.category_type ?? null,
+    customCategoryId: row.custom_category_id ?? null,
     amount: Number(row.amount),
   }))
 

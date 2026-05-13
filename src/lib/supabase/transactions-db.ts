@@ -1,8 +1,10 @@
 import { toLocalDateStr } from '../cycles'
 import { getCycleIdForDate } from './cycles-db'
 import type { CategoryType } from '../../types/database'
-import { canonicalizeFixedBillKey } from '@/lib/fixed-bills/canonical'
-import { getCategoryConfig, resolveCategoryKey } from '@/lib/categories/config'
+import {
+  resolveCanonicalCategoryForWrite,
+  type ResolvedWriteCategory,
+} from '@/lib/categories/catalog'
 
 type SupabaseLike = any
 
@@ -18,6 +20,8 @@ export interface TransactionWriteInput {
   categoryType: CategoryType
   categoryKey: string
   categoryLabel: string
+  customCategoryId?: string | null
+  customCategory?: ResolvedWriteCategory | null
   displayName: string
   amount: number
   note?: string | null
@@ -29,59 +33,18 @@ export interface TransactionDeleteScope {
   categoryKey: string
 }
 
-export interface ResolvedTransactionCategory {
-  categoryType: CategoryType
-  categoryKey: string
-  categoryLabel: string
-}
+export interface ResolvedTransactionCategory extends ResolvedWriteCategory {}
 
 export function resolveTransactionCategoryForWrite(input: {
   categoryType: CategoryType
   categoryKey: string
   categoryLabel?: string | null
+  customCategory?: ResolvedWriteCategory | null
 }): ResolvedTransactionCategory {
-  const rawKey = input.categoryKey.trim()
-  if (!rawKey) {
-    throw new Error('Category key is required')
+  if (input.customCategory) {
+    return input.customCategory
   }
-
-  if (input.categoryType === 'goal') {
-    const knownGoalCategory = getCategoryConfig(rawKey)
-    if (knownGoalCategory?.type === 'goal') {
-      return {
-        categoryType: knownGoalCategory.type,
-        categoryKey: knownGoalCategory.key,
-        categoryLabel: knownGoalCategory.label,
-      }
-    }
-
-    return {
-      categoryType: 'goal',
-      categoryKey: rawKey,
-      categoryLabel: input.categoryLabel?.trim() || rawKey,
-    }
-  }
-
-  const normalizedKey =
-    input.categoryType === 'fixed'
-      ? canonicalizeFixedBillKey(rawKey)
-      : rawKey
-
-  const resolvedKey = resolveCategoryKey(normalizedKey)
-  if (!resolvedKey) {
-    throw new Error(`Unknown category key: ${rawKey}`)
-  }
-
-  const config = getCategoryConfig(resolvedKey)
-  if (!config) {
-    throw new Error(`Unknown category key: ${rawKey}`)
-  }
-
-  return {
-    categoryType: config.type,
-    categoryKey: config.key,
-    categoryLabel: config.label,
-  }
+  return resolveCanonicalCategoryForWrite(input)
 }
 
 export function buildTransactionRecord(input: TransactionWriteInput) {
@@ -89,6 +52,7 @@ export function buildTransactionRecord(input: TransactionWriteInput) {
     categoryType: input.categoryType,
     categoryKey: input.categoryKey,
     categoryLabel: input.categoryLabel,
+    customCategory: input.customCategory,
   })
   const displayName = input.displayName.trim()
   if (!displayName) {
@@ -102,6 +66,7 @@ export function buildTransactionRecord(input: TransactionWriteInput) {
     category_type: resolvedCategory.categoryType,
     category_key: resolvedCategory.categoryKey,
     category_label: resolvedCategory.categoryLabel,
+    custom_category_id: resolvedCategory.customCategoryId,
     display_name: displayName,
     amount: input.amount,
     note: input.note?.trim() || null,

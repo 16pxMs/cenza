@@ -187,4 +187,46 @@ describe('deriveCategoryBreakdown', () => {
       categoryType: 'everyday',
     })
   })
+
+  it('groups custom category transactions by custom category id before key', () => {
+    const rows = deriveCategoryBreakdown([
+      txn({
+        category_type: 'everyday',
+        category_key: 'custom_pet_bucket',
+        category_label: 'Pets',
+        custom_category_id: 'custom-pets',
+        amount: 500,
+      }),
+      txn({
+        category_type: 'everyday',
+        category_key: 'custom_pet_bucket',
+        category_label: 'Pet supplies',
+        custom_category_id: 'custom-pets',
+        amount: 700,
+      }),
+      txn({
+        category_type: 'everyday',
+        category_key: 'custom_pet_bucket',
+        category_label: 'Pets canonical-ish',
+        amount: 300,
+      }),
+    ])
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        categoryKey: 'custom_pet_bucket',
+        customCategoryId: 'custom-pets',
+        categoryLabel: 'Pets',
+        totalAmount: 1200,
+        transactionCount: 2,
+      }),
+      expect.objectContaining({
+        categoryKey: 'custom_pet_bucket',
+        customCategoryId: null,
+        categoryLabel: 'Pets canonical-ish',
+        totalAmount: 300,
+        transactionCount: 1,
+      }),
+    ])
+  })
 })

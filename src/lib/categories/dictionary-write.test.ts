@@ -24,6 +24,28 @@ describe('buildDictionaryCategoryWriteRecord', () => {
       label: 'Internet',
       categoryKey: 'internet',
       categoryType: 'fixed',
+      customCategoryId: null,
+    })
+  })
+
+  it('stores custom category snapshots with the custom category id', () => {
+    expect(buildDictionaryCategoryWriteRecord({
+      nameNormalizedSource: 'Dog Food',
+      categoryType: 'everyday',
+      categoryKey: 'pets',
+      categoryLabel: 'Pets',
+      customCategory: {
+        categoryType: 'everyday',
+        categoryKey: 'pets',
+        categoryLabel: 'Pets',
+        customCategoryId: 'custom-1',
+      },
+    })).toEqual({
+      nameNormalized: 'dog food',
+      label: 'Pets',
+      categoryKey: 'pets',
+      categoryType: 'everyday',
+      customCategoryId: 'custom-1',
     })
   })
 })

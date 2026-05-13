@@ -53,6 +53,7 @@ interface OverviewTransactionRow {
   category_key: string
   category_type: string
   category_label: string | null
+  custom_category_id?: string | null
   display_name?: string | null
   date: string
 }
@@ -87,6 +88,7 @@ interface OverviewPrevCycleTransactionRow {
   category_key: string
   category_label: string | null
   category_type: string
+  custom_category_id?: string | null
 }
 
 export interface BillLeftToPayItem {
@@ -695,7 +697,7 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
     supabase,
     userId,
     profile,
-    'id, amount, category_key, category_type, category_label, display_name, date'
+    'id, amount, category_key, category_type, category_label, custom_category_id, display_name, date'
   )
   const previousCycleTargetDate = (() => {
     const currentRange = getCycleDateRange(profile)
@@ -709,7 +711,7 @@ export async function loadOverviewSecondaryData(userId: string, profile: UserPro
         supabase,
         userId,
         profile,
-        'amount, category_key, category_label, category_type',
+        'amount, category_key, category_label, category_type, custom_category_id',
         previousCycleTargetDate
       ).query.in('category_type', ['fixed', 'subscription'])
     : Promise.resolve({ data: [] as OverviewPrevCycleTransactionRow[] })

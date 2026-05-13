@@ -27,6 +27,7 @@ export interface HistoryTransaction {
   category_type: string
   category_key: string
   category_label: string | null
+  custom_category_id: string | null
   display_name: string | null
   amount: number
   date: string
@@ -215,7 +216,7 @@ export async function loadHistoryPageData(
     supabase,
     userId,
     profile,
-    'id, category_type, category_key, category_label, display_name, amount, date, created_at',
+    'id, category_type, category_key, category_label, custom_category_id, display_name, amount, date, created_at',
     targetDate
   )
 
@@ -242,6 +243,7 @@ export async function loadHistoryPageData(
     category_type: String(row.category_type ?? ''),
     category_key: String(row.category_key ?? ''),
     category_label: typeof row.category_label === 'string' ? row.category_label : null,
+    custom_category_id: typeof row.custom_category_id === 'string' ? row.custom_category_id : null,
     display_name: typeof row.display_name === 'string' ? row.display_name : null,
     amount: Number(row.amount),
     date: String(row.date ?? ''),
@@ -250,14 +252,15 @@ export async function loadHistoryPageData(
   const includedExpenseRows = rows.filter(isIncludedHistoryOutflow)
   const labelByCategoryKey = new Map<string, string>()
   for (const row of includedExpenseRows) {
-    if (!labelByCategoryKey.has(row.category_key)) {
-      labelByCategoryKey.set(row.category_key, resolveCategoryDisplayLabel(row))
+    const identity = row.custom_category_id ? `custom:${row.custom_category_id}` : row.category_key
+    if (!labelByCategoryKey.has(identity)) {
+      labelByCategoryKey.set(identity, resolveCategoryDisplayLabel(row))
     }
   }
 
   const categoryRows = deriveCategoryBreakdown(includedExpenseRows).map((row) => ({
     ...row,
-    categoryLabel: labelByCategoryKey.get(row.categoryKey) ?? row.categoryLabel,
+    categoryLabel: labelByCategoryKey.get(row.customCategoryId ? `custom:${row.customCategoryId}` : row.categoryKey) ?? row.categoryLabel,
   }))
   const totalSpent = categoryRows.reduce((sum, row) => sum + row.totalAmount, 0)
   const spendingGroups = buildSpendingGroups(includedExpenseRows, totalSpent)

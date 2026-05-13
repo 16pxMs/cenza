@@ -24,6 +24,7 @@ describe('buildTransactionRecord', () => {
       category_type: 'everyday',
       category_key: 'groceries',
       category_label: 'Groceries',
+      custom_category_id: null,
       display_name: 'Market run',
       amount: 1200,
       note: 'market run',
@@ -62,6 +63,7 @@ describe('buildTransactionRecord', () => {
       category_type: 'fixed',
       category_key: 'internet',
       category_label: 'Internet',
+      custom_category_id: null,
       display_name: 'Home WiFi',
       amount: 1200,
       note: 'market run',
@@ -82,6 +84,37 @@ describe('buildTransactionRecord', () => {
         note: null,
       })
     ).toThrow('Unknown category key: custom_dog_food')
+  })
+
+  it('writes custom category snapshots when a validated custom category is supplied', () => {
+    expect(buildTransactionRecord({
+      userId: 'user-1',
+      cycleId: '2026-03-14',
+      date: '2026-03-20',
+      categoryType: 'everyday',
+      categoryKey: 'pets',
+      categoryLabel: 'Pets',
+      customCategory: {
+        categoryType: 'everyday',
+        categoryKey: 'pets',
+        categoryLabel: 'Pets',
+        customCategoryId: 'custom-1',
+      },
+      displayName: 'Dog food',
+      amount: 1200,
+      note: null,
+    })).toEqual({
+      user_id: 'user-1',
+      cycle_id: '2026-03-14',
+      date: '2026-03-20',
+      category_type: 'everyday',
+      category_key: 'pets',
+      category_label: 'Pets',
+      custom_category_id: 'custom-1',
+      display_name: 'Dog food',
+      amount: 1200,
+      note: null,
+    })
   })
 
   it('rejects blank display names before insert', () => {
@@ -111,6 +144,7 @@ describe('resolveTransactionCategoryForWrite', () => {
       categoryType: 'everyday',
       categoryKey: 'groceries',
       categoryLabel: 'Groceries',
+      customCategoryId: null,
     })
   })
 

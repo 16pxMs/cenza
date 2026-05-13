@@ -7,6 +7,7 @@ export interface ImportDictionaryEntry {
   label: string
   categoryType: ImportCategoryType
   categoryKey: string
+  customCategoryId?: string | null
   usageCount?: number
 }
 
@@ -16,6 +17,7 @@ export interface ParsedSmsExpense {
   label: string
   categoryType: ImportCategoryType
   categoryKey: string
+  customCategoryId?: string | null
   amount: number
   currency: string
   date: string
@@ -309,14 +311,15 @@ function resolveDictionary(
   const normalized = normalize(label)
   if (!normalized) return null
 
-  if (dictionary[normalized] && (dictionary[normalized].usageCount ?? 0) >= 2) {
-    return dictionary[normalized]
+  const exact = dictionary[normalized]
+  if (exact && (exact.customCategoryId ? (exact.usageCount ?? 0) >= 1 : (exact.usageCount ?? 0) >= 2)) {
+    return exact
   }
 
   if (normalized.length < 4) return null
   const entries = Object.values(dictionary)
   const containsMatch = entries.find((entry) =>
-    (entry.usageCount ?? 0) >= 2 &&
+    (entry.customCategoryId ? (entry.usageCount ?? 0) >= 1 : (entry.usageCount ?? 0) >= 2) &&
     (normalized.includes(entry.nameNormalized) || entry.nameNormalized.includes(normalized))
   )
 
@@ -386,6 +389,7 @@ export function parseSimpleExpenseLines(
       label: isIncomeCredit ? blockedLabel : label,
       categoryType,
       categoryKey,
+      customCategoryId: null,
       amount,
       currency: options.defaultCurrency,
       date,
@@ -553,6 +557,7 @@ export function parseSmsBlob(
       label,
       categoryType,
       categoryKey,
+      customCategoryId: dict?.customCategoryId ?? null,
       amount: amountMatch.amount,
       currency: amountMatch.currency || options.defaultCurrency,
       date: parseDate(line),
