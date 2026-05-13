@@ -210,12 +210,9 @@ export function OverviewWithData({
   }
 
   const commitmentsCardCopy = (() => {
-    if (!commitmentSummary || commitmentSummary.state === 'empty') {
-      return {
-        state: 'No recurring commitments yet',
-        meta: 'Turn reminders on for recurring expenses',
-      }
-    }
+    // Empty/missing commitment summary is handled by hiding the card entirely
+    // (see hasCommitmentsToShow below), so we can assume a non-empty summary here.
+    if (!commitmentSummary) return { state: '', meta: '' }
 
     if (commitmentSummary.state === 'overdue' && commitmentSummary.nearestItem) {
       return {
@@ -359,7 +356,47 @@ const reference = receivedConfirmed
     return null
   })()
 
-  const goalsPreviewCard = (
+  const goalsPreviewCard = totalGoals === 0 ? (
+    <div style={{ marginTop: 16, ...fade(0.15) }}>
+      <div
+        style={{
+          background: 'var(--white)',
+          border: '1px solid var(--border)',
+          borderRadius: 18,
+          padding: 18,
+        }}
+      >
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          borderRadius: 999,
+          border: '1px solid #B7E4C1',
+          background: '#EAF8EE',
+          color: '#1A7A45',
+          fontSize: 'var(--text-sm)',
+          fontWeight: 'var(--weight-semibold)',
+          padding: '6px 12px',
+          marginBottom: 10,
+        }}>
+          Set up your first goal
+        </div>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+          Give your money a purpose.
+        </p>
+        <p style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--text-2)', lineHeight: 1.6 }}>
+          Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
+        </p>
+        <SecondaryBtn
+          type="button"
+          size="md"
+          onClick={() => router.push('/goals/new?from=overview')}
+          style={{ width: '100%' }}
+        >
+          Add your first goal
+        </SecondaryBtn>
+      </div>
+    </div>
+  ) : (
     <div style={{ marginTop: 16, ...fade(0.15) }}>
       <div
         onClick={() => router.push('/goals')}
@@ -419,11 +456,7 @@ const reference = receivedConfirmed
               </p>
             )}
           </div>
-        ) : (
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.55 }}>
-            You have no goals yet.
-          </p>
-        )}
+        ) : null}
       </div>
     </div>
   )
@@ -687,7 +720,7 @@ const reference = receivedConfirmed
         }}
       >
         <p style={{ ...CONTAINER_TITLE_STYLE, marginBottom: 16 }}>
-          Your largest expenses this month
+          {topOutflowCategories.length <= 2 ? 'Spending so far' : 'Your largest expenses this month'}
         </p>
 
         <div style={{ display: 'grid', gap: 16 }}>
@@ -764,7 +797,10 @@ const reference = receivedConfirmed
     </div>
   ) : null
 
-  const obligationsPreviewCard = (
+  const hasCommitmentsToShow =
+    !!commitmentSummary && commitmentSummary.state !== 'empty'
+
+  const obligationsPreviewCard = !hasCommitmentsToShow ? null : (
     <div style={{ marginTop: 16, ...fade(0.14) }}>
       <div
         role="button"

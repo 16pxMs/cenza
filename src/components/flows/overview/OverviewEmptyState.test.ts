@@ -48,3 +48,36 @@ describe('OverviewEmptyState add-expense CTA', () => {
     expect(emptyComponent).toBeGreaterThan(emptyBranch)
   })
 })
+
+describe('OverviewWithData new-user card states', () => {
+  it('softens the largest-expenses title when only one or two categories are available', () => {
+    expect(overviewSource).toContain(
+      "{topOutflowCategories.length <= 2 ? 'Spending so far' : 'Your largest expenses this month'}"
+    )
+  })
+
+  it('hides the Upcoming commitments card when there are no commitments to show', () => {
+    expect(overviewSource).toContain(
+      "const hasCommitmentsToShow =\n    !!commitmentSummary && commitmentSummary.state !== 'empty'"
+    )
+    expect(overviewSource).toContain('const obligationsPreviewCard = !hasCommitmentsToShow ? null : (')
+    expect(overviewSource).not.toContain("'No recurring commitments yet'")
+    expect(overviewSource).not.toContain("'Turn reminders on for recurring expenses'")
+  })
+
+  it('replaces the empty goals body with the first-time goal CTA and copy', () => {
+    expect(overviewSource).toContain('const goalsPreviewCard = totalGoals === 0 ? (')
+    expect(overviewSource).toContain('Set up your first goal')
+    expect(overviewSource).toContain('Give your money a purpose.')
+    expect(overviewSource).toContain('Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.')
+    expect(overviewSource).toContain("router.push('/goals/new?from=overview')")
+    expect(overviewSource).toContain('Add your first goal')
+    expect(overviewSource).not.toContain('You have no goals yet.')
+  })
+
+  it('still renders the standard goals preview when the user has goals', () => {
+    expect(overviewSource).toContain('{totalGoals > 0 ? (')
+    expect(overviewSource).toContain("router.push('/goals')")
+    expect(overviewSource).toContain('You have no active goals.')
+  })
+})
