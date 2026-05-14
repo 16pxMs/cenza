@@ -36,7 +36,8 @@ describe('commitments page guardrails', () => {
   it('keeps the overview card as a commitments doorway without overpromising management', () => {
     expect(overviewSource).toContain("const COMMITMENTS_ROUTE = '/commitments'")
     expect(overviewSource).toContain('aria-label="View commitments"')
-    expect(overviewSource).toContain('View all')
+    expect(overviewCommitmentsCardSource).toContain('<ChevronRight size={12}')
+    expect(overviewCommitmentsCardSource).not.toContain('View all')
     expect(overviewSource).not.toContain('Manage all reminders')
   })
 

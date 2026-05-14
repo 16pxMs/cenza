@@ -362,28 +362,29 @@ const reference = receivedConfirmed
         style={{
           background: 'var(--white)',
           border: '1px solid var(--border)',
-          borderRadius: 18,
-          padding: 18,
+          borderRadius: 16,
+          padding: 16,
         }}
       >
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
           borderRadius: 999,
-          border: '1px solid #B7E4C1',
-          background: '#EAF8EE',
-          color: '#1A7A45',
-          fontSize: 'var(--text-sm)',
+          border: 'var(--border-width) solid var(--green-border)',
+          background: 'var(--green-light)',
+          color: 'var(--green-dark)',
+          fontSize: 'var(--text-xs)',
           fontWeight: 'var(--weight-semibold)',
-          padding: '6px 12px',
+          letterSpacing: '0.02em',
+          padding: '4px 10px',
           marginBottom: 10,
         }}>
           Set up your first goal
         </div>
-        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-1)', letterSpacing: '-0.01em' }}>
+        <p style={{ ...CONTAINER_TITLE_STYLE, marginBottom: 4 }}>
           Give your money a purpose.
         </p>
-        <p style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--text-2)', lineHeight: 1.6 }}>
+        <p style={{ margin: '0 0 14px', fontSize: 'var(--text-sm)', color: 'var(--text-2)', lineHeight: 1.5 }}>
           Whether it is school fees, an emergency fund, or something else. Set a goal and track it here.
         </p>
         <SecondaryBtn
@@ -802,31 +803,26 @@ const reference = receivedConfirmed
 
   const obligationsPreviewCard = !hasCommitmentsToShow ? null : (
     <div style={{ marginTop: 16, ...fade(0.14) }}>
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         aria-label="View commitments"
         onClick={() => router.push(COMMITMENTS_ROUTE)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            router.push(COMMITMENTS_ROUTE)
-          }
-        }}
         style={{
+          width: '100%',
           background: 'var(--white)',
           border: '1px solid var(--border)',
           borderRadius: 16,
           padding: '14px 16px',
           cursor: 'pointer',
+          textAlign: 'left',
+          fontFamily: 'inherit',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
           <p style={{ ...CONTAINER_TITLE_STYLE, fontSize: 'var(--text-sm)' }}>
             Upcoming commitments
           </p>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--brand-dark)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', flexShrink: 0 }}>
-            View all
+          <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--brand-dark)', flexShrink: 0 }}>
             <ChevronRight size={12} color="var(--text-3)" strokeWidth={2.2} />
           </span>
         </div>
@@ -837,7 +833,7 @@ const reference = receivedConfirmed
         <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
           {commitmentsCardCopy.meta}
         </p>
-      </div>
+      </button>
     </div>
   )
 

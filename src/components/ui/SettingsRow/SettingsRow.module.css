@@ -59,9 +59,9 @@
 .value {
   flex-shrink: 0;
   max-width: 44%;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-muted);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  color: var(--text-3);
   line-height: 1.35;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -69,8 +69,9 @@
 
 .valueAction {
   color: var(--brand-dark);
+  font-weight: var(--weight-medium);
 }
 
 .valueDefault {
-  color: var(--text-2);
+  color: var(--text-3);
 }

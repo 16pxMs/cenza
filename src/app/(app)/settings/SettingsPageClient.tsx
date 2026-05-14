@@ -21,16 +21,26 @@ import type { SettingsPageData } from '@/lib/loaders/settings'
 import type { AmountFormatPreference } from '@/lib/formatting/amount'
 import { deleteAccountPermanently, saveAmountFormatPreference, savePaySchedule } from './actions'
 
+// All visual values flow through CSS tokens — see src/styles/tokens.css.
+// Type scale on this surface: --text-lg (avatar), --text-base (labels & values),
+// --text-sm (supporting copy & chips), --text-xs (eyebrows & hints).
+// Weights: regular for body, medium for labels, semibold for names & active states.
 const T = {
-  pageBg: '#F8F9FA',
-  white: '#FFFFFF',
-  border: '#E4E7EC',
-  text1: '#101828',
-  text2: '#475467',
-  text3: '#667085',
-  textMuted: '#98A2B3',
-  brandDark: '#5C3489',
-}
+  pageBg: 'var(--page-bg)',
+  white: 'var(--white)',
+  border: 'var(--border)',
+  text1: 'var(--text-1)',
+  text2: 'var(--text-2)',
+  text3: 'var(--text-3)',
+  textMuted: 'var(--text-muted)',
+  brandDark: 'var(--brand-dark)',
+  brandMid: 'var(--brand-mid)',
+  brandTint: 'color-mix(in srgb, var(--brand-dark) 6%, transparent)',
+  textInverse: 'var(--text-inverse)',
+  redLight: 'var(--red-light)',
+  redBorder: 'var(--red-border)',
+  redDark: 'var(--red-dark)',
+} as const
 
 const PAY_DAYS = Array.from({ length: 31 }, (_, i) => i + 1)
 const MONTHLY_DAYS = PAY_DAYS
@@ -216,20 +226,20 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
       {sectionLabel('Profile')}
       {sectionCard(<>
         <div style={{
-          padding: '16px', display: 'flex', alignItems: 'center', gap: 14,
-          borderBottom: `1px solid ${T.border}`,
+          padding: 'var(--space-md)', display: 'flex', alignItems: 'center', gap: 'var(--space-md)',
+          borderBottom: `var(--border-width) solid var(--border-subtle)`,
         }}>
           <div style={{
             width: 48, height: 48, borderRadius: '50%',
-            background: T.brandDark, color: '#fff',
-            fontSize: 18, fontWeight: 600, flexShrink: 0,
+            background: T.brandDark, color: T.textInverse,
+            fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-medium)', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {initial}
           </div>
           <div>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text1 }}>{data.name}</p>
-            <p style={{ margin: '2px 0 0', fontSize: 13, color: T.text3 }}>{data.email}</p>
+            <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>{data.name}</p>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: T.text3 }}>{data.email}</p>
           </div>
         </div>
         <SettingsRow label="Sign-in method" value="Google" valueTone="default" isLast />
@@ -303,26 +313,26 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
             isLast
           />
         ) : (
-          <div style={{ padding: '16px' }}>
-            <p style={{ margin: '0 0 12px', fontSize: 14, color: T.text2, lineHeight: 1.6 }}>
+          <div style={{ padding: 'var(--space-md)' }}>
+            <p style={{ margin: '0 0 var(--space-sm)', fontSize: 'var(--text-sm)', color: T.text2, lineHeight: 1.55 }}>
               This permanently deletes your Cenza account, secure login, and all your data. There is no undo.
             </p>
             {deleteError && (
               <p style={{
-                margin: '0 0 12px', padding: '10px 14px', borderRadius: 10,
-                background: '#FEF2F2', border: '1px solid #FECACA',
-                fontSize: 13, color: '#D93025', lineHeight: 1.5,
+                margin: '0 0 var(--space-sm)', padding: 'var(--space-sm) var(--space-md)', borderRadius: 'var(--radius-sm)',
+                background: T.redLight, border: `var(--border-width) solid ${T.redBorder}`,
+                fontSize: 'var(--text-sm)', color: T.redDark, lineHeight: 1.5,
               }}>
                 {deleteError}
               </p>
             )}
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
               <SecondaryBtn
                 size="md"
                 onClick={() => { setDeleteStep('idle'); setDeleteError(null) }}
                 style={{
                   flex: 1,
-                  borderColor: 'var(--border)',
+                  borderColor: T.border,
                   color: T.text2,
                 }}
               >
@@ -334,8 +344,8 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                 disabled={deleting}
                 style={{
                   flex: 1,
-                  background: 'var(--red-dark)',
-                  color: 'var(--text-inverse)',
+                  background: T.redDark,
+                  color: T.textInverse,
                   opacity: deleting ? 0.7 : 1,
                 }}
               >
@@ -371,22 +381,22 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
         onClose={() => setShowPaySchedule(false)}
         title="Pay schedule"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
           <div>
-            <p style={{ margin: '0 0 6px', fontSize: 14, color: T.text1, fontWeight: 600 }}>
+            <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', color: T.text1, fontWeight: 'var(--weight-medium)' }}>
               {formatScheduleSentence(scheduleType, scheduleDays)}
             </p>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: T.text3 }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: T.text3 }}>
               Use the days you usually receive income so reminders and monthly check-ins show up at the right time.
             </p>
           </div>
 
           <div style={{
             display: 'flex',
-            gap: 8,
+            gap: 'var(--space-sm)',
             background: T.pageBg,
-            border: `1px solid ${T.border}`,
-            borderRadius: 12,
+            border: `var(--border-width) solid ${T.border}`,
+            borderRadius: 'var(--radius-md)',
             padding: 4,
           }}>
             {(['monthly', 'twice_monthly'] as const).map(type => (
@@ -407,12 +417,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                 style={{
                   flex: 1,
                   height: 36,
-                  borderRadius: 9,
+                  borderRadius: 'var(--radius-sm)',
                   background: scheduleType === type ? T.white : 'transparent',
-                  border: scheduleType === type ? `1px solid ${T.border}` : 'none',
+                  border: scheduleType === type ? `var(--border-width) solid ${T.border}` : 'none',
                   color: scheduleType === type ? T.text1 : T.textMuted,
-                  fontSize: 13,
-                  fontWeight: scheduleType === type ? 600 : 400,
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: scheduleType === type ? 'var(--weight-semibold)' : 'var(--weight-regular)',
                   cursor: 'pointer',
                   boxShadow: scheduleType === type ? '0 1px 3px rgba(0,0,0,0.07)' : 'none',
                 }}
@@ -425,10 +435,10 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           {scheduleType === 'monthly' ? (
             <>
               <div>
-                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: T.text1 }}>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
                   Choose your pay day
                 </p>
-                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: T.text3 }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: T.text3 }}>
                   Pick the day you usually get paid each month.
                 </p>
               </div>
@@ -438,8 +448,8 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                   width: '100%',
                   textAlign: 'left',
                   background: T.white,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 14,
+                  border: `var(--border-width) solid ${T.border}`,
+                  borderRadius: 'var(--radius-md)',
                   padding: '14px 16px',
                   display: 'flex',
                   alignItems: 'center',
@@ -447,10 +457,10 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                   cursor: 'default',
                 }}
               >
-                <span style={{ fontSize: 14, color: T.text2 }}>Pay day</span>
-                <span style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{ordinal(scheduleDays[0] ?? 1)}</span>
+                <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>Pay day</span>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>{ordinal(scheduleDays[0] ?? 1)}</span>
               </button>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 'var(--space-sm)' }}>
                 {MONTHLY_DAYS.map(day => {
                   const selected = scheduleDays[0] === day
                   return (
@@ -459,12 +469,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                       onClick={() => setScheduleDays([day])}
                       style={{
                         height: 40,
-                        borderRadius: 10,
+                        borderRadius: 'var(--radius-sm)',
                         background: selected ? T.brandDark : T.pageBg,
-                        border: `1px solid ${selected ? T.brandDark : T.border}`,
-                        color: selected ? '#fff' : T.text2,
-                        fontSize: 13,
-                        fontWeight: selected ? 600 : 400,
+                        border: `var(--border-width) solid ${selected ? T.brandDark : T.border}`,
+                        color: selected ? T.textInverse : T.text2,
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: selected ? 'var(--weight-semibold)' : 'var(--weight-regular)',
                         cursor: 'pointer',
                       }}
                     >
@@ -477,14 +487,14 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
           ) : (
             <>
               <div>
-                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: T.text1 }}>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-medium)', color: T.text1 }}>
                   Choose your pay days
                 </p>
-                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: T.text3 }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.55, color: T.text3 }}>
                   Pick the first pay day, then the second one later in the month.
                 </p>
               </div>
-              <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
                 {([
                   { id: 'first', label: 'First pay day', value: scheduleDays[0] ?? 1 },
                   { id: 'second', label: 'Second pay day', value: scheduleDays[1] ?? Math.max((scheduleDays[0] ?? 1) + 1, 15) },
@@ -496,9 +506,9 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                     style={{
                       width: '100%',
                       textAlign: 'left',
-                      background: activePayDaySlot === item.id ? 'rgba(92, 52, 137, 0.06)' : T.white,
-                      border: `1px solid ${activePayDaySlot === item.id ? '#C7B3E6' : T.border}`,
-                      borderRadius: 14,
+                      background: activePayDaySlot === item.id ? T.brandTint : T.white,
+                      border: `var(--border-width) solid ${activePayDaySlot === item.id ? T.brandMid : T.border}`,
+                      borderRadius: 'var(--radius-md)',
                       padding: '14px 16px 15px',
                       display: 'flex',
                       alignItems: 'center',
@@ -506,23 +516,23 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                       cursor: 'pointer',
                     }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{
-                        fontSize: 14,
-                        fontWeight: 600,
+                        fontSize: 'var(--text-base)',
+                        fontWeight: 'var(--weight-medium)',
                         color: activePayDaySlot === item.id ? T.text1 : T.text2,
                       }}>
                         {item.label}
                       </span>
-                      <span style={{ fontSize: 13, color: T.text3 }}>
+                      <span style={{ fontSize: 'var(--text-sm)', color: T.text3 }}>
                         {activePayDaySlot === item.id
                           ? 'Now choose the day below.'
                           : `Currently ${ordinal(item.value)}.`}
                       </span>
                     </div>
                     <span style={{
-                      fontSize: 15,
-                      fontWeight: 600,
+                      fontSize: 'var(--text-base)',
+                      fontWeight: 'var(--weight-semibold)',
                       color: activePayDaySlot === item.id ? T.brandDark : T.text1,
                     }}>
                       {ordinal(item.value)}
@@ -531,16 +541,16 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                 ))}
               </div>
               <div>
-                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: T.text1 }}>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
                   {activePayDaySlot === 'first' ? 'Select first pay day' : 'Select second pay day'}
                 </p>
-                <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: T.textMuted }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-xs)', lineHeight: 1.5, color: T.textMuted }}>
                   {activePayDaySlot === 'first'
                     ? 'Your first pay day should come earlier in the month.'
                     : 'Your second pay day should come after the first one.'}
                 </p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 'var(--space-sm)' }}>
                 {MONTHLY_DAYS.filter(day => activePayDaySlot === 'first' ? day < (scheduleDays[1] ?? 32) : day > (scheduleDays[0] ?? 0)).map(day => {
                   const selected = activePayDaySlot === 'first' ? scheduleDays[0] === day : scheduleDays[1] === day
                   return (
@@ -557,12 +567,12 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                       }}
                       style={{
                         height: 40,
-                        borderRadius: 10,
+                        borderRadius: 'var(--radius-sm)',
                         background: selected ? T.brandDark : T.pageBg,
-                        border: `1px solid ${selected ? T.brandDark : T.border}`,
-                        color: selected ? '#fff' : T.text2,
-                        fontSize: 13,
-                        fontWeight: selected ? 600 : 400,
+                        border: `var(--border-width) solid ${selected ? T.brandDark : T.border}`,
+                        color: selected ? T.textInverse : T.text2,
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: selected ? 'var(--weight-semibold)' : 'var(--weight-regular)',
                         cursor: 'pointer',
                       }}
                     >
@@ -605,8 +615,8 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
 
           <div style={{
             display: 'grid',
-            border: `1px solid ${T.border}`,
-            borderRadius: '18px',
+            border: `var(--border-width) solid ${T.border}`,
+            borderRadius: 'var(--radius-card)',
             overflow: 'hidden',
             background: T.white,
           }}>
@@ -627,7 +637,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                     padding: '14px 16px',
                     borderRadius: 0,
                     border: 'none',
-                    borderTop: option.value === AMOUNT_FORMAT_OPTIONS[0].value ? 'none' : `1px solid ${T.border}`,
+                    borderTop: option.value === AMOUNT_FORMAT_OPTIONS[0].value ? 'none' : `var(--border-width) solid var(--border-subtle)`,
                     background: T.white,
                     cursor: 'pointer',
                     textAlign: 'left',
@@ -645,7 +655,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                           width: 12,
                           height: 12,
                           borderRadius: '50%',
-                          border: selected ? `1px solid ${T.brandDark}` : `1px solid ${T.border}`,
+                          border: `var(--border-width) solid ${selected ? T.brandDark : T.border}`,
                           background: selected ? T.brandDark : 'transparent',
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -658,7 +668,7 @@ export default function SettingsPageClient({ data }: { data: SettingsPageData })
                       {option.description}
                     </span>
                     <span style={{
-                      fontSize: '12px',
+                      fontSize: 'var(--text-xs)',
                       color: T.textMuted,
                       lineHeight: 1.45,
                       fontVariantNumeric: 'tabular-nums',

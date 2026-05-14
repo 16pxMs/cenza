@@ -65,6 +65,22 @@ describe('OverviewWithData new-user card states', () => {
     expect(overviewSource).not.toContain("'Turn reminders on for recurring expenses'")
   })
 
+  it('makes the rendered commitments card a full-card button when commitments exist', () => {
+    const cardStart = overviewSource.indexOf('const obligationsPreviewCard = !hasCommitmentsToShow ? null : (')
+    const cardEnd = overviewSource.indexOf('// ── Render', cardStart)
+    expect(cardStart).toBeGreaterThan(-1)
+    expect(cardEnd).toBeGreaterThan(cardStart)
+    const cardSource = overviewSource.slice(cardStart, cardEnd)
+
+    expect(cardSource).toContain('<button')
+    expect(cardSource).toContain('aria-label="View commitments"')
+    expect(cardSource).toContain('onClick={() => router.push(COMMITMENTS_ROUTE)}')
+    expect(cardSource).toContain("width: '100%'")
+    expect(cardSource).toContain('<ChevronRight size={12}')
+    expect(cardSource).not.toContain('View all')
+    expect(cardSource).not.toContain('role="button"')
+  })
+
   it('replaces the empty goals body with the first-time goal CTA and copy', () => {
     expect(overviewSource).toContain('const goalsPreviewCard = totalGoals === 0 ? (')
     expect(overviewSource).toContain('Set up your first goal')
