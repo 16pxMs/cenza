@@ -6,7 +6,7 @@ import { PrimaryBtn, SecondaryBtn, TertiaryBtn } from '@/components/ui/Button/Bu
 import { Input } from '@/components/ui/Input/Input'
 import { MoneyInput } from '@/components/ui/MoneyInput/MoneyInput'
 import { SingleSelectChip } from '@/components/ui/SingleSelectChip/SingleSelectChip'
-import { IconBack } from '@/components/ui/Icons'
+import { IconBack, IconCheck } from '@/components/ui/Icons'
 import { Sheet } from '@/components/layout/Sheet/Sheet'
 import { ExpenseAddedSuccess, type ExpenseAddedSuccessEntry } from '@/components/flows/log/ExpenseAddedSuccess'
 import { recurringExpenseKey } from '@/lib/fixed-bills/canonical'
@@ -1796,12 +1796,16 @@ export function SmsImportClient() {
 
   if (savedCount > 0) {
     const savedDateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const successDateContext = (row: Pick<EditableRow, 'date' | 'dateSource'>) =>
+      row.dateSource === 'default_month'
+        ? getPastMonthGroupLabel(row.date)
+        : savedDateLabel(row.date)
     const successRows = savedRowsSnapshot ?? rows
     const successEntries: ExpenseAddedSuccessEntry[] = successRows.map((row) => ({
       id: row.id,
       name: row.label,
       amountLabel: `${row.currency} ${row.amount.toLocaleString()}`,
-      metaLabel: `${resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId)} · ${savedDateLabel(row.date)}`,
+      metaLabel: `${resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId)} · ${successDateContext(row)}`,
       hasMonthlyReminder: row.repeatsMonthly,
     }))
 
@@ -2421,6 +2425,7 @@ export function SmsImportClient() {
                         </p>
                         {rowActionLabel ? (
                           <div
+                            data-state={rowActionLabel === 'Ready' ? 'ready' : undefined}
                             style={{
                               marginTop: 6,
                               display: 'flex',
@@ -2431,12 +2436,20 @@ export function SmsImportClient() {
                           >
                             <span
                               style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
                                 fontSize: 12,
-                                color: needsCategory ? T.brandDark : T.textMuted,
+                                color: rowActionLabel === 'Ready'
+                                  ? 'var(--green-dark)'
+                                  : needsCategory ? T.brandDark : T.textMuted,
                                 fontWeight: needsCategory ? 600 : 500,
                                 lineHeight: 1.4,
                               }}
                             >
+                              {rowActionLabel === 'Ready' ? (
+                                <IconCheck size={14} strokeWidth={2.2} aria-hidden="true" />
+                              ) : null}
                               {rowActionLabel}
                             </span>
                             {!needsCategory && row.repeatsMonthly ? (
@@ -2787,6 +2800,7 @@ export function SmsImportClient() {
                         editDraft.customCategoryId,
                       ),
                       date: editDraft.date,
+                      dateSource: editDraft.dateSource,
                       isImportedMessage: editingRow.isImportedMessage,
                       debtId: editDraft.debtId,
                       debtName: editedPreviewRow?.debtName ?? null,
@@ -3252,8 +3266,10 @@ export function SmsImportClient() {
                   />
                   {editedPreviewRow.isImportedMessage ? (
                     <SummaryRow
-                      label="Date"
-                      value={formatImportedRowDateLabel(editedPreviewRow.date)}
+                      label={editedPreviewRow.dateSource === 'default_month' ? 'Month' : 'Date'}
+                      value={editedPreviewRow.dateSource === 'default_month'
+                        ? getPastDateSourceLabel(editedPreviewRow) ?? getPastMonthGroupLabel(editedPreviewRow.date)
+                        : formatImportedRowDateLabel(editedPreviewRow.date)}
                       divided={editedPreviewRow.categoryType === 'debt'}
                     />
                   ) : null}

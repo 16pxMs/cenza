@@ -158,4 +158,76 @@ describe('log actions', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
+  it('updateLogEntry treats the uncategorized sentinel on past-import rows as "leave the category alone"', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { category_type: 'other' },
+      error: null,
+    })
+    const selectEqUser = vi.fn(() => ({ maybeSingle }))
+    const selectEqId = vi.fn(() => ({ eq: selectEqUser }))
+    const select = vi.fn(() => ({ eq: selectEqId }))
+    const updateEqUser = vi.fn().mockResolvedValue({ error: null })
+    const updateEqId = vi.fn(() => ({ eq: updateEqUser }))
+    const update = vi.fn(() => ({ eq: updateEqId }))
+
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn(() => ({ select, update })),
+    })
+
+    const { updateLogEntry } = await import('./actions')
+
+    await expect(updateLogEntry({
+      id: 'txn-uncat',
+      amount: 320,
+      date: '2026-04-12',
+      name: 'Cafe receipt',
+      categoryKey: 'uncategorized',
+    })).resolves.toBeUndefined()
+
+    expect(update).toHaveBeenCalledTimes(1)
+    const patch = (update.mock.calls as any[])[0][0]
+    // Category fields are left untouched — the row stays as the Uncategorized sentinel.
+    expect(patch).not.toHaveProperty('category_type')
+    expect(patch).not.toHaveProperty('category_key')
+    expect(patch).not.toHaveProperty('category_label')
+    expect(patch).toMatchObject({
+      amount: 320,
+      date: '2026-04-12',
+      display_name: 'Cafe receipt',
+    })
+  })
+
+  it('updateLogEntry still resolves a real category when the user picks one on a previously uncategorized row', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { category_type: 'other' },
+      error: null,
+    })
+    const selectEqUser = vi.fn(() => ({ maybeSingle }))
+    const selectEqId = vi.fn(() => ({ eq: selectEqUser }))
+    const select = vi.fn(() => ({ eq: selectEqId }))
+    const updateEqUser = vi.fn().mockResolvedValue({ error: null })
+    const updateEqId = vi.fn(() => ({ eq: updateEqUser }))
+    const update = vi.fn(() => ({ eq: updateEqId }))
+
+    createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn(() => ({ select, update })),
+    })
+
+    const { updateLogEntry } = await import('./actions')
+
+    await updateLogEntry({
+      id: 'txn-uncat',
+      amount: 320,
+      date: '2026-04-12',
+      categoryKey: 'groceries',
+    })
+
+    const patch = (update.mock.calls as any[])[0][0]
+    expect(patch).toMatchObject({
+      category_type: 'everyday',
+      category_key: 'groceries',
+      category_label: 'Groceries',
+    })
+  })
+
 })

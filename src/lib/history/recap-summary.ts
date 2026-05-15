@@ -63,6 +63,56 @@ function makeInsight(input: {
   }
 }
 
+function isUncategorizedCategory(category: HistoryPageData['rows'][number] | null) {
+  if (!category) return false
+  return category.categoryKey === 'uncategorized' ||
+    String(category.categoryType) === 'uncategorized' ||
+    category.categoryLabel.trim().toLowerCase() === 'uncategorized'
+}
+
+function getUncategorizedDriver(data: HistoryPageData) {
+  return data.topTransactions.find((transaction) =>
+    transaction.categoryLabel.trim().toLowerCase() === 'uncategorized'
+  ) ?? null
+}
+
+function getUncategorizedDriverName(transaction: HistoryPageData['topTransactions'][number] | null) {
+  const title = transaction?.title.trim() ?? ''
+  if (!title || title.toLowerCase() === 'uncategorized') return null
+  return title
+}
+
+function makeCategoryDominantInsight(input: {
+  data: HistoryPageData
+  topCategory: HistoryPageData['rows'][number]
+  topGroup: HistorySpendingGroup | null
+}): HistoryHeroInsight {
+  const { data, topCategory, topGroup } = input
+  if (isUncategorizedCategory(topCategory)) {
+    const driver = getUncategorizedDriver(data)
+    const driverName = getUncategorizedDriverName(driver)
+    return makeInsight({
+      kind: 'category_dominant',
+      headline: driverName
+        ? `${driverName} shaped your month`
+        : 'Older expenses shaped your month',
+      category: topCategory,
+      group: topGroup,
+      amount: driver?.amount ?? topCategory.totalAmount,
+      percentage: topCategory.percentageOfTotal,
+    })
+  }
+
+  return makeInsight({
+    kind: 'category_dominant',
+    headline: `${topCategory.categoryLabel} shaped your month`,
+    category: topCategory,
+    group: topGroup,
+    amount: topCategory.totalAmount,
+    percentage: topCategory.percentageOfTotal,
+  })
+}
+
 function resolveSummaryInsights(data: HistoryPageData): HistoryHeroInsight[] {
   const topCategory = data.rows[0] ?? null
   const secondCategory = data.rows[1] ?? null
@@ -119,14 +169,7 @@ function resolveSummaryInsights(data: HistoryPageData): HistoryHeroInsight[] {
       topCategoryGap >= HERO_INSIGHT_THRESHOLDS.meaningfulTopCategoryGapPercentage
     )
   ) {
-    insights.push(makeInsight({
-      kind: 'category_dominant',
-      headline: `${topCategory.categoryLabel} shaped your month`,
-      category: topCategory,
-      group: topGroup,
-      amount: topCategory.totalAmount,
-      percentage: topCategory.percentageOfTotal,
-    }))
+    insights.push(makeCategoryDominantInsight({ data, topCategory, topGroup }))
   }
 
   if (topGroup?.key === 'debt' && topGroup.percentageOfTotal >= HERO_INSIGHT_THRESHOLDS.dominantGroupPercentage) {
@@ -194,14 +237,7 @@ function resolveSummaryInsights(data: HistoryPageData): HistoryHeroInsight[] {
   }
 
   if (insights.length === 0 && topCategory) {
-    insights.push(makeInsight({
-      kind: 'category_dominant',
-      headline: `${topCategory.categoryLabel} shaped your month`,
-      category: topCategory,
-      group: topGroup,
-      amount: topCategory.totalAmount,
-      percentage: topCategory.percentageOfTotal,
-    }))
+    insights.push(makeCategoryDominantInsight({ data, topCategory, topGroup }))
   }
 
   if (insights.length === 0) {

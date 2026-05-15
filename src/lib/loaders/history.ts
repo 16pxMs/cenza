@@ -113,6 +113,7 @@ const GROUP_LABELS: Record<OutflowCategoryType, string> = {
   fixed: 'Fixed costs',
   debt: 'Debt payments',
   goal: 'Goals',
+  uncategorized: 'Uncategorized',
 }
 
 const GROUP_DESCRIPTIONS: Record<OutflowCategoryType, string> = {
@@ -120,6 +121,7 @@ const GROUP_DESCRIPTIONS: Record<OutflowCategoryType, string> = {
   fixed: 'Bills and recurring commitments.',
   debt: 'Money used to reduce balances.',
   goal: 'Contributions toward your goals.',
+  uncategorized: 'Historical rows you haven’t categorized yet.',
 }
 
 function buildSpendingGroups(rows: HistoryTransaction[], totalOutflow: number): HistorySpendingGroup[] {

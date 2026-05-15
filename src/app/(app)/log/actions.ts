@@ -375,14 +375,21 @@ export async function updateLogEntry(input: UpdateLogEntryInput): Promise<void> 
   }
 
   if (input.categoryKey) {
+    const requestedKey = input.categoryKey.trim()
     const currentCategoryType = String(currentTxn.category_type ?? '').trim()
 
-    if (currentCategoryType === 'goal') {
-      patch.category_key = input.categoryKey
+    // Sentinel for past-import uncategorized historical rows. If the user
+    // opens edit without changing the category, the draft still carries
+    // 'uncategorized' — treat it as "no category change" so we don't try to
+    // resolve it canonically and crash the save.
+    if (requestedKey === 'uncategorized' && currentCategoryType === 'other') {
+      // no-op: leave category fields as they are on the existing row.
+    } else if (currentCategoryType === 'goal') {
+      patch.category_key = requestedKey
     } else {
-      const resolvedCategory = getCategoryConfig(input.categoryKey)
+      const resolvedCategory = getCategoryConfig(requestedKey)
       if (!resolvedCategory || resolvedCategory.type === 'goal') {
-        throw new Error(`Unknown category key: ${input.categoryKey.trim()}`)
+        throw new Error(`Unknown category key: ${requestedKey}`)
       }
 
       patch.category_type = resolvedCategory.type

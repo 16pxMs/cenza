@@ -51,6 +51,21 @@ describe('sms import presentation helpers', () => {
     ).toBe('KES 2,100 · Transport · May 6')
   })
 
+  it('does not show fabricated day labels for default-month past rows', () => {
+    expect(
+      buildRowMetaLabel({
+        amount: 200,
+        currency: 'KES',
+        categoryKey: 'coffee',
+        categoryType: 'everyday',
+        categoryLabel: 'Coffee / Drinks',
+        date: '2026-02-01',
+        dateSource: 'default_month',
+        isImportedMessage: true,
+      })
+    ).toBe('KES 200 · Coffee / Drinks')
+  })
+
   it('keeps quick typed missing-category metadata date-free', () => {
     expect(
       buildNeedsCategoryMetaLabel({
@@ -58,6 +73,18 @@ describe('sms import presentation helpers', () => {
         currency: 'KES',
         date: '2026-05-06',
         isImportedMessage: false,
+      })
+    ).toBe('KES 500 · Choose a category')
+  })
+
+  it('does not show fabricated day labels for default-month missing-category rows', () => {
+    expect(
+      buildNeedsCategoryMetaLabel({
+        amount: 500,
+        currency: 'KES',
+        date: '2026-02-01',
+        dateSource: 'default_month',
+        isImportedMessage: true,
       })
     ).toBe('KES 500 · Choose a category')
   })

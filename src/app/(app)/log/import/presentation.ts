@@ -30,6 +30,7 @@ export function buildRowMetaLabel(row: {
   categoryLabel?: string | null
   customCategoryId?: string | null
   date: string
+  dateSource?: 'explicit' | 'default_month' | null
   isImportedMessage: boolean
   debtName?: string | null
   debtId?: string | null
@@ -45,7 +46,7 @@ export function buildRowMetaLabel(row: {
     parts.push('Select a debt')
   }
 
-  if (row.isImportedMessage) {
+  if (row.isImportedMessage && row.dateSource !== 'default_month') {
     parts.push(formatImportedRowDateLabel(row.date))
   }
 
@@ -56,10 +57,13 @@ export function buildNeedsCategoryMetaLabel(row: {
   amount: number
   currency: string
   date: string
+  dateSource?: 'explicit' | 'default_month' | null
   isImportedMessage: boolean
 }) {
   const base = `${row.currency} ${Number.isFinite(row.amount) ? row.amount.toLocaleString() : 0} · Choose a category`
-  return row.isImportedMessage ? `${base} · ${formatImportedRowDateLabel(row.date)}` : base
+  return row.isImportedMessage && row.dateSource !== 'default_month'
+    ? `${base} · ${formatImportedRowDateLabel(row.date)}`
+    : base
 }
 
 export function getNextEditableRowIndex<T>(

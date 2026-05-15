@@ -499,6 +499,35 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).not.toContain("const effectiveCategoryKey = row.categoryKey?.trim() || 'uncategorized'")
   })
 
+  it('uses month-level date context on success for default-month past rows', () => {
+    expect(importSource).toContain('const successDateContext = (row: Pick<EditableRow')
+    expect(importSource).toContain("row.dateSource === 'default_month'")
+    expect(importSource).toContain('? getPastMonthGroupLabel(row.date)')
+    expect(importSource).toContain(': savedDateLabel(row.date)')
+    expect(importSource).toContain('${resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId)} · ${successDateContext(row)}')
+  })
+
+  it('renders the Ready row state with a Lucide check icon, green semantic color, and sentence-case copy', () => {
+    // IconCheck is wired through the shared icon set, not a stray import.
+    expect(importSource).toContain("import { IconBack, IconCheck } from '@/components/ui/Icons'")
+    // Ready uses the existing --green-dark semantic token instead of hardcoded hex.
+    expect(importSource).toContain("rowActionLabel === 'Ready'\n                                  ? 'var(--green-dark)'")
+    // Icon renders only for the Ready state, lightweight size, decorative-aria-hidden.
+    expect(importSource).toContain("rowActionLabel === 'Ready' ? (\n                                <IconCheck size={14} strokeWidth={2.2} aria-hidden=\"true\" />")
+    // Surrounding span flips to inline-flex so the icon aligns vertically with the text.
+    expect(importSource).toContain("display: 'inline-flex',\n                                alignItems: 'center',\n                                gap: 4,")
+    // Status data-attribute makes the resolved state addressable for snapshots/UI debugging.
+    expect(importSource).toContain("data-state={rowActionLabel === 'Ready' ? 'ready' : undefined}")
+  })
+
+  it('keeps the Ready styling scoped — uncategorized rows still use the brand-dark action color and no icon', () => {
+    expect(importSource).toContain('needsCategory ? T.brandDark : T.textMuted')
+    expect(importSource).toContain("rowActionLabel === 'Ready' ? (")
+    // The fallback branch (uncategorized / warning / etc) renders no icon.
+    expect(importSource).toContain("rowActionLabel === 'Ready' ? (\n                                <IconCheck")
+    expect(importSource).toContain(') : null}\n                              {rowActionLabel}')
+  })
+
   it('adds past-import bulk review tools without changing the save path', () => {
     expect(importSource).toContain('data-section="past-import-bulk-toolbar"')
     expect(importSource).toContain('const [selectedPastRowIds, setSelectedPastRowIds] = useState<string[]>([])')

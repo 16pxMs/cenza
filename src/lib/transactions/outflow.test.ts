@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { deriveOutflowCategoryRows, deriveOutflowTotalFromCategories } from './outflow'
 
 describe('outflow bucket grouping', () => {
-  it('groups transactions into canonical top-level buckets', () => {
+  it('groups transactions into canonical top-level buckets and keeps Uncategorized separate', () => {
     const rows = deriveOutflowCategoryRows([
       { category_type: 'fixed', amount: 100 },
       { category_type: 'essentials', amount: 50 },
@@ -10,6 +10,8 @@ describe('outflow bucket grouping', () => {
       { category_type: 'goal', amount: 75 },
       { category_type: 'debt', amount: 40 },
       { category_type: 'everyday', amount: 30 },
+      // Past-import sentinels: must land in the Uncategorized bucket so they
+      // don't silently inflate the everyday "Spending" total.
       { category_type: 'other', amount: 20 },
       { category_type: 'uncategorized', amount: 10 },
     ])
@@ -17,9 +19,29 @@ describe('outflow bucket grouping', () => {
     expect(rows).toEqual([
       { key: 'fixed', type: 'fixed', label: 'Fixed', spent: 175 },
       { key: 'goal', type: 'goal', label: 'Goals', spent: 75 },
-      { key: 'everyday', type: 'everyday', label: 'Spending', spent: 60 },
       { key: 'debt-entries', type: 'debt', label: 'Debt', spent: 40 },
+      { key: 'everyday', type: 'everyday', label: 'Spending', spent: 30 },
+      { key: 'uncategorized', type: 'uncategorized', label: 'Uncategorized', spent: 30 },
     ])
+  })
+
+  it('sorts Uncategorized after categorized buckets regardless of amount', () => {
+    const rows = deriveOutflowCategoryRows([
+      { category_type: 'other', amount: 9999 },
+      { category_type: 'everyday', amount: 100 },
+      { category_type: 'fixed', amount: 50 },
+    ])
+
+    expect(rows.map((row) => row.type)).toEqual(['everyday', 'fixed', 'uncategorized'])
+  })
+
+  it('includes Uncategorized in the outflow total so spend math still adds up', () => {
+    const rows = deriveOutflowCategoryRows([
+      { category_type: 'everyday', amount: 200 },
+      { category_type: 'other', amount: 50 },
+    ])
+
+    expect(deriveOutflowTotalFromCategories(rows)).toBe(250)
   })
 
   it('keeps debt outflow drilldown separate from the debt object route', () => {

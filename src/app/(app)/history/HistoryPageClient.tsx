@@ -131,7 +131,8 @@ function formatHeroInsightSupport(
   }
 
   if (heroInsight.kind === 'category_dominant' && heroInsight.category) {
-    return `${formatAmount(heroInsight.category.totalAmount, { currency: data.currency, preference, context: 'summary' })} went there, or ${formatPercent(heroInsight.category.percentageOfTotal)} of your ${formatHeroAmount(data.totalSpent, data.currency, preference)} outflow.`
+    const amount = heroInsight.amount ?? heroInsight.category.totalAmount
+    return `${formatAmount(amount, { currency: data.currency, preference, context: 'summary' })} went there, or ${formatPercent(heroInsight.category.percentageOfTotal)} of your ${formatHeroAmount(data.totalSpent, data.currency, preference)} outflow.`
   }
 
   if (heroInsight.kind === 'evenly_distributed' && heroInsight.category) {

@@ -100,6 +100,46 @@ describe('deriveHistorySummaryData hero insight', () => {
     expect(summary.heroInsight.category).toBe(emergency)
   })
 
+  it('uses the largest uncategorized transaction name instead of Uncategorized in the hero headline', () => {
+    const uncategorized = category('uncategorized', 'Uncategorized', 'uncategorized' as any, 500, 100, 3)
+    const summary = deriveHistorySummaryData(makeRecapData({
+      rows: [uncategorized],
+      spendingGroups: [
+        group('uncategorized', 'Uncategorized', 500, 100),
+      ],
+      topTransactions: [
+        { ...topTransaction('txn-1', 'drenagona', 200), categoryLabel: 'Uncategorized' },
+        { ...topTransaction('txn-2', 'smaller item', 150), categoryLabel: 'Uncategorized' },
+      ],
+      totalSpent: 500,
+      expenseCount: 3,
+    }))
+
+    expect(summary.heroInsight.kind).toBe('category_dominant')
+    expect(summary.heroInsight.headline).toBe('drenagona shaped your month')
+    expect(summary.heroInsight.headline).not.toBe('Uncategorized shaped your month')
+    expect(summary.heroInsight.amount).toBe(200)
+    expect(summary.heroInsight.category).toBe(uncategorized)
+  })
+
+  it('falls back to older expenses copy when uncategorized transaction names are not usable', () => {
+    const summary = deriveHistorySummaryData(makeRecapData({
+      rows: [category('uncategorized', 'Uncategorized', 'uncategorized' as any, 500, 100, 2)],
+      spendingGroups: [
+        group('uncategorized', 'Uncategorized', 500, 100),
+      ],
+      topTransactions: [
+        { ...topTransaction('txn-1', 'Uncategorized', 300), categoryLabel: 'Uncategorized' },
+      ],
+      totalSpent: 500,
+      expenseCount: 3,
+    }))
+
+    expect(summary.heroInsight.headline).toBe('Older expenses shaped your month')
+    expect(summary.heroInsight.headline).not.toBe('Uncategorized shaped your month')
+    expect(summary.heroInsight.amount).toBe(300)
+  })
+
   it('returns at most three summary insights', () => {
     const summary = deriveHistorySummaryData(makeRecapData({
       rows: [
