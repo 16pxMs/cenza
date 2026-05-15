@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildNeedsCategoryMetaLabel,
   buildRowMetaLabel,
+  formatImportedRowDateLabel,
   getInitialEditStepForRow,
   getNextEditableRowIndex,
   getPreviousStepForActiveRow,
@@ -171,6 +172,7 @@ describe('sms import presentation helpers', () => {
         isImportedMessage: true,
         label: 'Naivas',
         amount: 2100,
+        date: '2026-05-10',
         categoryType: 'everyday',
         categoryKey: 'groceries',
       })
@@ -184,6 +186,7 @@ describe('sms import presentation helpers', () => {
           isImportedMessage: true,
           label: 'Naivas',
           amount: 2100,
+          date: '2026-05-10',
           categoryType: 'everyday',
           categoryKey: 'groceries',
         },
@@ -198,10 +201,25 @@ describe('sms import presentation helpers', () => {
         isImportedMessage: true,
         label: 'Naivas',
         amount: 2100,
+        date: '2026-05-10',
         categoryType: null,
         categoryKey: '',
       })
     ).toBe('category')
+  })
+
+  it('sends imported rows with missing dates to details before category review', () => {
+    expect(formatImportedRowDateLabel('')).toBe('Date needed')
+    expect(
+      getInitialEditStepForRow({
+        isImportedMessage: true,
+        label: 'Uber',
+        amount: 1200,
+        date: '',
+        categoryType: 'everyday',
+        categoryKey: 'transport',
+      })
+    ).toBe('details')
   })
 
   it('sends quick typed category back to the review list', () => {

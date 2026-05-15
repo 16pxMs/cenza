@@ -47,6 +47,18 @@ export default function AppPageClient({ overview, overviewProfileSnapshot }: App
     overviewProfileSnapshot,
   ])
 
+  const activeDebts = (() => {
+    const byId = new Map(overview.activeDebts.map((debt) => [debt.id, debt]))
+    for (const debt of secondaryOverview?.activeDebts ?? []) {
+      byId.set(debt.id, debt)
+    }
+    return [...byId.values()]
+  })()
+  const debtTotal = activeDebts.reduce(
+    (sum, debt) => sum + Number(debt.current_balance ?? 0),
+    0
+  )
+
   const screen = (
     <>
       <OverviewWithData
@@ -57,13 +69,13 @@ export default function AppPageClient({ overview, overviewProfileSnapshot }: App
         incomeType={overview.incomeType}
         paydayDay={overview.paydayDay}
         goals={secondaryOverview?.goals ?? []}
-        activeDebts={secondaryOverview?.activeDebts ?? []}
+        activeDebts={activeDebts}
         incomeData={overview.incomeData}
         goalTargets={secondaryOverview?.goalTargets ?? null}
         goalSaved={secondaryOverview?.goalSaved ?? {}}
         goalLabels={secondaryOverview?.goalLabels ?? {}}
         selectedGoal={secondaryOverview?.selectedGoal ?? null}
-        debtTotal={secondaryOverview?.debtTotal ?? 0}
+        debtTotal={debtTotal}
         onConfirmIncome={() => setReceivedSheetOpen(true)}
         onContribGoal={async (goalId, goalLabel, amount, note) => {
           await addGoalContribution({ goalId, goalLabel, amount, note })

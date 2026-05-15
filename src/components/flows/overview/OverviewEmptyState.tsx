@@ -1,6 +1,8 @@
 'use client'
 
-import { PrimaryLink, SecondaryBtn } from '@/components/ui/Button/Button'
+import { useState } from 'react'
+import { PrimaryBtn, SecondaryBtn } from '@/components/ui/Button/Button'
+import { AddExpenseChoiceSheet } from '@/components/flows/log/AddExpenseChoiceSheet'
 import styles from './OverviewEmptyState.module.css'
 
 interface Props {
@@ -16,6 +18,8 @@ const PREVIEW_ROWS = [
 ]
 
 export function OverviewEmptyState({ onCreateGoal }: Props) {
+  const [addExpenseChoiceOpen, setAddExpenseChoiceOpen] = useState(false)
+
   return (
     <div style={{ marginTop: 8 }}>
       <h2 style={{ margin: '0 0 14px', fontSize: 'var(--text-2xl)', color: 'var(--text-1)', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
@@ -69,13 +73,13 @@ export function OverviewEmptyState({ onCreateGoal }: Props) {
             <p className={styles.spendingCtaBody}>
               Add your first expense to see where your money goes.
             </p>
-            <PrimaryLink
-              href="/log/import?returnTo=%2Fapp"
+            <PrimaryBtn
               size="md"
               className={styles.spendingCtaButton}
+              onClick={() => setAddExpenseChoiceOpen(true)}
             >
               + Add expense
-            </PrimaryLink>
+            </PrimaryBtn>
           </div>
         </div>
       </div>
@@ -180,6 +184,11 @@ export function OverviewEmptyState({ onCreateGoal }: Props) {
           </SecondaryBtn>
         )}
       </div>
+      <AddExpenseChoiceSheet
+        open={addExpenseChoiceOpen}
+        onClose={() => setAddExpenseChoiceOpen(false)}
+        returnTo="/app"
+      />
     </div>
   )
 }

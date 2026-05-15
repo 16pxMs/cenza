@@ -67,6 +67,7 @@ const CONTAINER_TITLE_STYLE: React.CSSProperties = {
 
 const RECAP_BREAKDOWN_ROUTE = '/history'
 const COMMITMENTS_ROUTE = '/commitments'
+const DEBTS_ROUTE = '/history/debt'
 
 function getMoneyFlowBarColor(category: Pick<CategoryBreakdownRow, 'categoryKey' | 'categoryType'>) {
   const keyColor = MONEY_FLOW_CATEGORY_COLORS[category.categoryKey]
@@ -97,7 +98,13 @@ interface Props {
   incomeType?: 'salaried' | 'variable' | null
   paydayDay?: number | null
   goals: string[]
-  activeDebts?: Array<{ id: string }>
+  activeDebts?: Array<{
+    id: string
+    name?: string | null
+    currency?: string | null
+    current_balance?: number | string | null
+    status?: string | null
+  }>
   incomeData: IncomeData | null
   goalTargets: Record<string, any> | null
   goalSaved?: Record<string, number>
@@ -236,6 +243,19 @@ export function OverviewWithData({
     }
   })()
 
+  const activeDebtRows = useMemo(() => (
+    activeDebts
+      .filter((debt) => debt.status === 'active' && Number(debt.current_balance) > 0)
+      .sort((a, b) => Number(b.current_balance) - Number(a.current_balance))
+  ), [activeDebts])
+  const hasDebtSummary = activeDebtRows.length > 0
+  const debtPreviewRows = activeDebtRows.slice(0, 3)
+  const hiddenDebtCount = Math.max(0, activeDebtRows.length - debtPreviewRows.length)
+  const totalDebtBalance = activeDebtRows.reduce(
+    (sum, debt) => sum + Number(debt.current_balance ?? 0),
+    0
+  )
+
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
     return () => clearTimeout(t)
@@ -245,7 +265,7 @@ export function OverviewWithData({
     // Warm the most likely next routes after first paint so the initial
     // overview load is not competing with route prefetch work.
     const prefetch = () => {
-      router.prefetch('/log/new')
+      router.prefetch('/log/import?returnTo=/app')
       router.prefetch('/log')
     }
 
@@ -800,40 +820,174 @@ const reference = receivedConfirmed
 
   const hasCommitmentsToShow =
     !!commitmentSummary && commitmentSummary.state !== 'empty'
+  const hasCommitmentsAreaToShow = hasCommitmentsToShow || hasDebtSummary
 
-  const obligationsPreviewCard = !hasCommitmentsToShow ? null : (
-    <div style={{ marginTop: 16, ...fade(0.14) }}>
+  const debtSummarySection = hasDebtSummary ? (
+    <div style={{
+      borderTop: hasCommitmentsToShow ? '1px solid var(--border-subtle)' : 'none',
+      paddingTop: hasCommitmentsToShow ? 14 : 0,
+      marginTop: hasCommitmentsToShow ? 14 : 0,
+    }}>
+      <p style={{ ...CONTAINER_TITLE_STYLE, fontSize: 'var(--text-sm)', marginBottom: 4 }}>
+        Money you owe
+      </p>
+      <p style={{ margin: '0 0 12px', fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
+        {formatAmount(totalDebtBalance, { currency, preference: amountFormatPreference, context: 'summary' })} across {activeDebtRows.length} {activeDebtRows.length === 1 ? 'debt' : 'debts'}
+      </p>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {debtPreviewRows.map((debt) => (
+          <div
+            key={debt.id}
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <span style={{
+              minWidth: 0,
+              fontSize: 'var(--text-sm)',
+              fontWeight: 'var(--weight-medium)',
+              color: 'var(--text-2)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {debt.name?.trim() || 'Untitled debt'}
+            </span>
+            <span style={{
+              fontSize: 'var(--text-sm)',
+              fontWeight: 'var(--weight-medium)',
+              color: 'var(--text-1)',
+              fontVariantNumeric: 'tabular-nums',
+              flexShrink: 0,
+            }}>
+              {formatAmount(Number(debt.current_balance ?? 0), {
+                currency: debt.currency || currency,
+                preference: amountFormatPreference,
+                context: 'row',
+              })}
+            </span>
+          </div>
+        ))}
+        {hiddenDebtCount > 0 ? (
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
+            +{hiddenDebtCount} more {hiddenDebtCount === 1 ? 'debt' : 'debts'}
+          </p>
+        ) : null}
+      </div>
       <button
         type="button"
-        aria-label="View commitments"
-        onClick={() => router.push(COMMITMENTS_ROUTE)}
+        onClick={() => router.push(DEBTS_ROUTE)}
         style={{
+          border: 'none',
+          borderTop: '1px solid var(--border-subtle)',
+          background: 'transparent',
+          padding: '12px 0 0',
+          marginTop: 14,
           width: '100%',
-          background: 'var(--white)',
-          border: '1px solid var(--border)',
-          borderRadius: 16,
-          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          color: 'var(--brand-dark)',
+          fontSize: 'var(--text-sm)',
+          fontWeight: 'var(--weight-medium)',
           cursor: 'pointer',
           textAlign: 'left',
           fontFamily: 'inherit',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-          <p style={{ ...CONTAINER_TITLE_STYLE, fontSize: 'var(--text-sm)' }}>
-            Upcoming commitments
-          </p>
-          <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--brand-dark)', flexShrink: 0 }}>
-            <ChevronRight size={12} color="var(--text-3)" strokeWidth={2.2} />
-          </span>
-        </div>
-
-        <p style={{ margin: '0 0 3px', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: commitmentSummary?.state === 'overdue' ? 'var(--red-dark)' : 'var(--text-1)', lineHeight: 1.35 }}>
-          {commitmentsCardCopy.state}
-        </p>
-        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
-          {commitmentsCardCopy.meta}
-        </p>
+        <span>View debts</span>
+        <ChevronRight size={14} strokeWidth={2.2} />
       </button>
+    </div>
+  ) : null
+
+  const obligationsPreviewCard = !hasCommitmentsAreaToShow ? null : (
+    <div style={{ marginTop: 16, ...fade(0.14) }}>
+      {hasCommitmentsToShow && !hasDebtSummary ? (
+        <button
+          type="button"
+          aria-label="View commitments"
+          onClick={() => router.push(COMMITMENTS_ROUTE)}
+          style={{
+            width: '100%',
+            background: 'var(--white)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            padding: '14px 16px',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontFamily: 'inherit',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+            <p style={{ ...CONTAINER_TITLE_STYLE, fontSize: 'var(--text-sm)' }}>
+              Upcoming commitments
+            </p>
+            <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--brand-dark)', flexShrink: 0 }}>
+              <ChevronRight size={12} color="var(--text-3)" strokeWidth={2.2} />
+            </span>
+          </div>
+
+          <p style={{ margin: '0 0 3px', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: commitmentSummary?.state === 'overdue' ? 'var(--red-dark)' : 'var(--text-1)', lineHeight: 1.35 }}>
+            {commitmentsCardCopy.state}
+          </p>
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
+            {commitmentsCardCopy.meta}
+          </p>
+        </button>
+      ) : (
+        <div
+          style={{
+            width: '100%',
+            background: 'var(--white)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            padding: '14px 16px',
+            textAlign: 'left',
+            fontFamily: 'inherit',
+          }}
+        >
+          {hasCommitmentsToShow ? (
+            <button
+              type="button"
+              aria-label="View commitments"
+              onClick={() => router.push(COMMITMENTS_ROUTE)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                padding: 0,
+                margin: 0,
+                width: '100%',
+                cursor: 'pointer',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <p style={{ ...CONTAINER_TITLE_STYLE, fontSize: 'var(--text-sm)' }}>
+                  Upcoming commitments
+                </p>
+                <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--brand-dark)', flexShrink: 0 }}>
+                  <ChevronRight size={12} color="var(--text-3)" strokeWidth={2.2} />
+                </span>
+              </div>
+
+              <p style={{ margin: '0 0 3px', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: commitmentSummary?.state === 'overdue' ? 'var(--red-dark)' : 'var(--text-1)', lineHeight: 1.35 }}>
+                {commitmentsCardCopy.state}
+              </p>
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-3)', lineHeight: 1.45 }}>
+                {commitmentsCardCopy.meta}
+              </p>
+            </button>
+          ) : null}
+
+          {debtSummarySection}
+        </div>
+      )}
     </div>
   )
 

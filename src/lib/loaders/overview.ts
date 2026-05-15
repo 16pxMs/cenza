@@ -301,9 +301,11 @@ export interface OverviewCriticalData {
   amountFormatPreference: AmountFormatPreference
   incomeType: 'salaried' | 'variable' | null
   paydayDay: number | null
+  activeDebts: Debt[]
   hasStartedCycleData: boolean
   incomeData: IncomeData
   totalSpent: number
+  debtTotal: number
   debtReminderCandidates: DebtReminderCandidate[]
 }
 
@@ -711,10 +713,17 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
   const visibleTransactionRows = transactionRows.filter((txn) => !isDebtOpeningBalanceTransaction(txn))
   const incomeRow = (income ?? null) as OverviewIncomeRow | null
   const debtRows = (activeDebtRows ?? []) as Debt[]
+  const activeDebts = debtRows
+    .filter((debt) => debt.status === 'active' && Number(debt.current_balance) > 0)
+    .sort((a, b) => Number(b.current_balance) - Number(a.current_balance))
+  const debtTotal = activeDebts.reduce(
+    (sum, debt) => sum + Number(debt.current_balance),
+    0
+  )
   const hasProfileGoals = (profile.goals?.length ?? 0) > 0
   const hasCurrentCycleTransactions = transactionRows.length > 0
   const hasCurrentCycleIncome = !!incomeRow
-  const hasActiveDebtRows = debtRows.length > 0
+  const hasActiveDebtRows = activeDebts.length > 0
   const skippedOnboardingRead = <T,>(step: string, data: T | null) => {
     logPerfSpan(flow, step, Date.now(), { skipped: true })
     return Promise.resolve({ data })
@@ -822,6 +831,7 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
         ? Number(profile.pay_schedule_days[0])
         : null,
     hasStartedCycleData,
+    activeDebts,
     incomeData: {
       income: Number(incomeRow?.salary ?? 0),
       extraIncome: (incomeRow?.extra_income ?? []).map((item, index) => ({
@@ -836,10 +846,12 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
       receivedConfirmedAt: incomeRow?.received_confirmed_at ?? null,
     },
     totalSpent,
+    debtTotal,
     debtReminderCandidates,
   }
   logPerfSpan(flow, 'response-shaping', responseStartedAt, {
     hasStartedCycleData: response.hasStartedCycleData,
+    activeDebtCount: response.activeDebts.length,
     debtReminderCandidateCount: response.debtReminderCandidates.length,
   })
   logPerfSpan(flow, 'total', startedAt, {
@@ -1043,9 +1055,9 @@ ${JSON.stringify(fixedTxnDebug, null, 2)}`
     goalSavedCount: Object.keys(goalSavedMap).length,
   })
 
-  const activeDebts = debtRows.filter(
-    (debt) => debt.status === 'active' && Number(debt.current_balance) > 0
-  )
+  const activeDebts = debtRows
+    .filter((debt) => debt.status === 'active' && Number(debt.current_balance) > 0)
+    .sort((a, b) => Number(b.current_balance) - Number(a.current_balance))
   const debtTotal = activeDebts.reduce(
     (sum, debt) => sum + Number(debt.current_balance),
     0

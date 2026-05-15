@@ -1,7 +1,10 @@
 'use server'
 
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { clearPinDeviceState } from '@/lib/actions/pin'
+import { buildOAuthCallbackUrl } from '@/lib/auth/oauth-redirect'
+import { tempAuthDebugLog } from '@/lib/auth/temp-auth-debug'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function signInWithGoogle(formData?: FormData) {
@@ -13,14 +16,36 @@ export async function signInWithGoogle(formData?: FormData) {
   const source = rawSource === 'start' ? 'start' : 'login'
   const fallbackPath = source === 'start' ? '/' : '/login'
 
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'http://localhost:3000'
+  const requestHeaders = await headers()
+  const redirectTo = buildOAuthCallbackUrl({
+    source,
+    headers: requestHeaders,
+  })
+  tempAuthDebugLog('signInWithGoogle called', {
+    source,
+    requestOrigin: requestHeaders.get('origin'),
+    requestHost: requestHeaders.get('host'),
+    forwardedHost: requestHeaders.get('x-forwarded-host'),
+    forwardedProto: requestHeaders.get('x-forwarded-proto'),
+    nextPublicSiteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    nextPublicSiteUrlUsesProduction: process.env.NEXT_PUBLIC_SITE_URL?.includes('cenza.vercel.app') ?? false,
+    computedRedirectTo: redirectTo,
+    computedRedirectUsesProduction: redirectTo.includes('cenza.vercel.app'),
+  })
+  tempAuthDebugLog('signInWithOAuth options', {
+    provider: 'google',
+    redirectTo,
+    redirectToUsesProduction: redirectTo.includes('cenza.vercel.app'),
+    queryParams: {
+      access_type: 'offline',
+      prompt: 'consent',
+    },
+  })
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${origin}/auth/callback?source=${source}`,
+      redirectTo,
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
@@ -34,6 +59,11 @@ export async function signInWithGoogle(formData?: FormData) {
   }
 
   if (data?.url) {
+    tempAuthDebugLog('signInWithOAuth redirect url returned', {
+      returnedUrl: data.url,
+      returnedUrlUsesProduction: data.url.includes('cenza.vercel.app'),
+      returnedUrlUsesLocalhost: data.url.includes('localhost:3000'),
+    })
     redirect(data.url)
   }
 }

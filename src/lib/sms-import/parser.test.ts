@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   INCOME_SMS_BLOCKED_MESSAGE,
   parsePaymentImportText,
+  parsePastExpenseCsv,
+  parsePastExpenseLines,
   parseSimpleExpenseLines,
   parseSmsBlob,
+  getCsvMappingRequest,
 } from './parser'
 
 afterEach(() => {
@@ -224,5 +227,129 @@ describe('sms import parser', () => {
     )
 
     expect(parsed).toBeNull()
+  })
+
+  it('parses dated past expense text rows without defaulting missing dates to today', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-15T12:00:00.000Z'))
+
+    const rows = parsePastExpenseLines(
+      ['Jan 5 Uber 1200', 'Feb 2 Rent 25000', 'Uber 900'].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toMatchObject({
+      label: 'Uber',
+      amount: 1200,
+      date: '2026-01-05',
+      dateSource: 'explicit',
+      isImportedMessage: true,
+      sourceHash: '',
+      sourceType: 'past_text',
+    })
+    expect(rows[1]).toMatchObject({
+      label: 'Rent',
+      amount: 25000,
+      date: '2026-02-02',
+    })
+    expect(rows[2]).toMatchObject({
+      label: 'Uber',
+      amount: 900,
+      date: '',
+      dateSource: null,
+    })
+  })
+
+  it('applies a default import month only to undated past rows', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-15T12:00:00.000Z'))
+
+    const rows = parsePastExpenseLines(
+      ['Uber 500', 'Mar 2 Rent 25000', 'Food 1200'].join('\n'),
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      date: row.date,
+      dateSource: row.dateSource,
+    }))).toEqual([
+      { label: 'Uber', date: '2026-02-01', dateSource: 'default_month' },
+      { label: 'Rent', date: '2026-03-02', dateSource: 'explicit' },
+      { label: 'Food', date: '2026-02-01', dateSource: 'default_month' },
+    ])
+  })
+
+  it('parses comma-separated past expense rows', () => {
+    const rows = parsePastExpenseLines('2026-01-05, Uber, 1200', { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'Uber',
+      amount: 1200,
+      date: '2026-01-05',
+      sourceType: 'pasted_table',
+    })
+  })
+
+  it('parses tab-separated pasted spreadsheet rows with a header and category', () => {
+    const rows = parsePastExpenseLines(
+      ['Date\tName\tAmount\tCategory', '2026-03-12\tNaivas\t3400\tGroceries'].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'Naivas',
+      amount: 3400,
+      date: '2026-03-12',
+      categoryType: 'everyday',
+      categoryKey: 'groceries',
+      confidence: 'high',
+      sourceType: 'pasted_table',
+    })
+  })
+
+  it('parses CSV headers, quoted values, escaped quotes, and category columns', () => {
+    const rows = parsePastExpenseCsv(
+      ['Transaction Date,Description,Amount,Category,Note', '2026-01-05,"Uber, airport",1200,Transport,"Driver said ""thanks"""'].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'Uber, airport',
+      amount: 1200,
+      date: '2026-01-05',
+      dateSource: 'explicit',
+      categoryType: 'everyday',
+      categoryKey: 'transport',
+      confidence: 'high',
+      sourceType: 'csv',
+    })
+  })
+
+  it('applies the default month only to undated CSV rows', () => {
+    const rows = parsePastExpenseCsv(
+      ['Date,Payee,Debit', ',Uber,500', '2026-03-02,Rent,25000'].join('\n'),
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      date: row.date,
+      dateSource: row.dateSource,
+    }))).toEqual([
+      { label: 'Uber', date: '2026-02-01', dateSource: 'default_month' },
+      { label: 'Rent', date: '2026-03-02', dateSource: 'explicit' },
+    ])
+  })
+
+  it('detects when a CSV header needs manual column mapping', () => {
+    expect(getCsvMappingRequest(['When,Thing,Cost', '2026-01-05,Uber,1200'].join('\n'))).toEqual({
+      headers: ['When', 'Thing', 'Cost'],
+      missing: ['name'],
+    })
   })
 })

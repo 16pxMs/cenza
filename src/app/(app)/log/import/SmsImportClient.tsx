@@ -20,7 +20,9 @@ import {
   loadActiveDebts,
   type ActiveDebtOption,
   type CustomCategoryOption,
+  type ParseSmsImportData,
 } from './actions'
+import type { CsvImportMapping } from '@/lib/sms-import/parser'
 import {
   buildNeedsCategoryMetaLabel,
   buildRowMetaLabel,
@@ -54,6 +56,9 @@ import {
 import styles from './SmsImportClient.module.css'
 
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
+type ImportMode = 'current' | 'past'
+type PastInputMode = 'paste' | 'csv'
+type CsvMappingField = 'date' | 'name' | 'amount' | 'category' | 'note'
 type EditStep = 'details' | 'category' | 'review' | 'changeCategory'
 type CategoryBrowserMode = 'select' | 'create'
 
@@ -67,9 +72,12 @@ interface EditableRow {
   amount: number
   currency: string
   date: string
+  dateSource?: 'explicit' | 'default_month' | null
   isImportedMessage: boolean
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
+  sourceType?: 'sms' | 'simple_text' | 'past_text' | 'pasted_table' | 'csv'
+  sourceRowIndex?: number
   blockedReason?: string | null
   repeatsMonthly: boolean
   debtId: string | null
@@ -247,10 +255,72 @@ function getReviewCopy(rows: Pick<EditableRow, 'isImportedMessage'>[]) {
       }
 }
 
+function getPastMonthGroupLabel(date: string) {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (!date || Number.isNaN(parsed.getTime())) return 'Needs date'
+  return parsed.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+function getPastDateSourceLabel(row: Pick<EditableRow, 'date' | 'dateSource'>) {
+  if (row.dateSource !== 'default_month') return null
+  return `Inherited from ${getPastMonthGroupLabel(row.date)}`
+}
+
+function getSimilarEntryKey(label: string) {
+  return normalize(label).replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function getCurrentImportMonth() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+function importMonthToDefaultDate(month: string) {
+  return /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : ''
+}
+
+function formatImportMonthLabel(month: string) {
+  const parsed = new Date(`${month}-01T12:00:00`)
+  if (!/^\d{4}-\d{2}$/.test(month) || Number.isNaN(parsed.getTime())) return month
+  return parsed.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+function getRecentImportMonths(count = 6) {
+  const now = new Date()
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - index, 1, 12, 0, 0, 0)
+    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    return { value, label: index === 0 ? `Current month · ${formatImportMonthLabel(value)}` : formatImportMonthLabel(value) }
+  })
+}
+
+function sortPastRowsForReview(rows: EditableRow[]) {
+  return [...rows].sort((a, b) => {
+    const aDate = /^\d{4}-\d{2}-\d{2}$/.test(a.date) ? a.date : '9999-12-31'
+    const bDate = /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : '9999-12-31'
+    if (aDate !== bDate) return aDate.localeCompare(bDate)
+    return (a.sourceRowIndex ?? 0) - (b.sourceRowIndex ?? 0)
+  })
+}
+
 export function SmsImportClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnTo = searchParams.get('returnTo') || '/log'
+  const importMode: ImportMode = searchParams.get('mode') === 'past' ? 'past' : 'current'
+  const isPastMode = importMode === 'past'
+  const [defaultImportMonth, setDefaultImportMonth] = useState(getCurrentImportMonth)
+  const [pastInputMode, setPastInputMode] = useState<PastInputMode>('paste')
+  const [csvFileName, setCsvFileName] = useState('')
+  const [csvText, setCsvText] = useState('')
+  const [csvMappingRequired, setCsvMappingRequired] = useState<{ headers: string[]; missing: Array<'name' | 'amount'> } | null>(null)
+  const [csvMapping, setCsvMapping] = useState<Record<CsvMappingField, string>>({
+    date: '',
+    name: '',
+    amount: '',
+    category: '',
+    note: '',
+  })
 
   const [rawText, setRawText] = useState('')
   const [rows, setRows] = useState<EditableRow[]>([])
@@ -287,6 +357,8 @@ export function SmsImportClient() {
     categoryKey: string | null
     customCategoryId: string | null
   } | null>(null)
+  const [selectedPastRowIds, setSelectedPastRowIds] = useState<string[]>([])
+  const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false)
   const [addAnotherOpen, setAddAnotherOpen] = useState(false)
   const [addAnotherText, setAddAnotherText] = useState('')
   const [addAnotherParsing, setAddAnotherParsing] = useState(false)
@@ -310,6 +382,7 @@ export function SmsImportClient() {
     label: string
     amount: string
     date: string
+    dateSource?: 'explicit' | 'default_month' | null
     categoryType: ImportCategoryType | null
     categoryKey: string | null
     customCategoryId: string | null
@@ -352,6 +425,7 @@ export function SmsImportClient() {
       label: editDraft.label.trim() || editingRow.label,
       amount: Number(editDraft.amount),
       date: editDraft.date.trim(),
+      dateSource: editDraft.dateSource,
       categoryType: editDraft.categoryType,
       categoryKey: editDraft.categoryKey ?? editingRow.categoryKey,
       customCategoryId: editDraft.customCategoryId,
@@ -363,11 +437,17 @@ export function SmsImportClient() {
       debtName: editDraft.categoryType === 'debt' ? selectedDebt?.name ?? null : null,
     } satisfies EditableRow
   }, [activeDebts, editDraft, editingRow])
-  const smsPlaceholder = [
+  const smsPlaceholder = (isPastMode ? [
+    'Jan 5 Uber 1200',
+    'Feb 2 Rent 25000',
+    '2026-03-12, Groceries, 3400',
+    'Date | Name | Amount | Category',
+    '2026-03-20 | Internet | 4500 | Internet',
+  ] : [
     'M-PESA: Confirmed. KES 2,100 paid to Naivas',
     'food 500',
     'groceries 2500',
-  ].join('\n')
+  ]).join('\n')
   const hasWarnings = Object.keys(rowWarnings).length > 0
   const reviewState = useMemo(
     () =>
@@ -385,7 +465,16 @@ export function SmsImportClient() {
     hasDuplicateBlockedRows,
     hasSavableClientValidationErrors,
   } = reviewState
-  const reviewCopy = useMemo(() => getReviewCopy(rows), [rows])
+  const reviewCopy = useMemo(() => (
+    isPastMode
+      ? {
+        title: 'Review past expenses',
+        body: 'Check dates, amounts, and categories before saving.',
+      }
+      : getReviewCopy(rows)
+  ), [isPastMode, rows])
+  const recentImportMonths = useMemo(() => getRecentImportMonths(6), [])
+  const defaultImportMonthLabel = formatImportMonthLabel(defaultImportMonth)
   const unresolvedCategoryCount = useMemo(
     () =>
       rows.reduce((count, row) => {
@@ -427,6 +516,10 @@ export function SmsImportClient() {
     [currentEditingRowIndex, rows]
   )
   const nextEditableRow = nextEditableRowIndex >= 0 ? rows[nextEditableRowIndex] : null
+  const selectedPastRows = useMemo(
+    () => rows.filter((row) => selectedPastRowIds.includes(row.id)),
+    [rows, selectedPastRowIds]
+  )
   const editedPreviewRowIssues = editedPreviewRow ? validateRow(editedPreviewRow) : []
   const shouldSaveReviewRowImmediately = shouldSaveSingleCompletedReviewRow({
     totalRows: rows.length,
@@ -560,6 +653,22 @@ export function SmsImportClient() {
     })
   }
 
+  const updateDefaultImportMonth = (month: string) => {
+    setDefaultImportMonth(month)
+    if (!isPastMode) return
+    const inheritedDate = importMonthToDefaultDate(month)
+    if (!inheritedDate) return
+    applyRowsChange((current) =>
+      sortPastRowsForReview(
+        current.map((row) =>
+          row.dateSource === 'default_month'
+            ? { ...row, date: inheritedDate }
+            : row
+        )
+      )
+    )
+  }
+
   const updateRow = (id: string, patch: Partial<EditableRow>) => {
     applyRowsChange((current) =>
       current.map((row) => {
@@ -567,6 +676,75 @@ export function SmsImportClient() {
         return { ...row, ...patch }
       })
     )
+  }
+
+  const togglePastRowSelection = (id: string) => {
+    setSelectedPastRowIds((current) =>
+      current.includes(id)
+        ? current.filter((rowId) => rowId !== id)
+        : [...current, id]
+    )
+  }
+
+  const removeRowsById = (ids: string[]) => {
+    const idSet = new Set(ids)
+    applyRowsChange((current) => current.filter((row) => !idSet.has(row.id)))
+    setSelectedPastRowIds((current) => current.filter((id) => !idSet.has(id)))
+    setExpandedRaw((current) => {
+      const next = { ...current }
+      for (const id of ids) delete next[id]
+      return next
+    })
+  }
+
+  const applyCategoryToRows = (
+    rowIds: string[],
+    option: { key: string; type: string; customCategoryId?: string | null }
+  ) => {
+    const nextType = toImportCategoryType(option.type)
+    if (!nextType) return
+    const idSet = new Set(rowIds)
+    applyRowsChange((current) =>
+      current.map((row) => {
+        if (!idSet.has(row.id)) return row
+        return {
+          ...row,
+          categoryType: nextType,
+          categoryKey: option.key,
+          customCategoryId: option.customCategoryId ?? null,
+          repeatsMonthly: nextType === 'everyday' || nextType === 'fixed' ? row.repeatsMonthly : false,
+          debtId: nextType === 'debt' ? row.debtId : null,
+          debtName: nextType === 'debt' ? row.debtName : null,
+        }
+      })
+    )
+    setRecentCategoryKeys(recordRecentCategoryKey(option.key))
+  }
+
+  const applyCategoryToSimilarRows = (sourceRow: EditableRow) => {
+    if (!sourceRow.categoryType || !sourceRow.categoryKey) return
+    const similarKey = getSimilarEntryKey(sourceRow.label)
+    if (!similarKey) return
+    const matchingRowIds = rows
+      .filter((row) =>
+        row.id !== sourceRow.id &&
+        !isBlockedIncomeRow(row) &&
+        getSimilarEntryKey(row.label) === similarKey
+      )
+      .map((row) => row.id)
+    if (matchingRowIds.length === 0) return
+    applyCategoryToRows(matchingRowIds, {
+      key: sourceRow.categoryKey,
+      type: sourceRow.categoryType,
+      customCategoryId: sourceRow.customCategoryId,
+    })
+  }
+
+  const applyBulkCategory = (option: ImportCategoryOption) => {
+    if (selectedPastRowIds.length === 0) return
+    applyCategoryToRows(selectedPastRowIds, option)
+    setSelectedPastRowIds([])
+    setBulkCategoryOpen(false)
   }
 
   const ensureDebtsLoaded = async () => {
@@ -656,6 +834,7 @@ export function SmsImportClient() {
       label: row.label,
       amount: String(row.amount),
       date: row.date,
+      dateSource: row.dateSource,
       categoryType: row.categoryType,
       categoryKey: row.categoryKey,
       customCategoryId: row.customCategoryId,
@@ -698,6 +877,7 @@ export function SmsImportClient() {
       label: row.label,
       amount: String(row.amount),
       date: row.date,
+      dateSource: row.dateSource,
       categoryType: row.categoryType,
       categoryKey: row.categoryKey,
       customCategoryId: row.customCategoryId,
@@ -714,10 +894,16 @@ export function SmsImportClient() {
     setExpandedRaw({})
     setEditedRowIds([])
     setError(null)
+    setSelectedPastRowIds([])
+    setBulkCategoryOpen(false)
   }
 
   const resetImportSession = () => {
     setRawText('')
+    setCsvFileName('')
+    setCsvText('')
+    setCsvMappingRequired(null)
+    setCsvMapping({ date: '', name: '', amount: '', category: '', note: '' })
     setParseMeta({ scanned: 0, skippedCredits: 0 })
     clearImportReviewState()
     closeEditRow()
@@ -1054,6 +1240,7 @@ export function SmsImportClient() {
       label: trimmedLabel,
       amount,
       date,
+      dateSource: editDraft.dateSource,
       categoryType: nextCategoryType,
       categoryKey: nextCategoryKey ?? existingRow?.categoryKey ?? '',
       customCategoryId: editDraft.customCategoryId,
@@ -1132,7 +1319,10 @@ export function SmsImportClient() {
     setAddAnotherParsing(true)
     setAddAnotherError(null)
     try {
-      const result = await parseSmsImport(text)
+      const result = await parseSmsImport(text, {
+        mode: importMode,
+        defaultImportMonth: isPastMode ? defaultImportMonth : null,
+      })
       if (!result.ok) {
         setAddAnotherError(
           result.error.kind === 'unauthorized'
@@ -1160,7 +1350,10 @@ export function SmsImportClient() {
         debtId: null,
         debtName: null,
       }))
-      applyRowsChange((current) => [...current, ...parsedRows])
+      applyRowsChange((current) => {
+        const nextRows = [...current, ...parsedRows]
+        return isPastMode ? sortPastRowsForReview(nextRows) : nextRows
+      })
       setMonthlyReminderKeys((current) => {
         const merged = new Set<string>([...current, ...(data.monthlyReminderKeys ?? [])])
         return Array.from(merged)
@@ -1207,11 +1400,50 @@ export function SmsImportClient() {
     closeEditRow()
   }
 
+  const applyParsedImportData = (data: ParseSmsImportData) => {
+    const parsedRows: EditableRow[] = data.rows.map((row) => ({
+      ...row,
+      categoryType: row.blockedReason
+        ? row.categoryType
+        : row.confidence === 'high'
+          ? row.categoryType
+          : null,
+      customCategoryId: row.blockedReason || row.confidence === 'high'
+        ? row.customCategoryId ?? null
+        : null,
+      repeatsMonthly: false,
+      debtId: null,
+      debtName: null,
+    }))
+    const nextRows = isPastMode ? sortPastRowsForReview(parsedRows) : parsedRows
+    const nextBlockedRowErrors = Object.fromEntries(
+      nextRows
+        .filter((row) => row.blockedReason)
+        .map((row) => [row.id, [row.blockedReason as string]])
+    )
+    setMonthlyReminderKeys(data.monthlyReminderKeys ?? [])
+    setRows(nextRows)
+    setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
+    setRowErrors(nextBlockedRowErrors)
+    setRowWarnings({})
+    setSelectedPastRowIds([])
+    if (shouldAutoOpenSingleEntryEditFlow(nextRows)) {
+      beginEditRow(nextRows[0], false, 1)
+    }
+    if (data.rows.length === 0) {
+      setError("Each row needs a name and an amount. Try 'food 500' or upload a CSV with name and amount columns.")
+    }
+  }
+
   const handleParse = async () => {
     setParsing(true)
     setError(null)
+    setCsvMappingRequired(null)
     try {
-      const result = await parseSmsImport(rawText)
+      const result = await parseSmsImport(rawText, {
+        mode: importMode,
+        defaultImportMonth: isPastMode ? defaultImportMonth : null,
+      })
       if (!result.ok) {
         setError(
           result.error.kind === 'unauthorized'
@@ -1220,39 +1452,98 @@ export function SmsImportClient() {
         )
         return
       }
-      const data = result.data
-      const nextRows = data.rows.map((row) => ({
-        ...row,
-        categoryType: row.blockedReason
-          ? row.categoryType
-          : row.confidence === 'high'
-            ? row.categoryType
-            : null,
-        customCategoryId: row.blockedReason || row.confidence === 'high'
-          ? row.customCategoryId ?? null
-          : null,
-        repeatsMonthly: false,
-        debtId: null,
-        debtName: null,
-      }))
-      const nextBlockedRowErrors = Object.fromEntries(
-        nextRows
-          .filter((row) => row.blockedReason)
-          .map((row) => [row.id, [row.blockedReason as string]])
-      )
-      setMonthlyReminderKeys(data.monthlyReminderKeys ?? [])
-      setRows(nextRows)
-      setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
-      setRowErrors(nextBlockedRowErrors)
-      setRowWarnings({})
-      if (shouldAutoOpenSingleEntryEditFlow(nextRows)) {
-        beginEditRow(nextRows[0], false, 1)
-      }
-      if (data.rows.length === 0) {
-        setError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
-      }
+      applyParsedImportData(result.data)
     } catch {
       setError("We couldn't read those messages right now. Please try again in a moment.")
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  const handleCsvFileChange = async (file: File | null) => {
+    setError(null)
+    setCsvMappingRequired(null)
+    setCsvMapping({ date: '', name: '', amount: '', category: '', note: '' })
+    clearImportReviewState()
+    if (!file) {
+      setCsvFileName('')
+      setCsvText('')
+      return
+    }
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+      setCsvFileName('')
+      setCsvText('')
+      setError('Upload a CSV file to continue.')
+      return
+    }
+    setCsvFileName(file.name)
+    try {
+      setCsvText(await file.text())
+    } catch {
+      setCsvText('')
+      setError("We couldn't read that CSV file. Please try another file.")
+    }
+  }
+
+  const buildCsvMappingPayload = (): CsvImportMapping | null => {
+    const mapping = Object.entries(csvMapping).reduce<CsvImportMapping>((next, [field, value]) => {
+      if (value !== '') next[field as CsvMappingField] = Number(value)
+      return next
+    }, {})
+    return Object.keys(mapping).length > 0 ? mapping : null
+  }
+
+  const handleCsvParse = async () => {
+    const text = csvText.trim()
+    if (!text) {
+      setError('Upload a CSV file to continue.')
+      return
+    }
+
+    const mapping = buildCsvMappingPayload()
+    if (csvMappingRequired) {
+      const missingChoice = csvMappingRequired.missing.find((field) => csvMapping[field] === '')
+      if (missingChoice) {
+        setError(`Choose the ${missingChoice} column to continue.`)
+        return
+      }
+    }
+
+    setParsing(true)
+    setError(null)
+    try {
+      const result = await parseSmsImport(text, {
+        mode: 'past',
+        defaultImportMonth,
+        source: 'csv',
+        csvMapping: mapping,
+      })
+      if (!result.ok) {
+        setError(
+          result.error.kind === 'unauthorized'
+            ? result.error.message
+            : "We couldn't read that CSV right now. Please try again in a moment."
+        )
+        return
+      }
+      if (result.data.csvMappingRequired) {
+        const required = result.data.csvMappingRequired
+        setCsvMappingRequired(required)
+        setCsvMapping((current) => ({
+          ...current,
+          date: current.date || '',
+          name: current.name || '',
+          amount: current.amount || '',
+          category: current.category || '',
+          note: current.note || '',
+        }))
+        setError('Choose the columns we should use from this CSV.')
+        return
+      }
+      setCsvMappingRequired(null)
+      applyParsedImportData(result.data)
+    } catch {
+      setError("We couldn't read that CSV right now. Please try again in a moment.")
     } finally {
       setParsing(false)
     }
@@ -1401,6 +1692,8 @@ export function SmsImportClient() {
           <ExpenseAddedSuccess
             entries={successEntries}
             onBack={() => { router.refresh(); router.push('/app') }}
+            onImportPast={() => router.push('/log/import?mode=past&returnTo=/app')}
+            showPastImportPrompt={!isPastMode}
             onAddAnother={() => {
               setSavedCount(0)
               setSavedRowsSnapshot(null)
@@ -1511,10 +1804,10 @@ export function SmsImportClient() {
         ) : !showingEditFlow ? (
           <>
             <p style={{ margin: '8px 0 2px', fontSize: 'var(--text-xs)', color: T.text3 }}>
-              {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              {isPastMode ? 'Past expenses' : new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </p>
             <h1 style={{ margin: '0 0 16px', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-bold)', color: T.text1, letterSpacing: '-0.02em' }}>
-              Add your expenses
+              {isPastMode ? 'Import past expenses' : 'Add your expenses'}
             </h1>
 
             <div style={{
@@ -1526,31 +1819,184 @@ export function SmsImportClient() {
               {!showReview ? (
             <>
               <p style={{ margin: '0 0 6px', fontSize: 17, color: T.text1, fontWeight: 600 }}>
-                Paste your messages
+                {isPastMode ? (pastInputMode === 'csv' ? 'Upload CSV' : 'Paste old expenses') : 'Paste your messages'}
               </p>
               <p style={{ margin: '0 0 14px', fontSize: 14, color: T.text3, lineHeight: 1.5 }}>
-                Paste bank messages or simple entries like &lsquo;food 500&rsquo;.
+                {isPastMode
+                  ? (pastInputMode === 'csv'
+                    ? 'Upload a CSV from another app or spreadsheet.'
+                    : 'Paste dated rows from old notes or spreadsheets.')
+                  : <>Paste bank messages or simple entries like &lsquo;food 500&rsquo;.</>}
               </p>
-              <textarea
-                value={rawText}
-                onChange={(event) => setRawText(event.target.value)}
-                placeholder={smsPlaceholder}
-                className={styles.focusRing}
-                style={{
-                  width: '100%',
-                  minHeight: 200,
-                  borderRadius: 12,
-                  border: `var(--border-width) solid ${T.border}`,
-                  padding: 12,
-                  fontSize: 14,
-                  color: T.text1,
-                  background: 'var(--white)',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                  outline: 'none',
-                }}
-              />
+              {isPastMode ? (
+                <>
+                  <div
+                    role="tablist"
+                    aria-label="Past import input type"
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 8,
+                      marginBottom: 14,
+                    }}
+                  >
+                    {([
+                      ['paste', 'Paste expenses'],
+                      ['csv', 'Upload CSV'],
+                    ] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="tab"
+                        aria-selected={pastInputMode === mode}
+                        onClick={() => {
+                          setPastInputMode(mode)
+                          setError(null)
+                        }}
+                        style={{
+                          border: `1px solid ${pastInputMode === mode ? T.brandDark : T.borderSubtle}`,
+                          background: pastInputMode === mode ? 'var(--brand-50)' : T.white,
+                          color: pastInputMode === mode ? T.brandDark : T.text2,
+                          borderRadius: 12,
+                          padding: '10px 12px',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {pastInputMode === 'paste' ? (
+                    <label
+                      data-section="past-import-upfront-month"
+                      style={{
+                        display: 'grid',
+                        gap: 6,
+                        marginBottom: 14,
+                        fontSize: 13,
+                        color: T.text2,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Which month are these expenses for?
+                      <select
+                        value={defaultImportMonth}
+                        onChange={(event) => updateDefaultImportMonth(event.target.value)}
+                        className={styles.focusRing}
+                        style={{
+                          width: '100%',
+                          borderRadius: 12,
+                          border: `var(--border-width) solid ${T.border}`,
+                          padding: '10px 12px',
+                          fontSize: 15,
+                          color: T.text1,
+                          background: 'var(--white)',
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                        }}
+                      >
+                        {recentImportMonths.map((month) => (
+                          <option key={month.value} value={month.value}>{month.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </>
+              ) : null}
+              {isPastMode && pastInputMode === 'csv' ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <label
+                    style={{
+                      border: `1px dashed ${T.border}`,
+                      borderRadius: 14,
+                      padding: 16,
+                      display: 'grid',
+                      gap: 8,
+                      cursor: 'pointer',
+                      color: T.text2,
+                      background: 'var(--grey-50)',
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>
+                      {csvFileName || 'Choose a CSV file'}
+                    </span>
+                    <span style={{ fontSize: 12, color: T.text3, lineHeight: 1.45 }}>
+                      Supports .csv files with date, description/name, amount, category, and note columns.
+                    </span>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={(event) => handleCsvFileChange(event.target.files?.[0] ?? null)}
+                      style={{ fontSize: 13, color: T.text2 }}
+                    />
+                  </label>
+                  {csvMappingRequired ? (
+                    <div
+                      data-section="csv-column-mapping"
+                      style={{
+                        border: `1px solid ${T.borderSubtle}`,
+                        borderRadius: 14,
+                        padding: 14,
+                        display: 'grid',
+                        gap: 10,
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: 13, color: T.text1, fontWeight: 700 }}>
+                        Match your CSV columns
+                      </p>
+                      {(['date', 'name', 'amount', 'category', 'note'] as const).map((field) => (
+                        <label key={field} style={{ display: 'grid', gap: 5, fontSize: 12, color: T.text2, fontWeight: 700 }}>
+                          {field === 'name' ? 'Name or description' : field[0].toUpperCase() + field.slice(1)}
+                          <select
+                            value={csvMapping[field]}
+                            onChange={(event) => setCsvMapping((current) => ({ ...current, [field]: event.target.value }))}
+                            className={styles.focusRing}
+                            style={{
+                              width: '100%',
+                              borderRadius: 10,
+                              border: `var(--border-width) solid ${T.border}`,
+                              padding: '9px 10px',
+                              fontSize: 14,
+                              color: T.text1,
+                              background: 'var(--white)',
+                              fontFamily: 'inherit',
+                              outline: 'none',
+                            }}
+                          >
+                            <option value="">Do not import</option>
+                            {csvMappingRequired.headers.map((header, index) => (
+                              <option key={`${header}-${index}`} value={index}>{header || `Column ${index + 1}`}</option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <textarea
+                  value={rawText}
+                  onChange={(event) => setRawText(event.target.value)}
+                  placeholder={smsPlaceholder}
+                  className={styles.focusRing}
+                  style={{
+                    width: '100%',
+                    minHeight: 200,
+                    borderRadius: 12,
+                    border: `var(--border-width) solid ${T.border}`,
+                    padding: 12,
+                    fontSize: 14,
+                    color: T.text1,
+                    background: 'var(--white)',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                />
+              )}
               {error && (
                 <p style={{ margin: '10px 0 0', fontSize: 13, color: T.redDark, lineHeight: 1.45 }}>
                   {error}
@@ -1561,8 +2007,8 @@ export function SmsImportClient() {
               </p>
               <PrimaryBtn
                 size="lg"
-                onClick={handleParse}
-                disabled={parsing || rawText.trim().length === 0}
+                onClick={isPastMode && pastInputMode === 'csv' ? handleCsvParse : handleParse}
+                disabled={parsing || (isPastMode && pastInputMode === 'csv' ? csvText.trim().length === 0 : rawText.trim().length === 0)}
                 style={{ marginTop: 12 }}
               >
                 {parsing ? 'Reading…' : 'Continue'}
@@ -1584,12 +2030,107 @@ export function SmsImportClient() {
                         {queueGuidance.summary}
                       </p>
                     )}
+                    {(() => {
+                      if (!isPastMode) return null
+                      const inheritedCount = rows.filter((row) => row.dateSource === 'default_month').length
+                      // Paste flow keeps the existing "Importing for X" copy — paste rows
+                      // always inherit the upfront month, and the user already picked it.
+                      // CSV flow only surfaces the picker if some rows actually inherited.
+                      if (pastInputMode === 'csv' && inheritedCount === 0) return null
+                      const allInherited = inheritedCount === rows.length && rows.length > 0
+                      const headline = pastInputMode === 'csv'
+                        ? (allInherited
+                          ? 'This CSV doesn’t include dates. Choose a month to use for these expenses.'
+                          : 'Some expenses don’t have dates. Which month should we use for them?')
+                        : `Importing for ${defaultImportMonthLabel}`
+                      return (
+                        <div
+                          data-section="past-import-month-prompt"
+                          style={{ marginTop: 10, display: 'grid', gap: 6 }}
+                        >
+                          <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                            {headline}
+                          </p>
+                          <select
+                            aria-label="Change import month"
+                            value={defaultImportMonth}
+                            onChange={(event) => updateDefaultImportMonth(event.target.value)}
+                            className={styles.focusRing}
+                            style={{
+                              width: '100%',
+                              borderRadius: 12,
+                              border: `var(--border-width) solid ${T.border}`,
+                              padding: '10px 12px',
+                              fontSize: 15,
+                              color: T.text1,
+                              background: 'var(--white)',
+                              fontFamily: 'inherit',
+                              outline: 'none',
+                            }}
+                          >
+                            {recentImportMonths.map((month) => (
+                              <option key={month.value} value={month.value}>{month.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })()}
 
+              {isPastMode && rows.length > 0 ? (
+                <div
+                  data-section="past-import-bulk-toolbar"
+                  style={{
+                    border: `1px solid ${T.borderSubtle}`,
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 12,
+                    background: 'var(--grey-50)',
+                    display: 'grid',
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.text2, fontWeight: 600, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedPastRowIds.length > 0 && selectedPastRowIds.length === rows.length}
+                        onChange={(event) => {
+                          setSelectedPastRowIds(event.target.checked ? rows.map((row) => row.id) : [])
+                        }}
+                        style={{ width: 16, height: 16, accentColor: T.brandDark }}
+                      />
+                      {selectedPastRowIds.length > 0
+                        ? `${selectedPastRowIds.length} selected`
+                        : 'Select rows'}
+                    </label>
+                    {selectedPastRowIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPastRowIds([])}
+                        style={{ border: 'none', background: 'none', padding: 0, color: T.text3, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  {selectedPastRowIds.length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <SecondaryBtn size="md" onClick={() => setBulkCategoryOpen(true)}>
+                        Apply category
+                      </SecondaryBtn>
+                      <SecondaryBtn size="md" onClick={() => removeRowsById(selectedPastRowIds)}>
+                        Remove selected
+                      </SecondaryBtn>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {rows.map((row) => {
+                {rows.map((row, index) => {
                   const serverErrors = rowErrors[row.id] ?? []
                   const clientIssues = validateRow(row)
                   const hasHardError = serverErrors.length > 0 || clientIssues.some((i) => i !== 'Choose a category')
@@ -1602,10 +2143,43 @@ export function SmsImportClient() {
                   })
                   const cardBorder = hasHardError ? T.redBorder : needsCategory ? T.border : T.borderSubtle
                   const cardBg = hasHardError ? T.redLight : 'var(--white)'
+                  const monthGroupLabel = isPastMode ? getPastMonthGroupLabel(row.date) : null
+                  const dateSourceLabel = isPastMode ? getPastDateSourceLabel(row) : null
+                  const similarRowsCount = isPastMode && row.categoryType && row.categoryKey
+                    ? rows.filter((candidate) =>
+                      candidate.id !== row.id &&
+                      !isBlockedIncomeRow(candidate) &&
+                      getSimilarEntryKey(candidate.label) === getSimilarEntryKey(row.label) &&
+                      (
+                        candidate.categoryType !== row.categoryType ||
+                        candidate.categoryKey !== row.categoryKey ||
+                        (candidate.customCategoryId ?? null) !== (row.customCategoryId ?? null)
+                      )
+                    ).length
+                    : 0
+                  const previousMonthGroupLabel = isPastMode && index > 0
+                    ? getPastMonthGroupLabel(rows[index - 1].date)
+                    : null
+                  const showMonthHeader = isPastMode && monthGroupLabel !== previousMonthGroupLabel
 
                   return (
+                  <div key={row.id} style={{ display: 'contents' }}>
+                  {showMonthHeader ? (
+                    <div
+                      data-section="past-import-month-header"
+                      style={{
+                        margin: index === 0 ? '2px 0 0' : '10px 0 0',
+                        fontSize: 12,
+                        color: T.text3,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.07em',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {monthGroupLabel}
+                    </div>
+                  ) : null}
                   <div
-                    key={row.id}
                     style={{
                       border: `1px solid ${cardBorder}`,
                       borderRadius: 12,
@@ -1620,6 +2194,16 @@ export function SmsImportClient() {
                         gap: 8,
                       }}
                     >
+                      {isPastMode ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${row.label}`}
+                          checked={selectedPastRowIds.includes(row.id)}
+                          onChange={() => togglePastRowSelection(row.id)}
+                          disabled={isBlocked}
+                          style={{ width: 16, height: 16, marginTop: 3, accentColor: T.brandDark, flexShrink: 0 }}
+                        />
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => openEditRow(row)}
@@ -1688,17 +2272,17 @@ export function SmsImportClient() {
                             ) : null}
                           </div>
                         ) : null}
+                        {dateSourceLabel ? (
+                          <p style={{ margin: '6px 0 0', fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                            {dateSourceLabel}
+                          </p>
+                        ) : null}
                       </button>
                       <button
                         type="button"
                         aria-label="Remove row"
                         onClick={() => {
-                          applyRowsChange((current) => current.filter((r) => r.id !== row.id))
-                          setExpandedRaw((current) => {
-                            const next = { ...current }
-                            delete next[row.id]
-                            return next
-                          })
+                          removeRowsById([row.id])
                         }}
                         style={{
                           width: 24,
@@ -1735,17 +2319,46 @@ export function SmsImportClient() {
                               </div>
                             )}
                             {hardErrors.length === 0 && warnings.length > 0 && (
-                              <div style={{ display: 'grid', gap: 4 }}>
-                                {warnings.map((warning, index) => (
-                                  <p key={`${row.id}-warning-${index}`} style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
-                                    {warning}
-                                  </p>
-                                ))}
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4, fontWeight: 700 }}>
+                                  Possible duplicate
+                                </p>
+                                <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
+                                  This looks similar to an expense already saved.
+                                </p>
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Keep row by saving anyway.</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeRowsById([row.id])}
+                                    style={{ border: 'none', background: 'none', padding: 0, color: T.brandDark, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    Remove row
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </>
                         )
                       })()}
+                      {similarRowsCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => applyCategoryToSimilarRows(row)}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            width: 'fit-content',
+                            color: T.brandDark,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Apply {resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId)} to similar entries?
+                        </button>
+                      ) : null}
 
                       {shouldShowRawMessageToggle(row) && (
                         <div>
@@ -1786,6 +2399,7 @@ export function SmsImportClient() {
                         </div>
                       )}
                     </div>
+                  </div>
                   </div>
                   )
                 })}
@@ -2036,7 +2650,7 @@ export function SmsImportClient() {
                     type="date"
                     value={editDraft.date}
                     onChange={(value) => {
-                      setEditDraft((current) => current ? { ...current, date: value } : current)
+                      setEditDraft((current) => current ? { ...current, date: value, dateSource: 'explicit' } : current)
                       setEditErrors((current) => ({ ...current, date: undefined }))
                     }}
                     autoFocus={false}
@@ -2522,6 +3136,48 @@ export function SmsImportClient() {
           </>
         )}
       </div>
+
+      <Sheet
+        open={bulkCategoryOpen}
+        onClose={() => setBulkCategoryOpen(false)}
+        title="Apply category"
+      >
+        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+            Apply a category to {selectedPastRows.length} selected {selectedPastRows.length === 1 ? 'row' : 'rows'}.
+          </p>
+          <div style={{ display: 'grid', gap: 8, maxHeight: '52vh', overflowY: 'auto' }}>
+            {allCategoryOptions.map((option) => (
+              <button
+                key={`${option.customCategoryId ?? 'canonical'}-${option.type}-${option.key}`}
+                type="button"
+                onClick={() => applyBulkCategory(option)}
+                style={{
+                  width: '100%',
+                  border: `1px solid ${T.borderSubtle}`,
+                  borderRadius: 12,
+                  background: T.white,
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  color: T.text1,
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span>{option.label}</span>
+                <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {option.type}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Sheet>
 
       <Sheet
         open={showingEditFlow && (editStep === 'category' || editStep === 'changeCategory') && categoryBrowserOpen}

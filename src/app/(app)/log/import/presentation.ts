@@ -13,7 +13,9 @@ function broadCategoryLabel(value: ImportPresentationCategoryType) {
 }
 
 export function formatImportedRowDateLabel(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const parsed = new Date(`${date}T12:00:00`)
+  if (!date || Number.isNaN(parsed.getTime())) return 'Date needed'
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 export function shouldShowRawMessageToggle(row: { isImportedMessage: boolean }) {
@@ -76,6 +78,7 @@ export function getInitialEditStepForRow(
     isImportedMessage: boolean
     label: string
     amount: number
+    date?: string | null
     categoryType?: ImportPresentationCategoryType
     categoryKey?: string | null
   },
@@ -84,6 +87,10 @@ export function getInitialEditStepForRow(
   const hasValidLabel = row.label.trim().length > 0
   const hasValidAmount = Number.isFinite(row.amount) && row.amount > 0
   if (!hasValidLabel || !hasValidAmount) return 'details'
+
+  if (row.isImportedMessage && !/^\d{4}-\d{2}-\d{2}$/.test(row.date ?? '')) {
+    return 'details'
+  }
 
   const hasCategory = !!(row.categoryType && row.categoryKey)
   if (!hasCategory) return 'category'

@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { Database } from '@/types/database'
 import { getPublicEntryRedirect } from '@/lib/auth/auth-flow'
+import { tempAuthDebugLog } from '@/lib/auth/temp-auth-debug'
 
 interface RedirectDecisionInput {
   pathname: string
@@ -49,6 +50,17 @@ export function getMiddlewareRedirectPath(input: RedirectDecisionInput): string 
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
+  tempAuthDebugLog('middleware entered', {
+    url: request.url,
+    pathname: request.nextUrl.pathname,
+    requestOrigin: request.headers.get('origin'),
+    requestHost: request.headers.get('host'),
+    forwardedHost: request.headers.get('x-forwarded-host'),
+    forwardedProto: request.headers.get('x-forwarded-proto'),
+    nextUrlOrigin: request.nextUrl.origin,
+    nextPublicSiteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    urlUsesProduction: request.url.includes('cenza.vercel.app'),
+  })
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,6 +95,12 @@ export async function updateSession(request: NextRequest) {
     url.searchParams.set('error', 'oauth_cancelled')
 
     const response = NextResponse.redirect(url)
+    tempAuthDebugLog('middleware redirect', {
+      reason: 'oauth-access-denied',
+      from: request.url,
+      to: url.toString(),
+      toUsesProduction: url.toString().includes('cenza.vercel.app'),
+    })
     for (const cookie of supabaseResponse.cookies.getAll()) {
       response.cookies.set(cookie)
     }
@@ -116,6 +134,18 @@ export async function updateSession(request: NextRequest) {
   if (redirectPath) {
     const url = request.nextUrl.clone()
     url.pathname = redirectPath
+    tempAuthDebugLog('middleware redirect', {
+      reason: 'auth-route-guard',
+      from: request.url,
+      to: url.toString(),
+      redirectPath,
+      hasUser: !!user,
+      hasPin,
+      pinVerified,
+      isPublic,
+      isPinPage,
+      toUsesProduction: url.toString().includes('cenza.vercel.app'),
+    })
     return NextResponse.redirect(url)
   }
 

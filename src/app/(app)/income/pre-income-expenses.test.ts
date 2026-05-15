@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const getAppSession = vi.fn()
 const createServerSupabaseClient = vi.fn()
 const revalidatePath = vi.fn()
+const after = vi.fn()
 
 vi.mock('next/cache', () => ({ revalidatePath }))
+vi.mock('next/server', () => ({ after }))
 vi.mock('@/lib/auth/app-session', () => ({ getAppSession }))
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient }))
 
@@ -13,6 +15,7 @@ type TableName =
   | 'transactions'
   | 'income_entries'
   | 'item_dictionary'
+  | 'sms_import_lines'
   | 'monthly_expenses'
   | 'fixed_expenses'
   | 'spending_budgets'
@@ -174,6 +177,7 @@ class InMemorySupabase {
     transactions: [],
     income_entries: [],
     item_dictionary: [],
+    sms_import_lines: [],
     monthly_expenses: [],
     fixed_expenses: [],
     spending_budgets: [],
@@ -246,6 +250,7 @@ describe('pre-income expenses after income setup', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-13T12:00:00'))
     vi.clearAllMocks()
+    after.mockImplementation(() => undefined)
     db = new InMemorySupabase()
     sessionProfile = preIncomeProfile
     db.rows.user_profiles = [{ ...preIncomeProfile }]
@@ -261,30 +266,30 @@ describe('pre-income expenses after income setup', () => {
   })
 
   it('keeps expenses added before income visible after payday setup without mutating original rows', async () => {
-    const { saveExpenseBatch } = await import('@/app/(app)/log/new/actions')
+    const { saveParsedSmsExpenses } = await import('@/app/(app)/log/import/actions')
     const { saveIncome } = await import('./actions')
     const { loadOverviewCriticalData, loadOverviewSecondaryData } = await import('@/lib/loaders/overview')
     const { loadLogPageData } = await import('@/lib/loaders/log')
     const { loadHistoryPageData } = await import('@/lib/loaders/history')
 
-    await saveExpenseBatch([
+    await saveParsedSmsExpenses([
       {
-        mode: 'add',
+        id: 'row-1',
+        label: 'Naivas groceries',
         categoryType: 'everyday',
         categoryKey: 'groceries',
-        categoryLabel: 'Naivas groceries',
         amount: 2100,
-        note: 'milk and bread',
-        rememberItem: false,
+        date: '2026-05-13',
+        sourceHash: 'pre-income-row-1',
       },
       {
-        mode: 'add',
+        id: 'row-2',
+        label: 'Matatu ride',
         categoryType: 'everyday',
         categoryKey: 'transport',
-        categoryLabel: 'Matatu ride',
         amount: 150,
-        note: null,
-        rememberItem: false,
+        date: '2026-05-13',
+        sourceHash: 'pre-income-row-2',
       },
     ])
 
@@ -298,7 +303,7 @@ describe('pre-income expenses after income setup', () => {
         category_label: 'Groceries',
         display_name: 'Naivas groceries',
         amount: 2100,
-        note: 'milk and bread',
+        note: 'Imported from SMS',
       }),
       expect.objectContaining({
         user_id: 'user-1',
@@ -308,7 +313,7 @@ describe('pre-income expenses after income setup', () => {
         category_label: 'Transport',
         display_name: 'Matatu ride',
         amount: 150,
-        note: null,
+        note: 'Imported from SMS',
       }),
     ])
 
@@ -356,7 +361,7 @@ describe('pre-income expenses after income setup', () => {
         categoryLabel: 'Groceries',
         amount: 2100,
         date: '2026-05-13',
-        note: 'milk and bread',
+        note: 'Imported from SMS',
       }),
       expect.objectContaining({
         name: 'Matatu ride',
@@ -364,7 +369,7 @@ describe('pre-income expenses after income setup', () => {
         categoryLabel: 'Transport',
         amount: 150,
         date: '2026-05-13',
-        note: null,
+        note: 'Imported from SMS',
       }),
     ]))
 

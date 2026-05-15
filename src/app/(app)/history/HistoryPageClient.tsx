@@ -10,6 +10,7 @@ import { AppSubpageLayout } from '@/components/layout/AppSubpageLayout/AppSubpag
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
 import { GlobalAddButton } from '@/components/layout/GlobalAddButton'
 import { SideNav } from '@/components/layout/SideNav/SideNav'
+import { AddExpenseChoiceSheet } from '@/components/flows/log/AddExpenseChoiceSheet'
 import { SegmentedControl } from '@/components/ui/SegmentedControl/SegmentedControl'
 import { formatAmount } from '@/lib/formatting/amount'
 import { deriveHistorySummaryData, type HistoryHeroInsight } from '@/lib/history/recap-summary'
@@ -161,6 +162,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
   const { isDesktop } = useBreakpoint()
   const [viewMode, setViewMode] = useState<RecapViewMode>('summary')
   const [isRecurringInsightExpanded, setIsRecurringInsightExpanded] = useState(false)
+  const [addExpenseChoiceOpen, setAddExpenseChoiceOpen] = useState(false)
 
   const activeCycleId = targetCycleId ?? currentCycleId
   const activeIndex = data.availableCycleIds.indexOf(activeCycleId)
@@ -337,6 +339,42 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
           onChange={setViewMode}
         />
       </div>
+
+      <section style={{
+        ...cardStyle,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--space-md)',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+            Import past expenses
+          </p>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.45 }}>
+            Add older expenses from another app, spreadsheet, or notes.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => router.push('/log/import?mode=past&returnTo=/history')}
+          style={{
+            flexShrink: 0,
+            height: 'var(--button-height-md)',
+            borderRadius: 'var(--radius-md)',
+            border: 'var(--border-width) solid var(--border)',
+            background: T.white,
+            color: T.brandDark,
+            padding: '0 var(--space-md)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 'var(--weight-semibold)',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          Import
+        </button>
+      </section>
 
       <div>
         {viewMode === 'summary' ? (
@@ -531,7 +569,7 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
                 </p>
                 <button
                   type="button"
-                  onClick={() => router.push(`/log/new?returnTo=${encodeURIComponent(currentCycleRoute)}`)}
+                  onClick={() => setAddExpenseChoiceOpen(true)}
                   style={{
                     width: '100%',
                     height: 'var(--button-height-md)',
@@ -702,6 +740,11 @@ export default function HistoryPageClient({ data, targetCycleId, currentCycleId 
           </>
         )}
       </div>
+      <AddExpenseChoiceSheet
+        open={addExpenseChoiceOpen}
+        onClose={() => setAddExpenseChoiceOpen(false)}
+        returnTo={currentCycleRoute}
+      />
     </AppSubpageLayout>
   )
 

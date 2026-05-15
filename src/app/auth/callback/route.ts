@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/database'
 import { getPostAuthDestination } from '@/lib/auth/auth-flow'
+import { tempAuthDebugLog } from '@/lib/auth/temp-auth-debug'
 import { getCallbackFailureContext } from './failure-context'
 
 const COOKIE_BASE = {
@@ -18,6 +19,19 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get('next') ?? '/'
   const failureContext = getCallbackFailureContext(searchParams.get('source'), authError)
   const source = failureContext.source
+  tempAuthDebugLog('callback route entered', {
+    requestUrl: request.url,
+    callbackOrigin: origin,
+    callbackHost: request.headers.get('host'),
+    callbackForwardedHost: request.headers.get('x-forwarded-host'),
+    callbackForwardedProto: request.headers.get('x-forwarded-proto'),
+    hasCode: !!code,
+    hasAuthError: !!authError,
+    source,
+    next,
+    nextPublicSiteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    callbackUsesProduction: origin.includes('cenza.vercel.app'),
+  })
 
   if (code) {
     type CookieEntry = { name: string; value: string; options: object }
@@ -74,10 +88,21 @@ export async function GET(request: NextRequest) {
 
           if (upsertError) {
             console.error('Profile upsert error:', upsertError)
-            return await clearSessionAndRedirect(request, `${origin}${failureContext.fallbackPath}?error=auth_callback_failed`)
+            const destination = `${origin}${failureContext.fallbackPath}?error=auth_callback_failed`
+            tempAuthDebugLog('callback final redirect', {
+              reason: 'profile-upsert-error',
+              destination,
+              destinationUsesProduction: destination.includes('cenza.vercel.app'),
+            })
+            return await clearSessionAndRedirect(request, destination)
           }
         }
 
+        tempAuthDebugLog('callback final redirect', {
+          reason: 'new-profile',
+          destination: `${origin}/onboarding`,
+          destinationUsesProduction: origin.includes('cenza.vercel.app'),
+        })
         return withCookies(
           NextResponse.redirect(`${origin}/onboarding`),
           pendingCookies
@@ -117,11 +142,22 @@ export async function GET(request: NextRequest) {
         hasPin,
         next,
       })
+      tempAuthDebugLog('callback post-auth destination computed', {
+        source,
+        destination,
+        hasPin,
+        onboardingComplete: !!profile.onboarding_complete,
+      })
 
       const redirectResponse = withCookies(
         NextResponse.redirect(`${origin}${destination}`),
         pendingCookies
       )
+      tempAuthDebugLog('callback final redirect', {
+        reason: 'existing-profile',
+        destination: `${origin}${destination}`,
+        destinationUsesProduction: `${origin}${destination}`.includes('cenza.vercel.app'),
+      })
 
       redirectResponse.cookies.set('cenza-returning-user', user.id, {
         ...COOKIE_BASE,
@@ -151,10 +187,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return await clearSessionAndRedirect(
-    request,
-    `${origin}${failureContext.fallbackPath}?error=${failureContext.fallbackError}`
-  )
+  const destination = `${origin}${failureContext.fallbackPath}?error=${failureContext.fallbackError}`
+  tempAuthDebugLog('callback final redirect', {
+    reason: 'callback-failure',
+    destination,
+    destinationUsesProduction: destination.includes('cenza.vercel.app'),
+  })
+  return await clearSessionAndRedirect(request, destination)
 }
 
 function withCookies(

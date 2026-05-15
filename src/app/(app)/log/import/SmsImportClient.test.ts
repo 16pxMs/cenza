@@ -5,6 +5,11 @@ const importSource = readFileSync('src/app/(app)/log/import/SmsImportClient.tsx'
 const globalAddSource = readFileSync('src/components/layout/GlobalAddButton.tsx', 'utf8')
 const legacyFirstSource = readFileSync('src/app/(app)/log/first/page.tsx', 'utf8')
 const logPageSource = readFileSync('src/app/(app)/log/LogPageClient.tsx', 'utf8')
+const legacyNewSource = readFileSync('src/app/(app)/log/new/page.tsx', 'utf8')
+const historySource = readFileSync('src/app/(app)/history/HistoryPageClient.tsx', 'utf8')
+const successSource = readFileSync('src/components/flows/log/ExpenseAddedSuccess.tsx', 'utf8')
+const addChoiceSource = readFileSync('src/components/flows/log/AddExpenseChoiceSheet.tsx', 'utf8')
+const addChoiceCss = readFileSync('src/components/flows/log/AddExpenseChoiceSheet.module.css', 'utf8')
 
 describe('SMS import expense entry surface', () => {
   it('does not render the manual-entry doorway from the import screen', () => {
@@ -28,10 +33,70 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain('setParseMeta({ scanned: 0, skippedCredits: 0 })')
   })
 
-  it('routes default add-entry affordances to import while preserving manual route infrastructure elsewhere', () => {
-    expect(globalAddSource).toContain('/log/import?returnTo=')
+  it('routes default add-entry affordances to import', () => {
+    expect(globalAddSource).toContain('AddExpenseChoiceSheet')
     expect(legacyFirstSource).toContain('/log/import?returnTo=/app')
     expect(logPageSource).toContain('/log/import?returnTo=/log')
+    expect(addChoiceSource).toContain('/log/import?returnTo=')
+    expect(globalAddSource).not.toContain('mode=past')
+  })
+
+  it('shows current and past choices from Add expense entry points', () => {
+    expect(addChoiceSource).toContain('Add a recent expense')
+    expect(addChoiceSource).toContain('Track something you spent today or this month.')
+    expect(addChoiceSource).toContain('Add older expenses')
+    expect(addChoiceSource).toContain('Bring in expenses from previous months or another app.')
+    expect(addChoiceSource).not.toContain('Add current expense')
+    expect(addChoiceSource).not.toContain('Import past expenses')
+    expect(addChoiceSource).toContain("buildExpenseImportHref(returnTo, mode)")
+    expect(addChoiceSource).toContain("if (mode === 'past') return `/log/import?mode=past&returnTo=${encodedReturnTo}`")
+    expect(addChoiceSource).toContain('return `/log/import?returnTo=${encodedReturnTo}`')
+    expect(addChoiceSource).toContain('className={styles.optionCard}')
+    expect(addChoiceSource).toContain('<Sheet open={open} onClose={onClose} title="Add expense">')
+    expect(globalAddSource).toContain('onClick={() => setChoiceOpen(true)}')
+    expect(historySource).toContain('onClick={() => setAddExpenseChoiceOpen(true)}')
+  })
+
+  it('uses responsive option-card styling instead of stacked plain buttons', () => {
+    expect(addChoiceCss).toContain('.optionCard')
+    expect(addChoiceCss).toContain('grid-template-columns: auto minmax(0, 1fr) auto')
+    expect(addChoiceCss).toContain('@media (max-width: 640px)')
+    expect(addChoiceSource).not.toContain('<PrimaryBtn')
+    expect(addChoiceSource).not.toContain('<SecondaryBtn')
+    expect(addChoiceSource).not.toContain('variant="bottom"')
+  })
+
+  it('surfaces past import from history recap even when recap has data without changing normal add expense routes', () => {
+    const importCtaIndex = historySource.indexOf('Import past expenses')
+    const summaryBranchIndex = historySource.indexOf("viewMode === 'summary'")
+    const emptyHistoryIndex = historySource.indexOf('data.expenseCount === 0')
+
+    expect(importCtaIndex).toBeGreaterThan(-1)
+    expect(summaryBranchIndex).toBeGreaterThan(importCtaIndex)
+    expect(emptyHistoryIndex).toBeGreaterThan(importCtaIndex)
+    expect(historySource).toContain('Import past expenses')
+    expect(historySource).toContain('Add older expenses from another app, spreadsheet, or notes.')
+    expect(historySource).toContain("router.push('/log/import?mode=past&returnTo=/history')")
+    expect(historySource).toContain('AddExpenseChoiceSheet')
+    expect(historySource).toContain('returnTo={currentCycleRoute}')
+  })
+
+  it('offers a dismissible past-import prompt after saving a normal expense for returning users too', () => {
+    expect(successSource).toContain('Have older expenses?')
+    expect(successSource).toContain('Add expenses from previous months so your history starts complete.')
+    expect(successSource).toContain('Import past expenses')
+    expect(successSource).toContain('Skip for now')
+    expect(successSource).toContain('pastImportPromptDismissed')
+    expect(importSource).toContain("onImportPast={() => router.push('/log/import?mode=past&returnTo=/app')}")
+    expect(importSource).toContain('showPastImportPrompt={!isPastMode}')
+    expect(importSource).not.toContain('showPastImportPrompt={isFirst')
+    expect(importSource).not.toContain('showPastImportPrompt={savedCount === 1')
+  })
+
+  it('redirects legacy manual entry URLs into SMS import', () => {
+    expect(legacyNewSource).toContain('redirect(`/log/import?returnTo=${encodeURIComponent(returnTo)}`)')
+    expect(legacyNewSource).not.toContain('NewExpenseClient')
+    expect(legacyNewSource).not.toContain('Suspense')
   })
 
   it('keeps custom category creation out of the default picker state', () => {
@@ -271,9 +336,8 @@ describe('SMS import expense entry surface', () => {
   })
 
   it('no longer renders the floating Remove row TertiaryBtn below the card', () => {
-    expect(importSource).not.toContain('Remove row\n')
-    expect(importSource).not.toContain('>Remove row<')
     expect(importSource).not.toContain("onClick={() => setEditDeleteConfirmOpen(true)} style={{ color: T.redDark }}")
+    expect(importSource).not.toContain("color: T.redDark }}>\n                  Remove row")
   })
 
   it('orders below-card actions as primary, secondary, then tertiary Add another expense', () => {
@@ -306,9 +370,124 @@ describe('SMS import expense entry surface', () => {
     expect(submitIdx).toBeGreaterThan(-1)
     const submitEnd = importSource.indexOf('\n  }\n', submitIdx)
     const block = importSource.slice(submitIdx, submitEnd)
-    expect(block).toContain('await parseSmsImport(text)')
-    expect(block).toContain('applyRowsChange((current) => [...current, ...parsedRows])')
+    expect(block).toContain('await parseSmsImport(text, {')
+    expect(block).toContain('defaultImportMonth: isPastMode ? defaultImportMonth : null')
+    expect(block).toContain('const nextRows = [...current, ...parsedRows]')
     expect(block).toContain('setMonthlyReminderKeys((current)')
+  })
+
+  it('supports a past import mode on the existing import route without a second import system', () => {
+    expect(importSource).toContain("type ImportMode = 'current' | 'past'")
+    expect(importSource).toContain("searchParams.get('mode') === 'past'")
+    expect(importSource).toContain('await parseSmsImport(rawText, {')
+    expect(importSource).toContain('mode: importMode,')
+    expect(importSource).toContain('defaultImportMonth: isPastMode ? defaultImportMonth : null')
+    expect(importSource).toContain('Import past expenses')
+    expect(importSource).toContain('Paste old expenses')
+  })
+
+  it('asks for default month only in past mode and updates inherited dates when it changes', () => {
+    expect(importSource).toContain('Which month are these expenses for?')
+    expect(importSource).toContain('const [defaultImportMonth, setDefaultImportMonth] = useState(getCurrentImportMonth)')
+    expect(importSource).toContain('const updateDefaultImportMonth = (month: string) =>')
+    expect(importSource).toContain("row.dateSource === 'default_month'")
+    expect(importSource).toContain('date: inheritedDate')
+    expect(importSource).toContain('aria-label="Change import month"')
+    expect(importSource).toContain('Inherited from ${getPastMonthGroupLabel(row.date)}')
+  })
+
+  it('only shows the upfront month selector for the paste past-mode tab, not for CSV upload', () => {
+    expect(importSource).toContain('data-section="past-import-upfront-month"')
+    const upfrontIdx = importSource.indexOf('data-section="past-import-upfront-month"')
+    expect(upfrontIdx).toBeGreaterThan(-1)
+    // Walk back from the data-section attribute to the enclosing conditional —
+    // the upfront month label is wrapped in {pastInputMode === 'paste' ? (...) : null}.
+    const windowStart = Math.max(0, upfrontIdx - 200)
+    const guardWindow = importSource.slice(windowStart, upfrontIdx)
+    expect(guardWindow).toContain("pastInputMode === 'paste' ? (")
+  })
+
+  it('keeps the review month picker for paste mode but gates CSV mode on rows actually inheriting a date', () => {
+    expect(importSource).toContain('data-section="past-import-month-prompt"')
+    expect(importSource).toContain("const inheritedCount = rows.filter((row) => row.dateSource === 'default_month').length")
+    expect(importSource).toContain("if (pastInputMode === 'csv' && inheritedCount === 0) return null")
+    expect(importSource).toContain('const allInherited = inheritedCount === rows.length && rows.length > 0')
+  })
+
+  it('uses targeted CSV headlines depending on whether all or only some rows inherited a month', () => {
+    expect(importSource).toContain("'This CSV doesn’t include dates. Choose a month to use for these expenses.'")
+    expect(importSource).toContain("'Some expenses don’t have dates. Which month should we use for them?'")
+    expect(importSource).toContain('`Importing for ${defaultImportMonthLabel}`')
+  })
+
+  it('preserves explicit CSV dates: updateDefaultImportMonth only rewrites rows whose dateSource is default_month', () => {
+    const updateIdx = importSource.indexOf('const updateDefaultImportMonth = (month: string) =>')
+    expect(updateIdx).toBeGreaterThan(-1)
+    const updateEnd = importSource.indexOf('\n  }\n', updateIdx)
+    const updateBlock = importSource.slice(updateIdx, updateEnd)
+    expect(updateBlock).toContain("row.dateSource === 'default_month'")
+    expect(updateBlock).toContain('date: inheritedDate')
+    expect(updateBlock).not.toContain("row.dateSource === 'explicit'")
+  })
+
+  it('keeps current SMS import mode unaffected: month selectors only render under isPastMode guards', () => {
+    const upfrontIdx = importSource.indexOf('data-section="past-import-upfront-month"')
+    const promptIdx = importSource.indexOf('data-section="past-import-month-prompt"')
+    expect(upfrontIdx).toBeGreaterThan(-1)
+    expect(promptIdx).toBeGreaterThan(-1)
+    // Upfront month select must sit inside the {isPastMode ? (<>... block.
+    const upfrontWindow = importSource.slice(Math.max(0, upfrontIdx - 2000), upfrontIdx)
+    expect(upfrontWindow).toContain('{isPastMode ? (')
+    // Review prompt block is guarded by an early `if (!isPastMode) return null`
+    // at the top of an IIFE that ends with the prompt's data-section div.
+    const iifeStart = importSource.lastIndexOf('{(() => {', promptIdx)
+    expect(iifeStart).toBeGreaterThan(-1)
+    const promptIIFE = importSource.slice(iifeStart, promptIdx)
+    expect(promptIIFE).toContain('if (!isPastMode) return null')
+  })
+
+  it('groups past import review rows by month and marks missing-date rows clearly', () => {
+    expect(importSource).toContain('function getPastMonthGroupLabel(date: string)')
+    expect(importSource).toContain("'Needs date'")
+    expect(importSource).toContain('data-section="past-import-month-header"')
+    expect(importSource).toContain('sortPastRowsForReview')
+  })
+
+  it('adds past-import bulk review tools without changing the save path', () => {
+    expect(importSource).toContain('data-section="past-import-bulk-toolbar"')
+    expect(importSource).toContain('const [selectedPastRowIds, setSelectedPastRowIds] = useState<string[]>([])')
+    expect(importSource).toContain('const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false)')
+    expect(importSource).toContain('const togglePastRowSelection = (id: string) =>')
+    expect(importSource).toContain('const applyCategoryToRows = (')
+    expect(importSource).toContain('const applyBulkCategory = (option: ImportCategoryOption) =>')
+    expect(importSource).toContain('Remove selected')
+    expect(importSource).toContain('Apply category')
+    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride })')
+  })
+
+  it('adds CSV upload only to past import while reusing the shared parse and review state', () => {
+    expect(importSource).toContain("type PastInputMode = 'paste' | 'csv'")
+    expect(importSource).toContain("const [pastInputMode, setPastInputMode] = useState<PastInputMode>('paste')")
+    expect(importSource).toContain('Upload CSV')
+    expect(importSource).toContain('accept=".csv,text/csv"')
+    expect(importSource).toContain('const handleCsvFileChange = async (file: File | null) =>')
+    expect(importSource).toContain('const handleCsvParse = async () =>')
+    expect(importSource).toContain("source: 'csv'")
+    expect(importSource).toContain('applyParsedImportData(result.data)')
+    expect(importSource).toContain('csvMappingRequired')
+    expect(importSource).toContain('data-section="csv-column-mapping"')
+    expect(importSource).toContain('setRows(nextRows)')
+    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride })')
+  })
+
+  it('can apply a category to similar past entries and remove duplicate warning rows', () => {
+    expect(importSource).toContain('const applyCategoryToSimilarRows = (sourceRow: EditableRow) =>')
+    expect(importSource).toContain('getSimilarEntryKey(candidate.label) === getSimilarEntryKey(row.label)')
+    expect(importSource).toContain('Apply {resolveImportCategoryLabel(row.categoryKey, row.categoryType, row.customCategoryId)} to similar entries?')
+    expect(importSource).toContain('Possible duplicate')
+    expect(importSource).toContain('This looks similar to an expense already saved.')
+    expect(importSource).toContain('Keep row by saving anyway.')
+    expect(importSource).toContain('onClick={() => removeRowsById([row.id])}')
   })
 
   it('does not invent manual row structures or bypass the parser', () => {

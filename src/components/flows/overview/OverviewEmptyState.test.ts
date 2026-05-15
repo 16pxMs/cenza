@@ -11,11 +11,13 @@ describe('OverviewEmptyState add-expense CTA', () => {
     expect(emptyStateSource).toContain('Ready to get started?')
     expect(emptyStateSource).toContain('Add your first expense to see where your money goes.')
     expect(emptyStateSource).toContain('+ Add expense')
-    expect(emptyStateSource).toContain('<PrimaryLink')
+    expect(emptyStateSource).toContain('<PrimaryBtn')
   })
 
-  it('routes the in-card CTA to the same app return path as the overview FAB', () => {
-    expect(emptyStateSource).toContain('href="/log/import?returnTo=%2Fapp"')
+  it('opens the shared Add expense choice from the in-card CTA with the app return path', () => {
+    expect(emptyStateSource).toContain('AddExpenseChoiceSheet')
+    expect(emptyStateSource).toContain('onClick={() => setAddExpenseChoiceOpen(true)}')
+    expect(emptyStateSource).toContain('returnTo="/app"')
     expect(appClientSource).toContain('<GlobalAddButton returnTo="/app" />')
   })
 
@@ -60,13 +62,14 @@ describe('OverviewWithData new-user card states', () => {
     expect(overviewSource).toContain(
       "const hasCommitmentsToShow =\n    !!commitmentSummary && commitmentSummary.state !== 'empty'"
     )
-    expect(overviewSource).toContain('const obligationsPreviewCard = !hasCommitmentsToShow ? null : (')
+    expect(overviewSource).toContain('const hasCommitmentsAreaToShow = hasCommitmentsToShow || hasDebtSummary')
+    expect(overviewSource).toContain('const obligationsPreviewCard = !hasCommitmentsAreaToShow ? null : (')
     expect(overviewSource).not.toContain("'No recurring commitments yet'")
     expect(overviewSource).not.toContain("'Turn reminders on for recurring expenses'")
   })
 
   it('makes the rendered commitments card a full-card button when commitments exist', () => {
-    const cardStart = overviewSource.indexOf('const obligationsPreviewCard = !hasCommitmentsToShow ? null : (')
+    const cardStart = overviewSource.indexOf('const obligationsPreviewCard = !hasCommitmentsAreaToShow ? null : (')
     const cardEnd = overviewSource.indexOf('// ── Render', cardStart)
     expect(cardStart).toBeGreaterThan(-1)
     expect(cardEnd).toBeGreaterThan(cardStart)
@@ -79,6 +82,36 @@ describe('OverviewWithData new-user card states', () => {
     expect(cardSource).toContain('<ChevronRight size={12}')
     expect(cardSource).not.toContain('View all')
     expect(cardSource).not.toContain('role="button"')
+  })
+
+  it('renders active debt visibility in the overview commitments area', () => {
+    expect(overviewSource).toContain("const DEBTS_ROUTE = '/history/debt'")
+    expect(overviewSource).toContain("debt.status === 'active' && Number(debt.current_balance) > 0")
+    expect(overviewSource).toContain('Number(b.current_balance) - Number(a.current_balance)')
+    expect(overviewSource).toContain('const debtPreviewRows = activeDebtRows.slice(0, 3)')
+    expect(overviewSource).toContain('Money you owe')
+    expect(overviewSource).toContain('View debts')
+    expect(overviewSource).toContain('onClick={() => router.push(DEBTS_ROUTE)}')
+    expect(overviewSource).toContain('+{hiddenDebtCount} more')
+  })
+
+  it('does not let deferred secondary overview data wipe critical debt rows', () => {
+    expect(appClientSource).toContain('const activeDebts = (() => {')
+    expect(appClientSource).toContain('const byId = new Map(overview.activeDebts.map((debt) => [debt.id, debt]))')
+    expect(appClientSource).toContain('for (const debt of secondaryOverview?.activeDebts ?? [])')
+    expect(appClientSource).toContain('activeDebts={activeDebts}')
+    expect(appClientSource).toContain('debtTotal={debtTotal}')
+  })
+
+  it('combines commitments and debts in one obligations card', () => {
+    const cardStart = overviewSource.indexOf('const obligationsPreviewCard = !hasCommitmentsAreaToShow ? null : (')
+    const cardEnd = overviewSource.indexOf('// ── Render', cardStart)
+    const cardSource = overviewSource.slice(cardStart, cardEnd)
+
+    expect(cardSource).toContain('hasCommitmentsToShow && !hasDebtSummary')
+    expect(cardSource).toContain('Upcoming commitments')
+    expect(cardSource).toContain('{debtSummarySection}')
+    expect(overviewSource).toContain("borderTop: hasCommitmentsToShow ? '1px solid var(--border-subtle)' : 'none'")
   })
 
   it('replaces the empty goals body with the first-time goal CTA and copy', () => {

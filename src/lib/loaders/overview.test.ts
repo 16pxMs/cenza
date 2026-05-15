@@ -24,7 +24,7 @@ vi.mock('@/lib/monthly-reminders/storage', async () => {
   }
 })
 
-function makeSupabaseForCriticalData() {
+function makeSupabaseForCriticalData(activeDebtRows: any[] = []) {
   const transactionsCycleQuery = {
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
@@ -80,7 +80,7 @@ function makeSupabaseForCriticalData() {
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
         eq: vi.fn(() => ({
-          gt: vi.fn().mockResolvedValue({ data: [] }),
+          gt: vi.fn().mockResolvedValue({ data: activeDebtRows }),
         })),
       })),
     })),
@@ -175,7 +175,40 @@ describe('loadOverviewCriticalData', () => {
   })
 
   it('uses display_name for recent activity labels and falls back to category label', async () => {
-    const debtBalanceGt = vi.fn().mockResolvedValue({ data: [] })
+    const debtBalanceGt = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'debt-small',
+          name: 'Ilham',
+          status: 'active',
+          current_balance: 2000,
+          debt_kind: 'standard',
+          standard_due_date: null,
+          financing_target_date: null,
+          currency: 'KES',
+        },
+        {
+          id: 'debt-large',
+          name: 'Washing machine',
+          status: 'active',
+          current_balance: 48297,
+          debt_kind: 'standard',
+          standard_due_date: null,
+          financing_target_date: null,
+          currency: 'KES',
+        },
+        {
+          id: 'debt-medium',
+          name: 'Harold',
+          status: 'active',
+          current_balance: 6250,
+          debt_kind: 'standard',
+          standard_due_date: null,
+          financing_target_date: null,
+          currency: 'KES',
+        },
+      ],
+    })
     const debtStatusEq = vi.fn(() => ({
       gt: debtBalanceGt,
     }))
@@ -289,6 +322,12 @@ describe('loadOverviewCriticalData', () => {
     expect(debtUserEq).toHaveBeenCalledWith('user_id', 'user-1')
     expect(debtStatusEq).toHaveBeenCalledWith('status', 'active')
     expect(debtBalanceGt).toHaveBeenCalledWith('current_balance', 0)
+    expect(data.activeDebts.map((debt) => debt.id)).toEqual([
+      'debt-large',
+      'debt-medium',
+      'debt-small',
+    ])
+    expect(data.debtTotal).toBe(56547)
     expect(data.topOutflowCategories).toEqual([
       expect.objectContaining({
         categoryKey: 'sports',
@@ -301,6 +340,56 @@ describe('loadOverviewCriticalData', () => {
         totalAmount: 1200,
       }),
     ])
+  })
+
+  it('returns active debts from the critical loader so overview can show debt visibility immediately', async () => {
+    createServerSupabaseClient.mockResolvedValue(makeSupabaseForCriticalData([
+      {
+        id: 'debt-small',
+        name: 'Ilham',
+        status: 'active',
+        current_balance: 2000,
+        debt_kind: 'standard',
+        standard_due_date: null,
+        financing_target_date: null,
+        currency: 'KES',
+      },
+      {
+        id: 'debt-large',
+        name: 'Washing machine',
+        status: 'active',
+        current_balance: 48297,
+        debt_kind: 'standard',
+        standard_due_date: null,
+        financing_target_date: null,
+        currency: 'KES',
+      },
+      {
+        id: 'debt-settled',
+        name: 'Settled',
+        status: 'cleared',
+        current_balance: 0,
+        debt_kind: 'standard',
+        standard_due_date: null,
+        financing_target_date: null,
+        currency: 'KES',
+      },
+    ]))
+    const { loadOverviewCriticalData } = await import('./overview')
+
+    const data = await loadOverviewCriticalData('user-1', {
+      name: 'Test User',
+      currency: 'KES',
+      income_type: 'salaried',
+      pay_schedule_days: [25],
+      goals: [],
+    } as any)
+
+    expect(data.activeDebts.map((debt) => debt.id)).toEqual([
+      'debt-large',
+      'debt-small',
+    ])
+    expect(data.debtTotal).toBe(50297)
   })
 })
 

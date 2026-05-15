@@ -470,6 +470,199 @@ describe('saveParsedSmsExpenses import visibility', () => {
     expect(after).toHaveBeenCalled()
   })
 
+  it('parses past import rows through the shared import action without enrichment reads', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      ['Date, Name, Amount, Category', '2026-01-05, Uber, 1200, Transport'].join('\n'),
+      { mode: 'past' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({
+        label: 'Uber',
+        amount: 1200,
+        date: '2026-01-05',
+        currency: 'KES',
+        categoryType: 'everyday',
+        categoryKey: 'transport',
+        sourceHash: '',
+        sourceType: 'pasted_table',
+      }),
+    ])
+    expect(result.ok ? result.data.monthlyReminderKeys : ['unexpected']).toEqual([])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+    expect(loadMonthlyReminderEntriesForCycle).not.toHaveBeenCalled()
+  })
+
+  it('applies default past import month to undated rows while preserving explicit dates', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      ['Uber 500', 'Mar 2 Rent 25000', 'Food 1200'].join('\n'),
+      { mode: 'past', defaultImportMonth: '2026-02' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      date: row.date,
+      dateSource: row.dateSource,
+    })) : []).toEqual([
+      { label: 'Uber', date: '2026-02-01', dateSource: 'default_month' },
+      { label: 'Rent', date: '2026-03-02', dateSource: 'explicit' },
+      { label: 'Food', date: '2026-02-01', dateSource: 'default_month' },
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('parses CSV past imports through the shared parse action', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      ['Transaction Date,Description,Amount,Category', '2026-01-05,"Uber, airport",1200,Transport'].join('\n'),
+      { mode: 'past', source: 'csv' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({
+        label: 'Uber, airport',
+        amount: 1200,
+        date: '2026-01-05',
+        categoryKey: 'transport',
+        sourceType: 'csv',
+      }),
+    ])
+    expect(result.ok ? result.data.csvMappingRequired : 'unexpected').toBeNull()
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('asks for CSV column mapping when required columns cannot be detected', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      ['When,Thing,Cost', '2026-01-05,Uber,1200'].join('\n'),
+      { mode: 'past', source: 'csv' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.csvMappingRequired : null).toEqual({
+      headers: ['When', 'Thing', 'Cost'],
+      missing: ['name'],
+    })
+    expect(result.ok ? result.data.rows : ['unexpected']).toEqual([])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('uses provided CSV column mapping to produce normal reviewed rows', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      ['When,Thing,Cost', '2026-01-05,Uber,1200'].join('\n'),
+      { mode: 'past', source: 'csv', csvMapping: { date: 0, name: 1, amount: 2 } }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({
+        label: 'Uber',
+        amount: 1200,
+        date: '2026-01-05',
+        sourceType: 'csv',
+      }),
+    ])
+  })
+
+  it('blocks past import rows without dates before deriving cycles or writing transactions', async () => {
+    const { saveParsedSmsExpenses } = await import('./actions')
+
+    const result = await saveParsedSmsExpenses([
+      importRow({
+        id: 'missing-date',
+        label: 'Uber',
+        categoryKey: 'transport',
+        amount: 1200,
+        date: '',
+        sourceHash: '',
+      }),
+    ])
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        saved: 0,
+        blocked: true,
+        rowErrors: { 'missing-date': ['Date is invalid.'] },
+      }),
+    }))
+    expect(db.rows.cycles).toHaveLength(0)
+    expect(db.rows.transactions).toHaveLength(0)
+    expect(db.rows.sms_import_lines).toHaveLength(0)
+  })
+
+  it('saves historical past-import rows as normal transactions without SMS import-line records or reminders by default', async () => {
+    const { saveParsedSmsExpenses } = await import('./actions')
+    const { loadHistoryPageData } = await import('@/lib/loaders/history')
+    const { loadLogPageData } = await import('@/lib/loaders/log')
+
+    const result = await saveParsedSmsExpenses([
+      importRow({ id: 'jan-uber', label: 'Uber', categoryKey: 'transport', amount: 1200, date: '2026-01-05', sourceHash: '' }),
+      importRow({ id: 'feb-rent', label: 'Rent', categoryType: 'fixed', categoryKey: 'rent', amount: 25000, date: '2026-02-02', sourceHash: '' }),
+      importRow({ id: 'mar-food', label: 'Groceries', categoryKey: 'groceries', amount: 3400, date: '2026-03-12', sourceHash: '' }),
+    ])
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(db.rows.transactions).toEqual([
+      expect.objectContaining({ display_name: 'Uber', date: '2026-01-05', cycle_id: '2026-01-01' }),
+      expect.objectContaining({ display_name: 'Rent', date: '2026-02-02', cycle_id: '2026-02-01' }),
+      expect.objectContaining({ display_name: 'Groceries', date: '2026-03-12', cycle_id: '2026-03-01' }),
+    ])
+    expect(db.rows.sms_import_lines).toHaveLength(0)
+    expect(saveMonthlyReminderEntriesForCycle).not.toHaveBeenCalled()
+
+    const januaryHistory = await loadHistoryPageData('user-1', profile as any, new Date('2026-01-01T00:00:00'), ['2026-01-01'])
+    expect(januaryHistory.totalSpent).toBe(1200)
+    expect(januaryHistory.topTransactions[0]).toEqual(expect.objectContaining({ title: 'Uber', date: '2026-01-05' }))
+
+    const currentLog = await loadLogPageData('user-1', profile as any)
+    expect(currentLog.entries.map((entry) => entry.name)).not.toEqual(
+      expect.arrayContaining(['Uber', 'Rent', 'Groceries'])
+    )
+  })
+
+  it('saves historical rows with inherited default-month dates into the selected month cycle', async () => {
+    const { parseSmsImport, saveParsedSmsExpenses } = await import('./actions')
+    const { loadHistoryPageData } = await import('@/lib/loaders/history')
+
+    const parsed = await parseSmsImport('Uber 500', { mode: 'past', defaultImportMonth: '2026-02' })
+    expect(parsed).toEqual(expect.objectContaining({ ok: true }))
+    const row = parsed.ok ? parsed.data.rows[0] : null
+    expect(row).toEqual(expect.objectContaining({ date: '2026-02-01', dateSource: 'default_month' }))
+
+    const result = await saveParsedSmsExpenses([
+      importRow({
+        id: row!.id,
+        label: row!.label,
+        categoryKey: 'transport',
+        amount: row!.amount,
+        date: row!.date,
+        sourceHash: row!.sourceHash,
+      }),
+    ])
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(db.rows.transactions[0]).toEqual(expect.objectContaining({
+      display_name: 'Uber',
+      date: '2026-02-01',
+      cycle_id: '2026-02-01',
+    }))
+
+    const februaryHistory = await loadHistoryPageData('user-1', profile as any, new Date('2026-02-01T00:00:00'), ['2026-02-01'])
+    expect(februaryHistory.totalSpent).toBe(500)
+  })
+
   it('parses a single simple entry through the fast path without database enrichment reads', async () => {
     const { parseSmsImport } = await import('./actions')
 

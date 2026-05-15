@@ -39,6 +39,8 @@ npm install
 2. Enable Google provider
 3. Add your Google OAuth credentials (from [console.cloud.google.com](https://console.cloud.google.com))
 4. Add your callback URL: `https://your-project.supabase.co/auth/v1/callback`
+5. Supabase Dashboard → Authentication → URL Configuration → Redirect URLs:
+   add `http://localhost:3000/auth/callback` for local development and `https://cenza.vercel.app/auth/callback` for production. Add localhost as an additional allowed redirect URL, not as a replacement for production.
 
 ### 4. Set environment variables
 

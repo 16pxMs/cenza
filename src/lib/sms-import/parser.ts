@@ -1,6 +1,17 @@
 import type { CategoryType } from '@/types/database'
+import { getCategoriesByType, resolveCategoryKey } from '@/lib/categories/config'
 
 export type ImportCategoryType = Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>
+export type ImportSourceType = 'sms' | 'simple_text' | 'past_text' | 'pasted_table' | 'csv'
+export type ImportDateSource = 'explicit' | 'default_month'
+export type CsvImportField = 'date' | 'name' | 'amount' | 'category' | 'note'
+
+export type CsvImportMapping = Partial<Record<CsvImportField, number>>
+
+export interface CsvMappingRequest {
+  headers: string[]
+  missing: Array<'name' | 'amount'>
+}
 
 export interface ImportDictionaryEntry {
   nameNormalized: string
@@ -21,10 +32,13 @@ export interface ParsedSmsExpense {
   amount: number
   currency: string
   date: string
+  dateSource?: ImportDateSource | null
   isImportedMessage: boolean
   include: boolean
   confidence: 'high' | 'medium' | 'low'
   sourceHash: string
+  sourceType?: ImportSourceType
+  sourceRowIndex?: number
   blockedReason?: string | null
 }
 
@@ -111,6 +125,230 @@ function slugify(value: string) {
   return normalize(value)
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
+}
+
+function parseBareAmount(value: string): number | null {
+  const cleaned = value.trim().replace(/[, ]/g, '')
+  if (!/^[0-9]+(?:\.[0-9]{1,2})?$/.test(cleaned)) return null
+  const amount = Number(cleaned)
+  return Number.isFinite(amount) && amount > 0 ? amount : null
+}
+
+function parseAmountCell(value: string): number | null {
+  return parseBareAmount(value) ?? parseAmount(value)?.amount ?? null
+}
+
+function defaultDateForMonth(month: string | null | undefined): string | null {
+  const normalized = month?.trim() ?? ''
+  if (!/^\d{4}-\d{2}$/.test(normalized)) return null
+  return `${normalized}-01`
+}
+
+function extractLastBareAmount(raw: string): { amount: number; token: string; index: number } | null {
+  const matches = [...raw.matchAll(/\b[0-9][0-9,]*(?:\.[0-9]{1,2})?\b/g)]
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const match = matches[index]
+    const token = match[0]
+    const amount = parseBareAmount(token)
+    if (amount == null || match.index == null) continue
+    return { amount, token, index: match.index }
+  }
+  return null
+}
+
+function stripDateText(raw: string) {
+  return raw
+    .replace(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/g, ' ')
+    .replace(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/g, ' ')
+    .replace(/\b(\d{1,2})\s+([A-Za-z]{3,9})(?:,?\s*(\d{2,4}))?\b/g, (match) =>
+      findDateInText(match) ? ' ' : match
+    )
+    .replace(/\b(?:on\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s*(\d{2,4}))?\b/g, (match) =>
+      findDateInText(match) ? ' ' : match
+    )
+    .replace(/\b(?:today|yesterday)\b/gi, ' ')
+}
+
+function splitPastedColumns(line: string): string[] {
+  const delimiter = line.includes('\t')
+    ? '\t'
+    : line.includes('|')
+    ? '|'
+    : line.includes(',')
+    ? ','
+    : ''
+
+  if (!delimiter) return []
+  return line
+    .split(delimiter)
+    .map((part) => part.trim().replace(/^"|"$/g, ''))
+}
+
+function parseDelimitedRecord(line: string, delimiter: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    const next = line[index + 1]
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"'
+        index += 1
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+
+    if (char === delimiter && !inQuotes) {
+      cells.push(current.trim())
+      current = ''
+      continue
+    }
+
+    current += char
+  }
+
+  cells.push(current.trim())
+  return cells
+}
+
+function parseCsvRecords(rawInput: string): string[][] {
+  const records: string[][] = []
+  let currentRecord: string[] = []
+  let currentCell = ''
+  let inQuotes = false
+
+  for (let index = 0; index < rawInput.length; index += 1) {
+    const char = rawInput[index]
+    const next = rawInput[index + 1]
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        currentCell += '"'
+        index += 1
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+
+    if (char === ',' && !inQuotes) {
+      currentRecord.push(currentCell.trim())
+      currentCell = ''
+      continue
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1
+      currentRecord.push(currentCell.trim())
+      currentCell = ''
+      if (currentRecord.some((cell) => cell.trim())) {
+        records.push(currentRecord)
+      }
+      currentRecord = []
+      continue
+    }
+
+    currentCell += char
+  }
+
+  currentRecord.push(currentCell.trim())
+  if (currentRecord.some((cell) => cell.trim())) {
+    records.push(currentRecord)
+  }
+
+  return records
+}
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function headerIndex(headers: string[], names: string[]) {
+  const accepted = new Set(names)
+  return headers.findIndex((header) => accepted.has(normalizeHeader(header)))
+}
+
+function optionalHeaderIndex(headers: string[], names: string[]) {
+  const index = headerIndex(headers, names)
+  return index >= 0 ? index : undefined
+}
+
+function looksLikeHeader(columns: string[]) {
+  if (columns.length < 2) return false
+  const normalized = columns.map(normalizeHeader)
+  const hasDate = normalized.some((value) => ['date', 'transactiondate', 'day'].includes(value))
+  const hasAmount = normalized.some((value) => ['amount', 'cost', 'price', 'total', 'debit'].includes(value))
+  const hasName = normalized.some((value) => ['name', 'description', 'merchant', 'item', 'expense', 'details'].includes(value))
+  return hasDate && hasAmount && hasName
+}
+
+const CSV_DATE_HEADERS = ['date', 'transactiondate', 'paidat', 'createdat', 'day']
+const CSV_NAME_HEADERS = ['name', 'description', 'merchant', 'payee', 'details', 'item', 'expense']
+const CSV_AMOUNT_HEADERS = ['amount', 'debit', 'value', 'total', 'cost', 'price']
+const CSV_CATEGORY_HEADERS = ['category', 'type', 'bucket']
+const CSV_NOTE_HEADERS = ['note', 'memo']
+
+function looksLikeCsvHeader(columns: string[]) {
+  if (columns.length < 2) return false
+  const normalized = columns.map(normalizeHeader)
+  const knownHeaders = [
+    ...CSV_DATE_HEADERS,
+    ...CSV_NAME_HEADERS,
+    ...CSV_AMOUNT_HEADERS,
+    ...CSV_CATEGORY_HEADERS,
+    ...CSV_NOTE_HEADERS,
+  ]
+  return normalized.some((value) => knownHeaders.includes(value))
+}
+
+function detectCsvHeaderMapping(headers: string[]): CsvImportMapping {
+  return {
+    date: optionalHeaderIndex(headers, CSV_DATE_HEADERS),
+    name: optionalHeaderIndex(headers, CSV_NAME_HEADERS),
+    amount: optionalHeaderIndex(headers, CSV_AMOUNT_HEADERS),
+    category: optionalHeaderIndex(headers, CSV_CATEGORY_HEADERS),
+    note: optionalHeaderIndex(headers, CSV_NOTE_HEADERS),
+  }
+}
+
+export function getCsvMappingRequest(rawInput: string): CsvMappingRequest | null {
+  const records = parseCsvRecords(rawInput)
+  const headers = records[0] ?? []
+  if (!looksLikeCsvHeader(headers)) return null
+
+  const mapping = detectCsvHeaderMapping(headers)
+  const missing: Array<'name' | 'amount'> = []
+  if (mapping.name == null) missing.push('name')
+  if (mapping.amount == null) missing.push('amount')
+
+  return missing.length > 0 ? { headers, missing } : null
+}
+
+function findKnownCategory(raw: string): { key: string; label: string; type: ImportCategoryType } | null {
+  const normalized = normalize(raw)
+  if (!normalized) return null
+
+  const key = resolveCategoryKey(slugify(normalized)) ?? resolveCategoryKey(normalized)
+  if (key) {
+    const category = [...getCategoriesByType('everyday'), ...getCategoriesByType('fixed'), ...getCategoriesByType('debt')]
+      .find((option) => option.key === key)
+    if (category && (category.type === 'everyday' || category.type === 'fixed' || category.type === 'debt')) {
+      return { key: category.key, label: category.label, type: category.type }
+    }
+  }
+
+  for (const category of [...getCategoriesByType('everyday'), ...getCategoriesByType('fixed'), ...getCategoriesByType('debt')]) {
+    if (normalize(category.label) === normalized && (category.type === 'everyday' || category.type === 'fixed' || category.type === 'debt')) {
+      return { key: category.key, label: category.label, type: category.type }
+    }
+  }
+
+  return null
 }
 
 function toIsoLocalDate(date: Date) {
@@ -397,6 +635,8 @@ export function parseSimpleExpenseLines(
       include: true,
       confidence: 'medium',
       sourceHash,
+      sourceType: 'simple_text',
+      sourceRowIndex: index,
       blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
     }
   }
@@ -501,6 +741,224 @@ export function parseSimpleExpenseLines(
   return rows
 }
 
+export function parsePastExpenseLines(
+  rawInput: string,
+  options: { defaultCurrency: string; defaultImportMonth?: string | null }
+): ParsedSmsExpense[] {
+  const lines = rawInput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const firstColumns = splitPastedColumns(lines[0] ?? '')
+  const hasHeader = looksLikeHeader(firstColumns)
+  const headers = hasHeader ? firstColumns : []
+  const dateIndex = hasHeader ? headerIndex(headers, ['date', 'transactiondate', 'day']) : -1
+  const nameIndex = hasHeader ? headerIndex(headers, ['name', 'description', 'merchant', 'item', 'expense', 'details']) : -1
+  const amountIndex = hasHeader ? headerIndex(headers, ['amount', 'cost', 'price', 'total', 'debit']) : -1
+  const categoryIndex = hasHeader ? headerIndex(headers, ['category', 'type', 'bucket']) : -1
+  const inheritedDate = defaultDateForMonth(options.defaultImportMonth)
+
+  const buildPastRow = (input: Omit<PastExpenseRowInput, 'defaultCurrency' | 'inheritedDate'>): ParsedSmsExpense | null =>
+    buildPastExpenseRow({
+      ...input,
+      defaultCurrency: options.defaultCurrency,
+      inheritedDate,
+    })
+
+  const parseDelimitedLine = (line: string, sourceLineIndex: number, columns: string[]): ParsedSmsExpense | null => {
+    if (hasHeader) {
+      const amount = amountIndex >= 0 ? parseAmountCell(columns[amountIndex] ?? '') : null
+      const rawDate = dateIndex >= 0 ? columns[dateIndex] ?? '' : ''
+      const date = rawDate ? findDateInText(rawDate) : null
+      const label = nameIndex >= 0 ? columns[nameIndex] ?? '' : ''
+      const categoryText = categoryIndex >= 0 ? columns[categoryIndex] ?? '' : null
+      return buildPastRow({
+        line,
+        sourceLineIndex,
+        date,
+        label,
+        amount,
+        categoryText,
+        sourceType: 'pasted_table',
+      })
+    }
+
+    const dateColumnIndex = columns.findIndex((column) => !!findDateInText(column))
+    const amountColumnIndex = (() => {
+      for (let index = columns.length - 1; index >= 0; index -= 1) {
+        if (parseAmountCell(columns[index]) != null) return index
+      }
+      return -1
+    })()
+
+    const amount = amountColumnIndex >= 0 ? parseAmountCell(columns[amountColumnIndex]) : null
+    const date = dateColumnIndex >= 0 ? findDateInText(columns[dateColumnIndex]) : null
+    const remaining = columns.filter((_, index) => index !== dateColumnIndex && index !== amountColumnIndex)
+    const label = remaining[0] ?? ''
+    const categoryText = remaining.length >= 2 ? remaining[remaining.length - 1] : null
+
+    return buildPastRow({
+      line,
+      sourceLineIndex,
+      date,
+      label,
+      amount,
+      categoryText,
+      sourceType: 'pasted_table',
+    })
+  }
+
+  return lines
+    .map((line, lineIndex) => {
+      if (hasHeader && lineIndex === 0) return null
+
+      const columns = splitPastedColumns(line)
+      if (columns.length > 0) {
+        return parseDelimitedLine(line, lineIndex, columns)
+      }
+
+      const amountMatch = extractLastBareAmount(line)
+      const date = findDateInText(line)
+      const label = amountMatch
+        ? stripDateText(`${line.slice(0, amountMatch.index)} ${line.slice(amountMatch.index + amountMatch.token.length)}`)
+            .replace(/\s+/g, ' ')
+            .trim()
+        : stripDateText(line).replace(/\s+/g, ' ').trim()
+
+      return buildPastRow({
+        line,
+        sourceLineIndex: lineIndex,
+        date,
+        label,
+        amount: amountMatch?.amount ?? null,
+        sourceType: 'past_text',
+      })
+    })
+    .filter((row): row is ParsedSmsExpense => row != null)
+}
+
+interface PastExpenseRowInput {
+  line: string
+  sourceLineIndex: number
+  date: string | null
+  label: string
+  amount: number | null
+  categoryText?: string | null
+  sourceType: ImportSourceType
+  defaultCurrency: string
+  inheritedDate: string | null
+}
+
+function buildPastExpenseRow(input: PastExpenseRowInput): ParsedSmsExpense | null {
+  const label = input.label.trim().replace(/\s+/g, ' ')
+  if (!label && input.amount == null) return null
+
+  const category = input.categoryText ? findKnownCategory(input.categoryText) : null
+  const fallbackKey = slugify(label || input.categoryText || `past_expense_${input.sourceLineIndex + 1}`) || `past_expense_${input.sourceLineIndex + 1}`
+  const date = input.date ?? input.inheritedDate ?? ''
+
+  return {
+    id: `${input.sourceType}_${input.sourceLineIndex + 1}_${fallbackKey}`,
+    raw: input.line,
+    label,
+    categoryType: category?.type ?? inferCategory(category?.label ?? label),
+    categoryKey: category?.key ?? fallbackKey,
+    customCategoryId: null,
+    amount: input.amount ?? 0,
+    currency: input.defaultCurrency,
+    date,
+    dateSource: input.date ? 'explicit' : input.inheritedDate ? 'default_month' : null,
+    isImportedMessage: true,
+    include: true,
+    confidence: category ? 'high' : 'medium',
+    // Past imports intentionally do not use sms_import_lines in this phase.
+    // Duplicate detection still runs through the reviewed-row fingerprint.
+    sourceHash: '',
+    sourceType: input.sourceType,
+    sourceRowIndex: input.sourceLineIndex,
+    blockedReason: null,
+  }
+}
+
+export function parsePastExpenseCsv(
+  rawInput: string,
+  options: {
+    defaultCurrency: string
+    defaultImportMonth?: string | null
+    mapping?: CsvImportMapping | null
+  }
+): ParsedSmsExpense[] {
+  const records = parseCsvRecords(rawInput)
+  if (records.length === 0) return []
+
+  const firstRecord = records[0] ?? []
+  const hasHeader = looksLikeCsvHeader(firstRecord)
+  const mapping = options.mapping ?? (hasHeader ? detectCsvHeaderMapping(firstRecord) : {})
+  const inheritedDate = defaultDateForMonth(options.defaultImportMonth)
+  const dataRecords = hasHeader ? records.slice(1) : records
+
+  return dataRecords
+    .map((columns, index) => {
+      const sourceLineIndex = hasHeader ? index + 1 : index
+      const rawLine = columns.map((cell) => cell.includes(',') || cell.includes('"') ? `"${cell.replace(/"/g, '""')}"` : cell).join(',')
+
+      if (mapping.amount != null || mapping.name != null || mapping.date != null || mapping.category != null) {
+        const dateText = mapping.date != null ? columns[mapping.date] ?? '' : ''
+        const noteText = mapping.note != null ? columns[mapping.note] ?? '' : ''
+        const label = mapping.name != null ? columns[mapping.name] ?? '' : ''
+        const categoryText = mapping.category != null ? columns[mapping.category] ?? '' : null
+        return buildPastExpenseRow({
+          line: rawLine,
+          sourceLineIndex,
+          date: dateText ? findDateInText(dateText) : null,
+          label,
+          amount: mapping.amount != null ? parseAmountCell(columns[mapping.amount] ?? '') : null,
+          categoryText,
+          sourceType: 'csv',
+          defaultCurrency: options.defaultCurrency,
+          inheritedDate,
+        }) ?? (noteText ? buildPastExpenseRow({
+          line: rawLine,
+          sourceLineIndex,
+          date: dateText ? findDateInText(dateText) : null,
+          label: noteText,
+          amount: mapping.amount != null ? parseAmountCell(columns[mapping.amount] ?? '') : null,
+          categoryText,
+          sourceType: 'csv',
+          defaultCurrency: options.defaultCurrency,
+          inheritedDate,
+        }) : null)
+      }
+
+      const dateColumnIndex = columns.findIndex((column) => !!findDateInText(column))
+      const amountColumnIndex = (() => {
+        for (let columnIndex = columns.length - 1; columnIndex >= 0; columnIndex -= 1) {
+          if (parseAmountCell(columns[columnIndex]) != null) return columnIndex
+        }
+        return -1
+      })()
+      const amount = amountColumnIndex >= 0 ? parseAmountCell(columns[amountColumnIndex]) : null
+      const date = dateColumnIndex >= 0 ? findDateInText(columns[dateColumnIndex]) : null
+      const remaining = columns.filter((_, columnIndex) => columnIndex !== dateColumnIndex && columnIndex !== amountColumnIndex)
+      const label = remaining[0] ?? ''
+      const categoryText = remaining.length >= 2 ? remaining[remaining.length - 1] : null
+
+      return buildPastExpenseRow({
+        line: rawLine,
+        sourceLineIndex,
+        date,
+        label,
+        amount,
+        categoryText,
+        sourceType: 'csv',
+        defaultCurrency: options.defaultCurrency,
+        inheritedDate,
+      })
+    })
+    .filter((row): row is ParsedSmsExpense => row != null)
+}
+
 export function parsePaymentImportText(
   rawInput: string,
   options: { defaultCurrency: string }
@@ -565,6 +1023,8 @@ export function parseSmsBlob(
       include: true,
       confidence: dict ? 'high' : 'medium',
       sourceHash: hashSmsLine(line),
+      sourceType: 'sms',
+      sourceRowIndex: index,
       blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
     })
   })

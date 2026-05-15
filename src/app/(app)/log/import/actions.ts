@@ -9,7 +9,11 @@ import { deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { getCycleByDate, profileToPaySchedule, toLocalDateStr } from '@/lib/cycles'
 import {
   parseSmsBlob,
+  parsePastExpenseCsv,
+  parsePastExpenseLines,
   parseSimpleExpenseLines,
+  getCsvMappingRequest,
+  type CsvImportMapping,
   type ImportCategoryType,
   type ParsedSmsExpense,
 } from '@/lib/sms-import/parser'
@@ -48,6 +52,9 @@ interface ParsedRowInput {
   repeatsMonthly?: boolean
   debtId?: string | null
 }
+
+export type ImportMode = 'current' | 'past'
+export type ImportInputSource = 'text' | 'csv'
 
 export interface CustomCategoryOption extends CategoryOption {
   type: Extract<ImportCategoryType, 'everyday' | 'fixed'>
@@ -418,6 +425,10 @@ export interface ParseSmsImportData {
   skippedCredits: number
   hasLowConfidence: boolean
   monthlyReminderKeys: string[]
+  csvMappingRequired?: {
+    headers: string[]
+    missing: Array<'name' | 'amount'>
+  } | null
   // True when rows came from the plain-language fallback parser. Used only
   // to surface a short clarifier in the review UI; no business-logic impact.
   usedFallback: boolean
@@ -472,7 +483,15 @@ function shouldUseSimpleEntryFastPath(input: string, rows: ParsedSmsExpense[]) {
   })
 }
 
-export async function parseSmsImport(rawText: string): Promise<ActionResult<ParseSmsImportData>> {
+export async function parseSmsImport(
+  rawText: string,
+  options: {
+    mode?: ImportMode
+    defaultImportMonth?: string | null
+    source?: ImportInputSource
+    csvMapping?: CsvImportMapping | null
+  } = {}
+): Promise<ActionResult<ParseSmsImportData>> {
   return runAction<ParseSmsImportData>(async () => {
     const startedAt = Date.now()
     const flow = 'sms-import.parse'
@@ -481,6 +500,8 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
 
     const input = rawText?.trim() ?? ''
     const lineCount = countNonEmptyLines(input)
+    const mode = options.mode === 'past' ? 'past' : 'current'
+    const source = mode === 'past' && options.source === 'csv' ? 'csv' : 'text'
     if (!input) {
       const response = ok({
         rows: [],
@@ -495,6 +516,79 @@ export async function parseSmsImport(rawText: string): Promise<ActionResult<Pars
         rowCount: 0,
         fastPath: false,
         structured: false,
+      })
+      return response
+    }
+
+    if (mode === 'past') {
+      const pastParserStartedAt = Date.now()
+      const csvMappingRequired = source === 'csv' && !options.csvMapping
+        ? getCsvMappingRequest(input)
+        : null
+      if (csvMappingRequired) {
+        const response = ok({
+          rows: [],
+          scanned: lineCount,
+          skippedCredits: 0,
+          hasLowConfidence: false,
+          monthlyReminderKeys: [],
+          csvMappingRequired,
+          usedFallback: false,
+        })
+        logPerfSpan(flow, 'csv-mapping-detection', pastParserStartedAt, {
+          lineCount,
+          columnCount: csvMappingRequired.headers.length,
+          missingCount: csvMappingRequired.missing.length,
+        })
+        logPerfSpan(flow, 'total', startedAt, {
+          lineCount,
+          rowCount: 0,
+          fastPath: false,
+          structured: false,
+          mode,
+          source,
+          mappingRequired: true,
+        })
+        return response
+      }
+
+      const pastRows = source === 'csv'
+        ? parsePastExpenseCsv(input, {
+          defaultCurrency: profile.currency || 'USD',
+          defaultImportMonth: options.defaultImportMonth,
+          mapping: options.csvMapping,
+        })
+        : parsePastExpenseLines(input, {
+          defaultCurrency: profile.currency || 'USD',
+          defaultImportMonth: options.defaultImportMonth,
+        })
+      logPerfSpan(flow, 'past-parser', pastParserStartedAt, {
+        lineCount,
+        rowCount: pastRows.length,
+        source,
+      })
+      const responseStartedAt = Date.now()
+      const response = ok({
+        rows: pastRows,
+        scanned: lineCount,
+        skippedCredits: 0,
+        hasLowConfidence: computeHasLowConfidence(pastRows),
+        monthlyReminderKeys: [],
+        csvMappingRequired: null,
+        usedFallback: false,
+      })
+      logPerfSpan(flow, 'response-shaping', responseStartedAt, {
+        rowCount: pastRows.length,
+        mode,
+        source,
+      })
+      logPerfSpan(flow, 'total', startedAt, {
+        lineCount,
+        rowCount: pastRows.length,
+        fastPath: false,
+        structured: false,
+        mode,
+        source,
       })
       return response
     }
@@ -734,6 +828,29 @@ export async function saveParsedSmsExpenses(
   const rowErrors: Record<string, string[]> = {}
   const rowWarnings: Record<string, string[]> = {}
 
+  for (const row of selectedRows) {
+    const errors = validateParsedRow(row)
+    if (errors.length > 0) {
+      rowErrors[row.id] = errors
+    }
+  }
+  mark('server-validate', {
+    rowCount: selectedRows.length,
+    errorCount: Object.keys(rowErrors).length,
+  })
+
+  if (Object.keys(rowErrors).length > 0) {
+    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
+    return ok({
+      saved: 0,
+      duplicates: 0,
+      blocked: true,
+      overridden: false,
+      rowErrors,
+      rowWarnings: {},
+    })
+  }
+
   const rowMeta = selectedRows.map((row) => {
     const entryDate = new Date(`${row.date}T12:00:00`)
     const cycleId = deriveCycleIdForDate(profile as any, entryDate)
@@ -749,17 +866,6 @@ export async function saveParsedSmsExpenses(
         categoryType: row.categoryType,
       }),
     }
-  })
-
-  for (const { row } of rowMeta) {
-    const errors = validateParsedRow(row)
-    if (errors.length > 0) {
-      rowErrors[row.id] = errors
-    }
-  }
-  mark('server-validate', {
-    rowCount: selectedRows.length,
-    errorCount: Object.keys(rowErrors).length,
   })
 
   const supabase = await createServerSupabaseClient()
@@ -797,18 +903,6 @@ export async function saveParsedSmsExpenses(
       continue
     }
     seenHashInBatch.add(row.sourceHash)
-  }
-
-  if (Object.keys(rowErrors).length > 0) {
-    logSaveTiming('saveParsedSmsExpenses:blocked', startedAt, blockingTiming.marks)
-    return ok({
-      saved: 0,
-      duplicates: 0,
-      blocked: true,
-      overridden: false,
-      rowErrors,
-      rowWarnings: {},
-    })
   }
 
   // ── SOFT WARNING: content fingerprint matches another row in this batch
