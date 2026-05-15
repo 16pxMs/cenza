@@ -229,7 +229,7 @@ describe('SMS import expense entry surface', () => {
   })
 
   it('wires the picker sheet Continue button to commit picker draft selection in changeCategory mode', () => {
-    expect(importSource).toContain("{editStep === 'changeCategory' ? (")
+    expect(importSource).toContain("editStep === 'changeCategory' ? (")
     expect(importSource).toContain('onClick={commitPickerSelectionToDraft}')
     expect(importSource).toContain('!pickerDraftSelection?.categoryType ||')
     expect(importSource).toContain('!pickerDraftSelection?.categoryKey')
@@ -393,7 +393,8 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain("row.dateSource === 'default_month'")
     expect(importSource).toContain('date: inheritedDate')
     expect(importSource).toContain('aria-label="Change import month"')
-    expect(importSource).toContain('Inherited from ${getPastMonthGroupLabel(row.date)}')
+    expect(importSource).toContain('Added to ${getPastMonthGroupLabel(row.date)}')
+    expect(importSource).not.toContain('Inherited from')
   })
 
   it('only shows the upfront month selector for the paste past-mode tab, not for CSV upload', () => {
@@ -407,17 +408,17 @@ describe('SMS import expense entry surface', () => {
     expect(guardWindow).toContain("pastInputMode === 'paste' ? (")
   })
 
-  it('keeps the review month picker for paste mode but gates CSV mode on rows actually inheriting a date', () => {
+  it('keeps the review month picker gated on rows actually inheriting a date in CSV mode', () => {
     expect(importSource).toContain('data-section="past-import-month-prompt"')
     expect(importSource).toContain("const inheritedCount = rows.filter((row) => row.dateSource === 'default_month').length")
     expect(importSource).toContain("if (pastInputMode === 'csv' && inheritedCount === 0) return null")
-    expect(importSource).toContain('const allInherited = inheritedCount === rows.length && rows.length > 0')
   })
 
-  it('uses targeted CSV headlines depending on whether all or only some rows inherited a month', () => {
-    expect(importSource).toContain("'This CSV doesn’t include dates. Choose a month to use for these expenses.'")
-    expect(importSource).toContain("'Some expenses don’t have dates. Which month should we use for them?'")
-    expect(importSource).toContain('`Importing for ${defaultImportMonthLabel}`')
+  it('drops the redundant "Importing for" headline above the month selector and uses a subtle inherited-rows caption instead', () => {
+    expect(importSource).not.toContain('`Importing for ${defaultImportMonthLabel}`')
+    expect(importSource).toContain('`Expenses without dates will be added to ${defaultImportMonthLabel}`')
+    // Caption only renders when at least one row will inherit the selected month.
+    expect(importSource).toContain('const caption = inheritedCount > 0')
   })
 
   it('preserves explicit CSV dates: updateDefaultImportMonth only rewrites rows whose dateSource is default_month', () => {
@@ -453,6 +454,51 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain('sortPastRowsForReview')
   })
 
+  it('relaxes category enforcement for past mode while keeping current-mode strictness', () => {
+    // validateRow accepts a requireCategory option, defaulting to true (strict).
+    expect(importSource).toContain('function validateRow(row: EditableRow, options: { requireCategory?: boolean } = {})')
+    expect(importSource).toContain('const requireCategory = options.requireCategory !== false')
+    expect(importSource).toContain('if (requireCategory && !row.categoryType)')
+
+    // The client builds a memoized validator gated on isPastMode.
+    expect(importSource).toContain('const validateImportRow = useMemo(')
+    expect(importSource).toContain('(row: EditableRow) => validateRow(row, { requireCategory: !isPastMode })')
+  })
+
+  it('sends honest categories to the server and tells it which mode to apply', () => {
+    // The client no longer invents a fake canonical category key on save.
+    expect(importSource).not.toContain("const effectiveCategoryKey = row.categoryKey?.trim() || 'uncategorized'")
+    expect(importSource).not.toContain("const effectiveCategoryType: ImportCategoryType = (row.categoryType ?? 'everyday') as ImportCategoryType")
+
+    // categoryType is passed through as-is (may be null for past-mode rows).
+    expect(importSource).toContain('categoryType: row.categoryType,')
+
+    // The save action is told which mode is invoking it.
+    expect(importSource).toContain('await saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })')
+  })
+
+  it('guides current-mode uncategorized rows to category completion instead of showing final save', () => {
+    expect(importSource).toContain('!isPastMode && unresolvedCategoryCount > 0 ?')
+    expect(importSource).toContain('const firstUncategorizedCurrentRowIndex = useMemo(')
+    expect(importSource).toContain('const guideCurrentRowsToCategoryCompletion = () =>')
+    expect(importSource).toContain('beginEditRow(row, true, editableRowIndices.length)')
+    expect(importSource).toContain("setEditStep('category')")
+    expect(importSource).toContain('One current-month expense still needs a category.')
+    expect(importSource).toContain('current-month expenses still need categories.')
+    expect(importSource).toContain('onClick={guideCurrentRowsToCategoryCompletion}')
+    expect(importSource).toContain('Continue')
+    expect(importSource).not.toContain("We couldn't save right now. Please try again in a moment.")
+  })
+
+  it('keeps past mode category forgiveness and enabled save behavior', () => {
+    // Soft helper still renders above the enabled save button in past mode.
+    expect(importSource).toContain('isPastMode && queueSaveHelper ? (')
+    // Helper is passed isPastMode to swap copy.
+    expect(importSource).toContain('getQueueSaveHelperCopy(unresolvedCategoryCount, { isPastMode })')
+    // The fake client-side fallback is gone — the server resolves uncategorized rows via mode.
+    expect(importSource).not.toContain("const effectiveCategoryKey = row.categoryKey?.trim() || 'uncategorized'")
+  })
+
   it('adds past-import bulk review tools without changing the save path', () => {
     expect(importSource).toContain('data-section="past-import-bulk-toolbar"')
     expect(importSource).toContain('const [selectedPastRowIds, setSelectedPastRowIds] = useState<string[]>([])')
@@ -460,9 +506,137 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain('const togglePastRowSelection = (id: string) =>')
     expect(importSource).toContain('const applyCategoryToRows = (')
     expect(importSource).toContain('const applyBulkCategory = (option: ImportCategoryOption) =>')
-    expect(importSource).toContain('Remove selected')
     expect(importSource).toContain('Apply category')
-    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride })')
+    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })')
+  })
+
+  it('only reveals the bulk toolbar after the user selects at least one expense', () => {
+    // The misleading "Select rows" mode-switch is gone — selection happens via
+    // the per-row checkbox first.
+    expect(importSource).not.toContain('Select rows')
+    expect(importSource).not.toContain("'Select rows'")
+    // Toolbar render condition requires at least one selection.
+    expect(importSource).toContain('isPastMode && rows.length > 0 && selectedPastRowIds.length > 0 ?')
+  })
+
+  it('groups bulk actions inside a single subtle contextual container with calm copy', () => {
+    expect(importSource).toContain("`${selectedPastRowIds.length} selected`")
+    expect(importSource).toContain('Apply category')
+    expect(importSource).toContain('Clear')
+    // Remove selected is renamed to plain Remove.
+    expect(importSource).not.toContain('Remove selected')
+
+    const toolbarIdx = importSource.indexOf('data-section="past-import-bulk-toolbar"')
+    expect(toolbarIdx).toBeGreaterThan(-1)
+    const toolbarEnd = importSource.indexOf("display: 'flex', flexDirection: 'column'", toolbarIdx)
+    const toolbar = importSource.slice(toolbarIdx, toolbarEnd)
+
+    // Single subtle container — soft background, rounded, token-based padding.
+    expect(toolbar).toContain("background: 'var(--grey-50)'")
+    expect(toolbar).toContain("borderRadius: 'var(--radius-md)'")
+    expect(toolbar).toContain("padding: 'var(--space-sm) var(--space-md)'")
+
+    // No SecondaryBtn or page-CTA chrome — actions are tonal/ghost contextual buttons.
+    expect(toolbar).not.toContain('<SecondaryBtn')
+    expect(toolbar).not.toContain('<PrimaryBtn')
+
+    // Apply category uses tonal brand-chip tokens (not the hero filled brand-dark).
+    expect(toolbar).toContain('onClick={openBulkCategoryPicker}')
+    expect(toolbar).toContain("background: 'var(--chip-selected-bg)'")
+    expect(toolbar).toContain("color: 'var(--chip-selected-text)'")
+    expect(toolbar).not.toContain('background: T.brandDark')
+
+    // Remove is a ghost danger button — no outline, danger-semantic text color.
+    expect(toolbar).toContain('onClick={() => removeRowsById(selectedPastRowIds)}')
+    expect(toolbar).toContain('color: T.redDark')
+    expect(toolbar).toContain("background: 'transparent'")
+    expect(toolbar).not.toContain('${T.redBorder}')
+  })
+
+  it('places Select all and Clear in a separated utility row that visually recedes', () => {
+    const toolbarIdx = importSource.indexOf('data-section="past-import-bulk-toolbar"')
+    expect(toolbarIdx).toBeGreaterThan(-1)
+    const toolbarEnd = importSource.indexOf("display: 'flex', flexDirection: 'column'", toolbarIdx)
+    const toolbar = importSource.slice(toolbarIdx, toolbarEnd)
+
+    // Utility row uses a subtle border-top separator and tertiary text-xs styling.
+    expect(toolbar).toContain('borderTop: `var(--border-width) solid var(--border-subtle)`')
+    expect(toolbar).toContain("fontSize: 'var(--text-xs)'")
+    expect(toolbar).toContain('selectedPastRowIds.length < rows.length ? (')
+    expect(toolbar).toContain('setSelectedPastRowIds(rows.map((row) => row.id))')
+    expect(toolbar).toContain('onClick={() => setSelectedPastRowIds([])}')
+  })
+
+  it('offers an explicit secondary "Select all" affordance only when not every expense is already selected', () => {
+    const toolbarIdx = importSource.indexOf('data-section="past-import-bulk-toolbar"')
+    expect(toolbarIdx).toBeGreaterThan(-1)
+    // Slice from the toolbar marker to the next major section (review row list) —
+    // captures the whole bulk-toolbar tree including Select all + Clear actions.
+    const toolbarEnd = importSource.indexOf("display: 'flex', flexDirection: 'column'", toolbarIdx)
+    expect(toolbarEnd).toBeGreaterThan(toolbarIdx)
+    const toolbar = importSource.slice(toolbarIdx, toolbarEnd)
+    expect(toolbar).toContain('selectedPastRowIds.length < rows.length ? (')
+    expect(toolbar).toContain('Select all')
+    expect(toolbar).toContain('setSelectedPastRowIds(rows.map((row) => row.id))')
+    expect(toolbar).toContain('onClick={() => setSelectedPastRowIds([])}')
+  })
+
+  it('keeps the shared category picker entry point for bulk apply', () => {
+    expect(importSource).toContain('onClick={openBulkCategoryPicker}')
+    expect(importSource).toContain('Apply category')
+    expect(importSource).toContain('openBulkCategoryPicker')
+  })
+
+  it('bulk category assignment reuses the shared category picker — no duplicate Sheet', () => {
+    // The previous standalone bulk Sheet listed canonical options inline with
+    // type tags (EVERYDAY/LIFESTYLE). Verify it is gone.
+    expect(importSource).not.toContain('Apply a category to {selectedPastRows.length} selected')
+    expect(importSource).not.toContain('canonical}-${option.type}-${option.key}')
+    expect(importSource).not.toMatch(/textTransform:\s*'uppercase',\s*letterSpacing:\s*'0\.06em'/)
+
+    // The shared picker Sheet's open condition must now include the bulk state.
+    expect(importSource).toContain('open={\n          bulkCategoryOpen ||')
+    expect(importSource).toContain('onClose={bulkCategoryOpen ? closeBulkCategoryPicker : closeCategoryBrowser}')
+
+    // The shared picker chip handler routes to applyBulkCategory in bulk mode.
+    expect(importSource).toContain('if (bulkCategoryOpen) {\n                      applyBulkCategory(option)')
+
+    // Custom category creation flow also routes through bulk apply when in bulk mode.
+    const createModeIdx = importSource.indexOf('const selectCategoryFromCreateMode = (option: ImportCategoryOption) =>')
+    expect(createModeIdx).toBeGreaterThan(-1)
+    const createModeEnd = importSource.indexOf('\n  }\n', createModeIdx)
+    const createModeBlock = importSource.slice(createModeIdx, createModeEnd)
+    expect(createModeBlock).toContain('if (bulkCategoryOpen) {')
+    expect(createModeBlock).toContain('applyBulkCategory(option)')
+  })
+
+  it('bulk picker shows row-count headline and a compact preview of selected rows', () => {
+    expect(importSource).toContain('data-section="bulk-category-preview"')
+    expect(importSource).toContain('Apply category to ${selectedPastRows.length} ${selectedPastRows.length === 1 ? \'expense\' : \'expenses\'}')
+    expect(importSource).toContain('const previewLimit = 3')
+    expect(importSource).toContain("`${labels.join(', ')} and ${remaining} more`")
+  })
+
+  it('bulk picker resets shared picker state on open and close to avoid stale search/tab/notice', () => {
+    const openIdx = importSource.indexOf('const openBulkCategoryPicker = () =>')
+    expect(openIdx).toBeGreaterThan(-1)
+    const openEnd = importSource.indexOf('\n  }\n', openIdx)
+    const openBlock = importSource.slice(openIdx, openEnd)
+    expect(openBlock).toContain("setCategoryFilter('everyday')")
+    expect(openBlock).toContain("setCategoryQuery('')")
+    expect(openBlock).toContain("setCategoryBrowserMode('select')")
+    expect(openBlock).toContain('setBulkCategoryOpen(true)')
+
+    const closeIdx = importSource.indexOf('const closeBulkCategoryPicker = () =>')
+    expect(closeIdx).toBeGreaterThan(-1)
+    const closeEnd = importSource.indexOf('\n  }\n', closeIdx)
+    const closeBlock = importSource.slice(closeIdx, closeEnd)
+    expect(closeBlock).toContain('setBulkCategoryOpen(false)')
+    expect(closeBlock).toContain("setCategoryQuery('')")
+  })
+
+  it('bulk picker hides the row-edit Continue button so chip tap is the commit', () => {
+    expect(importSource).toContain('{bulkCategoryOpen ? null : editStep === \'changeCategory\' ? (')
   })
 
   it('adds CSV upload only to past import while reusing the shared parse and review state', () => {
@@ -477,7 +651,7 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain('csvMappingRequired')
     expect(importSource).toContain('data-section="csv-column-mapping"')
     expect(importSource).toContain('setRows(nextRows)')
-    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride })')
+    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })')
   })
 
   it('can apply a category to similar past entries and remove duplicate warning rows', () => {
@@ -488,6 +662,24 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain('This looks similar to an expense already saved.')
     expect(importSource).toContain('Keep row by saving anyway.')
     expect(importSource).toContain('onClick={() => removeRowsById([row.id])}')
+  })
+
+  it('surfaces parser ambiguity and invalid states in the existing review warning lane', () => {
+    expect(importSource).toContain("parseStatus?: 'clear' | 'partial' | 'ambiguous' | 'failed' | 'invalid'")
+    expect(importSource).toContain('parseMessage?: string | null')
+    expect(importSource).toContain("row.parseStatus === 'ambiguous' || row.parseStatus === 'partial'")
+    expect(importSource).toContain('This line may contain more than one expense. Check these before saving.')
+    expect(importSource).toContain("row.parseStatus === 'invalid' && row.parseMessage")
+    expect(importSource).toContain('data-section="parser-review-notice"')
+    expect(importSource).toContain('Some entries may need checking.')
+    expect(importSource).toContain('This may need checking.')
+    expect(importSource).toContain('We couldn’t read this entry. Edit it to continue.')
+    expect(importSource).toContain('needsReview: hasParserWarning')
+    expect(importSource).toContain('hasParserWarning ? T.amberBorder')
+    expect(importSource).toContain('hasParserWarning ? T.amberLight')
+    expect(importSource).toContain("currentRowHasWarnings: editedPreviewRow ? (rowWarnings[editedPreviewRow.id] ?? []).includes(DUPLICATE_MESSAGE) : true")
+    expect(importSource).toContain('hasDuplicateWarnings && !hasHardBlockedRows')
+    expect(importSource).toContain('setRowWarnings(nextParseWarnings)')
   })
 
   it('does not invent manual row structures or bypass the parser', () => {

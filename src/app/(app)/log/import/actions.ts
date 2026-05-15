@@ -5,6 +5,7 @@ import { after } from 'next/server'
 import { getAppSession } from '@/lib/auth/app-session'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { buildTransactionRecord } from '@/lib/supabase/transactions-db'
+import type { CategoryType } from '@/types/database'
 import { deriveCycleIdForDate } from '@/lib/supabase/cycles-db'
 import { getCycleByDate, profileToPaySchedule, toLocalDateStr } from '@/lib/cycles'
 import {
@@ -15,6 +16,7 @@ import {
   getCsvMappingRequest,
   type CsvImportMapping,
   type ImportCategoryType,
+  type ImportParseStatus,
   type ParsedSmsExpense,
 } from '@/lib/sms-import/parser'
 import { ok, runAction, unauthorized, type ActionResult } from '@/lib/actions/result'
@@ -42,7 +44,9 @@ import { logPerfSpan, timePerf } from '@/lib/perf/debug'
 interface ParsedRowInput {
   id: string
   label: string
-  categoryType: ImportCategoryType
+  // Past-mode imports may submit rows without a category. Current-mode imports
+  // are still validated to require both.
+  categoryType: ImportCategoryType | null
   categoryKey: string
   customCategoryId?: string | null
   amount: number
@@ -298,7 +302,7 @@ function buildRowFingerprint(input: {
   date: string
   amount: number
   label: string
-  categoryType: ImportCategoryType
+  categoryType: ImportCategoryType | null
 }) {
   const normalizedLabel = normalizeLabel(input.label)
   return [
@@ -306,7 +310,7 @@ function buildRowFingerprint(input: {
     input.date,
     String(amountToMinorUnits(input.amount)),
     normalizedLabel,
-    input.categoryType,
+    input.categoryType ?? 'uncategorized',
   ].join('|')
 }
 
@@ -384,7 +388,11 @@ async function ensureCycleRows(
   }
 }
 
-function validateParsedRow(row: ParsedRowInput) {
+function isUncategorizedRow(row: ParsedRowInput) {
+  return !row.customCategoryId && (!row.categoryType || !row.categoryKey?.trim())
+}
+
+function validateParsedRow(row: ParsedRowInput, options: { allowUncategorized?: boolean } = {}) {
   const errors: string[] = []
   const trimmedLabel = row.label.trim()
   const trimmedCategoryKey = row.categoryKey.trim()
@@ -397,7 +405,7 @@ function validateParsedRow(row: ParsedRowInput) {
   if (!trimmedLabel) {
     errors.push('Name is required.')
   }
-  if (!trimmedCategoryKey) {
+  if (!trimmedCategoryKey && !options.allowUncategorized) {
     errors.push('Category key is missing.')
   }
   if (!Number.isFinite(row.amount) || row.amount <= 0) {
@@ -424,6 +432,7 @@ export interface ParseSmsImportData {
   scanned: number
   skippedCredits: number
   hasLowConfidence: boolean
+  parseStatus: ImportParseStatus
   monthlyReminderKeys: string[]
   csvMappingRequired?: {
     headers: string[]
@@ -432,6 +441,24 @@ export interface ParseSmsImportData {
   // True when rows came from the plain-language fallback parser. Used only
   // to surface a short clarifier in the review UI; no business-logic impact.
   usedFallback: boolean
+}
+
+function deriveParseStatus(input: {
+  rows: ParsedSmsExpense[]
+  scanned: number
+  skippedCredits?: number
+}): ImportParseStatus {
+  if (input.rows.length === 0) return 'failed'
+  if (input.rows.some((row) => row.parseStatus === 'invalid')) return 'invalid'
+  if (input.rows.some((row) => row.parseStatus === 'ambiguous')) return 'ambiguous'
+  if (
+    input.rows.some((row) => row.parseStatus === 'partial' || row.confidence === 'low') ||
+    input.skippedCredits ||
+    input.rows.length < input.scanned
+  ) {
+    return 'partial'
+  }
+  return 'clear'
 }
 
 function computeHasLowConfidence(rows: ParsedSmsExpense[]): boolean {
@@ -508,6 +535,7 @@ export async function parseSmsImport(
         scanned: 0,
         skippedCredits: 0,
         hasLowConfidence: false,
+        parseStatus: 'failed' as const,
         monthlyReminderKeys: [],
         usedFallback: false,
       })
@@ -531,6 +559,7 @@ export async function parseSmsImport(
           scanned: lineCount,
           skippedCredits: 0,
           hasLowConfidence: false,
+          parseStatus: 'invalid' as const,
           monthlyReminderKeys: [],
           csvMappingRequired,
           usedFallback: false,
@@ -573,6 +602,7 @@ export async function parseSmsImport(
         scanned: lineCount,
         skippedCredits: 0,
         hasLowConfidence: computeHasLowConfidence(pastRows),
+        parseStatus: deriveParseStatus({ rows: pastRows, scanned: lineCount }),
         monthlyReminderKeys: [],
         csvMappingRequired: null,
         usedFallback: false,
@@ -615,6 +645,7 @@ export async function parseSmsImport(
         scanned: lineCount,
         skippedCredits: 0,
         hasLowConfidence: computeHasLowConfidence(simpleRows),
+        parseStatus: deriveParseStatus({ rows: simpleRows, scanned: lineCount }),
         monthlyReminderKeys: [],
         usedFallback: true,
       })
@@ -744,6 +775,11 @@ export async function parseSmsImport(
           scanned: parsed.scanned,
           skippedCredits: parsed.skippedCredits,
           hasLowConfidence: computeHasLowConfidence(fallbackRows),
+          parseStatus: deriveParseStatus({
+            rows: fallbackRows,
+            scanned: parsed.scanned,
+            skippedCredits: parsed.skippedCredits,
+          }),
           monthlyReminderKeys,
           usedFallback: true,
         })
@@ -765,6 +801,11 @@ export async function parseSmsImport(
     const response = ok({
       ...parsed,
       hasLowConfidence: computeHasLowConfidence(parsed.rows),
+      parseStatus: deriveParseStatus({
+        rows: parsed.rows,
+        scanned: parsed.scanned,
+        skippedCredits: parsed.skippedCredits,
+      }),
       monthlyReminderKeys,
       usedFallback: false,
     })
@@ -784,13 +825,18 @@ export async function parseSmsImport(
 
 export async function saveParsedSmsExpenses(
   rows: ParsedRowInput[],
-  opts?: { confirmOverride?: boolean }
+  opts?: { confirmOverride?: boolean; mode?: ImportMode }
 ): Promise<ActionResult<SaveParsedSmsExpensesResult>> {
   return runAction<SaveParsedSmsExpensesResult>(async () => {
   const startedAt = Date.now()
+  const saveMode: ImportMode = opts?.mode === 'past' ? 'past' : 'current'
+  // Past imports are forgiving: rows may arrive without a category. Current
+  // imports keep the strict requirement that every row has a real category.
+  const allowUncategorized = saveMode === 'past'
   const blockingTiming = createTimingMarks(startedAt, 'sms-import.save', {
     rowCount: rows.length,
     confirmOverride: opts?.confirmOverride === true,
+    mode: saveMode,
   })
   const mark = blockingTiming.mark
 
@@ -829,7 +875,7 @@ export async function saveParsedSmsExpenses(
   const rowWarnings: Record<string, string[]> = {}
 
   for (const row of selectedRows) {
-    const errors = validateParsedRow(row)
+    const errors = validateParsedRow(row, { allowUncategorized })
     if (errors.length > 0) {
       rowErrors[row.id] = errors
     }
@@ -1007,8 +1053,14 @@ export async function saveParsedSmsExpenses(
     const resolvedCustomCategory = customCategory
       ? resolveCustomCategoryForWrite(customCategory)
       : null
-    const persistedKey =
-      resolvedCustomCategory
+    // Past-mode rows that arrive without a category bypass canonical resolution
+    // entirely — they're stored as 'other' / 'uncategorized' sentinel records
+    // the user can edit later. Without this branch the row would crash through
+    // resolveCanonicalCategoryForWrite, which throws on unknown keys.
+    const isUncategorized = allowUncategorized && !resolvedCustomCategory && isUncategorizedRow(row)
+    const persistedKey = isUncategorized
+      ? 'uncategorized'
+      : resolvedCustomCategory
         ? resolvedCustomCategory.categoryKey
         : row.categoryType === 'fixed'
         ? canonicalizeFixedBillKey(row.categoryKey)
@@ -1020,6 +1072,7 @@ export async function saveParsedSmsExpenses(
       cycleId,
       persistedKey,
       resolvedCustomCategory,
+      isUncategorized,
     }
   })
 
@@ -1119,12 +1172,31 @@ export async function saveParsedSmsExpenses(
   )
 
   if (genericRows.length > 0) {
-    const transactionRecords = genericRows.map(({ row, cycleId, entryDate, persistedKey, resolvedCustomCategory }) =>
-      buildTransactionRecord({
+    const transactionRecords = genericRows.map(({ row, cycleId, entryDate, persistedKey, resolvedCustomCategory, isUncategorized }) => {
+      // Past-mode uncategorized rows: skip the canonical resolver. Persist a
+      // sentinel record the user can edit later. category_type uses the
+      // 'other' bucket already defined in CategoryType so historical totals
+      // don't pollute everyday/fixed/debt analytics.
+      if (isUncategorized) {
+        const displayName = row.label.trim() || 'Uncategorized'
+        return {
+          user_id: user.id,
+          cycle_id: cycleId,
+          date: toLocalDateStr(entryDate),
+          category_type: 'other' as const,
+          category_key: 'uncategorized',
+          category_label: 'Uncategorized',
+          custom_category_id: null,
+          display_name: displayName,
+          amount: row.amount,
+          note: 'Imported from SMS',
+        }
+      }
+      return buildTransactionRecord({
         userId: user.id,
         cycleId,
         date: toLocalDateStr(entryDate),
-        categoryType: resolvedCustomCategory?.categoryType ?? row.categoryType,
+        categoryType: (resolvedCustomCategory?.categoryType ?? row.categoryType) as CategoryType,
         categoryKey: persistedKey,
         categoryLabel: resolvedCustomCategory?.categoryLabel ?? row.label,
         customCategory: resolvedCustomCategory,
@@ -1132,7 +1204,7 @@ export async function saveParsedSmsExpenses(
         amount: row.amount,
         note: 'Imported from SMS',
       })
-    )
+    })
 
     const { error: transactionInsertError } = await timePerf('sms-import.save', 'transaction-insert', async () =>
       (supabase.from('transactions') as any).insert(transactionRecords),
@@ -1264,12 +1336,17 @@ export async function saveParsedSmsExpenses(
       await rememberDictionaryItems(
         supabase,
         user.id,
-        persistedRows.map(({ row, persistedKey, resolvedCustomCategory }) => ({
-          label: row.label,
-          categoryKey: persistedKey,
-          categoryType: (resolvedCustomCategory?.categoryType ?? row.categoryType) as ImportCategoryType,
-          customCategory: resolvedCustomCategory,
-        }))
+        // Skip uncategorized historical rows — there's no category to remember,
+        // and dictionary entries require a real categoryType. The user can
+        // categorize later via the normal transaction edit flow.
+        persistedRows
+          .filter(({ row, isUncategorized }) => !isUncategorized && row.categoryType != null)
+          .map(({ row, persistedKey, resolvedCustomCategory }) => ({
+            label: row.label,
+            categoryKey: persistedKey,
+            categoryType: (resolvedCustomCategory?.categoryType ?? row.categoryType) as ImportCategoryType,
+            customCategory: resolvedCustomCategory,
+          }))
       )
       backgroundTiming.mark('dictionary-write', { rowCount: persistedRows.length })
 

@@ -31,6 +31,98 @@ describe('sms import parser', () => {
     expect(result.rows[1].blockedReason).toBe(INCOME_SMS_BLOCKED_MESSAGE)
   })
 
+  it('marks weaker structured SMS parses as partial review states', () => {
+    const result = parseSmsBlob(
+      'KES 2,100 at Naivas on 08/04/2026.',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]).toMatchObject({
+      label: 'Naivas',
+      amount: 2100,
+      parseStatus: 'partial',
+      parseMessage: 'Check this before saving.',
+    })
+  })
+
+  it('selects the transaction amount instead of a balance amount', () => {
+    const result = parseSmsBlob(
+      'Sent KES 500. Balance is KES 10,000',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]).toMatchObject({
+      amount: 500,
+      parseStatus: 'clear',
+    })
+  })
+
+  it('selects the payment amount instead of fee and balance amounts', () => {
+    const result = parseSmsBlob(
+      'Paid KES 500. Fee KES 20. Balance KES 10,000',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]).toMatchObject({
+      amount: 500,
+      parseStatus: 'clear',
+    })
+  })
+
+  it('ignores available balance amounts when selecting structured SMS spend', () => {
+    const result = parseSmsBlob(
+      'You spent KES 2500 at Carrefour. Available balance KES 12000.',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]).toMatchObject({
+      label: 'Carrefour',
+      amount: 2500,
+      parseStatus: 'clear',
+    })
+  })
+
+  it('blocks reversal and refund messages instead of treating them as expenses', () => {
+    const reversal = parseSmsBlob(
+      'KES 500 reversal completed',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+    const refund = parseSmsBlob(
+      'Refund of KES 1200 received',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(reversal.rows).toHaveLength(1)
+    expect(reversal.rows[0]).toMatchObject({
+      amount: 500,
+      blockedReason: INCOME_SMS_BLOCKED_MESSAGE,
+    })
+    expect(refund.rows).toHaveLength(1)
+    expect(refund.rows[0]).toMatchObject({
+      amount: 1200,
+      blockedReason: INCOME_SMS_BLOCKED_MESSAGE,
+    })
+    expect(refund.skippedCredits).toBe(1)
+  })
+
+  it('marks conflicting structured transaction amounts as ambiguous', () => {
+    const result = parseSmsBlob(
+      'Paid KES 500 and sent KES 700 to Shop. Balance KES 10,000',
+      { defaultCurrency: 'KES', dictionary: [] }
+    )
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]).toMatchObject({
+      amount: 500,
+      parseStatus: 'ambiguous',
+      parseMessage: 'This message has multiple possible transaction amounts. Check this before saving.',
+    })
+  })
+
   it('uses dictionary match to classify and label', () => {
     const result = parseSmsBlob(
       'Payment confirmed. Debited KES 45,000 to HOUSE RENT on Apr 2.',
@@ -179,6 +271,24 @@ describe('sms import parser', () => {
     expect(rows[1]).toMatchObject({ label: 'lunch', amount: 300 })
   })
 
+  it.each([
+    ['food 500, transport 300'],
+    ['food 500; transport 300'],
+    ['food 500 / transport 300'],
+  ])('splits delimited current simple entries: %s', (input) => {
+    const rows = parseSimpleExpenseLines(input, { defaultCurrency: 'KES' })
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      sourceType: row.sourceType,
+    }))).toEqual([
+      { label: 'food', amount: 500, sourceType: 'simple_text' },
+      { label: 'transport', amount: 300, sourceType: 'simple_text' },
+    ])
+    expect(rows[0].sourceHash).not.toBe(rows[1].sourceHash)
+  })
+
   it('keeps existing one-entry formats intact', () => {
     const labelFirst = parseSimpleExpenseLines('groceries 200', { defaultCurrency: 'KES' })
     const amountFirst = parseSimpleExpenseLines('200 groceries', { defaultCurrency: 'KES' })
@@ -194,6 +304,33 @@ describe('sms import parser', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ label: 'water bill', amount: 200 })
+  })
+
+  it.each([
+    ['iphone 15 case 3000', 'iphone 15 case', 3000],
+    ['fifa 24 5000', 'fifa 24', 5000],
+    ['ps5 controller 8000', 'ps5 controller', 8000],
+    ['apartment 12 rent 25000', 'apartment 12 rent', 25000],
+  ])('keeps numeric item names as one current row: %s', (input, label, amount) => {
+    const rows = parseSimpleExpenseLines(input, { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ label, amount, sourceType: 'simple_text' })
+  })
+
+  it.each([
+    ['uber trip 2 500', 'uber trip 2', 500],
+    ['item 1 200 item 2 300', 'item 1 200 item 2', 300],
+  ])('marks low-confidence numeric current rows as ambiguous: %s', (input, label, amount) => {
+    const rows = parseSimpleExpenseLines(input, { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label,
+      amount,
+      parseStatus: 'ambiguous',
+      parseMessage: 'This entry may need review before saving.',
+    })
   })
 
   it('marks parsed SMS rows as imported messages', () => {
@@ -281,6 +418,170 @@ describe('sms import parser', () => {
     ])
   })
 
+  it.each([
+    ['nicw 200, test plic 300, drive 400'],
+    ['nicw 200; test plic 300; drive 400'],
+    ['nicw 200 / test plic 300 / drive 400'],
+  ])('parses delimited simple past entries as separate rows: %s', (input) => {
+    const rows = parsePastExpenseLines(
+      input,
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      date: row.date,
+      dateSource: row.dateSource,
+      sourceType: row.sourceType,
+    }))).toEqual([
+      { label: 'nicw', amount: 200, date: '2026-02-01', dateSource: 'default_month', sourceType: 'past_text' },
+      { label: 'test plic', amount: 300, date: '2026-02-01', dateSource: 'default_month', sourceType: 'past_text' },
+      { label: 'drive', amount: 400, date: '2026-02-01', dateSource: 'default_month', sourceType: 'past_text' },
+    ])
+  })
+
+  it('marks mixed comma and repeated-pair past input as ambiguous', () => {
+    const rows = parsePastExpenseLines(
+      'misc 2000 drive 3900, disp 2000',
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      parseStatus: row.parseStatus,
+      parseMessage: row.parseMessage,
+    }))).toEqual([
+      {
+        label: 'misc',
+        amount: 2000,
+        parseStatus: 'ambiguous',
+        parseMessage: 'This line may contain more than one expense. Check these before saving.',
+      },
+      {
+        label: 'drive',
+        amount: 3900,
+        parseStatus: 'ambiguous',
+        parseMessage: 'This line may contain more than one expense. Check these before saving.',
+      },
+      {
+        label: 'disp',
+        amount: 2000,
+        parseStatus: 'clear',
+        parseMessage: null,
+      },
+    ])
+  })
+
+  it('reuses simple-entry parsing for repeated space-separated past entries', () => {
+    const rows = parsePastExpenseLines(
+      'niv 200 west 2700 blank 2000',
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      date: row.date,
+      dateSource: row.dateSource,
+      sourceType: row.sourceType,
+    }))).toEqual([
+      { label: 'niv', amount: 200, date: '2026-02-01', dateSource: 'default_month', sourceType: 'past_text' },
+      { label: 'west', amount: 2700, date: '2026-02-01', dateSource: 'default_month', sourceType: 'past_text' },
+      { label: 'blank', amount: 2000, date: '2026-02-01', dateSource: 'default_month', sourceType: 'past_text' },
+    ])
+  })
+
+  it('keeps one normal simple past entry as one row', () => {
+    const rows = parsePastExpenseLines(
+      'food 500',
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'food',
+      amount: 500,
+      date: '2026-02-01',
+      dateSource: 'default_month',
+      sourceType: 'past_text',
+      parseStatus: 'clear',
+    })
+  })
+
+  it.each([
+    ['iphone 15 case 3000', 'iphone 15 case', 3000],
+    ['fifa 24 5000', 'fifa 24', 5000],
+    ['ps5 controller 8000', 'ps5 controller', 8000],
+    ['apartment 12 rent 25000', 'apartment 12 rent', 25000],
+  ])('keeps numeric item names as one past row: %s', (input, label, amount) => {
+    const rows = parsePastExpenseLines(
+      input,
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label,
+      amount,
+      date: '2026-02-01',
+      dateSource: 'default_month',
+      sourceType: 'past_text',
+    })
+  })
+
+  it.each([
+    ['food 500 transport 300'],
+    ['fuel 3000 shopping 2000'],
+    ['rent 25000 loan 5000'],
+  ])('keeps confident repeated-pair splitting intact: %s', (input) => {
+    const rows = parseSimpleExpenseLines(input, { defaultCurrency: 'KES' })
+
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.parseStatus)).toEqual(['clear', 'clear'])
+  })
+
+  it.each([
+    ['uber trip 2 500', 'uber trip 2', 500],
+    ['item 1 200 item 2 300', 'item 1 200 item 2', 300],
+  ])('marks low-confidence numeric past rows as ambiguous: %s', (input, label, amount) => {
+    const rows = parsePastExpenseLines(
+      input,
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-02' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label,
+      amount,
+      parseStatus: 'ambiguous',
+      parseMessage: 'This entry may need review before saving.',
+      date: '2026-02-01',
+    })
+  })
+
+  it.each([
+    ['Jan 5 food 500, Feb 2 rent 25000'],
+    ['Jan 5 food 500; Feb 2 rent 25000'],
+    ['Jan 5 food 500 / Feb 2 rent 25000'],
+  ])('preserves explicit dates inside delimited simple past entries: %s', (input) => {
+    const rows = parsePastExpenseLines(
+      input,
+      { defaultCurrency: 'KES', defaultImportMonth: '2026-03' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      date: row.date,
+      dateSource: row.dateSource,
+    }))).toEqual([
+      { label: 'food', amount: 500, date: '2026-01-05', dateSource: 'explicit' },
+      { label: 'rent', amount: 25000, date: '2026-02-02', dateSource: 'explicit' },
+    ])
+  })
+
   it('parses comma-separated past expense rows', () => {
     const rows = parsePastExpenseLines('2026-01-05, Uber, 1200', { defaultCurrency: 'KES' })
 
@@ -343,6 +644,95 @@ describe('sms import parser', () => {
     }))).toEqual([
       { label: 'Uber', date: '2026-02-01', dateSource: 'default_month' },
       { label: 'Rent', date: '2026-03-02', dateSource: 'explicit' },
+    ])
+  })
+
+  it('uses debit values as expenses when CSV has separate debit and credit columns', () => {
+    const rows = parsePastExpenseCsv(
+      ['Date,Description,Debit,Credit', '2026-01-05,Uber,500,'].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'Uber',
+      amount: 500,
+      parseStatus: 'clear',
+      sourceType: 'csv',
+    })
+  })
+
+  it('marks pure credit CSV rows for review instead of confidently importing them as expenses', () => {
+    const rows = parsePastExpenseCsv(
+      ['Date,Description,Debit,Credit', '2026-01-05,Salary,,50000'].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'Salary',
+      amount: 50000,
+      parseStatus: 'ambiguous',
+      parseMessage: 'This may be a refund or transfer. Check this entry before saving.',
+    })
+  })
+
+  it.each([
+    ['2026-01-05,Refund from Carrefour,500'],
+    ['2026-01-05,Reversal completed,500'],
+    ['2026-01-05,Transfer to savings,500'],
+  ])('marks refund/reversal/transfer CSV rows for review: %s', (row) => {
+    const rows = parsePastExpenseCsv(
+      ['Date,Description,Debit', row].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      amount: 500,
+      parseStatus: 'ambiguous',
+      parseMessage: 'This may be a refund or transfer. Check this entry before saving.',
+    })
+  })
+
+  it.each([
+    ['Date,Description,Amount', '2026-01-05,Uber,-500'],
+    ['Date,Description,Debit', '2026-01-05,Uber,(500)'],
+  ])('normalizes negative-style CSV expense amounts: %s', (header, row) => {
+    const rows = parsePastExpenseCsv(
+      [header, row].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      label: 'Uber',
+      amount: 500,
+      parseStatus: 'clear',
+    })
+  })
+
+  it('keeps mixed bank CSV exports review-safe', () => {
+    const rows = parsePastExpenseCsv(
+      [
+        'Date,Description,Debit,Credit',
+        '2026-01-05,Uber,500,',
+        '2026-01-06,Salary,,50000',
+        '2026-01-07,Refund from Carrefour,,1200',
+        '2026-01-08,Transfer to savings,2000,',
+      ].join('\n'),
+      { defaultCurrency: 'KES' }
+    )
+
+    expect(rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      parseStatus: row.parseStatus,
+    }))).toEqual([
+      { label: 'Uber', amount: 500, parseStatus: 'clear' },
+      { label: 'Salary', amount: 50000, parseStatus: 'ambiguous' },
+      { label: 'Refund from Carrefour', amount: 1200, parseStatus: 'ambiguous' },
+      { label: 'Transfer to savings', amount: 2000, parseStatus: 'ambiguous' },
     ])
   })
 

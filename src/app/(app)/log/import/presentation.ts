@@ -183,18 +183,27 @@ export function getQueueGuidanceCopy(unresolvedCount: number) {
   if (unresolvedCount === 1) {
     return {
       summary: null,
-      instruction: 'Tap the expense below to choose a category.',
+      instruction: '1 uncategorized',
     }
   }
 
   return {
-    summary: `${unresolvedCount} expenses need categories`,
-    instruction: 'Tap each expense to finish setup.',
+    summary: null,
+    instruction: `${unresolvedCount} uncategorized`,
   }
 }
 
-export function getQueueSaveHelperCopy(unresolvedCount: number) {
+export function getQueueSaveHelperCopy(
+  unresolvedCount: number,
+  options: { isPastMode?: boolean } = {}
+) {
   if (unresolvedCount <= 0) return null
+  // Past imports allow saving without categories — the helper becomes a soft
+  // reminder rather than a blocker. Current-mode imports keep the strict gate.
+  if (options.isPastMode) {
+    if (unresolvedCount === 1) return 'You can categorize this one later.'
+    return 'You can categorize these later.'
+  }
   if (unresolvedCount === 1) return 'Choose a category to continue.'
   return `Choose categories for ${unresolvedCount} expenses to continue.`
 }
@@ -244,9 +253,12 @@ export function getReviewRowActionLabel(input: {
   needsCategory: boolean
   hasHardError: boolean
   isBlocked: boolean
+  needsReview?: boolean
 }) {
-  if (input.isBlocked || input.hasHardError) return null
+  if (input.isBlocked) return null
+  if (input.hasHardError) return 'Edit details'
   if (input.needsCategory) return 'Add category'
+  if (input.needsReview) return 'Edit details'
   return 'Ready'
 }
 

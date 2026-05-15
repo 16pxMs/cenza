@@ -4,6 +4,7 @@ import { getCategoriesByType, resolveCategoryKey } from '@/lib/categories/config
 export type ImportCategoryType = Extract<CategoryType, 'everyday' | 'fixed' | 'debt'>
 export type ImportSourceType = 'sms' | 'simple_text' | 'past_text' | 'pasted_table' | 'csv'
 export type ImportDateSource = 'explicit' | 'default_month'
+export type ImportParseStatus = 'clear' | 'partial' | 'ambiguous' | 'failed' | 'invalid'
 export type CsvImportField = 'date' | 'name' | 'amount' | 'category' | 'note'
 
 export type CsvImportMapping = Partial<Record<CsvImportField, number>>
@@ -39,6 +40,8 @@ export interface ParsedSmsExpense {
   sourceHash: string
   sourceType?: ImportSourceType
   sourceRowIndex?: number
+  parseStatus?: ImportParseStatus
+  parseMessage?: string | null
   blockedReason?: string | null
 }
 
@@ -65,6 +68,18 @@ export interface ParsedPaymentImport {
   currency: string | null
   date: string | null
   note: string | null
+}
+
+interface SimpleExpenseEntry {
+  line: string
+  label: string
+  amount: number
+  index: number
+  sourceHash: string
+  parseStatus?: ImportParseStatus
+  parseMessage?: string | null
+  splitFromRepeatedPattern?: boolean
+  splitFromDelimitedSegment?: boolean
 }
 
 const DEBIT_HINTS = [
@@ -138,6 +153,19 @@ function parseAmountCell(value: string): number | null {
   return parseBareAmount(value) ?? parseAmount(value)?.amount ?? null
 }
 
+function parseSignedAmountCell(value: string): { amount: number; sign: 'positive' | 'negative' } | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const negative = /^-/.test(trimmed) || /^\(.+\)$/.test(trimmed)
+  const normalized = trimmed
+    .replace(/^\((.*)\)$/, '$1')
+    .replace(/^-/, '')
+    .trim()
+  const amount = parseAmountCell(normalized)
+  if (amount == null) return null
+  return { amount, sign: negative ? 'negative' : 'positive' }
+}
+
 function defaultDateForMonth(month: string | null | undefined): string | null {
   const normalized = month?.trim() ?? ''
   if (!/^\d{4}-\d{2}$/.test(normalized)) return null
@@ -179,9 +207,7 @@ function splitPastedColumns(line: string): string[] {
     : ''
 
   if (!delimiter) return []
-  return line
-    .split(delimiter)
-    .map((part) => part.trim().replace(/^"|"$/g, ''))
+  return parseDelimitedRecord(line, delimiter)
 }
 
 function parseDelimitedRecord(line: string, delimiter: string): string[] {
@@ -282,16 +308,50 @@ function looksLikeHeader(columns: string[]) {
   if (columns.length < 2) return false
   const normalized = columns.map(normalizeHeader)
   const hasDate = normalized.some((value) => ['date', 'transactiondate', 'day'].includes(value))
-  const hasAmount = normalized.some((value) => ['amount', 'cost', 'price', 'total', 'debit'].includes(value))
+  const hasAmount = normalized.some((value) => ['amount', 'cost', 'price', 'total', 'debit', 'withdrawal', 'credit', 'deposit'].includes(value))
   const hasName = normalized.some((value) => ['name', 'description', 'merchant', 'item', 'expense', 'details'].includes(value))
   return hasDate && hasAmount && hasName
 }
 
 const CSV_DATE_HEADERS = ['date', 'transactiondate', 'paidat', 'createdat', 'day']
 const CSV_NAME_HEADERS = ['name', 'description', 'merchant', 'payee', 'details', 'item', 'expense']
-const CSV_AMOUNT_HEADERS = ['amount', 'debit', 'value', 'total', 'cost', 'price']
+const CSV_DEBIT_HEADERS = ['debit', 'withdrawal', 'expense', 'outgoing']
+const CSV_CREDIT_HEADERS = ['credit', 'deposit', 'income', 'incoming', 'refund']
+const CSV_AMOUNT_HEADERS = ['amount', 'value', 'total', 'cost', 'price', ...CSV_DEBIT_HEADERS, ...CSV_CREDIT_HEADERS]
 const CSV_CATEGORY_HEADERS = ['category', 'type', 'bucket']
 const CSV_NOTE_HEADERS = ['note', 'memo']
+const CSV_REVIEW_MESSAGE = 'This may be a refund or transfer. Check this entry before saving.'
+const PAST_SIMPLE_SPLIT_BLOCKERS = [
+  /\bconfirmed\b/i,
+  /\btransaction\b/i,
+  /\b(?:receipt|ref|reference|txn)\b/i,
+  /\b(?:balance|bal|available|avail|account|acct|a\/c)\b/i,
+  /\bnew\s+balance\b/i,
+]
+
+function looksLikeSimpleExpenseSegment(segment: string) {
+  const amountMatch = extractLastBareAmount(segment)
+  if (!amountMatch) return false
+  const label = stripDateText(`${segment.slice(0, amountMatch.index)} ${segment.slice(amountMatch.index + amountMatch.token.length)}`)
+    .replace(/\s+/g, ' ')
+    .trim()
+  return label.length > 0
+}
+
+function splitSimpleExpenseSegments(line: string): string[] | null {
+  if (PAST_SIMPLE_SPLIT_BLOCKERS.some((pattern) => pattern.test(line))) return null
+
+  for (const delimiter of [',', ';', '/']) {
+    if (!line.includes(delimiter)) continue
+    const segments = parseDelimitedRecord(line, delimiter)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+    if (segments.length <= 1) continue
+    if (segments.every(looksLikeSimpleExpenseSegment)) return segments
+  }
+
+  return null
+}
 
 function looksLikeCsvHeader(columns: string[]) {
   if (columns.length < 2) return false
@@ -310,7 +370,7 @@ function detectCsvHeaderMapping(headers: string[]): CsvImportMapping {
   return {
     date: optionalHeaderIndex(headers, CSV_DATE_HEADERS),
     name: optionalHeaderIndex(headers, CSV_NAME_HEADERS),
-    amount: optionalHeaderIndex(headers, CSV_AMOUNT_HEADERS),
+    amount: optionalHeaderIndex(headers, [...CSV_DEBIT_HEADERS, 'amount', 'value', 'total', 'cost', 'price', ...CSV_CREDIT_HEADERS]),
     category: optionalHeaderIndex(headers, CSV_CATEGORY_HEADERS),
     note: optionalHeaderIndex(headers, CSV_NOTE_HEADERS),
   }
@@ -351,6 +411,43 @@ function findKnownCategory(raw: string): { key: string; label: string; type: Imp
   return null
 }
 
+function hasCsvReviewRisk(text: string) {
+  return /\b(?:refund|reversal|reversed|cashback|reimbursement|chargeback|transfer|internal\s+transfer|moved\s+to\s+savings|account\s+transfer)\b/i
+    .test(text)
+}
+
+function getCsvAmountFromColumns(columns: string[], headers: string[], mapping: CsvImportMapping) {
+  const debitIndex = headerIndex(headers, CSV_DEBIT_HEADERS)
+  const creditIndex = headerIndex(headers, CSV_CREDIT_HEADERS)
+  const debit = debitIndex >= 0 ? parseSignedAmountCell(columns[debitIndex] ?? '') : null
+  const credit = creditIndex >= 0 ? parseSignedAmountCell(columns[creditIndex] ?? '') : null
+
+  if (debit?.amount) {
+    return {
+      amount: debit.amount,
+      parseStatus: undefined as ImportParseStatus | undefined,
+      parseMessage: null as string | null,
+    }
+  }
+
+  if (credit?.amount) {
+    return {
+      amount: credit.amount,
+      parseStatus: 'ambiguous' as const,
+      parseMessage: CSV_REVIEW_MESSAGE,
+    }
+  }
+
+  const mapped = mapping.amount != null ? parseSignedAmountCell(columns[mapping.amount] ?? '') : null
+  if (!mapped) return { amount: null, parseStatus: undefined, parseMessage: null }
+
+  return {
+    amount: mapped.amount,
+    parseStatus: undefined as ImportParseStatus | undefined,
+    parseMessage: null as string | null,
+  }
+}
+
 function toIsoLocalDate(date: Date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -364,14 +461,60 @@ function isCreditMessage(text: string) {
   return hasCredit && !hasDebit
 }
 
-function parseAmount(raw: string): { amount: number; currency: string; confidence: 'high' | 'medium' } | null {
+type SmsAmountRole =
+  | 'transaction_amount'
+  | 'balance_amount'
+  | 'fee_amount'
+  | 'exchange_rate'
+  | 'refund_amount'
+  | 'unknown'
+
+function classifySmsAmountRole(raw: string, matchIndex: number, matchEnd: number): SmsAmountRole {
+  const before = raw.slice(Math.max(0, matchIndex - 44), matchIndex).toLowerCase()
+  const after = raw.slice(matchEnd, Math.min(raw.length, matchEnd + 44)).toLowerCase()
+  const immediateAfter = raw.slice(matchEnd, Math.min(raw.length, matchEnd + 18)).toLowerCase()
+  const context = `${before} ${after}`.replace(/\s+/g, ' ')
+
+  if (/\b(?:reversal|reversed|refunded|refund|chargeback)\b/.test(context)) return 'refund_amount'
+
+  if (/\b(?:exchange\s+rate|fx\s+rate|rate)\b/.test(before) || /^\s*(?:exchange\s+rate|fx\s+rate|rate)\b/.test(immediateAfter)) {
+    return 'exchange_rate'
+  }
+  if (/\b(?:new\s+balance|available\s+balance|avl\s+bal|closing\s+balance|remaining\s+balance|balance|bal)\b/.test(before) ||
+    /^\s*(?:new\s+balance|available\s+balance|avl\s+bal|closing\s+balance|remaining\s+balance|balance|bal)\b/.test(immediateAfter)) {
+    return 'balance_amount'
+  }
+  if (/\b(?:transaction\s+cost|service\s+fee|charges?|fee|levy)\b/.test(before) ||
+    /^\s*(?:transaction\s+cost|service\s+fee|charges?|fee|levy)\b/.test(immediateAfter)) {
+    return 'fee_amount'
+  }
+
+  const nearbyDebitHint = DEBIT_HINTS.some((hint) => new RegExp(`\\b${escapeRegex(hint).replace(/\s+/g, '\\s+')}\\b`, 'i').test(context))
+  if (nearbyDebitHint) return 'transaction_amount'
+
+  return 'unknown'
+}
+
+function parseAmount(raw: string): {
+  amount: number
+  currency: string
+  confidence: 'high' | 'medium'
+  role: SmsAmountRole
+  ambiguous?: boolean
+} | null {
   const patterns: Array<RegExp> = [
     new RegExp(`\\b(${CURRENCY_CODES.join('|')})\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)\\b`, 'ig'),
     /([$£])\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g,
     new RegExp(`\\b([0-9][0-9,]*(?:\\.[0-9]{1,2})?)\\s*(${CURRENCY_CODES.join('|')})\\b`, 'ig'),
   ]
 
-  const candidates: Array<{ amount: number; currency: string; index: number; confidence: 'high' | 'medium' }> = []
+  const candidates: Array<{
+    amount: number
+    currency: string
+    index: number
+    confidence: 'high' | 'medium'
+    role: SmsAmountRole
+  }> = []
 
   for (const pattern of patterns) {
     let match: RegExpExecArray | null
@@ -402,29 +545,49 @@ function parseAmount(raw: string): { amount: number; currency: string; confidenc
       const amount = Number(amountString.replace(/,/g, ''))
       if (!Number.isFinite(amount) || amount <= 0) continue
 
-      const leading = raw.slice(Math.max(0, match.index - 24), match.index).toLowerCase()
-      const confidence: 'high' | 'medium' = DEBIT_HINTS.some((hint) => leading.includes(hint)) ? 'high' : 'medium'
+      const role = classifySmsAmountRole(raw, match.index, match.index + whole.length)
+      const confidence: 'high' | 'medium' = role === 'transaction_amount' ? 'high' : 'medium'
 
       candidates.push({
         amount,
         currency,
         index: match.index,
         confidence,
+        role,
       })
     }
   }
 
   if (candidates.length === 0) return null
 
-  candidates.sort((a, b) => {
+  const transactionCandidates = candidates.filter((candidate) => candidate.role === 'transaction_amount')
+  const unknownCandidates = candidates.filter((candidate) => candidate.role === 'unknown')
+  const refundCandidates = candidates.filter((candidate) => candidate.role === 'refund_amount')
+  const selectableCandidates = transactionCandidates.length > 0
+    ? transactionCandidates
+    : unknownCandidates.length > 0
+      ? unknownCandidates
+      : refundCandidates
+
+  if (selectableCandidates.length === 0) return null
+
+  selectableCandidates.sort((a, b) => {
     if (a.confidence !== b.confidence) return a.confidence === 'high' ? -1 : 1
     return a.index - b.index
   })
 
+  const best = selectableCandidates[0]
+  const ambiguous = transactionCandidates.length > 1 || (
+    transactionCandidates.length === 0 &&
+    unknownCandidates.length > 1
+  )
+
   return {
-    amount: candidates[0].amount,
-    currency: candidates[0].currency,
-    confidence: candidates[0].confidence,
+    amount: best.amount,
+    currency: best.currency,
+    confidence: best.confidence,
+    role: best.role,
+    ambiguous,
   }
 }
 
@@ -514,7 +677,8 @@ function extractMerchant(raw: string): string | null {
   if (!match) return null
 
   const label = match[1]
-    .replace(/\b(?:on|for|amount|kes|usd|ngn|zar|ugx|tzs|ghs|gbp|eur|aed)\b.*$/i, '')
+    .replace(/\b(?:on|for|amount|available|avail|balance|bal|kes|usd|ngn|zar|ugx|tzs|ghs|gbp|eur|aed)\b.*$/i, '')
+    .trim()
     .replace(/[.,;:-]+$/g, '')
     .trim()
 
@@ -577,15 +741,9 @@ const FALLBACK_CURRENCY_WORDS = [
   'kes', 'ksh', 'kshs', 'usd', 'ngn', 'zar', 'ugx', 'tzs', 'ghs',
   'gbp', 'eur', 'aed',
 ]
+const SIMPLE_NUMERIC_AMBIGUITY_MESSAGE = 'This entry may need review before saving.'
 
-export function parseSimpleExpenseLines(
-  rawInput: string,
-  options: { defaultCurrency: string }
-): ParsedSmsExpense[] {
-  const today = new Date()
-  today.setHours(12, 0, 0, 0)
-  const date = toIsoLocalDate(today)
-
+function getSimpleExpenseEntries(rawInput: string): SimpleExpenseEntry[] {
   const lines = rawInput
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -602,46 +760,27 @@ export function parseSimpleExpenseLines(
     return Number.isFinite(amount) && amount > 0 ? amount : null
   }
 
-  const buildSimpleRow = (
-    line: string,
-    labelSource: string,
-    amount: number,
-    index: number,
-    sourceHash: string
-  ): ParsedSmsExpense | null => {
-    const label = normalize(labelSource)
-    if (!label) return null
+  const hasNumericNameAmbiguity = (tokens: string[], amountPositions: number[]) => {
+    if (amountPositions.length <= 1) return false
 
-    const isIncomeCredit = isCreditMessage(line)
-    const reference = extractReference(line)
-    const blockedLabel = reference
-      ? reference
-      : (label || 'Money received')
-
-    const categoryType = inferCategory(label)
-    const categoryKey = slugify(isIncomeCredit ? blockedLabel : label) || `entry_${index + 1}`
-
-    return {
-      id: `row_${index + 1}_${categoryKey}`,
-      raw: line,
-      label: isIncomeCredit ? blockedLabel : label,
-      categoryType,
-      categoryKey,
-      customCategoryId: null,
-      amount,
-      currency: options.defaultCurrency,
-      date,
-      isImportedMessage: false,
-      include: true,
-      confidence: 'medium',
-      sourceHash,
-      sourceType: 'simple_text',
-      sourceRowIndex: index,
-      blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
-    }
+    return amountPositions.slice(0, -1).some((position, amountIndex) => {
+      const amount = parseSimpleAmountToken(tokens[position])
+      if (amount == null || amount > 31) return false
+      return amountIndex < amountPositions.length - 1
+    })
   }
 
-  const parseMultiEntryLine = (line: string): ParsedSmsExpense[] | null => {
+  const shouldAcceptRepeatedSplit = (
+    tokens: string[],
+    amountPositions: number[],
+    entries: Array<{ label: string; amount: number }>
+  ) => {
+    if (entries.length <= 1) return false
+    if (amountPositions.length !== entries.length) return false
+    return !hasNumericNameAmbiguity(tokens, amountPositions)
+  }
+
+  const parseMultiEntryLine = (line: string): SimpleExpenseEntry[] | null => {
     const tokenStream = line
       .replace(stripCurrencyWord, ' ')
       .replace(/\bfor\b/gi, ' ')
@@ -692,53 +831,154 @@ export function parseSimpleExpenseLines(
     }
 
     const entries = solve(0)
-    if (!entries || entries.length <= 1) return null
+    if (!entries || !shouldAcceptRepeatedSplit(tokenStream, amountPositions, entries)) return null
 
-    return entries
-      .map((entry, index) =>
-        buildSimpleRow(
-          line,
-          entry.label,
-          entry.amount,
-          index,
-          hashSmsLine(`${line} :: ${index + 1} :: ${entry.label} :: ${entry.amount}`)
-        )
-      )
-      .filter((row): row is ParsedSmsExpense => row != null)
+    return entries.map((entry, index) => ({
+      line,
+      label: entry.label,
+      amount: entry.amount,
+      index,
+      sourceHash: hashSmsLine(`${line} :: ${index + 1} :: ${entry.label} :: ${entry.amount}`),
+      splitFromRepeatedPattern: true,
+    }))
   }
 
-  const rows: ParsedSmsExpense[] = []
-
-  lines.forEach((line, index) => {
+  const parseSimpleLineEntries = (line: string, lineIndex: number): SimpleExpenseEntry[] => {
     const multiRows = parseMultiEntryLine(line)
     if (multiRows && multiRows.length > 0) {
-      rows.push(...multiRows)
-      return
+      return multiRows.map((row, rowIndex) => ({
+        ...row,
+        index: lineIndex * 1000 + rowIndex,
+        sourceHash: hashSmsLine(`${line} :: ${lineIndex + 1} :: ${rowIndex + 1} :: ${row.label} :: ${row.amount}`),
+      }))
     }
 
-    const amountMatch = line.match(/([0-9][0-9,]*(?:\.[0-9]{1,2})?)/)
-    if (!amountMatch || amountMatch.index == null) return
+    const tokenStream = line
+      .replace(stripCurrencyWord, ' ')
+      .replace(/\bfor\b/gi, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    const amountPositions = tokenStream.reduce<number[]>((positions, token, index) => {
+      if (parseSimpleAmountToken(token) != null) positions.push(index)
+      return positions
+    }, [])
+    const amountMatch = extractLastBareAmount(line)
+    if (!amountMatch) return []
 
-    const amount = Number(amountMatch[1].replace(/,/g, ''))
-    if (!Number.isFinite(amount) || amount <= 0) return
+    const amount = amountMatch.amount
+    if (!Number.isFinite(amount) || amount <= 0) return []
 
     // Treat everything on either side of the amount as label candidate so
     // "food 500" and "500 food" both parse. Then strip currency words and
     // the "for" connector anywhere in the remainder.
     const before = line.slice(0, amountMatch.index)
-    const after = line.slice(amountMatch.index + amountMatch[0].length)
-    let rest = `${before} ${after}`
+    const after = line.slice(amountMatch.index + amountMatch.token.length)
+    const rest = `${before} ${after}`
       .replace(stripCurrencyWord, ' ')
       .replace(/\bfor\b/gi, ' ')
 
     const label = normalize(rest)
-    if (!label) return
+    if (!label) return []
+    const ambiguous = hasNumericNameAmbiguity(tokenStream, amountPositions)
 
-    const row = buildSimpleRow(line, label, amount, index, hashSmsLine(line))
-    if (row) rows.push(row)
+    return [{
+      line,
+      label,
+      amount,
+      index: lineIndex,
+      sourceHash: hashSmsLine(line),
+      parseStatus: ambiguous ? 'ambiguous' : 'clear',
+      parseMessage: ambiguous ? SIMPLE_NUMERIC_AMBIGUITY_MESSAGE : null,
+    }]
+  }
+
+  const entries: SimpleExpenseEntry[] = []
+
+  lines.forEach((line, lineIndex) => {
+    const segments = splitSimpleExpenseSegments(line)
+    if (segments) {
+      segments.forEach((segment, segmentIndex) => {
+        entries.push(
+          ...parseSimpleLineEntries(segment, lineIndex * 1000 + segmentIndex).map((entry) => ({
+            ...entry,
+            splitFromDelimitedSegment: true,
+          }))
+        )
+      })
+      return
+    }
+
+    entries.push(...parseSimpleLineEntries(line, lineIndex))
   })
 
-  return rows
+  return entries
+}
+
+export function parseSimpleExpenseLines(
+  rawInput: string,
+  options: { defaultCurrency: string }
+): ParsedSmsExpense[] {
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+  const date = toIsoLocalDate(today)
+
+  const buildSimpleRow = (
+    line: string,
+    labelSource: string,
+    amount: number,
+    index: number,
+    sourceHash: string,
+    parseStatus: ImportParseStatus = 'clear',
+    parseMessage: string | null = null
+  ): ParsedSmsExpense | null => {
+    const label = normalize(labelSource)
+    if (!label) return null
+
+    const isIncomeCredit = isCreditMessage(line)
+    const reference = extractReference(line)
+    const blockedLabel = reference
+      ? reference
+      : (label || 'Money received')
+
+    const categoryType = inferCategory(label)
+    const categoryKey = slugify(isIncomeCredit ? blockedLabel : label) || `entry_${index + 1}`
+
+    return {
+      id: `row_${index + 1}_${categoryKey}`,
+      raw: line,
+      label: isIncomeCredit ? blockedLabel : label,
+      categoryType,
+      categoryKey,
+      customCategoryId: null,
+      amount,
+      currency: options.defaultCurrency,
+      date,
+      isImportedMessage: false,
+      include: true,
+      confidence: 'medium',
+      sourceHash,
+      sourceType: 'simple_text',
+      sourceRowIndex: index,
+      parseStatus,
+      parseMessage,
+      blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
+    }
+  }
+
+  return getSimpleExpenseEntries(rawInput)
+    .map((entry) =>
+      buildSimpleRow(
+        entry.line,
+        entry.label,
+        entry.amount,
+        entry.index,
+        entry.sourceHash,
+        entry.parseStatus ?? 'clear',
+        entry.parseMessage ?? null
+      )
+    )
+    .filter((row): row is ParsedSmsExpense => row != null)
 }
 
 export function parsePastExpenseLines(
@@ -809,13 +1049,123 @@ export function parsePastExpenseLines(
     })
   }
 
+  const parseSimplePastSegment = (segment: string) => {
+    const amountMatch = extractLastBareAmount(segment)
+    if (!amountMatch) return null
+    const date = findDateInText(segment)
+    const label = stripDateText(`${segment.slice(0, amountMatch.index)} ${segment.slice(amountMatch.index + amountMatch.token.length)}`)
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!label) return null
+
+    return {
+      date,
+      label,
+      amount: amountMatch.amount,
+    }
+  }
+
+  const parseDelimitedSimpleEntries = (line: string, sourceLineIndex: number): ParsedSmsExpense[] | null => {
+    const segments = splitSimpleExpenseSegments(line)
+    if (!segments) return null
+
+    const parsedRows: ParsedSmsExpense[] = []
+    let foundAmbiguousSplit = false
+
+    segments.forEach((segment, segmentIndex) => {
+      const simpleEntries = findDateInText(segment) ? [] : getSimpleExpenseEntries(segment)
+      if (simpleEntries.length > 1) {
+        foundAmbiguousSplit = true
+        simpleEntries.forEach((entry, entryIndex) => {
+          const row = buildPastRow({
+            line: segment,
+            sourceLineIndex: sourceLineIndex * 1000 + segmentIndex * 100 + entryIndex,
+            date: null,
+            label: entry.label,
+            amount: entry.amount,
+            sourceType: 'past_text',
+            parseStatus: 'ambiguous',
+            parseMessage: 'This line may contain more than one expense. Check these before saving.',
+          })
+          if (row) parsedRows.push(row)
+        })
+        return
+      }
+
+      if (simpleEntries.length === 1 && simpleEntries[0].parseStatus === 'ambiguous') {
+        const entry = simpleEntries[0]
+        const row = buildPastRow({
+          line: segment,
+          sourceLineIndex: sourceLineIndex * 1000 + segmentIndex,
+          date: null,
+          label: entry.label,
+          amount: entry.amount,
+          sourceType: 'past_text',
+          parseStatus: 'ambiguous',
+          parseMessage: entry.parseMessage ?? SIMPLE_NUMERIC_AMBIGUITY_MESSAGE,
+        })
+        if (row) parsedRows.push(row)
+        return
+      }
+
+      const parsedSegment = parseSimplePastSegment(segment)
+      if (!parsedSegment) return
+      const row = buildPastRow({
+        line: segment,
+        sourceLineIndex: sourceLineIndex * 1000 + segmentIndex,
+        date: parsedSegment.date,
+        label: parsedSegment.label,
+        amount: parsedSegment.amount,
+        sourceType: 'past_text',
+      })
+      if (row) parsedRows.push(row)
+    })
+
+    if (parsedRows.length !== segments.length && !foundAmbiguousSplit) return null
+    return parsedRows
+  }
+
   return lines
-    .map((line, lineIndex) => {
+    .flatMap((line, lineIndex) => {
       if (hasHeader && lineIndex === 0) return null
+
+      const simpleDelimitedRows = !hasHeader ? parseDelimitedSimpleEntries(line, lineIndex) : null
+      if (simpleDelimitedRows) return simpleDelimitedRows
 
       const columns = splitPastedColumns(line)
       if (columns.length > 0) {
         return parseDelimitedLine(line, lineIndex, columns)
+      }
+
+      const simpleEntries = findDateInText(line) ? [] : getSimpleExpenseEntries(line)
+      if (simpleEntries.length > 1) {
+        return simpleEntries.map((entry, entryIndex) => {
+          const date = findDateInText(entry.line)
+          const label = stripDateText(entry.label).replace(/\s+/g, ' ').trim()
+          return buildPastRow({
+            line: entry.line,
+            sourceLineIndex: lineIndex * 1000 + entryIndex,
+            date,
+            label,
+            amount: entry.amount,
+            sourceType: 'past_text',
+            parseStatus: 'clear',
+          })
+        })
+      }
+
+      if (simpleEntries.length === 1 && simpleEntries[0].parseStatus === 'ambiguous') {
+        const entry = simpleEntries[0]
+        return buildPastRow({
+          line: entry.line,
+          sourceLineIndex: lineIndex,
+          date: null,
+          label: entry.label,
+          amount: entry.amount,
+          sourceType: 'past_text',
+          parseStatus: 'ambiguous',
+          parseMessage: entry.parseMessage ?? SIMPLE_NUMERIC_AMBIGUITY_MESSAGE,
+        })
       }
 
       const amountMatch = extractLastBareAmount(line)
@@ -848,6 +1198,8 @@ interface PastExpenseRowInput {
   sourceType: ImportSourceType
   defaultCurrency: string
   inheritedDate: string | null
+  parseStatus?: ImportParseStatus
+  parseMessage?: string | null
 }
 
 function buildPastExpenseRow(input: PastExpenseRowInput): ParsedSmsExpense | null {
@@ -857,6 +1209,8 @@ function buildPastExpenseRow(input: PastExpenseRowInput): ParsedSmsExpense | nul
   const category = input.categoryText ? findKnownCategory(input.categoryText) : null
   const fallbackKey = slugify(label || input.categoryText || `past_expense_${input.sourceLineIndex + 1}`) || `past_expense_${input.sourceLineIndex + 1}`
   const date = input.date ?? input.inheritedDate ?? ''
+  const invalid = !label || input.amount == null || input.amount <= 0 || !date
+  const parseStatus = invalid ? 'invalid' : input.parseStatus ?? 'clear'
 
   return {
     id: `${input.sourceType}_${input.sourceLineIndex + 1}_${fallbackKey}`,
@@ -877,6 +1231,10 @@ function buildPastExpenseRow(input: PastExpenseRowInput): ParsedSmsExpense | nul
     sourceHash: '',
     sourceType: input.sourceType,
     sourceRowIndex: input.sourceLineIndex,
+    parseStatus,
+    parseMessage: invalid
+      ? 'We couldn’t read this entry. Edit it to continue.'
+      : input.parseMessage ?? null,
     blockedReason: null,
   }
 }
@@ -895,6 +1253,7 @@ export function parsePastExpenseCsv(
   const firstRecord = records[0] ?? []
   const hasHeader = looksLikeCsvHeader(firstRecord)
   const mapping = options.mapping ?? (hasHeader ? detectCsvHeaderMapping(firstRecord) : {})
+  const headers = hasHeader ? firstRecord : []
   const inheritedDate = defaultDateForMonth(options.defaultImportMonth)
   const dataRecords = hasHeader ? records.slice(1) : records
 
@@ -902,43 +1261,53 @@ export function parsePastExpenseCsv(
     .map((columns, index) => {
       const sourceLineIndex = hasHeader ? index + 1 : index
       const rawLine = columns.map((cell) => cell.includes(',') || cell.includes('"') ? `"${cell.replace(/"/g, '""')}"` : cell).join(',')
+      const reviewRisk = hasCsvReviewRisk(rawLine)
 
       if (mapping.amount != null || mapping.name != null || mapping.date != null || mapping.category != null) {
         const dateText = mapping.date != null ? columns[mapping.date] ?? '' : ''
         const noteText = mapping.note != null ? columns[mapping.note] ?? '' : ''
         const label = mapping.name != null ? columns[mapping.name] ?? '' : ''
         const categoryText = mapping.category != null ? columns[mapping.category] ?? '' : null
+        const amountResult = hasHeader
+          ? getCsvAmountFromColumns(columns, headers, mapping)
+          : { amount: mapping.amount != null ? parseSignedAmountCell(columns[mapping.amount] ?? '')?.amount ?? null : null, parseStatus: undefined, parseMessage: null }
+        const parseStatus = reviewRisk ? 'ambiguous' : amountResult.parseStatus
+        const parseMessage = reviewRisk ? CSV_REVIEW_MESSAGE : amountResult.parseMessage
         return buildPastExpenseRow({
           line: rawLine,
           sourceLineIndex,
           date: dateText ? findDateInText(dateText) : null,
           label,
-          amount: mapping.amount != null ? parseAmountCell(columns[mapping.amount] ?? '') : null,
+          amount: amountResult.amount,
           categoryText,
           sourceType: 'csv',
           defaultCurrency: options.defaultCurrency,
           inheritedDate,
+          parseStatus,
+          parseMessage,
         }) ?? (noteText ? buildPastExpenseRow({
           line: rawLine,
           sourceLineIndex,
           date: dateText ? findDateInText(dateText) : null,
           label: noteText,
-          amount: mapping.amount != null ? parseAmountCell(columns[mapping.amount] ?? '') : null,
+          amount: amountResult.amount,
           categoryText,
           sourceType: 'csv',
           defaultCurrency: options.defaultCurrency,
           inheritedDate,
+          parseStatus,
+          parseMessage,
         }) : null)
       }
 
       const dateColumnIndex = columns.findIndex((column) => !!findDateInText(column))
       const amountColumnIndex = (() => {
         for (let columnIndex = columns.length - 1; columnIndex >= 0; columnIndex -= 1) {
-          if (parseAmountCell(columns[columnIndex]) != null) return columnIndex
+          if (parseSignedAmountCell(columns[columnIndex]) != null) return columnIndex
         }
         return -1
       })()
-      const amount = amountColumnIndex >= 0 ? parseAmountCell(columns[amountColumnIndex]) : null
+      const amount = amountColumnIndex >= 0 ? parseSignedAmountCell(columns[amountColumnIndex])?.amount ?? null : null
       const date = dateColumnIndex >= 0 ? findDateInText(columns[dateColumnIndex]) : null
       const remaining = columns.filter((_, columnIndex) => columnIndex !== dateColumnIndex && columnIndex !== amountColumnIndex)
       const label = remaining[0] ?? ''
@@ -954,6 +1323,8 @@ export function parsePastExpenseCsv(
         sourceType: 'csv',
         defaultCurrency: options.defaultCurrency,
         inheritedDate,
+        parseStatus: reviewRisk ? 'ambiguous' : undefined,
+        parseMessage: reviewRisk ? CSV_REVIEW_MESSAGE : null,
       })
     })
     .filter((row): row is ParsedSmsExpense => row != null)
@@ -1008,6 +1379,16 @@ export function parseSmsBlob(
     const label = dict?.label ?? (merchant ? merchant.trim() : 'Unknown item')
     const categoryType = dict?.categoryType ?? inferCategory(label)
     const categoryKey = dict?.categoryKey ?? (slugify(label) || `imported_${index + 1}`)
+    const parseStatus: ImportParseStatus = amountMatch.ambiguous
+      ? 'ambiguous'
+      : amountMatch.confidence === 'high' || dict
+        ? 'clear'
+        : 'partial'
+    const parseMessage = amountMatch.ambiguous
+      ? 'This message has multiple possible transaction amounts. Check this before saving.'
+      : parseStatus === 'partial'
+        ? 'Check this before saving.'
+        : null
 
     rows.push({
       id: `row_${index + 1}_${categoryKey}`,
@@ -1025,6 +1406,8 @@ export function parseSmsBlob(
       sourceHash: hashSmsLine(line),
       sourceType: 'sms',
       sourceRowIndex: index,
+      parseStatus,
+      parseMessage,
       blockedReason: isIncomeCredit ? INCOME_SMS_BLOCKED_MESSAGE : null,
     })
   })

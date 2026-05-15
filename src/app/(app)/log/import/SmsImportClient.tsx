@@ -78,6 +78,8 @@ interface EditableRow {
   sourceHash: string
   sourceType?: 'sms' | 'simple_text' | 'past_text' | 'pasted_table' | 'csv'
   sourceRowIndex?: number
+  parseStatus?: 'clear' | 'partial' | 'ambiguous' | 'failed' | 'invalid'
+  parseMessage?: string | null
   blockedReason?: string | null
   repeatsMonthly: boolean
   debtId: string | null
@@ -93,6 +95,7 @@ const T = {
   text2: 'var(--text-2)',
   text3: 'var(--text-3)',
   textMuted: 'var(--text-muted)',
+  textInverse: 'var(--text-inverse)',
   brand: 'var(--brand)',
   brandMid: 'var(--brand-mid)',
   brandDark: 'var(--brand-dark)',
@@ -183,7 +186,11 @@ function recomputeRowState(
   return { nextRowErrors, nextRowWarnings }
 }
 
-function validateRow(row: EditableRow) {
+function validateRow(row: EditableRow, options: { requireCategory?: boolean } = {}) {
+  // Past-import flows pass requireCategory=false so users can save partially
+  // reconstructed history without being forced to categorize every row.
+  // Current-mode SMS imports keep the strict default.
+  const requireCategory = options.requireCategory !== false
   const errors: string[] = []
 
   if (row.blockedReason) {
@@ -199,7 +206,7 @@ function validateRow(row: EditableRow) {
   if (row.isImportedMessage && !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
     errors.push('Date is invalid.')
   }
-  if (!row.categoryType) {
+  if (requireCategory && !row.categoryType) {
     errors.push('Choose a category')
   }
   if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
@@ -263,7 +270,7 @@ function getPastMonthGroupLabel(date: string) {
 
 function getPastDateSourceLabel(row: Pick<EditableRow, 'date' | 'dateSource'>) {
   if (row.dateSource !== 'default_month') return null
-  return `Inherited from ${getPastMonthGroupLabel(row.date)}`
+  return `Added to ${getPastMonthGroupLabel(row.date)}`
 }
 
 function getSimilarEntryKey(label: string) {
@@ -448,15 +455,30 @@ export function SmsImportClient() {
     'food 500',
     'groceries 2500',
   ]).join('\n')
-  const hasWarnings = Object.keys(rowWarnings).length > 0
+  const hasDuplicateWarnings = useMemo(
+    () => Object.values(rowWarnings).some((warnings) => warnings.includes(DUPLICATE_MESSAGE)),
+    [rowWarnings]
+  )
+  const parserReviewWarningCount = useMemo(
+    () => Object.values(rowWarnings).filter((warnings) =>
+      warnings.some((warning) => warning !== DUPLICATE_MESSAGE)
+    ).length,
+    [rowWarnings]
+  )
+  // Past imports are forgiving: missing category is allowed at save time.
+  // Current-mode SMS imports keep strict category enforcement.
+  const validateImportRow = useMemo(
+    () => (row: EditableRow) => validateRow(row, { requireCategory: !isPastMode }),
+    [isPastMode]
+  )
   const reviewState = useMemo(
     () =>
       getSmsImportReviewState({
         rows,
         rowErrors,
-        getClientIssues: validateRow,
+        getClientIssues: validateImportRow,
       }),
-    [rowErrors, rows]
+    [rowErrors, rows, validateImportRow]
   )
   const {
     savableRows,
@@ -479,20 +501,36 @@ export function SmsImportClient() {
     () =>
       rows.reduce((count, row) => {
         const serverErrors = rowErrors[row.id] ?? []
-        const clientIssues = validateRow(row)
+        // Always check uncategorized against the strict ruleset so the meta
+        // ("N uncategorized") still reflects reality, even in past mode where
+        // the missing category is no longer treated as a hard error.
+        const clientIssues = validateRow(row, { requireCategory: true })
         const hasHardError = serverErrors.length > 0 || clientIssues.some((issue) => issue !== 'Choose a category')
         const needsCategory = !row.categoryType && !hasHardError
         return count + (needsCategory ? 1 : 0)
       }, 0),
     [rowErrors, rows]
   )
+  const firstUncategorizedCurrentRowIndex = useMemo(
+    () =>
+      isPastMode
+        ? -1
+        : rows.findIndex((row) => {
+          if (isBlockedIncomeRow(row)) return false
+          const serverErrors = rowErrors[row.id] ?? []
+          const clientIssues = validateRow(row, { requireCategory: true })
+          const hasHardError = serverErrors.length > 0 || clientIssues.some((issue) => issue !== 'Choose a category')
+          return !hasHardError && !row.categoryType
+        }),
+    [isPastMode, rowErrors, rows]
+  )
   const queueGuidance = useMemo(
     () => getQueueGuidanceCopy(unresolvedCategoryCount),
     [unresolvedCategoryCount]
   )
   const queueSaveHelper = useMemo(
-    () => getQueueSaveHelperCopy(unresolvedCategoryCount),
-    [unresolvedCategoryCount]
+    () => getQueueSaveHelperCopy(unresolvedCategoryCount, { isPastMode }),
+    [unresolvedCategoryCount, isPastMode]
   )
   const editableRowIndices = useMemo(
     () => rows.reduce<number[]>((indices, row, index) => {
@@ -520,14 +558,14 @@ export function SmsImportClient() {
     () => rows.filter((row) => selectedPastRowIds.includes(row.id)),
     [rows, selectedPastRowIds]
   )
-  const editedPreviewRowIssues = editedPreviewRow ? validateRow(editedPreviewRow) : []
+  const editedPreviewRowIssues = editedPreviewRow ? validateImportRow(editedPreviewRow) : []
   const shouldSaveReviewRowImmediately = shouldSaveSingleCompletedReviewRow({
     totalRows: rows.length,
     editableRowCount: editableRowIndices.length,
     isCurrentRowEditable: !!editedPreviewRow && !isBlockedIncomeRow(editedPreviewRow),
     hasNextEditableRow: !!nextEditableRow,
     currentRowHasErrors: editedPreviewRowIssues.length > 0 || (editedPreviewRow ? (rowErrors[editedPreviewRow.id] ?? []).length > 0 : true),
-    currentRowHasWarnings: editedPreviewRow ? (rowWarnings[editedPreviewRow.id] ?? []).length > 0 : true,
+    currentRowHasWarnings: editedPreviewRow ? (rowWarnings[editedPreviewRow.id] ?? []).includes(DUPLICATE_MESSAGE) : true,
   })
   const reviewRowPrimaryOutcome = getReviewRowPrimaryOutcome({
     hasNextEditableRow: !!nextEditableRow,
@@ -744,7 +782,27 @@ export function SmsImportClient() {
     if (selectedPastRowIds.length === 0) return
     applyCategoryToRows(selectedPastRowIds, option)
     setSelectedPastRowIds([])
+    closeBulkCategoryPicker()
+  }
+
+  const openBulkCategoryPicker = () => {
+    if (selectedPastRowIds.length === 0) return
+    setCategoryFilter('everyday')
+    setCategoryQuery('')
+    setCategoryBrowserMode('select')
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
+    setBulkCategoryOpen(true)
+  }
+
+  const closeBulkCategoryPicker = () => {
     setBulkCategoryOpen(false)
+    setCategoryQuery('')
+    setCategoryBrowserMode('select')
+    setCreateCategoryLabel('')
+    setCreateCategoryError(null)
+    setCategoryBrowserNotice(null)
   }
 
   const ensureDebtsLoaded = async () => {
@@ -856,6 +914,17 @@ export function SmsImportClient() {
     const row = rows[index]
     if (!row || isBlockedIncomeRow(row)) return
     openEditRow(row)
+  }
+
+  const guideCurrentRowsToCategoryCompletion = () => {
+    if (firstUncategorizedCurrentRowIndex < 0) return
+    const row = rows[firstUncategorizedCurrentRowIndex]
+    if (!row) return
+    beginEditRow(row, true, editableRowIndices.length)
+    setEditStep('category')
+    setDetailsReturnStep(null)
+    setCategoryBrowserOpen(false)
+    setError(null)
   }
 
   const closeEditRow = () => {
@@ -1140,6 +1209,10 @@ export function SmsImportClient() {
   }
 
   const selectCategoryFromCreateMode = (option: ImportCategoryOption) => {
+    if (bulkCategoryOpen) {
+      applyBulkCategory(option)
+      return
+    }
     selectImportCategory(option)
     setCreateCategoryLabel('')
     setCreateCategoryError(null)
@@ -1363,6 +1436,21 @@ export function SmsImportClient() {
         for (const row of parsedRows) {
           if (row.blockedReason) {
             next[row.id] = [row.blockedReason]
+          } else if (row.parseStatus === 'invalid' && row.parseMessage) {
+            next[row.id] = [row.parseMessage]
+          }
+        }
+        return next
+      })
+      setRowWarnings((current) => {
+        const next = { ...current }
+        for (const row of parsedRows) {
+          if (row.parseStatus === 'ambiguous' || row.parseStatus === 'partial') {
+            next[row.id] = [
+              row.parseMessage || (row.parseStatus === 'ambiguous'
+                ? 'This line may contain more than one expense. Check these before saving.'
+                : 'Check this before saving.'),
+            ]
           }
         }
         return next
@@ -1421,17 +1509,32 @@ export function SmsImportClient() {
         .filter((row) => row.blockedReason)
         .map((row) => [row.id, [row.blockedReason as string]])
     )
+    const nextParseWarnings = Object.fromEntries(
+      nextRows
+        .filter((row) => row.parseStatus === 'ambiguous' || row.parseStatus === 'partial')
+        .map((row) => [
+          row.id,
+          [row.parseMessage || (row.parseStatus === 'ambiguous'
+            ? 'This line may contain more than one expense. Check these before saving.'
+            : 'Check this before saving.')],
+        ])
+    )
+    const nextParseErrors = Object.fromEntries(
+      nextRows
+        .filter((row) => row.parseStatus === 'invalid' && row.parseMessage)
+        .map((row) => [row.id, [row.parseMessage as string]])
+    )
     setMonthlyReminderKeys(data.monthlyReminderKeys ?? [])
     setRows(nextRows)
     setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
-    setRowErrors(nextBlockedRowErrors)
-    setRowWarnings({})
+    setRowErrors({ ...nextBlockedRowErrors, ...nextParseErrors })
+    setRowWarnings(nextParseWarnings)
     setSelectedPastRowIds([])
     if (shouldAutoOpenSingleEntryEditFlow(nextRows)) {
       beginEditRow(nextRows[0], false, 1)
     }
     if (data.rows.length === 0) {
-      setError("Each row needs a name and an amount. Try 'food 500' or upload a CSV with name and amount columns.")
+      setError("We couldn’t read this entry. Edit it to continue.")
     }
   }
 
@@ -1568,7 +1671,7 @@ export function SmsImportClient() {
           nextRowErrors[row.id] = [row.blockedReason as string]
           continue
         }
-        const issues = validateRow(row)
+        const issues = validateImportRow(row)
         if (issues.length > 0) nextRowErrors[row.id] = issues
       }
 
@@ -1580,7 +1683,15 @@ export function SmsImportClient() {
       if (blockingErrors.length > 0) {
         setRowErrors(nextRowErrors)
         setRowWarnings({})
-        setError('Review rows marked with issues before saving.')
+        const onlyCategoryIssues = blockingErrors.every(([rowId, issues]) => {
+          const row = rowsToSave.find((item) => item.id === rowId)
+          return row && !isBlockedIncomeRow(row) && issues.length === 1 && issues[0] === 'Choose a category'
+        })
+        setError(
+          onlyCategoryIssues
+            ? 'Add categories to current-month expenses before saving.'
+            : 'Review the highlighted expenses before saving.'
+        )
         setSaving(false)
         logClientSaveTiming('pre-submit-validation', performance.now() - preSubmitStartedAt, {
           rows: rowsToSave.length,
@@ -1591,22 +1702,30 @@ export function SmsImportClient() {
 
       const payload = rowsToSave
         .filter((row) => !isBlockedIncomeRow(row))
-        .map((row) => ({
-        id: row.id,
-        label: row.label.trim(),
-        categoryType: row.categoryType as ImportCategoryType,
-        categoryKey: row.categoryKey,
-        customCategoryId: row.customCategoryId,
-        amount: Number(row.amount),
-        date: row.date,
-        sourceHash: row.sourceHash,
-        blockedReason: row.blockedReason ?? null,
-        repeatsMonthly:
-          (row.categoryType === 'everyday' || row.categoryType === 'fixed') && !hasExistingMonthlyReminder(row)
-            ? row.repeatsMonthly
-            : false,
-        debtId: row.categoryType === 'debt' ? row.debtId : null,
-      }))
+        .map((row) => {
+        // Pass categories through honestly. Past-mode uncategorized rows arrive
+        // here with categoryType === null / categoryKey === ''; the server
+        // recognises mode='past' and persists them as 'other' / 'uncategorized'
+        // sentinel transactions instead of running canonical category
+        // resolution (which throws on unknown keys). Current-mode rows can
+        // never reach this mapper uncategorized — validation blocks save first.
+        return {
+          id: row.id,
+          label: row.label.trim(),
+          categoryType: row.categoryType,
+          categoryKey: row.categoryKey ?? '',
+          customCategoryId: row.customCategoryId,
+          amount: Number(row.amount),
+          date: row.date,
+          sourceHash: row.sourceHash,
+          blockedReason: row.blockedReason ?? null,
+          repeatsMonthly:
+            (row.categoryType === 'everyday' || row.categoryType === 'fixed') && !hasExistingMonthlyReminder(row)
+              ? row.repeatsMonthly
+              : false,
+          debtId: row.categoryType === 'debt' ? row.debtId : null,
+        }
+      })
       setRowErrors(nextRowErrors)
       logClientSaveTiming('pre-submit-processing', performance.now() - preSubmitStartedAt, {
         rows: payload.length,
@@ -1614,7 +1733,7 @@ export function SmsImportClient() {
       })
 
       const serverStartedAt = performance.now()
-      const result = await saveParsedSmsExpenses(payload, { confirmOverride })
+      const result = await saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })
       logClientSaveTiming('server-action', performance.now() - serverStartedAt, {
         rows: payload.length,
         confirmOverride,
@@ -1623,7 +1742,7 @@ export function SmsImportClient() {
         setError(
           result.error.kind === 'unauthorized'
             ? result.error.message
-            : "We couldn't save right now. Please try again in a moment."
+            : 'Something interrupted saving. Please try again.'
         )
         setSaving(false)
         logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
@@ -1645,7 +1764,7 @@ export function SmsImportClient() {
               : `${data.duplicates} rows look similar to something you already logged.`
           )
         } else {
-          setError('Review rows marked with issues before saving.')
+          setError('Review the highlighted expenses before saving.')
         }
         setSaving(false)
         logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
@@ -1665,7 +1784,7 @@ export function SmsImportClient() {
       })
       return 'success'
     } catch {
-      setError("We couldn't save right now. Please try again in a moment.")
+      setError('Something interrupted saving. Please try again.')
       logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
         outcome: 'exception',
       })
@@ -2030,27 +2149,38 @@ export function SmsImportClient() {
                         {queueGuidance.summary}
                       </p>
                     )}
+                    {parserReviewWarningCount > 0 ? (
+                      <div
+                        data-section="parser-review-notice"
+                        style={{
+                          marginTop: 10,
+                          border: `1px solid ${T.amberBorder}`,
+                          borderRadius: 12,
+                          background: T.amberLight,
+                          padding: '10px 12px',
+                        }}
+                      >
+                        <p style={{ margin: 0, fontSize: 13, color: T.text2, lineHeight: 1.45, fontWeight: 600 }}>
+                          Some entries may need checking.
+                        </p>
+                      </div>
+                    ) : null}
                     {(() => {
                       if (!isPastMode) return null
                       const inheritedCount = rows.filter((row) => row.dateSource === 'default_month').length
-                      // Paste flow keeps the existing "Importing for X" copy — paste rows
-                      // always inherit the upfront month, and the user already picked it.
                       // CSV flow only surfaces the picker if some rows actually inherited.
                       if (pastInputMode === 'csv' && inheritedCount === 0) return null
-                      const allInherited = inheritedCount === rows.length && rows.length > 0
-                      const headline = pastInputMode === 'csv'
-                        ? (allInherited
-                          ? 'This CSV doesn’t include dates. Choose a month to use for these expenses.'
-                          : 'Some expenses don’t have dates. Which month should we use for them?')
-                        : `Importing for ${defaultImportMonthLabel}`
+                      // Subtle caption shows only when at least one row will use the
+                      // selected month as a fallback. The selector itself does the
+                      // primary talking — no “Importing for X” headline above it.
+                      const caption = inheritedCount > 0
+                        ? `Expenses without dates will be added to ${defaultImportMonthLabel}`
+                        : null
                       return (
                         <div
                           data-section="past-import-month-prompt"
                           style={{ marginTop: 10, display: 'grid', gap: 6 }}
                         >
-                          <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
-                            {headline}
-                          </p>
                           <select
                             aria-label="Change import month"
                             value={defaultImportMonth}
@@ -2072,6 +2202,11 @@ export function SmsImportClient() {
                               <option key={month.value} value={month.value}>{month.label}</option>
                             ))}
                           </select>
+                          {caption ? (
+                            <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                              {caption}
+                            </p>
+                          ) : null}
                         </div>
                       )
                     })()}
@@ -2079,60 +2214,112 @@ export function SmsImportClient() {
                 )
               })()}
 
-              {isPastMode && rows.length > 0 ? (
+              {isPastMode && rows.length > 0 && selectedPastRowIds.length > 0 ? (
                 <div
                   data-section="past-import-bulk-toolbar"
                   style={{
-                    border: `1px solid ${T.borderSubtle}`,
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 12,
                     background: 'var(--grey-50)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-sm) var(--space-md)',
+                    marginBottom: 'var(--space-sm)',
                     display: 'grid',
-                    gap: 10,
+                    gap: 'var(--space-sm)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.text2, fontWeight: 600, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedPastRowIds.length > 0 && selectedPastRowIds.length === rows.length}
-                        onChange={(event) => {
-                          setSelectedPastRowIds(event.target.checked ? rows.map((row) => row.id) : [])
-                        }}
-                        style={{ width: 16, height: 16, accentColor: T.brandDark }}
-                      />
-                      {selectedPastRowIds.length > 0
-                        ? `${selectedPastRowIds.length} selected`
-                        : 'Select rows'}
-                    </label>
-                    {selectedPastRowIds.length > 0 ? (
+                  <p style={{
+                    margin: 0,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: T.text2,
+                  }}>
+                    {`${selectedPastRowIds.length} selected`}
+                  </p>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                    <button
+                      type="button"
+                      onClick={openBulkCategoryPicker}
+                      style={{
+                        border: 'none',
+                        background: 'var(--chip-selected-bg)',
+                        color: 'var(--chip-selected-text)',
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: 'var(--weight-medium)',
+                        padding: 'var(--space-2xs) var(--space-md)',
+                        borderRadius: 'var(--radius-full)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Apply category
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeRowsById(selectedPastRowIds)}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: T.redDark,
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: 'var(--weight-medium)',
+                        padding: 'var(--space-2xs) var(--space-md)',
+                        borderRadius: 'var(--radius-full)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-md)',
+                    paddingTop: 'var(--space-sm)',
+                    borderTop: `var(--border-width) solid var(--border-subtle)`,
+                  }}>
+                    {selectedPastRowIds.length < rows.length ? (
                       <button
                         type="button"
-                        onClick={() => setSelectedPastRowIds([])}
-                        style={{ border: 'none', background: 'none', padding: 0, color: T.text3, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        onClick={() => setSelectedPastRowIds(rows.map((row) => row.id))}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          padding: 0,
+                          color: T.text3,
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 'var(--weight-medium)',
+                          cursor: 'pointer',
+                        }}
                       >
-                        Clear
+                        Select all
                       </button>
-                    ) : null}
+                    ) : <span />}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPastRowIds([])}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        padding: 0,
+                        color: T.text3,
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 'var(--weight-medium)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Clear
+                    </button>
                   </div>
-                  {selectedPastRowIds.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <SecondaryBtn size="md" onClick={() => setBulkCategoryOpen(true)}>
-                        Apply category
-                      </SecondaryBtn>
-                      <SecondaryBtn size="md" onClick={() => removeRowsById(selectedPastRowIds)}>
-                        Remove selected
-                      </SecondaryBtn>
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rows.map((row, index) => {
                   const serverErrors = rowErrors[row.id] ?? []
-                  const clientIssues = validateRow(row)
+                  const rowWarningMessages = rowWarnings[row.id] ?? []
+                  const hasParserWarning = rowWarningMessages.some((warning) => warning !== DUPLICATE_MESSAGE)
+                  const clientIssues = validateImportRow(row)
                   const hasHardError = serverErrors.length > 0 || clientIssues.some((i) => i !== 'Choose a category')
                   const isBlocked = isBlockedIncomeRow(row)
                   const needsCategory = !row.categoryType && !hasHardError
@@ -2140,9 +2327,10 @@ export function SmsImportClient() {
                     needsCategory,
                     hasHardError,
                     isBlocked,
+                    needsReview: hasParserWarning,
                   })
-                  const cardBorder = hasHardError ? T.redBorder : needsCategory ? T.border : T.borderSubtle
-                  const cardBg = hasHardError ? T.redLight : 'var(--white)'
+                  const cardBorder = hasHardError ? T.redBorder : hasParserWarning ? T.amberBorder : needsCategory ? T.border : T.borderSubtle
+                  const cardBg = hasHardError ? T.redLight : hasParserWarning ? T.amberLight : 'var(--white)'
                   const monthGroupLabel = isPastMode ? getPastMonthGroupLabel(row.date) : null
                   const dateSourceLabel = isPastMode ? getPastDateSourceLabel(row) : null
                   const similarRowsCount = isPastMode && row.categoryType && row.categoryKey
@@ -2306,7 +2494,7 @@ export function SmsImportClient() {
                     <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                       {(() => {
                         const hardErrors = (serverErrors.length > 0 ? serverErrors : clientIssues).filter((i) => i !== 'Choose a category')
-                        const warnings = rowWarnings[row.id] ?? []
+                        const warnings = rowWarningMessages
                         return (
                           <>
                             {hardErrors.length > 0 && (
@@ -2320,22 +2508,37 @@ export function SmsImportClient() {
                             )}
                             {hardErrors.length === 0 && warnings.length > 0 && (
                               <div style={{ display: 'grid', gap: 6 }}>
-                                <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4, fontWeight: 700 }}>
-                                  Possible duplicate
-                                </p>
-                                <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
-                                  This looks similar to an expense already saved.
-                                </p>
-                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Keep row by saving anyway.</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeRowsById([row.id])}
-                                    style={{ border: 'none', background: 'none', padding: 0, color: T.brandDark, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                                  >
-                                    Remove row
-                                  </button>
-                                </div>
+                                {warnings.includes(DUPLICATE_MESSAGE) ? (
+                                  <>
+                                    <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4, fontWeight: 700 }}>
+                                      Possible duplicate
+                                    </p>
+                                    <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
+                                      This looks similar to an expense already saved.
+                                    </p>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Keep row by saving anyway.</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeRowsById([row.id])}
+                                        style={{ border: 'none', background: 'none', padding: 0, color: T.brandDark, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                      >
+                                        Remove row
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4, fontWeight: 700 }}>
+                                      This may need checking.
+                                    </p>
+                                    {warnings.map((warning, warningIndex) => (
+                                      <p key={`${row.id}-parse-warning-${warningIndex}`} style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
+                                        {warning}
+                                      </p>
+                                    ))}
+                                  </>
+                                )}
                               </div>
                             )}
                           </>
@@ -2418,19 +2621,19 @@ export function SmsImportClient() {
               )}
 
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-                {unresolvedCategoryCount > 0 ? (
+                {!isPastMode && unresolvedCategoryCount > 0 ? (
                   <>
-                    {queueSaveHelper ? (
-                      <p style={{ margin: 0, fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
-                        {queueSaveHelper}
-                      </p>
-                    ) : null}
+                    <p style={{ margin: 0, fontSize: 12, color: T.text2, lineHeight: 1.5 }}>
+                      {unresolvedCategoryCount === 1
+                        ? 'One current-month expense still needs a category.'
+                        : `${unresolvedCategoryCount} current-month expenses still need categories.`}
+                    </p>
                     <PrimaryBtn
                       size="lg"
-                      onClick={() => handleSave(false)}
-                      disabled
+                      onClick={guideCurrentRowsToCategoryCompletion}
+                      disabled={firstUncategorizedCurrentRowIndex < 0}
                     >
-                      {`Save ${savableRows.length} ${savableRows.length === 1 ? 'expense' : 'expenses'}`}
+                      Continue
                     </PrimaryBtn>
                   </>
                 ) : validSavableRows.length === 0 ? (
@@ -2440,24 +2643,38 @@ export function SmsImportClient() {
                   >
                     Paste again
                   </PrimaryBtn>
-                ) : hasWarnings && !hasHardBlockedRows ? (
-                  <PrimaryBtn
-                    size="lg"
-                    onClick={() => handleSave(true)}
-                    disabled={saving || validSavableRows.length === 0 || hasSavableClientValidationErrors}
-                  >
-                    {saving ? 'Saving…' : 'Save anyway'}
-                  </PrimaryBtn>
+                ) : hasDuplicateWarnings && !hasHardBlockedRows ? (
+                  <>
+                    {isPastMode && queueSaveHelper ? (
+                      <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                        {queueSaveHelper}
+                      </p>
+                    ) : null}
+                    <PrimaryBtn
+                      size="lg"
+                      onClick={() => handleSave(true)}
+                      disabled={saving || validSavableRows.length === 0 || hasSavableClientValidationErrors}
+                    >
+                      {saving ? 'Saving…' : 'Save anyway'}
+                    </PrimaryBtn>
+                  </>
                 ) : (
-                  <PrimaryBtn
-                    size="lg"
-                    onClick={() => handleSave(false)}
-                    disabled={saving || validSavableRows.length === 0 || hasSavableClientValidationErrors || hasHardBlockedRows}
-                  >
-                    {saving ? 'Saving…' : hasHardBlockedRows
-                      ? 'Remove blocked messages to continue'
-                      : `Save ${validSavableRows.length} ${validSavableRows.length === 1 ? 'expense' : 'expenses'}`}
-                  </PrimaryBtn>
+                  <>
+                    {isPastMode && queueSaveHelper ? (
+                      <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.5 }}>
+                        {queueSaveHelper}
+                      </p>
+                    ) : null}
+                    <PrimaryBtn
+                      size="lg"
+                      onClick={() => handleSave(false)}
+                      disabled={saving || validSavableRows.length === 0 || hasSavableClientValidationErrors || hasHardBlockedRows}
+                    >
+                      {saving ? 'Saving…' : hasHardBlockedRows
+                        ? 'Remove blocked messages to continue'
+                        : `Save ${validSavableRows.length} ${validSavableRows.length === 1 ? 'expense' : 'expenses'}`}
+                    </PrimaryBtn>
+                  </>
                 )}
                 {showReview ? (
                   <SecondaryBtn
@@ -3046,7 +3263,7 @@ export function SmsImportClient() {
                 </div>
 
                 {(() => {
-                  const hardErrors = validateRow(editedPreviewRow)
+                  const hardErrors = validateImportRow(editedPreviewRow)
                   return hardErrors.length > 0 ? (
                     <div style={{ display: 'grid', gap: 4 }}>
                       {hardErrors.map((issue, index) => (
@@ -3138,53 +3355,58 @@ export function SmsImportClient() {
       </div>
 
       <Sheet
-        open={bulkCategoryOpen}
-        onClose={() => setBulkCategoryOpen(false)}
-        title="Apply category"
-      >
-        <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
-            Apply a category to {selectedPastRows.length} selected {selectedPastRows.length === 1 ? 'row' : 'rows'}.
-          </p>
-          <div style={{ display: 'grid', gap: 8, maxHeight: '52vh', overflowY: 'auto' }}>
-            {allCategoryOptions.map((option) => (
-              <button
-                key={`${option.customCategoryId ?? 'canonical'}-${option.type}-${option.key}`}
-                type="button"
-                onClick={() => applyBulkCategory(option)}
-                style={{
-                  width: '100%',
-                  border: `1px solid ${T.borderSubtle}`,
-                  borderRadius: 12,
-                  background: T.white,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  color: T.text1,
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <span>{option.label}</span>
-                <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  {option.type}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </Sheet>
-
-      <Sheet
-        open={showingEditFlow && (editStep === 'category' || editStep === 'changeCategory') && categoryBrowserOpen}
-        onClose={closeCategoryBrowser}
-        title={categoryBrowserMode === 'create' ? 'Create category' : 'Choose category'}
+        open={
+          bulkCategoryOpen ||
+          (showingEditFlow && (editStep === 'category' || editStep === 'changeCategory') && categoryBrowserOpen)
+        }
+        onClose={bulkCategoryOpen ? closeBulkCategoryPicker : closeCategoryBrowser}
+        title={
+          bulkCategoryOpen
+            ? (categoryBrowserMode === 'create' ? 'Create category' : 'Apply category')
+            : (categoryBrowserMode === 'create' ? 'Create category' : 'Choose category')
+        }
       >
         <div style={{ display: 'grid', gap: 'var(--space-lg)' }}>
+          {bulkCategoryOpen && categoryBrowserMode === 'select' ? (
+            <div
+              data-section="bulk-category-preview"
+              style={{
+                display: 'grid',
+                gap: 'var(--space-xs)',
+              }}
+            >
+              <p style={{
+                margin: 0,
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-medium)',
+                color: T.text1,
+              }}>
+                {`Apply category to ${selectedPastRows.length} ${selectedPastRows.length === 1 ? 'expense' : 'expenses'}`}
+              </p>
+              {selectedPastRows.length > 0 ? (
+                <p style={{
+                  margin: 0,
+                  fontSize: 'var(--text-xs)',
+                  color: T.text3,
+                  lineHeight: 1.5,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {(() => {
+                    const previewLimit = 3
+                    const labels = selectedPastRows
+                      .slice(0, previewLimit)
+                      .map((row) => row.label.trim() || 'Untitled')
+                    const remaining = selectedPastRows.length - labels.length
+                    return remaining > 0
+                      ? `${labels.join(', ')} and ${remaining} more`
+                      : labels.join(', ')
+                  })()}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {categoryBrowserMode === 'select' ? (
             <>
               <input
@@ -3270,6 +3492,10 @@ export function SmsImportClient() {
                     ? pickerDraftSelection?.customCategoryId ?? null
                     : editDraft?.customCategoryId ?? null
                   const handleChipClick = (option: ImportCategoryOption) => {
+                    if (bulkCategoryOpen) {
+                      applyBulkCategory(option)
+                      return
+                    }
                     if (isChangeCategory) {
                       selectCategoryInPicker(option)
                     } else {
@@ -3329,7 +3555,7 @@ export function SmsImportClient() {
               </div>
 
               <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
-                {editStep === 'changeCategory' ? (
+                {bulkCategoryOpen ? null : editStep === 'changeCategory' ? (
                   <PrimaryBtn
                     size="lg"
                     onClick={commitPickerSelectionToDraft}

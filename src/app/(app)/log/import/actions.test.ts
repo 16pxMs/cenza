@@ -517,6 +517,81 @@ describe('saveParsedSmsExpenses import visibility', () => {
     expect(createServerSupabaseClient).not.toHaveBeenCalled()
   })
 
+  it('parses comma-separated simple past entries through the shared import action', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      'nicw 200, test plic 300, drive 400',
+      { mode: 'past', defaultImportMonth: '2026-02' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      date: row.date,
+      sourceType: row.sourceType,
+    })) : []).toEqual([
+      { label: 'nicw', amount: 200, date: '2026-02-01', sourceType: 'past_text' },
+      { label: 'test plic', amount: 300, date: '2026-02-01', sourceType: 'past_text' },
+      { label: 'drive', amount: 400, date: '2026-02-01', sourceType: 'past_text' },
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('returns ambiguous parser state for mixed comma and repeated-pair past input', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      'misc 2000 drive 3900, disp 2000',
+      { mode: 'past', defaultImportMonth: '2026-02' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('ambiguous')
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      parseStatus: row.parseStatus,
+    })) : []).toEqual([
+      { label: 'misc', amount: 2000, parseStatus: 'ambiguous' },
+      { label: 'drive', amount: 3900, parseStatus: 'ambiguous' },
+      { label: 'disp', amount: 2000, parseStatus: 'clear' },
+    ])
+  })
+
+  it('returns failed parser state when no reliable rows are found', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('nothing useful here')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('failed')
+    expect(result.ok ? result.data.rows : ['unexpected']).toEqual([])
+  })
+
+  it('parses repeated space-separated simple past entries through the shared import action', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      'niv 200 west 2700 blank 2000',
+      { mode: 'past', defaultImportMonth: '2026-02' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      date: row.date,
+      sourceType: row.sourceType,
+    })) : []).toEqual([
+      { label: 'niv', amount: 200, date: '2026-02-01', sourceType: 'past_text' },
+      { label: 'west', amount: 2700, date: '2026-02-01', sourceType: 'past_text' },
+      { label: 'blank', amount: 2000, date: '2026-02-01', sourceType: 'past_text' },
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
   it('parses CSV past imports through the shared parse action', async () => {
     const { parseSmsImport } = await import('./actions')
 
@@ -573,6 +648,35 @@ describe('saveParsedSmsExpenses import visibility', () => {
         sourceType: 'csv',
       }),
     ])
+  })
+
+  it('keeps CSV debit rows clear and credit/refund/transfer rows review-safe', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      [
+        'Date,Description,Debit,Credit',
+        '2026-01-05,Uber,500,',
+        '2026-01-06,Salary,,50000',
+        '2026-01-07,Refund from Carrefour,,1200',
+        '2026-01-08,Transfer to savings,2000,',
+      ].join('\n'),
+      { mode: 'past', source: 'csv' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('ambiguous')
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      parseStatus: row.parseStatus,
+    })) : []).toEqual([
+      { label: 'Uber', amount: 500, parseStatus: 'clear' },
+      { label: 'Salary', amount: 50000, parseStatus: 'ambiguous' },
+      { label: 'Refund from Carrefour', amount: 1200, parseStatus: 'ambiguous' },
+      { label: 'Transfer to savings', amount: 2000, parseStatus: 'ambiguous' },
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
   })
 
   it('blocks past import rows without dates before deriving cycles or writing transactions', async () => {
@@ -685,6 +789,107 @@ describe('saveParsedSmsExpenses import visibility', () => {
     expect(loadMonthlyReminderEntriesForCycle).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['food 500, transport 300'],
+    ['food 500; transport 300'],
+    ['food 500 / transport 300'],
+    ['food 500 transport 300'],
+  ])('parses delimited current simple entries through the fast path: %s', async (input) => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(input)
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      sourceType: row.sourceType,
+    })) : []).toEqual([
+      { label: 'food', amount: 500, sourceType: 'simple_text' },
+      { label: 'transport', amount: 300, sourceType: 'simple_text' },
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['iphone 15 case 3000', 'iphone 15 case', 3000],
+    ['fifa 24 5000', 'fifa 24', 5000],
+    ['ps5 controller 8000', 'ps5 controller', 8000],
+    ['apartment 12 rent 25000', 'apartment 12 rent', 25000],
+  ])('keeps numeric item names as one row through the current fast path: %s', async (input, label, amount) => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(input)
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({ label, amount, sourceType: 'simple_text' }),
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('marks low-confidence numeric current rows as ambiguous through the import action', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('uber trip 2 500')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({
+        label: 'uber trip 2',
+        amount: 500,
+        parseStatus: 'ambiguous',
+        parseMessage: 'This entry may need review before saving.',
+      }),
+    ])
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('ambiguous')
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['food 500, transport 300'],
+    ['food 500; transport 300'],
+    ['food 500 / transport 300'],
+    ['food 500 transport 300'],
+  ])('parses delimited past simple entries through the shared import action: %s', async (input) => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(input, { mode: 'past', defaultImportMonth: '2026-02' })
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      date: row.date,
+      sourceType: row.sourceType,
+    })) : []).toEqual([
+      { label: 'food', amount: 500, date: '2026-02-01', sourceType: 'past_text' },
+      { label: 'transport', amount: 300, date: '2026-02-01', sourceType: 'past_text' },
+    ])
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('marks low-confidence numeric past rows as ambiguous through the import action', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport(
+      'item 1 200 item 2 300',
+      { mode: 'past', defaultImportMonth: '2026-02' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows : []).toEqual([
+      expect.objectContaining({
+        label: 'item 1 200 item 2',
+        amount: 300,
+        date: '2026-02-01',
+        parseStatus: 'ambiguous',
+      }),
+    ])
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('ambiguous')
+    expect(createServerSupabaseClient).not.toHaveBeenCalled()
+  })
+
   it('keeps terse merchant-style manual entries on the fast path', async () => {
     const { parseSmsImport } = await import('./actions')
 
@@ -706,7 +911,7 @@ describe('saveParsedSmsExpenses import visibility', () => {
 
     expect(result).toEqual(expect.objectContaining({ ok: true }))
     expect(result.ok ? result.data.rows[0] : null).toEqual(expect.objectContaining({
-      label: 'Naivas.',
+      label: 'Naivas',
       amount: 2100,
       isImportedMessage: true,
       sourceHash: expect.any(String),
@@ -714,4 +919,105 @@ describe('saveParsedSmsExpenses import visibility', () => {
     expect(createServerSupabaseClient).toHaveBeenCalledTimes(1)
     expect(loadMonthlyReminderEntriesForCycle).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps structured SMS balances and fees out of the selected transaction amount', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('Paid KES 500. Fee KES 20. Available balance KES 10,000')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows[0] : null).toEqual(expect.objectContaining({
+      amount: 500,
+      isImportedMessage: true,
+      parseStatus: 'clear',
+    }))
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('clear')
+    expect(createServerSupabaseClient).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces ambiguous structured SMS amount selection through the import action', async () => {
+    const { parseSmsImport } = await import('./actions')
+
+    const result = await parseSmsImport('Paid KES 500 and sent KES 700 to Shop. Balance KES 10,000')
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(result.ok ? result.data.rows[0] : null).toEqual(expect.objectContaining({
+      amount: 500,
+      parseStatus: 'ambiguous',
+      parseMessage: 'This message has multiple possible transaction amounts. Check this before saving.',
+    }))
+    expect(result.ok ? result.data.parseStatus : 'unexpected').toBe('ambiguous')
+  })
+
+  it('past-mode imports persist uncategorized rows as Uncategorized sentinels without crashing the canonical resolver', async () => {
+    const { saveParsedSmsExpenses } = await import('./actions')
+
+    const result = await saveParsedSmsExpenses(
+      [
+        // Uncategorized historical row: no categoryType, empty categoryKey.
+        {
+          id: 'past-uncat',
+          label: 'Cafe receipt',
+          categoryType: null,
+          categoryKey: '',
+          amount: 320,
+          date: '2026-04-12',
+          sourceHash: 'hash-uncat',
+          customCategoryId: null,
+          repeatsMonthly: false,
+          debtId: null,
+        } as any,
+        // Categorized historical row alongside: confirms canonical path still runs.
+        importRow({ id: 'past-cat', label: 'Naivas groceries', categoryKey: 'groceries', amount: 1500, date: '2026-04-15', sourceHash: 'hash-cat' }),
+      ],
+      { mode: 'past' }
+    )
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(db.rows.transactions).toHaveLength(2)
+    const persistedUncat = db.rows.transactions.find((txn: any) => txn.display_name === 'Cafe receipt')
+    expect(persistedUncat).toEqual(expect.objectContaining({
+      category_type: 'other',
+      category_key: 'uncategorized',
+      category_label: 'Uncategorized',
+      custom_category_id: null,
+      amount: 320,
+    }))
+    const persistedCat = db.rows.transactions.find((txn: any) => txn.display_name === 'Naivas groceries')
+    expect(persistedCat).toEqual(expect.objectContaining({
+      category_type: 'everyday',
+      category_key: 'groceries',
+      category_label: 'Groceries',
+      amount: 1500,
+    }))
+  })
+
+  it('current-mode imports still hard-block uncategorized rows with a row error instead of saving', async () => {
+    const { saveParsedSmsExpenses } = await import('./actions')
+
+    const result = await saveParsedSmsExpenses([
+      {
+        id: 'current-uncat',
+        label: 'Cafe receipt',
+        categoryType: null,
+        categoryKey: '',
+        amount: 320,
+        date: '2026-05-12',
+        sourceHash: 'hash-current-uncat',
+        customCategoryId: null,
+        repeatsMonthly: false,
+        debtId: null,
+      } as any,
+    ])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.blocked).toBe(true)
+    expect(result.data.saved).toBe(0)
+    expect(result.data.rowErrors['current-uncat']).toEqual(
+      expect.arrayContaining(['Category key is missing.'])
+    )
+    expect(db.rows.transactions).toHaveLength(0)
+  })
+
 })

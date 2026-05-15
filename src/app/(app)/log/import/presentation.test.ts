@@ -281,17 +281,25 @@ describe('sms import presentation helpers', () => {
   it('returns single unresolved queue guidance copy', () => {
     expect(getQueueGuidanceCopy(1)).toEqual({
       summary: null,
-      instruction: 'Tap the expense below to choose a category.',
+      instruction: '1 uncategorized',
     })
     expect(getQueueSaveHelperCopy(1)).toBe('Choose a category to continue.')
   })
 
   it('returns multi-entry queue guidance copy', () => {
     expect(getQueueGuidanceCopy(3)).toEqual({
-      summary: '3 expenses need categories',
-      instruction: 'Tap each expense to finish setup.',
+      summary: null,
+      instruction: '3 uncategorized',
     })
     expect(getQueueSaveHelperCopy(2)).toBe('Choose categories for 2 expenses to continue.')
+  })
+
+  it('softens save-helper copy in past mode so categorization is optional, not blocking', () => {
+    expect(getQueueSaveHelperCopy(1, { isPastMode: true })).toBe('You can categorize this one later.')
+    expect(getQueueSaveHelperCopy(3, { isPastMode: true })).toBe('You can categorize these later.')
+    expect(getQueueSaveHelperCopy(0, { isPastMode: true })).toBeNull()
+    // Current-mode strictness is unchanged.
+    expect(getQueueSaveHelperCopy(1, { isPastMode: false })).toBe('Choose a category to continue.')
   })
 
   it('returns actionable labels for unresolved and resolved rows', () => {
@@ -310,6 +318,23 @@ describe('sms import presentation helpers', () => {
         isBlocked: false,
       })
     ).toBe('Ready')
+
+    expect(
+      getReviewRowActionLabel({
+        needsCategory: false,
+        hasHardError: false,
+        isBlocked: false,
+        needsReview: true,
+      })
+    ).toBe('Edit details')
+
+    expect(
+      getReviewRowActionLabel({
+        needsCategory: false,
+        hasHardError: true,
+        isBlocked: false,
+      })
+    ).toBe('Edit details')
   })
 
   it('uses Save expense for one complete editable review row', () => {
