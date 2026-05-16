@@ -243,12 +243,24 @@ export async function loadMonthlyStorageSnapshotForCycle(
   userId: string,
   cycleId: string
 ): Promise<MonthlyStorageSnapshot> {
+  // Entries returned by loadMonthlyStorageEntriesForCycle are already
+  // normalized once. Partition them in a single pass instead of calling the
+  // three `readPlanned…`/`readMonthlyReminder…`/`sumPlanned…` helpers, each
+  // of which would re-normalize the same array. This was 4× normalization on
+  // every overview-secondary load.
   const entries = await loadMonthlyStorageEntriesForCycle(supabase, userId, cycleId)
-  return {
-    plannedEntries: readPlannedMonthlyEntries(entries),
-    reminderEntries: readMonthlyReminderEntries(entries),
-    plannedTotal: sumPlannedMonthlyAmounts(entries),
+  const plannedEntries: PlannedMonthlyEntry[] = []
+  const reminderEntries: MonthlyReminderEntry[] = []
+  let plannedTotal = 0
+  for (const entry of entries) {
+    if (entry.entry_type === 'monthly_reminder') {
+      reminderEntries.push(entry)
+    } else {
+      plannedEntries.push(entry)
+      plannedTotal += entry.monthly
+    }
   }
+  return { plannedEntries, reminderEntries, plannedTotal }
 }
 
 export async function loadPlannedMonthlyTotalForCycle(

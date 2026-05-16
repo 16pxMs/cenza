@@ -202,6 +202,38 @@ class InMemorySupabase {
   }
 
   upsertRows(table: TableName, rows: any[]) {
+    if (table === 'cycles') {
+      const upserted: any[] = []
+      for (const row of rows) {
+        const existing = this.rows.cycles.find((candidate) =>
+          candidate.user_id === row.user_id &&
+          candidate.start_date === row.start_date
+        )
+        if (existing) {
+          Object.assign(existing, row)
+          upserted.push(existing)
+        } else {
+          upserted.push(...this.insertRows(table, [row]))
+        }
+      }
+      return upserted
+    }
+    if (table === 'income_entries') {
+      const upserted: any[] = []
+      for (const row of rows) {
+        const existing = this.rows.income_entries.find((candidate) =>
+          candidate.user_id === row.user_id &&
+          candidate.cycle_id === row.cycle_id
+        )
+        if (existing) {
+          Object.assign(existing, row)
+          upserted.push(existing)
+        } else {
+          upserted.push(...this.insertRows(table, [row]))
+        }
+      }
+      return upserted
+    }
     if (table !== 'item_dictionary') return this.insertRows(table, rows)
     const upserted: any[] = []
     for (const row of rows) {
@@ -269,6 +301,102 @@ describe('saveParsedSmsExpenses import visibility', () => {
     loadMonthlyReminderEntriesForCycle.mockResolvedValue([])
     saveMonthlyReminderEntriesForCycle.mockResolvedValue(undefined)
     after.mockImplementation(() => undefined)
+  })
+
+  it('returns affected cycles after a past import save for historical income entry', async () => {
+    const { saveParsedSmsExpenses } = await import('./actions')
+
+    const result = await saveParsedSmsExpenses([
+      importRow({ id: 'feb-food', label: 'February food', amount: 1200, date: '2026-02-10' }),
+      importRow({ id: 'mar-rent', label: 'March rent', categoryType: 'fixed', categoryKey: 'rent', amount: 25000, date: '2026-03-02' }),
+    ], { mode: 'past' })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.affectedCycles?.map((cycle) => cycle.cycleId)).toEqual(['2026-02-01', '2026-03-01'])
+    expect(result.data.affectedCycles?.[0]).toEqual(expect.objectContaining({
+      label: 'February 2026',
+      hasExistingIncome: false,
+      existingIncome: null,
+    }))
+  })
+
+  it('saves historical income for selected cycle ids without touching profile settings', async () => {
+    db.rows.cycles.push(
+      { user_id: 'user-1', start_date: '2026-02-01', end_date: '2026-02-28', is_current: false },
+      { user_id: 'user-1', start_date: '2026-03-01', end_date: '2026-03-31', is_current: false }
+    )
+
+    const { saveHistoricalIncomeForCycles } = await import('./actions')
+    const result = await saveHistoricalIncomeForCycles([
+      { cycleId: '2026-02-01', amount: 50000 },
+      { cycleId: '2026-03-01', amount: 62000 },
+    ])
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }))
+    expect(db.rows.income_entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        user_id: 'user-1',
+        cycle_id: '2026-02-01',
+        salary: 50000,
+        extra_income: [],
+        total: 50000,
+        cycle_start_mode: 'full_month',
+        opening_balance: null,
+      }),
+      expect.objectContaining({
+        user_id: 'user-1',
+        cycle_id: '2026-03-01',
+        salary: 62000,
+        total: 62000,
+      }),
+    ]))
+    expect(revalidatePath).toHaveBeenCalledWith('/history')
+    expect(revalidatePath).toHaveBeenCalledWith('/app')
+    expect(revalidatePath).toHaveBeenCalledWith('/income')
+  })
+
+  it('skips blank historical income fields and preserves current received fields when replacing a cycle', async () => {
+    db.rows.cycles.push(
+      { user_id: 'user-1', start_date: '2026-02-01', end_date: '2026-02-28', is_current: false },
+      { user_id: 'user-1', start_date: '2026-03-01', end_date: '2026-03-31', is_current: false }
+    )
+    db.rows.income_entries.push({
+      user_id: 'user-1',
+      cycle_id: '2026-02-01',
+      salary: 40000,
+      extra_income: [],
+      total: 40000,
+      cycle_start_mode: 'full_month',
+      opening_balance: null,
+      received: 39000,
+      received_confirmed_at: '2026-02-02T09:00:00.000Z',
+    })
+
+    const { saveHistoricalIncomeForCycles } = await import('./actions')
+    const result = await saveHistoricalIncomeForCycles([
+      { cycleId: '2026-02-01', amount: 45000 },
+    ])
+
+    expect(result.ok).toBe(true)
+    expect(db.rows.income_entries.find((row) => row.cycle_id === '2026-02-01')).toEqual(expect.objectContaining({
+      salary: 45000,
+      total: 45000,
+      received: 39000,
+      received_confirmed_at: '2026-02-02T09:00:00.000Z',
+    }))
+    expect(db.rows.income_entries.find((row) => row.cycle_id === '2026-03-01')).toBeUndefined()
+  })
+
+  it('history recap loaders read historical income saved for the selected cycle', async () => {
+    db.rows.cycles.push({ user_id: 'user-1', start_date: '2026-02-01', end_date: '2026-02-28', is_current: false })
+
+    const { saveHistoricalIncomeForCycles } = await import('./actions')
+    const { loadHistoryPageData } = await import('@/lib/loaders/history')
+    await saveHistoricalIncomeForCycles([{ cycleId: '2026-02-01', amount: 50000 }])
+
+    const historyData = await loadHistoryPageData('user-1', profile as any, new Date('2026-02-10T00:00:00'), ['2026-02-01'])
+    expect(historyData.totalIncome).toBe(50000)
   })
 
   it('persists imported expenses directly to transactions and makes them visible to app loaders after reload', async () => {
@@ -611,6 +739,11 @@ describe('saveParsedSmsExpenses import visibility', () => {
       }),
     ])
     expect(result.ok ? result.data.csvMappingRequired : 'unexpected').toBeNull()
+    expect(result.ok ? result.data.csvProfile : null).toEqual(expect.objectContaining({
+      profile: 'simple_app_export',
+      confidence: 'high',
+      mappingRecommendation: 'skip_mapping',
+    }))
     expect(createServerSupabaseClient).not.toHaveBeenCalled()
   })
 
@@ -627,6 +760,11 @@ describe('saveParsedSmsExpenses import visibility', () => {
       headers: ['When', 'Thing', 'Cost'],
       missing: ['name'],
     })
+    expect(result.ok ? result.data.csvProfile : null).toEqual(expect.objectContaining({
+      profile: 'messy_unknown',
+      confidence: 'low',
+      mappingRecommendation: 'require_mapping',
+    }))
     expect(result.ok ? result.data.rows : ['unexpected']).toEqual([])
     expect(createServerSupabaseClient).not.toHaveBeenCalled()
   })

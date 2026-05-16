@@ -93,6 +93,70 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).not.toContain('showPastImportPrompt={savedCount === 1')
   })
 
+  it('shows a Track-it-monthly prompt on the success screen when a recurring candidate exists', () => {
+    // Copy and CTAs.
+    expect(successSource).toContain('This looks recurring.')
+    expect(successSource).toContain('Track monthly')
+    expect(successSource).toContain('Not now')
+    // Subline references the candidate label + amount template.
+    expect(successSource).toContain('keeps showing up around ${smartRecurringCandidate.amountLabel}. Track it monthly?')
+
+    // Prompt is gated on a candidate being present AND the user not yet
+    // having dismissed/confirmed it — no auto-creation of reminders.
+    expect(successSource).toContain('const showSmartRecurringCard =')
+    expect(successSource).toContain('!!smartRecurringCandidate && !smartRecurringPromptDismissed && !!onTrackRecurring')
+    expect(successSource).toContain('setSmartRecurringPromptDismissed(true)')
+
+    // Track action delegates to the caller; the component never creates a
+    // reminder on its own.
+    expect(successSource).toContain('await onTrackRecurring(smartRecurringCandidate)')
+  })
+
+  it('offers optional historical income entry only after past import saves', () => {
+    expect(successSource).toContain('Add income for these months?')
+    expect(successSource).toContain('If you know what you earned, add it so your history shows what was left.')
+    expect(successSource).toContain('historicalIncomePromptDismissed')
+    expect(importSource).toContain('loadHistoricalIncomeForCycles')
+    expect(importSource).toContain('saveHistoricalIncomeForCycles')
+    expect(importSource).toContain("showHistoricalIncomePrompt={isPastMode && savedAffectedCycles.length > 0}")
+    expect(importSource).toContain('This won’t change your usual income. Blank months will be skipped.')
+    expect(importSource).toContain('Existing income found. Editing this replaces income for this month only.')
+    expect(importSource).toContain("setSavedAffectedCycles(importMode === 'past' ? (data.affectedCycles ?? []) : [])")
+  })
+
+  it('classifies recoverable past-import rows separately from unreadable rows', () => {
+    expect(importSource).toContain("type ImportKind = 'expense' | 'income' | 'refund' | 'transfer' | 'debt_repayment' | 'unreadable'")
+    expect(importSource).toContain('function classifyImportKind')
+    expect(importSource).toContain('Looks like income')
+    expect(importSource).toContain('Looks like a refund')
+    expect(importSource).toContain('Looks like a transfer')
+    expect(importSource).toContain('Select which debt this payment is for.')
+    expect(importSource).toContain('We couldn’t read this entry.')
+    expect(importSource).toContain('Edit it to continue.')
+  })
+
+  it('lets recoverable rows be skipped or converted instead of showing a generic blocked-message error', () => {
+    expect(importSource).toContain("type RecoveryAction = 'skip' | 'income' | null")
+    expect(importSource).toContain('const markRowAsSkipped = (id: string) =>')
+    expect(importSource).toContain('const markRowAsIncome = (id: string) =>')
+    expect(importSource).toContain("recoveryAction: 'skip'")
+    expect(importSource).toContain("recoveryAction: 'income'")
+    expect(importSource).toContain('Review 1 item before saving')
+    expect(importSource).toContain('items need action before saving')
+    expect(importSource).toContain('Will be added as income.')
+    expect(importSource).toContain('This row will be skipped.')
+    expect(importSource).not.toContain('Remove blocked messages to continue')
+  })
+
+  it('saves valid expenses through the import path and recovered income through historical income only', () => {
+    expect(importSource).toContain('const expenseRowsToSave = rowsToSave.filter')
+    expect(importSource).toContain('const incomeRowsToSave = rowsToSave.filter')
+    expect(importSource).toContain("row.recoveryAction === 'income'")
+    expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })')
+    expect(importSource).toContain('saveHistoricalIncomeForCycles(')
+    expect(importSource).toContain("setSavedRowsSnapshot(rowsToSave.filter((row) => row.recoveryAction !== 'skip'))")
+  })
+
   it('redirects legacy manual entry URLs into SMS import', () => {
     expect(legacyNewSource).toContain('redirect(`/log/import?returnTo=${encodeURIComponent(returnTo)}`)')
     expect(legacyNewSource).not.toContain('NewExpenseClient')
@@ -408,17 +472,20 @@ describe('SMS import expense entry surface', () => {
     expect(guardWindow).toContain("pastInputMode === 'paste' ? (")
   })
 
-  it('keeps the review month picker gated on rows actually inheriting a date in CSV mode', () => {
+  it('hides the review month picker whenever every row already has an explicit date (paste OR csv)', () => {
     expect(importSource).toContain('data-section="past-import-month-prompt"')
     expect(importSource).toContain("const inheritedCount = rows.filter((row) => row.dateSource === 'default_month').length")
-    expect(importSource).toContain("if (pastInputMode === 'csv' && inheritedCount === 0) return null")
+    // The gate is now mode-agnostic — applies to paste and CSV alike.
+    expect(importSource).toContain('if (inheritedCount === 0) return null')
+    expect(importSource).not.toContain("if (pastInputMode === 'csv' && inheritedCount === 0) return null")
   })
 
-  it('drops the redundant "Importing for" headline above the month selector and uses a subtle inherited-rows caption instead', () => {
+  it('drops the redundant "Importing for" headline and uses scoped helper copy for undated rows', () => {
     expect(importSource).not.toContain('`Importing for ${defaultImportMonthLabel}`')
-    expect(importSource).toContain('`Expenses without dates will be added to ${defaultImportMonthLabel}`')
-    // Caption only renders when at least one row will inherit the selected month.
-    expect(importSource).toContain('const caption = inheritedCount > 0')
+    // Caption is unconditional inside the IIFE because the IIFE returns null
+    // when no rows inherited a date — see the inheritedCount gate above.
+    expect(importSource).toContain('const caption = `Rows without dates will be added to ${defaultImportMonthLabel}`')
+    expect(importSource).not.toContain('`Expenses without dates will be added to ${defaultImportMonthLabel}`')
   })
 
   it('preserves explicit CSV dates: updateDefaultImportMonth only rewrites rows whose dateSource is default_month', () => {
@@ -528,90 +595,217 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain(') : null}\n                              {rowActionLabel}')
   })
 
+  it('splits the review list into a Ready to import section and a Needs attention section', () => {
+    // Partition helper drives both sections from a single source of truth.
+    expect(importSource).toContain('function partitionImportRowsForReview(rows: EditableRow[])')
+    expect(importSource).toContain('const reviewPartition = useMemo(() => partitionImportRowsForReview(rows), [rows])')
+    expect(importSource).toContain('const { readyRows, attentionGroups, attentionRowCount } = reviewPartition')
+    // Section markers are addressable for downstream tests / styling.
+    expect(importSource).toContain('data-section="past-import-ready"')
+    expect(importSource).toContain('data-section="past-import-attention"')
+    // Section headers + count copy.
+    expect(importSource).toContain('Ready to import')
+    expect(importSource).toContain("`${readyRows.length} ${readyRows.length === 1 ? 'item' : 'items'} ready`")
+    expect(importSource).toContain('Needs attention')
+    expect(importSource).toContain("`${attentionRowCount} ${attentionRowCount === 1 ? 'item needs review' : 'items need review'}`")
+  })
+
+  it('groups Needs attention rows by importKind in a stable order with copy per group', () => {
+    expect(importSource).toContain("type AttentionGroupKey = 'income' | 'refund' | 'transfer' | 'needs_debt' | 'unreadable'")
+    expect(importSource).toContain("const ATTENTION_GROUP_ORDER: AttentionGroupKey[] = ['unreadable', 'income', 'refund', 'transfer', 'needs_debt']")
+    expect(importSource).toContain("title: 'Couldn’t read these entries'")
+    expect(importSource).toContain("title: 'Income detected'")
+    expect(importSource).toContain("helper: 'These look like money received, not expenses.'")
+    expect(importSource).toContain("title: 'Refunds detected'")
+    expect(importSource).toContain("helper: 'These may reduce spending or count as money received.'")
+    expect(importSource).toContain("title: 'Transfers detected'")
+    expect(importSource).toContain("helper: 'Transfers are usually not expenses.'")
+    expect(importSource).toContain("title: 'Needs debt selection'")
+    expect(importSource).toContain("helper: 'Select which debt each payment belongs to.'")
+  })
+
+  it('classifies rows into ready vs needs-attention by recovery state and importKind', () => {
+    const partitionIdx = importSource.indexOf('function partitionImportRowsForReview(rows: EditableRow[])')
+    expect(partitionIdx).toBeGreaterThan(-1)
+    const partitionEnd = importSource.indexOf('\n}\n', partitionIdx)
+    const partitionBlock = importSource.slice(partitionIdx, partitionEnd)
+    // Resolved recoveries (skipped or recovered-as-income) flow into ready.
+    expect(importSource).toContain('function isRowRecoveryResolved(')
+    expect(importSource).toContain("if (row.recoveryAction === 'skip' || row.recoveryAction === 'income') return true")
+    expect(importSource).toContain("if (row.importKind === 'debt_repayment' && row.debtId) return true")
+    // Group key resolver lines map importKind variants to attention groups.
+    expect(importSource).toContain('function getRowAttentionGroup(')
+    expect(importSource).toContain("if (row.importKind === 'income') return 'income'")
+    expect(importSource).toContain("if (row.importKind === 'refund') return 'refund'")
+    expect(importSource).toContain("if (row.importKind === 'transfer') return 'transfer'")
+    expect(importSource).toContain("if (row.importKind === 'debt_repayment' && !row.debtId) return 'needs_debt'")
+    expect(importSource).toContain("if (row.importKind === 'unreadable') return 'unreadable'")
+    expect(partitionBlock).toContain('readyRows.push(row)')
+    expect(partitionBlock).toContain('ATTENTION_GROUP_ORDER')
+  })
+
+  it('renders attention groups inline (no nested container) and separates them with a subtle divider', () => {
+    const attentionIdx = importSource.indexOf('data-section="past-import-attention"')
+    expect(attentionIdx).toBeGreaterThan(-1)
+    const groupIdx = importSource.indexOf('data-section="past-import-attention-group"', attentionIdx)
+    expect(groupIdx).toBeGreaterThan(-1)
+    const groupChunk = importSource.slice(groupIdx, groupIdx + 1400)
+    // No nested grey container — flat hierarchy inside the section.
+    expect(groupChunk).not.toContain("background: 'var(--grey-50)'")
+    expect(groupChunk).not.toContain("borderRadius: 'var(--radius-md)'")
+    // Group divider: top border on every group except the first.
+    expect(groupChunk).toContain('borderTop: groupIndex === 0\n                              ? \'none\'\n                              : `var(--border-width) solid var(--border-subtle)`')
+    // Group title is text-sm / semibold, red-dark only for the unreadable group.
+    expect(groupChunk).toContain("fontSize: 'var(--text-sm)'")
+    expect(groupChunk).toContain("fontWeight: 'var(--weight-semibold)'")
+    expect(groupChunk).toContain("color: group.key === 'unreadable' ? T.redDark : T.text1")
+    expect(groupChunk).toContain('data-group={group.key}')
+  })
+
+  it('suppresses the Ready/Add category status pill on rows that are in a recovery group', () => {
+    expect(importSource).toContain('const rowActionLabel = needsRecovery\n                    // Cards in recovery groups')
+    expect(importSource).toContain('? null\n                    : getReviewRowActionLabel({')
+  })
+
+  it('Needs attention section title uses a stronger scale than the group titles', () => {
+    const attentionIdx = importSource.indexOf('data-section="past-import-attention"')
+    expect(attentionIdx).toBeGreaterThan(-1)
+    const groupStart = importSource.indexOf('data-section="past-import-attention-group"', attentionIdx)
+    expect(groupStart).toBeGreaterThan(attentionIdx)
+    const sectionHeaderChunk = importSource.slice(attentionIdx, groupStart)
+    // Section header: text-base / weight-semibold.
+    expect(sectionHeaderChunk).toContain("fontSize: 'var(--text-base)'")
+    expect(sectionHeaderChunk).toContain("fontWeight: 'var(--weight-semibold)'")
+    // Subtitle below the section header: text-sm / text-3.
+    expect(sectionHeaderChunk).toContain("fontSize: 'var(--text-sm)'")
+    expect(sectionHeaderChunk).toContain('color: T.text3')
+    // Section sits clearly below the Ready section with breathing room.
+    expect(sectionHeaderChunk).toContain("marginTop: readyRows.length > 0 ? 'var(--space-xl)' : 0")
+  })
+
+  it('CTA Save count uses validSavableRows which already excludes skipped / income-converted / income-kind rows', () => {
+    expect(importSource).toContain("rows: rows.filter((row) => row.recoveryAction !== 'skip' && row.recoveryAction !== 'income' && row.importKind !== 'income' && row.importKind !== 'refund' && row.importKind !== 'transfer')")
+    expect(importSource).toContain('`Save ${validSavableRows.length}')
+  })
+
+  it('wires smart recurring detection onto the post-save success screen via the existing reminder action', () => {
+    // Detection helper is imported, not reimplemented.
+    expect(importSource).toContain("import { detectSmartRecurringCandidates } from '@/lib/monthly-reminders/detection'")
+    // Reuses the existing setMonthlyReminder server action — no duplicate
+    // reminder system.
+    expect(importSource).toContain("import { setMonthlyReminder } from '../actions'")
+
+    // The just-saved batch feeds the detector. Already-tracked reminder keys
+    // and locally confirmed keys are excluded so we never prompt twice.
+    expect(importSource).toContain('const smartRecurringExistingKeys = [...monthlyReminderKeys, ...smartRecurringTrackedKeys]')
+    expect(importSource).toContain('const smartRecurringTopCandidate = detectSmartRecurringCandidates(')
+    expect(importSource).toContain('smartRecurringTransactions,')
+    expect(importSource).toContain('smartRecurringExistingKeys,')
+    expect(importSource).toContain(')[0]')
+
+    // Rows already marked repeatsMonthly are filtered out before detection.
+    expect(importSource).toContain('.filter((row) => !row.repeatsMonthly && !row.blockedReason)')
+
+    // Confirming the prompt routes through setMonthlyReminder and tracks the key
+    // locally so the same prompt cannot fire twice in this session.
+    expect(importSource).toContain('const handleTrackRecurring = async (candidate: SmartRecurringPromptCandidate)')
+    expect(importSource).toContain('await setMonthlyReminder({')
+    expect(importSource).toContain('setSmartRecurringTrackedKeys((current) =>')
+
+    // ExpenseAddedSuccess receives the candidate + handler.
+    expect(importSource).toContain('smartRecurringCandidate={smartRecurringPromptCandidate}')
+    expect(importSource).toContain('onTrackRecurring={handleTrackRecurring}')
+    expect(importSource).toContain('smartRecurringLoading={smartRecurringSaving}')
+    expect(importSource).toContain('smartRecurringError={smartRecurringError}')
+  })
+
+  it('keeps month headers only on the Ready section — Needs attention groups by issue type instead', () => {
+    expect(importSource).toContain('readyRows.map((row, index) => {')
+    expect(importSource).toContain('const previousMonth = isPastMode && index > 0\n                          ? getPastMonthGroupLabel(readyRows[index - 1].date)\n                          : null')
+    expect(importSource).toContain('monthHeaderLabel: showHeader ? monthLabel : null,')
+    // Attention rows are rendered without a monthHeaderLabel — the per-group
+    // container is their organising principle. They receive a per-group
+    // selection config so checkboxes stay scoped.
+    expect(importSource).toContain('group.rows.map((row, rowIndex) => renderImportRow(row, rowIndex, {')
+    expect(importSource).toContain("(recoverySelectionByGroup[group.key] ?? []).includes(row.id),")
+    expect(importSource).toContain('onToggle: () => toggleRecoverySelection(group.key, row.id),')
+  })
+
   it('adds past-import bulk review tools without changing the save path', () => {
     expect(importSource).toContain('data-section="past-import-bulk-toolbar"')
-    expect(importSource).toContain('const [selectedPastRowIds, setSelectedPastRowIds] = useState<string[]>([])')
+    expect(importSource).toContain('const [readySelectionIds, setReadySelectionIds] = useState<string[]>([])')
     expect(importSource).toContain('const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false)')
-    expect(importSource).toContain('const togglePastRowSelection = (id: string) =>')
+    expect(importSource).toContain('const toggleReadySelection = (id: string) =>')
     expect(importSource).toContain('const applyCategoryToRows = (')
     expect(importSource).toContain('const applyBulkCategory = (option: ImportCategoryOption) =>')
     expect(importSource).toContain('Apply category')
     expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })')
   })
 
-  it('only reveals the bulk toolbar after the user selects at least one expense', () => {
-    // The misleading "Select rows" mode-switch is gone — selection happens via
-    // the per-row checkbox first.
+  it('replaces the global bulk toolbar with section-local toolbars scoped per section/group', () => {
+    // The legacy "Select rows" mode-switch is gone.
     expect(importSource).not.toContain('Select rows')
     expect(importSource).not.toContain("'Select rows'")
-    // Toolbar render condition requires at least one selection.
-    expect(importSource).toContain('isPastMode && rows.length > 0 && selectedPastRowIds.length > 0 ?')
+    // No global render condition outside the IIFE — the only toolbar render
+    // sits inside renderInlineSelectionBar which is called from Ready + each
+    // recovery group.
+    expect(importSource).not.toContain('isPastMode && rows.length > 0 && readySelectionIds.length > 0 ?')
+    expect(importSource).toContain('const renderInlineSelectionBar = (config: {')
+    expect(importSource).toContain('data-scope={config.scopeKey}')
   })
 
-  it('groups bulk actions inside a single subtle contextual container with calm copy', () => {
-    expect(importSource).toContain("`${selectedPastRowIds.length} selected`")
-    expect(importSource).toContain('Apply category')
-    expect(importSource).toContain('Clear')
-    // Remove selected is renamed to plain Remove.
-    expect(importSource).not.toContain('Remove selected')
-
-    const toolbarIdx = importSource.indexOf('data-section="past-import-bulk-toolbar"')
-    expect(toolbarIdx).toBeGreaterThan(-1)
-    const toolbarEnd = importSource.indexOf("display: 'flex', flexDirection: 'column'", toolbarIdx)
-    const toolbar = importSource.slice(toolbarIdx, toolbarEnd)
-
-    // Single subtle container — soft background, rounded, token-based padding.
-    expect(toolbar).toContain("background: 'var(--grey-50)'")
-    expect(toolbar).toContain("borderRadius: 'var(--radius-md)'")
-    expect(toolbar).toContain("padding: 'var(--space-sm) var(--space-md)'")
-
-    // No SecondaryBtn or page-CTA chrome — actions are tonal/ghost contextual buttons.
-    expect(toolbar).not.toContain('<SecondaryBtn')
-    expect(toolbar).not.toContain('<PrimaryBtn')
-
-    // Apply category uses tonal brand-chip tokens (not the hero filled brand-dark).
-    expect(toolbar).toContain('onClick={openBulkCategoryPicker}')
-    expect(toolbar).toContain("background: 'var(--chip-selected-bg)'")
-    expect(toolbar).toContain("color: 'var(--chip-selected-text)'")
-    expect(toolbar).not.toContain('background: T.brandDark')
-
-    // Remove is a ghost danger button — no outline, danger-semantic text color.
-    expect(toolbar).toContain('onClick={() => removeRowsById(selectedPastRowIds)}')
-    expect(toolbar).toContain('color: T.redDark')
-    expect(toolbar).toContain("background: 'transparent'")
-    expect(toolbar).not.toContain('${T.redBorder}')
+  it('renders one selection bar inside the Ready section, scoped to ready rows only', () => {
+    const renderReadyIdx = importSource.indexOf('const renderReadySection = () =>')
+    expect(renderReadyIdx).toBeGreaterThan(-1)
+    const renderAttentionIdx = importSource.indexOf('const renderAttentionSection = () =>', renderReadyIdx)
+    expect(renderAttentionIdx).toBeGreaterThan(renderReadyIdx)
+    const readyBlock = importSource.slice(renderReadyIdx, renderAttentionIdx)
+    expect(readyBlock).toContain("scopeKey: 'ready'")
+    expect(readyBlock).toContain('readySelectionIds.filter((id) => readyRowIds.includes(id))')
+    expect(readyBlock).toContain('onClear: () => setReadySelectionIds([])')
+    expect(readyBlock).toContain('onSelectAll: () => setReadySelectionIds(readyRowIds)')
+    // Ready actions: Apply category (primary) + Remove (destructive).
+    expect(readyBlock).toContain("{ label: 'Apply category', onClick: openBulkCategoryPicker, tone: 'primary' }")
+    expect(readyBlock).toContain("{ label: 'Remove', onClick: () => removeRowsById(scopedSelected), tone: 'destructive' }")
   })
 
-  it('places Select all and Clear in a separated utility row that visually recedes', () => {
-    const toolbarIdx = importSource.indexOf('data-section="past-import-bulk-toolbar"')
-    expect(toolbarIdx).toBeGreaterThan(-1)
-    const toolbarEnd = importSource.indexOf("display: 'flex', flexDirection: 'column'", toolbarIdx)
-    const toolbar = importSource.slice(toolbarIdx, toolbarEnd)
+  it('renders one selection bar per recovery group with group-specific bulk actions', () => {
+    // Per-group action handlers exist.
+    expect(importSource).toContain('const bulkMarkGroupAsIncome = (group: AttentionGroupKey)')
+    expect(importSource).toContain('const bulkMarkGroupAsSkipped = (group: AttentionGroupKey)')
+    expect(importSource).toContain('const bulkRemoveGroup = (group: AttentionGroupKey)')
+    expect(importSource).toContain('const bulkOpenFirstInGroup = (group: AttentionGroupKey)')
 
-    // Utility row uses a subtle border-top separator and tertiary text-xs styling.
-    expect(toolbar).toContain('borderTop: `var(--border-width) solid var(--border-subtle)`')
-    expect(toolbar).toContain("fontSize: 'var(--text-xs)'")
-    expect(toolbar).toContain('selectedPastRowIds.length < rows.length ? (')
-    expect(toolbar).toContain('setSelectedPastRowIds(rows.map((row) => row.id))')
-    expect(toolbar).toContain('onClick={() => setSelectedPastRowIds([])}')
+    // Action sets per group.
+    expect(importSource).toContain("group.key === 'income' || group.key === 'refund'")
+    expect(importSource).toContain("{ label: 'Add as income', onClick: () => bulkMarkGroupAsIncome(group.key), tone: 'primary' }")
+    expect(importSource).toContain("group.key === 'transfer'")
+    expect(importSource).toContain("{ label: 'Skip', onClick: () => bulkMarkGroupAsSkipped(group.key), tone: 'primary' }")
+    expect(importSource).toContain("group.key === 'unreadable'")
+    expect(importSource).toContain("{ label: 'Edit details', onClick: () => bulkOpenFirstInGroup(group.key), tone: 'primary' }")
+    expect(importSource).toContain("{ label: 'Remove', onClick: () => bulkRemoveGroup(group.key), tone: 'destructive' }")
+    // Needs debt selection group.
+    expect(importSource).toContain("{ label: 'Select debt', onClick: () => bulkOpenFirstInGroup(group.key), tone: 'primary' }")
+
+    // Each toolbar carries a scope-keyed marker for testing / styling.
+    expect(importSource).toContain("scopeKey: `attention-${group.key}`")
   })
 
-  it('offers an explicit secondary "Select all" affordance only when not every expense is already selected', () => {
-    const toolbarIdx = importSource.indexOf('data-section="past-import-bulk-toolbar"')
-    expect(toolbarIdx).toBeGreaterThan(-1)
-    // Slice from the toolbar marker to the next major section (review row list) —
-    // captures the whole bulk-toolbar tree including Select all + Clear actions.
-    const toolbarEnd = importSource.indexOf("display: 'flex', flexDirection: 'column'", toolbarIdx)
-    expect(toolbarEnd).toBeGreaterThan(toolbarIdx)
-    const toolbar = importSource.slice(toolbarIdx, toolbarEnd)
-    expect(toolbar).toContain('selectedPastRowIds.length < rows.length ? (')
-    expect(toolbar).toContain('Select all')
-    expect(toolbar).toContain('setSelectedPastRowIds(rows.map((row) => row.id))')
-    expect(toolbar).toContain('onClick={() => setSelectedPastRowIds([])}')
+  it('keeps per-group selection state isolated so cross-section selections never share a toolbar', () => {
+    expect(importSource).toContain('const [recoverySelectionByGroup, setRecoverySelectionByGroup] = useState<Record<AttentionGroupKey, string[]>>({')
+    expect(importSource).toContain('const toggleRecoverySelection = (group: AttentionGroupKey, id: string)')
+    expect(importSource).toContain('const clearRecoverySelection = (group: AttentionGroupKey)')
+    expect(importSource).toContain('const selectAllInRecoveryGroup = (group: AttentionGroupKey, ids: string[])')
+    // Row card receives selection via injected options — not the global state directly.
+    expect(importSource).toContain('options?.selection')
+    expect(importSource).toContain('options.selection.onToggle')
+    // Removing rows cleans every per-group selection list, not just ready.
+    expect(importSource).toContain('setRecoverySelectionByGroup((current) => {')
+    expect(importSource).toContain('next[key] = next[key].filter((id) => !idSet.has(id))')
   })
 
   it('keeps the shared category picker entry point for bulk apply', () => {
-    expect(importSource).toContain('onClick={openBulkCategoryPicker}')
+    expect(importSource).toContain('onClick: openBulkCategoryPicker')
     expect(importSource).toContain('Apply category')
     expect(importSource).toContain('openBulkCategoryPicker')
   })
@@ -619,7 +813,7 @@ describe('SMS import expense entry surface', () => {
   it('bulk category assignment reuses the shared category picker — no duplicate Sheet', () => {
     // The previous standalone bulk Sheet listed canonical options inline with
     // type tags (EVERYDAY/LIFESTYLE). Verify it is gone.
-    expect(importSource).not.toContain('Apply a category to {selectedPastRows.length} selected')
+    expect(importSource).not.toContain('Apply a category to {selectedReadyRows.length} selected')
     expect(importSource).not.toContain('canonical}-${option.type}-${option.key}')
     expect(importSource).not.toMatch(/textTransform:\s*'uppercase',\s*letterSpacing:\s*'0\.06em'/)
 
@@ -641,7 +835,7 @@ describe('SMS import expense entry surface', () => {
 
   it('bulk picker shows row-count headline and a compact preview of selected rows', () => {
     expect(importSource).toContain('data-section="bulk-category-preview"')
-    expect(importSource).toContain('Apply category to ${selectedPastRows.length} ${selectedPastRows.length === 1 ? \'expense\' : \'expenses\'}')
+    expect(importSource).toContain('Apply category to ${selectedReadyRows.length} ${selectedReadyRows.length === 1 ? \'expense\' : \'expenses\'}')
     expect(importSource).toContain('const previewLimit = 3')
     expect(importSource).toContain("`${labels.join(', ')} and ${remaining} more`")
   })
@@ -674,13 +868,34 @@ describe('SMS import expense entry surface', () => {
     expect(importSource).toContain('Upload CSV')
     expect(importSource).toContain('accept=".csv,text/csv"')
     expect(importSource).toContain('const handleCsvFileChange = async (file: File | null) =>')
-    expect(importSource).toContain('const handleCsvParse = async () =>')
+    expect(importSource).toContain('const handleCsvParse = async (options: { bypassProfileGate?: boolean } = {}) =>')
     expect(importSource).toContain("source: 'csv'")
     expect(importSource).toContain('applyParsedImportData(result.data)')
     expect(importSource).toContain('csvMappingRequired')
     expect(importSource).toContain('data-section="csv-column-mapping"')
+    expect(importSource).toContain('data-section="csv-mapping-confirmation"')
     expect(importSource).toContain('setRows(nextRows)')
     expect(importSource).toContain('saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })')
+  })
+
+  it('uses CSV profile recommendations for adaptive mapping preview flow', () => {
+    expect(importSource).toContain("profile?.mappingRecommendation === 'confirm_mapping'")
+    expect(importSource).toContain("profile?.mappingRecommendation === 'require_mapping'")
+    expect(importSource).toContain("setCsvMappingMode('confirm')")
+    expect(importSource).toContain("setCsvMappingMode('edit')")
+    expect(importSource).toContain('const handleCsvPrimaryAction = () =>')
+    expect(importSource).toContain('applyParsedImportData(csvPendingData)')
+    expect(importSource).toContain('Edit mappings')
+    expect(importSource).toContain('Check the detected columns before continuing.')
+  })
+
+  it('keeps full CSV mapping lightweight with required mapping gates and ignored balance fields', () => {
+    expect(importSource).toContain("type CsvMappingField = 'date' | 'name' | 'amount' | 'debit' | 'credit' | 'category' | 'note' | 'transactionType' | 'balance'")
+    expect(importSource).toContain("const csvHasRequiredMapping = csvMapping.name !== '' && (csvMapping.amount !== '' || csvMapping.debit !== '' || csvMapping.credit !== '')")
+    expect(importSource).toContain('Balance (ignored/reference only)')
+    expect(importSource).toContain('Ignore / reference only')
+    expect(importSource).toContain('usedCsvMappingValues.has(String(index))')
+    expect(importSource).toContain('Description and amount, debit, or credit are required.')
   })
 
   it('can apply a category to similar past entries and remove duplicate warning rows', () => {

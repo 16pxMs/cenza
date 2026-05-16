@@ -3,6 +3,8 @@ export const DUPLICATE_MESSAGE = 'This message was already added.'
 export interface SmsImportRowLike {
   id: string
   blockedReason?: string | null
+  importKind?: string | null
+  recoveryAction?: string | null
 }
 
 interface SmsImportReviewStateArgs<T extends SmsImportRowLike> {
@@ -12,7 +14,7 @@ interface SmsImportReviewStateArgs<T extends SmsImportRowLike> {
 }
 
 export function isBlockedIncomeRow(row: SmsImportRowLike) {
-  return Boolean(row.blockedReason)
+  return Boolean(row.blockedReason) && row.importKind !== 'income' && row.importKind !== 'refund'
 }
 
 export function isDuplicateBlockedRow(

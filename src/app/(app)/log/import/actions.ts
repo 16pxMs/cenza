@@ -14,7 +14,9 @@ import {
   parsePastExpenseLines,
   parseSimpleExpenseLines,
   getCsvMappingRequest,
+  analyzeCsvImportProfile,
   type CsvImportMapping,
+  type CsvImportProfileAnalysis,
   type ImportCategoryType,
   type ImportParseStatus,
   type ParsedSmsExpense,
@@ -425,6 +427,64 @@ export interface SaveParsedSmsExpensesResult {
   overridden: boolean
   rowErrors: Record<string, string[]>
   rowWarnings: Record<string, string[]>
+  affectedCycles?: HistoricalIncomeCycle[]
+}
+
+export interface HistoricalIncomeCycle {
+  cycleId: string
+  label: string
+  startDate: string
+  endDate: string
+  existingIncome: number | null
+  hasExistingIncome: boolean
+}
+
+export interface HistoricalIncomeSaveInput {
+  cycleId: string
+  amount: number
+}
+
+function formatHistoricalIncomeCycleLabel(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T12:00:00`)
+  const end = new Date(`${endDate}T12:00:00`)
+  if (Number.isNaN(start.getTime())) return startDate
+  if (Number.isNaN(end.getTime())) {
+    return start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
+
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
+
+  const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${startLabel} – ${endLabel}`
+}
+
+function deriveAffectedCycles(
+  profile: { pay_schedule_type: 'monthly' | 'twice_monthly' | null; pay_schedule_days: number[] | null },
+  rows: Array<{ cycleId: string; entryDate: Date }>
+): HistoricalIncomeCycle[] {
+  const cycles = new Map<string, HistoricalIncomeCycle>()
+  const schedule = profileToPaySchedule(profile)
+
+  for (const row of rows) {
+    if (cycles.has(row.cycleId)) continue
+    const localDay = new Date(row.entryDate.getFullYear(), row.entryDate.getMonth(), row.entryDate.getDate())
+    const cycle = getCycleByDate(localDay, schedule)
+    const startDate = toLocalDateStr(cycle.startDate)
+    const endDate = toLocalDateStr(cycle.endDate)
+    cycles.set(row.cycleId, {
+      cycleId: row.cycleId,
+      label: formatHistoricalIncomeCycleLabel(startDate, endDate),
+      startDate,
+      endDate,
+      existingIncome: null,
+      hasExistingIncome: false,
+    })
+  }
+
+  return Array.from(cycles.values()).sort((a, b) => a.cycleId.localeCompare(b.cycleId))
 }
 
 export interface ParseSmsImportData {
@@ -438,9 +498,195 @@ export interface ParseSmsImportData {
     headers: string[]
     missing: Array<'name' | 'amount'>
   } | null
+  csvProfile?: CsvImportProfileAnalysis | null
   // True when rows came from the plain-language fallback parser. Used only
   // to surface a short clarifier in the review UI; no business-logic impact.
   usedFallback: boolean
+}
+
+function deriveHistoricalIncomeAmount(row: {
+  salary?: number | string | null
+  extra_income?: Array<{ amount?: number | string | null }> | null
+  total?: number | string | null
+  cycle_start_mode?: 'full_month' | 'mid_month' | null
+  opening_balance?: number | string | null
+  received?: number | string | null
+}): number | null {
+  const cycleStartMode = row.cycle_start_mode === 'mid_month' ? 'mid_month' : 'full_month'
+  const salary = Number(row.salary ?? 0)
+  const openingBalance = Number(row.opening_balance ?? 0)
+  const extras = Array.isArray(row.extra_income) ? row.extra_income : []
+  const extrasTotal = extras.reduce((sum, item) => sum + Number(item?.amount ?? 0), 0)
+  const derived = cycleStartMode === 'mid_month' ? openingBalance : salary + extrasTotal
+  if (Number.isFinite(derived) && derived > 0) return derived
+
+  const total = Number(row.total ?? 0)
+  if (Number.isFinite(total) && total > 0) return total
+
+  const received = Number(row.received ?? 0)
+  return Number.isFinite(received) && received > 0 ? received : null
+}
+
+export async function loadHistoricalIncomeForCycles(
+  cycleIds: string[]
+): Promise<ActionResult<HistoricalIncomeCycle[]>> {
+  return runAction<HistoricalIncomeCycle[]>(async () => {
+    const { user } = await getAppSession()
+    if (!user) return unauthorized()
+
+    const normalizedCycleIds = Array.from(new Set(
+      cycleIds
+        .map((cycleId) => cycleId.trim())
+        .filter((cycleId) => /^\d{4}-\d{2}-\d{2}$/.test(cycleId))
+    ))
+    if (normalizedCycleIds.length === 0) return ok([])
+
+    const supabase = await createServerSupabaseClient()
+    const [{ data: cycleRows, error: cycleError }, { data: incomeRows, error: incomeError }] = await Promise.all([
+      (supabase.from('cycles') as any)
+        .select('start_date,end_date')
+        .eq('user_id', user.id)
+        .in('start_date', normalizedCycleIds),
+      (supabase.from('income_entries') as any)
+        .select('cycle_id,salary,extra_income,total,cycle_start_mode,opening_balance,received,received_confirmed_at')
+        .eq('user_id', user.id)
+        .in('cycle_id', normalizedCycleIds),
+    ])
+
+    if (cycleError) throw new Error(`Failed to load historical cycles: ${cycleError.message}`)
+    if (incomeError) throw new Error(`Failed to load historical income: ${incomeError.message}`)
+
+    const cycleById = new Map<string, { start_date: string; end_date: string }>()
+    for (const row of cycleRows ?? []) {
+      if (typeof row?.start_date !== 'string' || typeof row?.end_date !== 'string') continue
+      cycleById.set(row.start_date, { start_date: row.start_date, end_date: row.end_date })
+    }
+
+    const incomeByCycle = new Map<string, any>()
+    for (const row of incomeRows ?? []) {
+      if (typeof row?.cycle_id === 'string') incomeByCycle.set(row.cycle_id, row)
+    }
+
+    return ok(normalizedCycleIds
+      .filter((cycleId) => cycleById.has(cycleId))
+      .map((cycleId) => {
+        const cycle = cycleById.get(cycleId)!
+        const income = incomeByCycle.get(cycleId) ?? null
+        const existingIncome = income ? deriveHistoricalIncomeAmount(income) : null
+        return {
+          cycleId,
+          label: formatHistoricalIncomeCycleLabel(cycle.start_date, cycle.end_date),
+          startDate: cycle.start_date,
+          endDate: cycle.end_date,
+          existingIncome,
+          hasExistingIncome: existingIncome != null && existingIncome > 0,
+        }
+      })
+      .sort((a, b) => a.cycleId.localeCompare(b.cycleId)))
+  })
+}
+
+export async function saveHistoricalIncomeForCycles(
+  entries: HistoricalIncomeSaveInput[]
+): Promise<ActionResult<{ saved: number }>> {
+  return runAction<{ saved: number }>(async () => {
+    const { user, profile } = await getAppSession()
+    if (!user || !profile) return unauthorized()
+
+    const normalized = entries
+      .map((entry) => ({
+        cycleId: entry.cycleId.trim(),
+        amount: Number(entry.amount),
+      }))
+      .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry.cycleId))
+
+    for (const entry of normalized) {
+      if (!Number.isFinite(entry.amount) || entry.amount <= 0) {
+        throw new Error('Historical income must be greater than zero.')
+      }
+    }
+
+    if (normalized.length === 0) return ok({ saved: 0 })
+
+    const supabase = await createServerSupabaseClient()
+    const cycleIds = Array.from(new Set(normalized.map((entry) => entry.cycleId)))
+    const schedule = profileToPaySchedule(profile as any)
+    const requestedToActualCycleId = new Map<string, string>()
+    const cycleRowsToEnsure = cycleIds.map((cycleId) => {
+      const date = new Date(`${cycleId}T12:00:00`)
+      const cycle = getCycleByDate(date, schedule)
+      const startDate = toLocalDateStr(cycle.startDate)
+      requestedToActualCycleId.set(cycleId, startDate)
+      return {
+        user_id: user.id,
+        start_date: startDate,
+        end_date: toLocalDateStr(cycle.endDate),
+        is_current: false,
+      }
+    })
+    if (cycleRowsToEnsure.length > 0) {
+      const { error: ensureCycleError } = await (supabase.from('cycles') as any)
+        .upsert(cycleRowsToEnsure, { onConflict: 'user_id,start_date' })
+      if (ensureCycleError) throw new Error(`Failed to ensure historical cycles: ${ensureCycleError.message}`)
+    }
+    const [{ data: cycleRows, error: cycleError }, { data: existingRows, error: existingError }] = await Promise.all([
+      (supabase.from('cycles') as any)
+        .select('start_date')
+        .eq('user_id', user.id)
+        .in('start_date', Array.from(new Set(requestedToActualCycleId.values()))),
+      (supabase.from('income_entries') as any)
+        .select('cycle_id,received,received_confirmed_at')
+        .eq('user_id', user.id)
+        .in('cycle_id', Array.from(new Set(requestedToActualCycleId.values()))),
+    ])
+
+    if (cycleError) throw new Error(`Failed to validate historical cycles: ${cycleError.message}`)
+    if (existingError) throw new Error(`Failed to read existing historical income: ${existingError.message}`)
+
+    const allowedCycleIds = new Set((cycleRows ?? []).map((row: any) => String(row.start_date ?? '')).filter(Boolean))
+    const existingByCycle = new Map<string, any>()
+    for (const row of existingRows ?? []) {
+      if (typeof row?.cycle_id === 'string') existingByCycle.set(row.cycle_id, row)
+    }
+
+    const upserts = normalized
+      .filter((entry) => allowedCycleIds.has(requestedToActualCycleId.get(entry.cycleId) ?? entry.cycleId))
+      .map((entry) => {
+        const actualCycleId = requestedToActualCycleId.get(entry.cycleId) ?? entry.cycleId
+        const existing = existingByCycle.get(actualCycleId)
+        const preservedReceivedFields =
+          existing?.received != null || existing?.received_confirmed_at != null
+            ? {
+                received: existing.received ?? null,
+                received_confirmed_at: existing.received_confirmed_at ?? null,
+              }
+            : {}
+
+        return {
+          user_id: user.id,
+          cycle_id: actualCycleId,
+          salary: entry.amount,
+          extra_income: [],
+          total: entry.amount,
+          cycle_start_mode: 'full_month',
+          opening_balance: null,
+          ...preservedReceivedFields,
+        }
+      })
+
+    if (upserts.length === 0) return ok({ saved: 0 })
+
+    const { error } = await (supabase.from('income_entries') as any)
+      .upsert(upserts, { onConflict: 'user_id,cycle_id' })
+
+    if (error) throw new Error(`Failed to save historical income: ${error.message}`)
+
+    revalidatePath('/history')
+    revalidatePath('/app')
+    revalidatePath('/income')
+
+    return ok({ saved: upserts.length })
+  })
 }
 
 function deriveParseStatus(input: {
@@ -537,6 +783,7 @@ export async function parseSmsImport(
         hasLowConfidence: false,
         parseStatus: 'failed' as const,
         monthlyReminderKeys: [],
+        csvProfile: null,
         usedFallback: false,
       })
       logPerfSpan(flow, 'total', startedAt, {
@@ -553,6 +800,9 @@ export async function parseSmsImport(
       const csvMappingRequired = source === 'csv' && !options.csvMapping
         ? getCsvMappingRequest(input)
         : null
+      const csvProfile = source === 'csv'
+        ? analyzeCsvImportProfile(input, options.csvMapping)
+        : null
       if (csvMappingRequired) {
         const response = ok({
           rows: [],
@@ -562,6 +812,7 @@ export async function parseSmsImport(
           parseStatus: 'invalid' as const,
           monthlyReminderKeys: [],
           csvMappingRequired,
+          csvProfile,
           usedFallback: false,
         })
         logPerfSpan(flow, 'csv-mapping-detection', pastParserStartedAt, {
@@ -605,6 +856,7 @@ export async function parseSmsImport(
         parseStatus: deriveParseStatus({ rows: pastRows, scanned: lineCount }),
         monthlyReminderKeys: [],
         csvMappingRequired: null,
+        csvProfile,
         usedFallback: false,
       })
       logPerfSpan(flow, 'response-shaping', responseStartedAt, {
@@ -647,6 +899,7 @@ export async function parseSmsImport(
         hasLowConfidence: computeHasLowConfidence(simpleRows),
         parseStatus: deriveParseStatus({ rows: simpleRows, scanned: lineCount }),
         monthlyReminderKeys: [],
+        csvProfile: null,
         usedFallback: true,
       })
       logPerfSpan(flow, 'response-shaping', responseStartedAt, {
@@ -781,6 +1034,7 @@ export async function parseSmsImport(
             skippedCredits: parsed.skippedCredits,
           }),
           monthlyReminderKeys,
+          csvProfile: null,
           usedFallback: true,
         })
         logPerfSpan(flow, 'response-shaping', responseStartedAt, {
@@ -807,6 +1061,7 @@ export async function parseSmsImport(
         skippedCredits: parsed.skippedCredits,
       }),
       monthlyReminderKeys,
+      csvProfile: null,
       usedFallback: false,
     })
     logPerfSpan(flow, 'response-shaping', responseStartedAt, {
@@ -1365,6 +1620,7 @@ export async function saveParsedSmsExpenses(
     overridden,
     rowErrors: {},
     rowWarnings: {},
+    affectedCycles: deriveAffectedCycles(profile as any, rowMeta),
   })
   })
 }

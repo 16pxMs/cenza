@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { BottomNav } from '@/components/layout/BottomNav/BottomNav'
@@ -47,16 +47,20 @@ export default function AppPageClient({ overview, overviewProfileSnapshot }: App
     overviewProfileSnapshot,
   ])
 
-  const activeDebts = (() => {
+  // Reconcile critical + secondary debt rows once per change. Without
+  // memoization the Map dedup + reduce ran on every render of AppPageClient
+  // (which re-renders on every state tick, e.g. opening the received-income
+  // sheet) and re-walked the debt list each time.
+  const activeDebts = useMemo(() => {
     const byId = new Map(overview.activeDebts.map((debt) => [debt.id, debt]))
     for (const debt of secondaryOverview?.activeDebts ?? []) {
       byId.set(debt.id, debt)
     }
     return [...byId.values()]
-  })()
-  const debtTotal = activeDebts.reduce(
-    (sum, debt) => sum + Number(debt.current_balance ?? 0),
-    0
+  }, [overview.activeDebts, secondaryOverview?.activeDebts])
+  const debtTotal = useMemo(
+    () => activeDebts.reduce((sum, debt) => sum + Number(debt.current_balance ?? 0), 0),
+    [activeDebts]
   )
 
   const screen = (

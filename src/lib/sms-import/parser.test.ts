@@ -7,6 +7,7 @@ import {
   parseSimpleExpenseLines,
   parseSmsBlob,
   getCsvMappingRequest,
+  analyzeCsvImportProfile,
 } from './parser'
 
 afterEach(() => {
@@ -740,6 +741,102 @@ describe('sms import parser', () => {
     expect(getCsvMappingRequest(['When,Thing,Cost', '2026-01-05,Uber,1200'].join('\n'))).toEqual({
       headers: ['When', 'Thing', 'Cost'],
       missing: ['name'],
+    })
+  })
+
+  it('profiles simple app exports as high confidence and safe to skip mapping', () => {
+    expect(
+      analyzeCsvImportProfile(['Date,Merchant,Amount', '2026-01-05,Uber,1200'].join('\n'))
+    ).toMatchObject({
+      profile: 'simple_app_export',
+      confidence: 'high',
+      mappingRecommendation: 'skip_mapping',
+      riskFlags: {
+        hasBalanceColumn: false,
+        hasDebitCreditSplit: false,
+        hasTypeColumn: false,
+        hasMultipleAmountColumns: false,
+      },
+    })
+  })
+
+  it('profiles clear debit-credit bank exports as medium confidence confirm-mapping', () => {
+    expect(
+      analyzeCsvImportProfile(['Date,Description,Debit,Credit,Balance', '2026-01-05,Uber,500,,12000'].join('\n'))
+    ).toMatchObject({
+      profile: 'debit_credit_bank',
+      confidence: 'medium',
+      mappingRecommendation: 'confirm_mapping',
+      riskFlags: {
+        hasBalanceColumn: true,
+        hasDebitCreditSplit: true,
+      },
+    })
+  })
+
+  it('profiles amount-and-type bank exports as low confidence require-mapping', () => {
+    expect(
+      analyzeCsvImportProfile(['Date,Description,Amount,Type,Balance', '2026-01-05,Uber,500,DR,12000'].join('\n'))
+    ).toMatchObject({
+      profile: 'type_coded_bank',
+      confidence: 'low',
+      mappingRecommendation: 'require_mapping',
+      riskFlags: {
+        hasBalanceColumn: true,
+        hasTypeColumn: true,
+      },
+    })
+  })
+
+  it('profiles mobile-money paid-in/withdrawn/balance exports as review-heavy', () => {
+    expect(
+      analyzeCsvImportProfile(['Completion Time,Details,Paid In,Withdrawn,Balance', '2026-01-05 10:30,Pay bill,,1200,9000'].join('\n'))
+    ).toMatchObject({
+      profile: 'mobile_money',
+      confidence: 'low',
+      mappingRecommendation: 'require_mapping',
+      riskFlags: {
+        hasBalanceColumn: true,
+        hasDebitCreditSplit: false,
+      },
+    })
+  })
+
+  it('profiles name-and-amount sheets with fallback month needs as medium confirm-mapping', () => {
+    expect(
+      analyzeCsvImportProfile(['Name,Amount', 'Uber,500'].join('\n'))
+    ).toMatchObject({
+      profile: 'manual_sheet',
+      confidence: 'medium',
+      mappingRecommendation: 'confirm_mapping',
+      riskFlags: {
+        hasMissingDates: true,
+      },
+    })
+  })
+
+  it('profiles unknown headers as low confidence require-mapping', () => {
+    expect(
+      analyzeCsvImportProfile(['When,Thing,Cost', '2026-01-05,Uber,1200'].join('\n'))
+    ).toMatchObject({
+      profile: 'messy_unknown',
+      confidence: 'low',
+      mappingRecommendation: 'require_mapping',
+      riskFlags: {
+        hasUnknownHeaders: true,
+      },
+    })
+  })
+
+  it('profiles exports with competing amount columns as low confidence require-mapping', () => {
+    expect(
+      analyzeCsvImportProfile(['Date,Description,Amount,Debit,Balance', '2026-01-05,Uber,500,500,12000'].join('\n'))
+    ).toMatchObject({
+      confidence: 'low',
+      mappingRecommendation: 'require_mapping',
+      riskFlags: {
+        hasMultipleAmountColumns: true,
+      },
     })
   })
 })

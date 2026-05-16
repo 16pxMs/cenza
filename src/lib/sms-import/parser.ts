@@ -5,13 +5,45 @@ export type ImportCategoryType = Extract<CategoryType, 'everyday' | 'fixed' | 'd
 export type ImportSourceType = 'sms' | 'simple_text' | 'past_text' | 'pasted_table' | 'csv'
 export type ImportDateSource = 'explicit' | 'default_month'
 export type ImportParseStatus = 'clear' | 'partial' | 'ambiguous' | 'failed' | 'invalid'
-export type CsvImportField = 'date' | 'name' | 'amount' | 'category' | 'note'
+export type CsvImportField = 'date' | 'name' | 'amount' | 'debit' | 'credit' | 'category' | 'note' | 'transactionType' | 'balance'
+export type CsvImportProfile =
+  | 'simple_app_export'
+  | 'manual_sheet'
+  | 'debit_credit_bank'
+  | 'signed_amount_bank'
+  | 'type_coded_bank'
+  | 'mobile_money'
+  | 'balance_heavy'
+  | 'messy_unknown'
+export type CsvImportConfidence = 'high' | 'medium' | 'low'
+export type CsvMappingRecommendation = 'skip_mapping' | 'confirm_mapping' | 'require_mapping'
 
 export type CsvImportMapping = Partial<Record<CsvImportField, number>>
 
 export interface CsvMappingRequest {
   headers: string[]
   missing: Array<'name' | 'amount'>
+}
+
+export interface CsvImportRiskFlags {
+  hasBalanceColumn: boolean
+  hasDebitCreditSplit: boolean
+  hasTypeColumn: boolean
+  hasMultipleAmountColumns: boolean
+  hasMissingDates: boolean
+  hasAmbiguousDateFormat: boolean
+  hasCreditRows: boolean
+  hasRefundRows: boolean
+  hasTransferRows: boolean
+  hasUnknownHeaders: boolean
+  hasUnknownCategories: boolean
+}
+
+export interface CsvImportProfileAnalysis {
+  profile: CsvImportProfile
+  confidence: CsvImportConfidence
+  riskFlags: CsvImportRiskFlags
+  mappingRecommendation: CsvMappingRecommendation
 }
 
 export interface ImportDictionaryEntry {
@@ -320,6 +352,9 @@ const CSV_CREDIT_HEADERS = ['credit', 'deposit', 'income', 'incoming', 'refund']
 const CSV_AMOUNT_HEADERS = ['amount', 'value', 'total', 'cost', 'price', ...CSV_DEBIT_HEADERS, ...CSV_CREDIT_HEADERS]
 const CSV_CATEGORY_HEADERS = ['category', 'type', 'bucket']
 const CSV_NOTE_HEADERS = ['note', 'memo']
+const CSV_BALANCE_HEADERS = ['balance', 'newbalance', 'availablebalance', 'avlbal', 'closingbalance', 'remainingbalance', 'runningbalance']
+const CSV_TYPE_HEADERS = ['transactiontype', 'type', 'drcr', 'debitcredit', 'indicator', 'direction']
+const CSV_MOBILE_MONEY_HEADERS = ['completiontime', 'paidin', 'withdrawn', 'moneyin', 'moneyout', 'receiptno', 'receipt', 'details']
 const CSV_REVIEW_MESSAGE = 'This may be a refund or transfer. Check this entry before saving.'
 const PAST_SIMPLE_SPLIT_BLOCKERS = [
   /\bconfirmed\b/i,
@@ -366,13 +401,175 @@ function looksLikeCsvHeader(columns: string[]) {
   return normalized.some((value) => knownHeaders.includes(value))
 }
 
+function isKnownCsvHeader(value: string) {
+  return [
+    ...CSV_DATE_HEADERS,
+    ...CSV_NAME_HEADERS,
+    ...CSV_AMOUNT_HEADERS,
+    ...CSV_CATEGORY_HEADERS,
+    ...CSV_NOTE_HEADERS,
+    ...CSV_BALANCE_HEADERS,
+    ...CSV_TYPE_HEADERS,
+    ...CSV_MOBILE_MONEY_HEADERS,
+  ].includes(normalizeHeader(value))
+}
+
+function hasAmbiguousDateCell(value: string) {
+  const trimmed = value.trim()
+  const match = trimmed.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/)
+  if (!match) return false
+  const first = Number(match[1])
+  const second = Number(match[2])
+  return first >= 1 && first <= 12 && second >= 1 && second <= 12
+}
+
+export function analyzeCsvImportProfile(rawInput: string, mapping?: CsvImportMapping | null): CsvImportProfileAnalysis {
+  const records = parseCsvRecords(rawInput)
+  const firstRecord = records[0] ?? []
+  const hasHeader = looksLikeCsvHeader(firstRecord) || looksLikeCsvHeaderFallback(firstRecord)
+  const headers = hasHeader ? firstRecord : []
+  const normalizedHeaders = headers.map(normalizeHeader)
+  const detectedMapping = mapping ?? (hasHeader ? detectCsvHeaderMapping(headers) : {})
+  const dataRecords = hasHeader ? records.slice(1) : records
+
+  const debitIndex = headerIndex(headers, CSV_DEBIT_HEADERS)
+  const creditIndex = headerIndex(headers, CSV_CREDIT_HEADERS)
+  const balanceIndexes = normalizedHeaders
+    .map((header, index) => CSV_BALANCE_HEADERS.includes(header) ? index : -1)
+    .filter((index) => index >= 0)
+  const typeIndex = headerIndex(headers, CSV_TYPE_HEADERS)
+  const mobileHeaderCount = normalizedHeaders.filter((header) => CSV_MOBILE_MONEY_HEADERS.includes(header)).length
+  const amountHeaderIndexes = normalizedHeaders
+    .map((header, index) => CSV_AMOUNT_HEADERS.includes(header) && !CSV_BALANCE_HEADERS.includes(header) ? index : -1)
+    .filter((index) => index >= 0)
+  const hasDebitCreditSplit = debitIndex >= 0 && creditIndex >= 0
+  const hasAmountAndType = detectedMapping.amount != null && typeIndex >= 0
+  const hasMultipleAmountColumns = amountHeaderIndexes.length > (hasDebitCreditSplit && amountHeaderIndexes.length === 2 ? 2 : 1)
+  const hasBalanceColumn = balanceIndexes.length > 0
+  const hasTypeColumn = typeIndex >= 0
+
+  let hasMissingDates = detectedMapping.date == null
+  let hasAmbiguousDateFormat = false
+  let hasCreditRows = false
+  let hasRefundRows = false
+  let hasTransferRows = false
+  let hasUnknownCategories = false
+
+  for (const columns of dataRecords) {
+    const rawLine = columns.join(' ')
+    if (/\b(?:refund|reversal|reversed|cashback|reimbursement|chargeback)\b/i.test(rawLine)) hasRefundRows = true
+    if (/\b(?:transfer|internal\s+transfer|moved\s+to\s+savings|account\s+transfer)\b/i.test(rawLine)) hasTransferRows = true
+
+    if (creditIndex >= 0 && parseSignedAmountCell(columns[creditIndex] ?? '')?.amount) hasCreditRows = true
+    if (typeIndex >= 0 && /\b(?:cr|credit|deposit|income|incoming|refund)\b/i.test(columns[typeIndex] ?? '')) hasCreditRows = true
+
+    if (detectedMapping.date != null) {
+      const dateCell = columns[detectedMapping.date] ?? ''
+      if (!dateCell.trim() || !findDateInText(dateCell)) hasMissingDates = true
+      if (hasAmbiguousDateCell(dateCell)) hasAmbiguousDateFormat = true
+    }
+
+    if (detectedMapping.category != null) {
+      const categoryCell = columns[detectedMapping.category] ?? ''
+      if (categoryCell.trim() && !findKnownCategory(categoryCell)) hasUnknownCategories = true
+    }
+  }
+
+  const hasUnknownHeaders = headers.length > 0
+    ? normalizedHeaders.some((header) => header && !isKnownCsvHeader(header))
+    : true
+
+  const riskFlags: CsvImportRiskFlags = {
+    hasBalanceColumn,
+    hasDebitCreditSplit,
+    hasTypeColumn,
+    hasMultipleAmountColumns,
+    hasMissingDates,
+    hasAmbiguousDateFormat,
+    hasCreditRows,
+    hasRefundRows,
+    hasTransferRows,
+    hasUnknownHeaders,
+    hasUnknownCategories,
+  }
+
+  const hasRequiredMapping = detectedMapping.name != null && (
+    detectedMapping.amount != null ||
+    debitIndex >= 0 ||
+    creditIndex >= 0
+  )
+  const nameHeader = detectedMapping.name != null
+    ? normalizedHeaders[detectedMapping.name] ?? ''
+    : ''
+
+  let profile: CsvImportProfile = 'messy_unknown'
+  if (mobileHeaderCount >= 2 && hasBalanceColumn) profile = 'mobile_money'
+  else if (hasAmountAndType && hasBalanceColumn) profile = 'type_coded_bank'
+  else if (hasBalanceColumn && amountHeaderIndexes.length >= 2 && !hasDebitCreditSplit) profile = 'balance_heavy'
+  else if (hasDebitCreditSplit) profile = 'debit_credit_bank'
+  else if (hasBalanceColumn && detectedMapping.amount != null) profile = 'signed_amount_bank'
+  else if (
+    detectedMapping.date != null &&
+    detectedMapping.name != null &&
+    detectedMapping.amount != null &&
+    (detectedMapping.category != null || ['merchant', 'payee', 'description', 'details'].includes(nameHeader))
+  ) profile = 'simple_app_export'
+  else if (detectedMapping.name != null && detectedMapping.amount != null) profile = 'manual_sheet'
+
+  const highRisk = profile === 'type_coded_bank' ||
+    profile === 'mobile_money' ||
+    profile === 'balance_heavy' ||
+    hasMultipleAmountColumns ||
+    !hasRequiredMapping
+  const mediumRisk = hasDebitCreditSplit ||
+    hasMissingDates ||
+    hasAmbiguousDateFormat ||
+    hasCreditRows ||
+    hasRefundRows ||
+    hasTransferRows ||
+    hasUnknownCategories ||
+    hasUnknownHeaders
+
+  const confidence: CsvImportConfidence = highRisk ? 'low' : mediumRisk ? 'medium' : 'high'
+  const mappingRecommendation: CsvMappingRecommendation = confidence === 'high'
+    ? 'skip_mapping'
+    : confidence === 'medium'
+      ? 'confirm_mapping'
+      : 'require_mapping'
+
+  return {
+    profile,
+    confidence,
+    riskFlags,
+    mappingRecommendation,
+  }
+}
+
+function looksLikeCsvHeaderFallback(columns: string[]) {
+  if (columns.length < 2) return false
+  const normalized = columns.map(normalizeHeader)
+  const hasKnownHeader = normalized.some((value) => [
+    ...CSV_DATE_HEADERS,
+    ...CSV_NAME_HEADERS,
+    ...CSV_AMOUNT_HEADERS,
+    ...CSV_BALANCE_HEADERS,
+    ...CSV_TYPE_HEADERS,
+    ...CSV_MOBILE_MONEY_HEADERS,
+  ].includes(value))
+  return hasKnownHeader
+}
+
 function detectCsvHeaderMapping(headers: string[]): CsvImportMapping {
   return {
     date: optionalHeaderIndex(headers, CSV_DATE_HEADERS),
     name: optionalHeaderIndex(headers, CSV_NAME_HEADERS),
     amount: optionalHeaderIndex(headers, [...CSV_DEBIT_HEADERS, 'amount', 'value', 'total', 'cost', 'price', ...CSV_CREDIT_HEADERS]),
+    debit: optionalHeaderIndex(headers, CSV_DEBIT_HEADERS),
+    credit: optionalHeaderIndex(headers, CSV_CREDIT_HEADERS),
     category: optionalHeaderIndex(headers, CSV_CATEGORY_HEADERS),
     note: optionalHeaderIndex(headers, CSV_NOTE_HEADERS),
+    transactionType: optionalHeaderIndex(headers, CSV_TYPE_HEADERS),
+    balance: optionalHeaderIndex(headers, CSV_BALANCE_HEADERS),
   }
 }
 
@@ -417,8 +614,8 @@ function hasCsvReviewRisk(text: string) {
 }
 
 function getCsvAmountFromColumns(columns: string[], headers: string[], mapping: CsvImportMapping) {
-  const debitIndex = headerIndex(headers, CSV_DEBIT_HEADERS)
-  const creditIndex = headerIndex(headers, CSV_CREDIT_HEADERS)
+  const debitIndex = mapping.debit ?? headerIndex(headers, CSV_DEBIT_HEADERS)
+  const creditIndex = mapping.credit ?? headerIndex(headers, CSV_CREDIT_HEADERS)
   const debit = debitIndex >= 0 ? parseSignedAmountCell(columns[debitIndex] ?? '') : null
   const credit = creditIndex >= 0 ? parseSignedAmountCell(columns[creditIndex] ?? '') : null
 

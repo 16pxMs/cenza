@@ -17,12 +17,18 @@ import {
   loadSmsCustomCategories,
   parseSmsImport,
   saveParsedSmsExpenses,
+  loadHistoricalIncomeForCycles,
+  saveHistoricalIncomeForCycles,
   loadActiveDebts,
   type ActiveDebtOption,
   type CustomCategoryOption,
+  type HistoricalIncomeCycle,
   type ParseSmsImportData,
 } from './actions'
-import type { CsvImportMapping } from '@/lib/sms-import/parser'
+import { setMonthlyReminder } from '../actions'
+import { detectSmartRecurringCandidates } from '@/lib/monthly-reminders/detection'
+import type { SmartRecurringPromptCandidate } from '@/components/flows/log/ExpenseAddedSuccess'
+import type { CsvImportMapping, CsvImportProfileAnalysis, CsvMappingRecommendation } from '@/lib/sms-import/parser'
 import {
   buildNeedsCategoryMetaLabel,
   buildRowMetaLabel,
@@ -58,9 +64,11 @@ import styles from './SmsImportClient.module.css'
 type ImportCategoryType = 'everyday' | 'fixed' | 'debt'
 type ImportMode = 'current' | 'past'
 type PastInputMode = 'paste' | 'csv'
-type CsvMappingField = 'date' | 'name' | 'amount' | 'category' | 'note'
+type CsvMappingField = 'date' | 'name' | 'amount' | 'debit' | 'credit' | 'category' | 'note' | 'transactionType' | 'balance'
 type EditStep = 'details' | 'category' | 'review' | 'changeCategory'
 type CategoryBrowserMode = 'select' | 'create'
+type ImportKind = 'expense' | 'income' | 'refund' | 'transfer' | 'debt_repayment' | 'unreadable'
+type RecoveryAction = 'skip' | 'income' | null
 
 interface EditableRow {
   id: string
@@ -84,6 +92,12 @@ interface EditableRow {
   repeatsMonthly: boolean
   debtId: string | null
   debtName: string | null
+  importKind: ImportKind
+  recoveryAction: RecoveryAction
+}
+
+interface HistoricalIncomeDraft extends HistoricalIncomeCycle {
+  amount: string
 }
 
 const T = {
@@ -147,6 +161,154 @@ function isGenericDebtLabel(label: string) {
   ].includes(l)
 }
 
+function classifyImportKind(row: {
+  label: string
+  raw?: string | null
+  amount: number
+  date: string
+  categoryType: ImportCategoryType | null
+  parseStatus?: 'clear' | 'partial' | 'ambiguous' | 'failed' | 'invalid'
+  blockedReason?: string | null
+}): ImportKind {
+  const text = normalize(`${row.label} ${row.raw ?? ''}`)
+  if (!row.label.trim() || !Number.isFinite(Number(row.amount)) || Number(row.amount) <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+    return 'unreadable'
+  }
+  if (row.categoryType === 'debt' || /\b(?:loan repayment|debt repayment|repayment|loan payment)\b/i.test(text)) {
+    return 'debt_repayment'
+  }
+  if (/\b(?:refund|cashback|reversal|reversed|reimbursement|chargeback)\b/i.test(text)) {
+    return 'refund'
+  }
+  if (/\b(?:transfer to savings|internal transfer|account transfer|moved to savings)\b/i.test(text)) {
+    return 'transfer'
+  }
+  if (row.blockedReason || /\b(?:salary|freelance payment|credited|deposit|paid in|paid-in|received|income)\b/i.test(text)) {
+    return 'income'
+  }
+  if (row.parseStatus === 'failed' || row.parseStatus === 'invalid') return 'unreadable'
+  return 'expense'
+}
+
+function getRecoveryCopy(row: Pick<EditableRow, 'importKind' | 'debtId'>) {
+  if (row.importKind === 'income') {
+    return {
+      title: 'Looks like income',
+      body: 'Add it as income for this month, or skip it.',
+      primary: 'Add as income',
+      secondary: 'Skip',
+    }
+  }
+  if (row.importKind === 'refund') {
+    return {
+      title: 'Looks like a refund',
+      body: 'Add it as income, or skip it.',
+      primary: 'Add as income',
+      secondary: 'Skip',
+    }
+  }
+  if (row.importKind === 'transfer') {
+    return {
+      title: 'Looks like a transfer',
+      body: 'Transfers are not expenses. Skip it for now, or edit details.',
+      primary: 'Skip for now',
+      secondary: 'Edit details',
+    }
+  }
+  if (row.importKind === 'debt_repayment' && !row.debtId) {
+    return {
+      title: 'Select which debt this payment is for.',
+      body: 'Link this repayment to an active debt before saving.',
+      primary: 'Select debt',
+      secondary: 'Skip',
+    }
+  }
+  if (row.importKind === 'unreadable') {
+    return {
+      title: 'We couldn’t read this entry.',
+      body: 'Edit it to continue.',
+      primary: 'Edit details',
+      secondary: 'Remove',
+    }
+  }
+  return null
+}
+
+type AttentionGroupKey = 'income' | 'refund' | 'transfer' | 'needs_debt' | 'unreadable'
+
+interface AttentionGroup {
+  key: AttentionGroupKey
+  title: string
+  helper: string
+  rows: EditableRow[]
+}
+
+const ATTENTION_GROUP_ORDER: AttentionGroupKey[] = ['unreadable', 'income', 'refund', 'transfer', 'needs_debt']
+
+const ATTENTION_GROUP_META: Record<AttentionGroupKey, { title: string; helper: string }> = {
+  unreadable: {
+    title: 'Couldn’t read these entries',
+    helper: 'Edit each one to continue or remove it.',
+  },
+  income: {
+    title: 'Income detected',
+    helper: 'These look like money received, not expenses.',
+  },
+  refund: {
+    title: 'Refunds detected',
+    helper: 'These may reduce spending or count as money received.',
+  },
+  transfer: {
+    title: 'Transfers detected',
+    helper: 'Transfers are usually not expenses.',
+  },
+  needs_debt: {
+    title: 'Needs debt selection',
+    helper: 'Select which debt each payment belongs to.',
+  },
+}
+
+function isRowRecoveryResolved(row: Pick<EditableRow, 'recoveryAction' | 'importKind' | 'debtId'>) {
+  if (row.recoveryAction === 'skip' || row.recoveryAction === 'income') return true
+  if (row.importKind === 'debt_repayment' && row.debtId) return true
+  return false
+}
+
+function getRowAttentionGroup(row: Pick<EditableRow, 'recoveryAction' | 'importKind' | 'debtId'>): AttentionGroupKey | null {
+  if (isRowRecoveryResolved(row)) return null
+  if (row.importKind === 'income') return 'income'
+  if (row.importKind === 'refund') return 'refund'
+  if (row.importKind === 'transfer') return 'transfer'
+  if (row.importKind === 'debt_repayment' && !row.debtId) return 'needs_debt'
+  if (row.importKind === 'unreadable') return 'unreadable'
+  return null
+}
+
+function partitionImportRowsForReview(rows: EditableRow[]) {
+  const readyRows: EditableRow[] = []
+  const groupRowsByKey = new Map<AttentionGroupKey, EditableRow[]>()
+  for (const row of rows) {
+    const groupKey = getRowAttentionGroup(row)
+    if (!groupKey) {
+      readyRows.push(row)
+      continue
+    }
+    const bucket = groupRowsByKey.get(groupKey) ?? []
+    bucket.push(row)
+    groupRowsByKey.set(groupKey, bucket)
+  }
+  const attentionGroups: AttentionGroup[] = ATTENTION_GROUP_ORDER
+    .filter((key) => (groupRowsByKey.get(key)?.length ?? 0) > 0)
+    .map((key) => ({
+      key,
+      title: ATTENTION_GROUP_META[key].title,
+      helper: ATTENTION_GROUP_META[key].helper,
+      rows: groupRowsByKey.get(key) ?? [],
+    }))
+  const attentionRowCount = attentionGroups.reduce((sum, group) => sum + group.rows.length, 0)
+  return { readyRows, attentionGroups, attentionRowCount }
+}
+
 function recomputeRowState(
   nextRows: EditableRow[],
   prevRowErrors: Record<string, string[]>,
@@ -193,6 +355,12 @@ function validateRow(row: EditableRow, options: { requireCategory?: boolean } = 
   const requireCategory = options.requireCategory !== false
   const errors: string[] = []
 
+  if (row.recoveryAction === 'skip' || row.recoveryAction === 'income') {
+    return []
+  }
+  if (row.importKind === 'income' || row.importKind === 'refund' || row.importKind === 'transfer') {
+    return []
+  }
   if (row.blockedReason) {
     return [row.blockedReason]
   }
@@ -209,7 +377,9 @@ function validateRow(row: EditableRow, options: { requireCategory?: boolean } = 
   if (requireCategory && !row.categoryType) {
     errors.push('Choose a category')
   }
-  if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
+  if (row.importKind === 'debt_repayment' && !row.debtId) {
+    errors.push('Select which debt this payment is for.')
+  } else if (row.categoryType === 'debt' && isGenericDebtLabel(row.label)) {
     errors.push('Use a specific debt name (e.g. "KCB loan", "Visa card").')
   }
   if (row.categoryType === 'debt' && !row.debtId) {
@@ -286,6 +456,86 @@ function importMonthToDefaultDate(month: string) {
   return /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : ''
 }
 
+function normalizeCsvHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function parseCsvPreviewRecords(rawInput: string, limit = 7): string[][] {
+  const records: string[][] = []
+  let currentRecord: string[] = []
+  let currentCell = ''
+  let inQuotes = false
+
+  for (let index = 0; index < rawInput.length; index += 1) {
+    const char = rawInput[index]
+    const next = rawInput[index + 1]
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        currentCell += '"'
+        index += 1
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+
+    if (char === ',' && !inQuotes) {
+      currentRecord.push(currentCell.trim())
+      currentCell = ''
+      continue
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1
+      currentRecord.push(currentCell.trim())
+      currentCell = ''
+      if (currentRecord.some((cell) => cell.trim())) records.push(currentRecord)
+      currentRecord = []
+      if (records.length >= limit) return records
+      continue
+    }
+
+    currentCell += char
+  }
+
+  currentRecord.push(currentCell.trim())
+  if (currentRecord.some((cell) => cell.trim())) records.push(currentRecord)
+  return records.slice(0, limit)
+}
+
+function inferCsvMappingFromHeaders(headers: string[]) {
+  const find = (names: string[]) => {
+    const accepted = new Set(names)
+    const index = headers.findIndex((header) => accepted.has(normalizeCsvHeader(header)))
+    return index >= 0 ? String(index) : ''
+  }
+
+  return {
+    date: find(['date', 'transactiondate', 'paidat', 'createdat', 'day', 'completiontime']),
+    name: find(['name', 'description', 'merchant', 'payee', 'details', 'item', 'expense']),
+    amount: find(['amount', 'value', 'total', 'cost', 'price']),
+    debit: find(['debit', 'withdrawal', 'expense', 'outgoing', 'withdrawn', 'moneyout']),
+    credit: find(['credit', 'deposit', 'income', 'incoming', 'refund', 'paidin', 'moneyin']),
+    category: find(['category', 'type', 'bucket']),
+    note: find(['note', 'memo']),
+    transactionType: find(['transactiontype', 'type', 'drcr', 'debitcredit', 'indicator', 'direction']),
+    balance: find(['balance', 'newbalance', 'availablebalance', 'avlbal', 'closingbalance', 'remainingbalance', 'runningbalance']),
+  } satisfies Record<CsvMappingField, string>
+}
+
+function csvProfileLabel(profile: CsvImportProfileAnalysis['profile']) {
+  return profile
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function csvMappingRecommendationCopy(recommendation: CsvMappingRecommendation) {
+  if (recommendation === 'skip_mapping') return 'Looks ready to review.'
+  if (recommendation === 'confirm_mapping') return 'Check the detected columns before continuing.'
+  return 'Match the columns before continuing.'
+}
+
 function formatImportMonthLabel(month: string) {
   const parsed = new Date(`${month}-01T12:00:00`)
   if (!/^\d{4}-\d{2}$/.test(month) || Number.isNaN(parsed.getTime())) return month
@@ -325,9 +575,16 @@ export function SmsImportClient() {
     date: '',
     name: '',
     amount: '',
+    debit: '',
+    credit: '',
     category: '',
     note: '',
+    transactionType: '',
+    balance: '',
   })
+  const [csvProfile, setCsvProfile] = useState<CsvImportProfileAnalysis | null>(null)
+  const [csvPendingData, setCsvPendingData] = useState<ParseSmsImportData | null>(null)
+  const [csvMappingMode, setCsvMappingMode] = useState<'confirm' | 'edit' | null>(null)
 
   const [rawText, setRawText] = useState('')
   const [rows, setRows] = useState<EditableRow[]>([])
@@ -337,6 +594,16 @@ export function SmsImportClient() {
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [savedRowsSnapshot, setSavedRowsSnapshot] = useState<EditableRow[] | null>(null)
+  const [savedAffectedCycles, setSavedAffectedCycles] = useState<HistoricalIncomeCycle[]>([])
+  const [historicalIncomeDrafts, setHistoricalIncomeDrafts] = useState<HistoricalIncomeDraft[] | null>(null)
+  const [historicalIncomeLoading, setHistoricalIncomeLoading] = useState(false)
+  const [historicalIncomeSaving, setHistoricalIncomeSaving] = useState(false)
+  const [historicalIncomeError, setHistoricalIncomeError] = useState<string | null>(null)
+  // Smart recurring prompt — surfaced on the post-save success screen when the
+  // import batch revealed a likely recurring expense.
+  const [smartRecurringSaving, setSmartRecurringSaving] = useState(false)
+  const [smartRecurringError, setSmartRecurringError] = useState<string | null>(null)
+  const [smartRecurringTrackedKeys, setSmartRecurringTrackedKeys] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({})
   const [rowWarnings, setRowWarnings] = useState<Record<string, string[]>>({})
@@ -364,7 +631,18 @@ export function SmsImportClient() {
     categoryKey: string | null
     customCategoryId: string | null
   } | null>(null)
-  const [selectedPastRowIds, setSelectedPastRowIds] = useState<string[]>([])
+  const [readySelectionIds, setReadySelectionIds] = useState<string[]>([])
+  // Selection state is scoped per attention group so each group's local toolbar
+  // only knows about rows inside its own group. There is intentionally no
+  // single flat selection — selecting Ready rows must never light up an
+  // attention toolbar and vice versa.
+  const [recoverySelectionByGroup, setRecoverySelectionByGroup] = useState<Record<AttentionGroupKey, string[]>>({
+    income: [],
+    refund: [],
+    transfer: [],
+    needs_debt: [],
+    unreadable: [],
+  })
   const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false)
   const [addAnotherOpen, setAddAnotherOpen] = useState(false)
   const [addAnotherText, setAddAnotherText] = useState('')
@@ -471,10 +749,21 @@ export function SmsImportClient() {
     () => (row: EditableRow) => validateRow(row, { requireCategory: !isPastMode }),
     [isPastMode]
   )
+  const unresolvedRecoveryRows = useMemo(
+    () => rows.filter((row) => {
+      if (row.recoveryAction === 'skip' || row.recoveryAction === 'income') return false
+      if (row.importKind === 'income' || row.importKind === 'refund' || row.importKind === 'transfer') return true
+      if (row.importKind === 'debt_repayment' && !row.debtId) return true
+      if (row.importKind === 'unreadable') return true
+      return false
+    }),
+    [rows]
+  )
+  const reviewPartition = useMemo(() => partitionImportRowsForReview(rows), [rows])
   const reviewState = useMemo(
     () =>
       getSmsImportReviewState({
-        rows,
+        rows: rows.filter((row) => row.recoveryAction !== 'skip' && row.recoveryAction !== 'income' && row.importKind !== 'income' && row.importKind !== 'refund' && row.importKind !== 'transfer'),
         rowErrors,
         getClientIssues: validateImportRow,
       }),
@@ -554,9 +843,9 @@ export function SmsImportClient() {
     [currentEditingRowIndex, rows]
   )
   const nextEditableRow = nextEditableRowIndex >= 0 ? rows[nextEditableRowIndex] : null
-  const selectedPastRows = useMemo(
-    () => rows.filter((row) => selectedPastRowIds.includes(row.id)),
-    [rows, selectedPastRowIds]
+  const selectedReadyRows = useMemo(
+    () => rows.filter((row) => readySelectionIds.includes(row.id)),
+    [rows, readySelectionIds]
   )
   const editedPreviewRowIssues = editedPreviewRow ? validateImportRow(editedPreviewRow) : []
   const shouldSaveReviewRowImmediately = shouldSaveSingleCompletedReviewRow({
@@ -716,23 +1005,81 @@ export function SmsImportClient() {
     )
   }
 
-  const togglePastRowSelection = (id: string) => {
-    setSelectedPastRowIds((current) =>
+  const toggleReadySelection = (id: string) => {
+    setReadySelectionIds((current) =>
       current.includes(id)
         ? current.filter((rowId) => rowId !== id)
         : [...current, id]
     )
   }
 
+  const toggleRecoverySelection = (group: AttentionGroupKey, id: string) => {
+    setRecoverySelectionByGroup((current) => {
+      const existing = current[group] ?? []
+      const next = existing.includes(id)
+        ? existing.filter((rowId) => rowId !== id)
+        : [...existing, id]
+      return { ...current, [group]: next }
+    })
+  }
+
+  const clearRecoverySelection = (group: AttentionGroupKey) => {
+    setRecoverySelectionByGroup((current) => ({ ...current, [group]: [] }))
+  }
+
+  const selectAllInRecoveryGroup = (group: AttentionGroupKey, ids: string[]) => {
+    setRecoverySelectionByGroup((current) => ({ ...current, [group]: ids }))
+  }
+
   const removeRowsById = (ids: string[]) => {
     const idSet = new Set(ids)
     applyRowsChange((current) => current.filter((row) => !idSet.has(row.id)))
-    setSelectedPastRowIds((current) => current.filter((id) => !idSet.has(id)))
+    setReadySelectionIds((current) => current.filter((id) => !idSet.has(id)))
+    setRecoverySelectionByGroup((current) => {
+      const next = { ...current } as Record<AttentionGroupKey, string[]>
+      for (const key of Object.keys(next) as AttentionGroupKey[]) {
+        next[key] = next[key].filter((id) => !idSet.has(id))
+      }
+      return next
+    })
     setExpandedRaw((current) => {
       const next = { ...current }
       for (const id of ids) delete next[id]
       return next
     })
+  }
+
+  const bulkMarkGroupAsIncome = (group: AttentionGroupKey) => {
+    const ids = recoverySelectionByGroup[group] ?? []
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    applyRowsChange((current) => current.map((row) =>
+      idSet.has(row.id) ? { ...row, recoveryAction: 'income' as RecoveryAction } : row
+    ))
+    clearRecoverySelection(group)
+  }
+
+  const bulkMarkGroupAsSkipped = (group: AttentionGroupKey) => {
+    const ids = recoverySelectionByGroup[group] ?? []
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    applyRowsChange((current) => current.map((row) =>
+      idSet.has(row.id) ? { ...row, recoveryAction: 'skip' as RecoveryAction } : row
+    ))
+    clearRecoverySelection(group)
+  }
+
+  const bulkRemoveGroup = (group: AttentionGroupKey) => {
+    const ids = recoverySelectionByGroup[group] ?? []
+    if (ids.length === 0) return
+    removeRowsById(ids)
+  }
+
+  const bulkOpenFirstInGroup = (group: AttentionGroupKey) => {
+    const ids = recoverySelectionByGroup[group] ?? []
+    if (ids.length === 0) return
+    const firstRow = rows.find((row) => row.id === ids[0])
+    if (firstRow) openEditRow(firstRow)
   }
 
   const applyCategoryToRows = (
@@ -753,10 +1100,20 @@ export function SmsImportClient() {
           repeatsMonthly: nextType === 'everyday' || nextType === 'fixed' ? row.repeatsMonthly : false,
           debtId: nextType === 'debt' ? row.debtId : null,
           debtName: nextType === 'debt' ? row.debtName : null,
+          importKind: nextType === 'debt' ? 'debt_repayment' : 'expense',
+          recoveryAction: null,
         }
       })
     )
     setRecentCategoryKeys(recordRecentCategoryKey(option.key))
+  }
+
+  const markRowAsSkipped = (id: string) => {
+    updateRow(id, { recoveryAction: 'skip' })
+  }
+
+  const markRowAsIncome = (id: string) => {
+    updateRow(id, { recoveryAction: 'income' })
   }
 
   const applyCategoryToSimilarRows = (sourceRow: EditableRow) => {
@@ -779,14 +1136,14 @@ export function SmsImportClient() {
   }
 
   const applyBulkCategory = (option: ImportCategoryOption) => {
-    if (selectedPastRowIds.length === 0) return
-    applyCategoryToRows(selectedPastRowIds, option)
-    setSelectedPastRowIds([])
+    if (readySelectionIds.length === 0) return
+    applyCategoryToRows(readySelectionIds, option)
+    setReadySelectionIds([])
     closeBulkCategoryPicker()
   }
 
   const openBulkCategoryPicker = () => {
-    if (selectedPastRowIds.length === 0) return
+    if (readySelectionIds.length === 0) return
     setCategoryFilter('everyday')
     setCategoryQuery('')
     setCategoryBrowserMode('select')
@@ -963,8 +1320,10 @@ export function SmsImportClient() {
     setExpandedRaw({})
     setEditedRowIds([])
     setError(null)
-    setSelectedPastRowIds([])
+    setReadySelectionIds([])
     setBulkCategoryOpen(false)
+    setCsvPendingData(null)
+    setCsvMappingMode(null)
   }
 
   const resetImportSession = () => {
@@ -972,7 +1331,13 @@ export function SmsImportClient() {
     setCsvFileName('')
     setCsvText('')
     setCsvMappingRequired(null)
-    setCsvMapping({ date: '', name: '', amount: '', category: '', note: '' })
+    setCsvMapping({ date: '', name: '', amount: '', debit: '', credit: '', category: '', note: '', transactionType: '', balance: '' })
+    setCsvProfile(null)
+    setSavedAffectedCycles([])
+    setHistoricalIncomeDrafts(null)
+    setHistoricalIncomeLoading(false)
+    setHistoricalIncomeSaving(false)
+    setHistoricalIncomeError(null)
     setParseMeta({ scanned: 0, skippedCredits: 0 })
     clearImportReviewState()
     closeEditRow()
@@ -1323,6 +1688,18 @@ export function SmsImportClient() {
           : false,
       debtId: selectedDebt ? selectedDebt.id : null,
       debtName: selectedDebt ? selectedDebt.name : null,
+      importKind: nextCategoryType === 'debt'
+        ? 'debt_repayment'
+        : classifyImportKind({
+          ...existingRow,
+          label: trimmedLabel,
+          amount,
+          date,
+          categoryType: nextCategoryType,
+          blockedReason: null,
+        }),
+      recoveryAction: null,
+      blockedReason: null,
     }
 
     return nextRow
@@ -1386,6 +1763,30 @@ export function SmsImportClient() {
     setAddAnotherOpen(true)
   }
 
+  const toEditableRows = (parsedRows: ParseSmsImportData['rows']): EditableRow[] => parsedRows.map((row) => {
+    const categoryType = row.blockedReason
+      ? row.categoryType
+      : row.confidence === 'high'
+        ? row.categoryType
+        : null
+    const editable = {
+      ...row,
+      categoryType,
+      customCategoryId: row.blockedReason || row.confidence === 'high'
+        ? row.customCategoryId ?? null
+        : null,
+      repeatsMonthly: false,
+      debtId: null,
+      debtName: null,
+      importKind: 'expense' as ImportKind,
+      recoveryAction: null as RecoveryAction,
+    }
+    return {
+      ...editable,
+      importKind: classifyImportKind(editable),
+    }
+  })
+
   const submitAddAnotherExpense = async () => {
     const text = addAnotherText.trim()
     if (!text) return
@@ -1409,20 +1810,7 @@ export function SmsImportClient() {
         setAddAnotherError("Each line needs a name and an amount. Try 'food 500' or 'groceries 2500'.")
         return
       }
-      const parsedRows: EditableRow[] = data.rows.map((row) => ({
-        ...row,
-        categoryType: row.blockedReason
-          ? row.categoryType
-          : row.confidence === 'high'
-            ? row.categoryType
-            : null,
-        customCategoryId: row.blockedReason || row.confidence === 'high'
-          ? row.customCategoryId ?? null
-          : null,
-        repeatsMonthly: false,
-        debtId: null,
-        debtName: null,
-      }))
+      const parsedRows = toEditableRows(data.rows)
       applyRowsChange((current) => {
         const nextRows = [...current, ...parsedRows]
         return isPastMode ? sortPastRowsForReview(nextRows) : nextRows
@@ -1434,7 +1822,7 @@ export function SmsImportClient() {
       setRowErrors((current) => {
         const next = { ...current }
         for (const row of parsedRows) {
-          if (row.blockedReason) {
+          if (row.blockedReason && row.importKind === 'unreadable') {
             next[row.id] = [row.blockedReason]
           } else if (row.parseStatus === 'invalid' && row.parseMessage) {
             next[row.id] = [row.parseMessage]
@@ -1489,24 +1877,11 @@ export function SmsImportClient() {
   }
 
   const applyParsedImportData = (data: ParseSmsImportData) => {
-    const parsedRows: EditableRow[] = data.rows.map((row) => ({
-      ...row,
-      categoryType: row.blockedReason
-        ? row.categoryType
-        : row.confidence === 'high'
-          ? row.categoryType
-          : null,
-      customCategoryId: row.blockedReason || row.confidence === 'high'
-        ? row.customCategoryId ?? null
-        : null,
-      repeatsMonthly: false,
-      debtId: null,
-      debtName: null,
-    }))
+    const parsedRows = toEditableRows(data.rows)
     const nextRows = isPastMode ? sortPastRowsForReview(parsedRows) : parsedRows
     const nextBlockedRowErrors = Object.fromEntries(
       nextRows
-        .filter((row) => row.blockedReason)
+        .filter((row) => row.blockedReason && row.importKind === 'unreadable')
         .map((row) => [row.id, [row.blockedReason as string]])
     )
     const nextParseWarnings = Object.fromEntries(
@@ -1529,7 +1904,7 @@ export function SmsImportClient() {
     setParseMeta({ scanned: data.scanned, skippedCredits: data.skippedCredits })
     setRowErrors({ ...nextBlockedRowErrors, ...nextParseErrors })
     setRowWarnings(nextParseWarnings)
-    setSelectedPastRowIds([])
+    setReadySelectionIds([])
     if (shouldAutoOpenSingleEntryEditFlow(nextRows)) {
       beginEditRow(nextRows[0], false, 1)
     }
@@ -1566,7 +1941,10 @@ export function SmsImportClient() {
   const handleCsvFileChange = async (file: File | null) => {
     setError(null)
     setCsvMappingRequired(null)
-    setCsvMapping({ date: '', name: '', amount: '', category: '', note: '' })
+    setCsvMapping({ date: '', name: '', amount: '', debit: '', credit: '', category: '', note: '', transactionType: '', balance: '' })
+    setCsvProfile(null)
+    setCsvPendingData(null)
+    setCsvMappingMode(null)
     clearImportReviewState()
     if (!file) {
       setCsvFileName('')
@@ -1581,7 +1959,10 @@ export function SmsImportClient() {
     }
     setCsvFileName(file.name)
     try {
-      setCsvText(await file.text())
+      const text = await file.text()
+      setCsvText(text)
+      const [headers] = parseCsvPreviewRecords(text, 1)
+      if (headers) setCsvMapping(inferCsvMappingFromHeaders(headers))
     } catch {
       setCsvText('')
       setError("We couldn't read that CSV file. Please try another file.")
@@ -1596,7 +1977,16 @@ export function SmsImportClient() {
     return Object.keys(mapping).length > 0 ? mapping : null
   }
 
-  const handleCsvParse = async () => {
+  const csvPreviewRecords = useMemo(() => parseCsvPreviewRecords(csvText, 8), [csvText])
+  const csvPreviewHeaders = csvPreviewRecords[0] ?? []
+  const csvPreviewRows = csvPreviewRecords.slice(1, 6)
+  const usedCsvMappingValues = useMemo(
+    () => new Set(Object.values(csvMapping).filter(Boolean)),
+    [csvMapping]
+  )
+  const csvHasRequiredMapping = csvMapping.name !== '' && (csvMapping.amount !== '' || csvMapping.debit !== '' || csvMapping.credit !== '')
+
+  const handleCsvParse = async (options: { bypassProfileGate?: boolean } = {}) => {
     const text = csvText.trim()
     if (!text) {
       setError('Upload a CSV file to continue.')
@@ -1604,10 +1994,17 @@ export function SmsImportClient() {
     }
 
     const mapping = buildCsvMappingPayload()
-    if (csvMappingRequired) {
-      const missingChoice = csvMappingRequired.missing.find((field) => csvMapping[field] === '')
+    if (csvMappingRequired || csvMappingMode === 'edit') {
+      const missingChoice = csvMappingRequired?.missing.find((field) => {
+        if (field === 'amount') return csvMapping.amount === '' && csvMapping.debit === '' && csvMapping.credit === ''
+        return csvMapping[field] === ''
+      })
       if (missingChoice) {
         setError(`Choose the ${missingChoice} column to continue.`)
+        return
+      }
+      if (!csvHasRequiredMapping) {
+        setError('Choose a description and an amount column to continue.')
         return
       }
     }
@@ -1631,25 +2028,57 @@ export function SmsImportClient() {
       }
       if (result.data.csvMappingRequired) {
         const required = result.data.csvMappingRequired
+        setCsvProfile(result.data.csvProfile ?? null)
         setCsvMappingRequired(required)
+        setCsvMappingMode('edit')
         setCsvMapping((current) => ({
           ...current,
           date: current.date || '',
           name: current.name || '',
           amount: current.amount || '',
+          debit: current.debit || '',
+          credit: current.credit || '',
           category: current.category || '',
           note: current.note || '',
+          transactionType: current.transactionType || '',
+          balance: current.balance || '',
         }))
         setError('Choose the columns we should use from this CSV.')
         return
       }
+      const profile = result.data.csvProfile ?? null
+      setCsvProfile(profile)
+      if (!options.bypassProfileGate && profile?.mappingRecommendation === 'confirm_mapping') {
+        setCsvPendingData(result.data)
+        setCsvMappingMode('confirm')
+        return
+      }
+      if (!options.bypassProfileGate && profile?.mappingRecommendation === 'require_mapping') {
+        setCsvPendingData(result.data)
+        setCsvMappingRequired({ headers: csvPreviewHeaders, missing: [] })
+        setCsvMappingMode('edit')
+        return
+      }
       setCsvMappingRequired(null)
+      setCsvMappingMode(null)
+      setCsvPendingData(null)
       applyParsedImportData(result.data)
     } catch {
       setError("We couldn't read that CSV right now. Please try again in a moment.")
     } finally {
       setParsing(false)
     }
+  }
+
+  const handleCsvPrimaryAction = () => {
+    if (csvMappingMode === 'confirm' && csvPendingData) {
+      setCsvMappingMode(null)
+      setCsvPendingData(null)
+      setCsvMappingRequired(null)
+      applyParsedImportData(csvPendingData)
+      return
+    }
+    void handleCsvParse({ bypassProfileGate: csvMappingMode === 'edit' })
   }
 
   const handleSave = async (confirmOverride = false, rowsOverride?: EditableRow[]) => {
@@ -1666,7 +2095,24 @@ export function SmsImportClient() {
     try {
       const preSubmitStartedAt = performance.now()
       const nextRowErrors: Record<string, string[]> = {}
+      const unresolvedRows = rowsToSave.filter((row) => {
+        if (row.recoveryAction === 'skip' || row.recoveryAction === 'income') return false
+        if (row.importKind === 'income' || row.importKind === 'refund' || row.importKind === 'transfer') return true
+        if (row.importKind === 'debt_repayment' && !row.debtId) return true
+        if (row.importKind === 'unreadable') return true
+        return false
+      })
+      if (unresolvedRows.length > 0) {
+        for (const row of unresolvedRows) {
+          nextRowErrors[row.id] = [getRecoveryCopy(row)?.title ?? 'Review this item before saving.']
+        }
+        setRowErrors(nextRowErrors)
+        setError(unresolvedRows.length === 1 ? '1 item needs action before saving.' : `${unresolvedRows.length} items need action before saving.`)
+        setSaving(false)
+        return 'client-error'
+      }
       for (const row of rowsToSave) {
+        if (row.recoveryAction === 'skip' || row.recoveryAction === 'income') continue
         if (isBlockedIncomeRow(row)) {
           nextRowErrors[row.id] = [row.blockedReason as string]
           continue
@@ -1700,7 +2146,15 @@ export function SmsImportClient() {
         return 'client-error'
       }
 
-      const payload = rowsToSave
+      const expenseRowsToSave = rowsToSave.filter((row) =>
+        row.recoveryAction !== 'skip' &&
+        row.recoveryAction !== 'income' &&
+        row.importKind !== 'income' &&
+        row.importKind !== 'refund' &&
+        row.importKind !== 'transfer'
+      )
+      const incomeRowsToSave = rowsToSave.filter((row) => row.recoveryAction === 'income')
+      const payload = expenseRowsToSave
         .filter((row) => !isBlockedIncomeRow(row))
         .map((row) => {
         // Pass categories through honestly. Past-mode uncategorized rows arrive
@@ -1733,7 +2187,9 @@ export function SmsImportClient() {
       })
 
       const serverStartedAt = performance.now()
-      const result = await saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })
+      const result = payload.length > 0
+        ? await saveParsedSmsExpenses(payload, { confirmOverride, mode: importMode })
+        : { ok: true as const, data: { saved: 0, duplicates: 0, blocked: false, overridden: false, rowErrors: {}, rowWarnings: {}, affectedCycles: savedAffectedCycles } }
       logClientSaveTiming('server-action', performance.now() - serverStartedAt, {
         rows: payload.length,
         confirmOverride,
@@ -1773,9 +2229,31 @@ export function SmsImportClient() {
         })
         return 'blocked'
       }
+      let recoveredIncomeSaved = 0
+      if (incomeRowsToSave.length > 0) {
+        const cyclesForIncome = (data.affectedCycles ?? savedAffectedCycles)
+        const amountByCycle = new Map<string, number>()
+        for (const row of incomeRowsToSave) {
+          const cycle = cyclesForIncome.find((candidate) => row.date >= candidate.startDate && row.date <= candidate.endDate)
+          const cycleId = cycle?.cycleId ?? `${row.date.slice(0, 7)}-01`
+          amountByCycle.set(cycleId, (amountByCycle.get(cycleId) ?? 0) + Number(row.amount))
+        }
+        const incomeResult = await saveHistoricalIncomeForCycles(
+          Array.from(amountByCycle.entries()).map(([cycleId, amount]) => ({ cycleId, amount }))
+        )
+        if (!incomeResult.ok) {
+          setError(incomeResult.error.kind === 'unauthorized' ? incomeResult.error.message : 'We couldn’t save income for those months. Please try again.')
+          setSaving(false)
+          return 'error'
+        }
+        recoveredIncomeSaved = incomeResult.data.saved
+      }
       if (rowsOverride) setRows(rowsToSave)
-      setSavedRowsSnapshot(rowsToSave)
-      setSavedCount(data.saved)
+      setSavedRowsSnapshot(rowsToSave.filter((row) => row.recoveryAction !== 'skip'))
+      setSavedAffectedCycles(importMode === 'past' ? (data.affectedCycles ?? []) : [])
+      setHistoricalIncomeDrafts(null)
+      setHistoricalIncomeError(null)
+      setSavedCount(data.saved + recoveredIncomeSaved)
       setRowWarnings({})
       logClientSaveTiming('post-save-work', performance.now() - saveStartedAt, {
         outcome: data.overridden ? 'overridden' : 'success',
@@ -1794,6 +2272,75 @@ export function SmsImportClient() {
     }
   }
 
+  const openHistoricalIncomeEntry = async () => {
+    const cycleIds = savedAffectedCycles.map((cycle) => cycle.cycleId)
+    if (cycleIds.length === 0 || historicalIncomeLoading) return
+
+    setHistoricalIncomeLoading(true)
+    setHistoricalIncomeError(null)
+    try {
+      const result = await loadHistoricalIncomeForCycles(cycleIds)
+      if (!result.ok) {
+        setHistoricalIncomeError(result.error.kind === 'unauthorized' ? result.error.message : 'We couldn’t load those months. Please try again.')
+        return
+      }
+      setHistoricalIncomeDrafts(result.data.map((cycle) => ({
+        ...cycle,
+        amount: cycle.hasExistingIncome && cycle.existingIncome != null ? String(cycle.existingIncome) : '',
+      })))
+    } catch {
+      setHistoricalIncomeError('We couldn’t load those months. Please try again.')
+    } finally {
+      setHistoricalIncomeLoading(false)
+    }
+  }
+
+  const updateHistoricalIncomeDraft = (cycleId: string, amount: string) => {
+    setHistoricalIncomeDrafts((drafts) =>
+      drafts?.map((draft) => draft.cycleId === cycleId ? { ...draft, amount } : draft) ?? null
+    )
+    setHistoricalIncomeError(null)
+  }
+
+  const saveHistoricalIncomeDrafts = async () => {
+    if (!historicalIncomeDrafts || historicalIncomeSaving) return
+    const hasInvalidEnteredAmount = historicalIncomeDrafts.some((draft) => {
+      if (!draft.amount.trim()) return false
+      const amount = Number(draft.amount)
+      return !Number.isFinite(amount) || amount <= 0
+    })
+    if (hasInvalidEnteredAmount) {
+      setHistoricalIncomeError('Enter a valid amount or leave the month blank to skip it.')
+      return
+    }
+
+    const entries = historicalIncomeDrafts
+      .map((draft) => ({ cycleId: draft.cycleId, amount: Number(draft.amount) }))
+      .filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)
+
+    if (entries.length === 0) {
+      setHistoricalIncomeDrafts(null)
+      return
+    }
+
+    setHistoricalIncomeSaving(true)
+    setHistoricalIncomeError(null)
+    try {
+      const result = await saveHistoricalIncomeForCycles(entries)
+      if (!result.ok) {
+        setHistoricalIncomeError(result.error.kind === 'unauthorized' ? result.error.message : 'We couldn’t save income for those months. Please try again.')
+        return
+      }
+      setHistoricalIncomeDrafts(null)
+      setSavedAffectedCycles([])
+      router.refresh()
+    } catch {
+      setHistoricalIncomeError('We couldn’t save income for those months. Please try again.')
+    } finally {
+      setHistoricalIncomeSaving(false)
+    }
+  }
+
   if (savedCount > 0) {
     const savedDateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     const successDateContext = (row: Pick<EditableRow, 'date' | 'dateSource'>) =>
@@ -1809,6 +2356,159 @@ export function SmsImportClient() {
       hasMonthlyReminder: row.repeatsMonthly,
     }))
 
+    // Smart recurring detection — surface the strongest candidate from the
+    // just-saved batch. Past imports often span multiple cycles, which is the
+    // common case where this fires; current-mode imports usually won't have
+    // multi-cycle data in a single batch and the prompt simply won't appear.
+    // We feed the existing monthly reminder keys + locally-tracked keys to
+    // avoid prompting twice for something the user already confirmed.
+    const smartRecurringTransactions = successRows
+      .filter((row) => !row.repeatsMonthly && !row.blockedReason)
+      .map((row) => ({
+        id: row.id,
+        display_name: row.label,
+        amount: row.amount,
+        date: row.date,
+        cycle_id: row.date?.slice(0, 7) ?? null,
+        category_type: row.categoryType,
+        category_key: row.categoryKey,
+        category_label: row.label,
+      }))
+    const smartRecurringExistingKeys = [...monthlyReminderKeys, ...smartRecurringTrackedKeys]
+    const smartRecurringTopCandidate = detectSmartRecurringCandidates(
+      smartRecurringTransactions,
+      smartRecurringExistingKeys,
+    )[0]
+    const smartRecurringPromptCandidate: SmartRecurringPromptCandidate | null = smartRecurringTopCandidate
+      ? {
+        key: smartRecurringTopCandidate.key,
+        label: smartRecurringTopCandidate.label,
+        categoryType: smartRecurringTopCandidate.categoryType,
+        categoryKey: smartRecurringTopCandidate.categoryKey,
+        amount: smartRecurringTopCandidate.amount,
+        amountLabel: `${successRows[0]?.currency ?? 'KES'} ${smartRecurringTopCandidate.amount.toLocaleString()}`,
+      }
+      : null
+
+    const handleTrackRecurring = async (candidate: SmartRecurringPromptCandidate) => {
+      if (smartRecurringSaving) return
+      setSmartRecurringSaving(true)
+      setSmartRecurringError(null)
+      try {
+        await setMonthlyReminder({
+          categoryType: candidate.categoryType,
+          categoryKey: candidate.categoryKey,
+          categoryLabel: candidate.label,
+          amount: candidate.amount,
+        })
+        setSmartRecurringTrackedKeys((current) =>
+          current.includes(candidate.key) ? current : [...current, candidate.key]
+        )
+      } catch (caught) {
+        setSmartRecurringError(
+          caught instanceof Error ? caught.message : 'Could not track this as monthly.'
+        )
+      } finally {
+        setSmartRecurringSaving(false)
+      }
+    }
+
+    if (historicalIncomeDrafts) {
+      return (
+        <div style={{ minHeight: '100vh', background: T.pageBg }}>
+          <div style={{ maxWidth: 560, margin: '0 auto', padding: '24px 16px' }}>
+            <div
+              style={{
+                background: T.white,
+                border: `var(--border-width) solid ${T.border}`,
+                borderRadius: 'var(--radius-lg)',
+                padding: 'var(--space-lg)',
+                display: 'grid',
+                gap: 'var(--space-lg)',
+              }}
+            >
+              <div>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Historical income
+                </p>
+                <h1 style={{ margin: 0, fontSize: 'var(--text-2xl)', lineHeight: 1.15, color: T.text1 }}>
+                  Add income for these months
+                </h1>
+                <p style={{ margin: 'var(--space-sm) 0 0', fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                  This won’t change your usual income. Blank months will be skipped.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gap: 'var(--space-md)' }}>
+                {historicalIncomeDrafts.map((draft) => (
+                  <div
+                    key={draft.cycleId}
+                    style={{
+                      display: 'grid',
+                      gap: 'var(--space-xs)',
+                      paddingBottom: 'var(--space-md)',
+                      borderBottom: `var(--border-width) solid ${T.borderSubtle}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-md)' }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1 }}>
+                          {draft.label}
+                        </p>
+                        {draft.hasExistingIncome ? (
+                          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: T.textMuted, lineHeight: 1.4 }}>
+                            Existing income found. Editing this replaces income for this month only.
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateHistoricalIncomeDraft(draft.cycleId, '')}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          color: T.textMuted,
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 'var(--weight-medium)',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                    <MoneyInput
+                      label="Income amount"
+                      value={draft.amount}
+                      onChange={(value) => updateHistoricalIncomeDraft(draft.cycleId, value)}
+                      currency={successRows[0]?.currency ?? 'KES'}
+                      placeholder="Leave blank to skip"
+                      autoFocus={false}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {historicalIncomeError ? (
+                <p style={{ margin: 0, color: T.redDark, fontSize: 'var(--text-sm)', lineHeight: 1.45 }}>
+                  {historicalIncomeError}
+                </p>
+              ) : null}
+
+              <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+                <PrimaryBtn size="lg" onClick={saveHistoricalIncomeDrafts} disabled={historicalIncomeSaving}>
+                  {historicalIncomeSaving ? 'Saving…' : 'Save income'}
+                </PrimaryBtn>
+                <SecondaryBtn size="lg" onClick={() => setHistoricalIncomeDrafts(null)} disabled={historicalIncomeSaving}>
+                  Back
+                </SecondaryBtn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div style={{ minHeight: '100vh', background: T.pageBg }}>
         <div style={{ maxWidth: 560, margin: '0 auto', padding: '24px 16px' }}>
@@ -1816,10 +2516,23 @@ export function SmsImportClient() {
             entries={successEntries}
             onBack={() => { router.refresh(); router.push('/app') }}
             onImportPast={() => router.push('/log/import?mode=past&returnTo=/app')}
+            showHistoricalIncomePrompt={isPastMode && savedAffectedCycles.length > 0}
+            onAddHistoricalIncome={openHistoricalIncomeEntry}
+            historicalIncomePromptLoading={historicalIncomeLoading}
+            historicalIncomePromptError={historicalIncomeError}
             showPastImportPrompt={!isPastMode}
+            smartRecurringCandidate={smartRecurringPromptCandidate}
+            onTrackRecurring={handleTrackRecurring}
+            smartRecurringLoading={smartRecurringSaving}
+            smartRecurringError={smartRecurringError}
             onAddAnother={() => {
               setSavedCount(0)
               setSavedRowsSnapshot(null)
+              setSavedAffectedCycles([])
+              setHistoricalIncomeDrafts(null)
+              setHistoricalIncomeError(null)
+              setSmartRecurringTrackedKeys([])
+              setSmartRecurringError(null)
               resetImportSession()
             }}
           />
@@ -2055,7 +2768,52 @@ export function SmsImportClient() {
                       style={{ fontSize: 13, color: T.text2 }}
                     />
                   </label>
-                  {csvMappingRequired ? (
+                  {csvMappingMode === 'confirm' && csvProfile ? (
+                    <div
+                      data-section="csv-mapping-confirmation"
+                      style={{
+                        border: `1px solid ${T.borderSubtle}`,
+                        borderRadius: 14,
+                        padding: 14,
+                        display: 'grid',
+                        gap: 12,
+                        background: T.white,
+                      }}
+                    >
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <p style={{ margin: 0, fontSize: 13, color: T.text1, fontWeight: 700 }}>
+                          {csvProfileLabel(csvProfile.profile)}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.45 }}>
+                          {csvMappingRecommendationCopy(csvProfile.mappingRecommendation)}
+                        </p>
+                      </div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {(['date', 'name', 'amount', 'debit', 'credit', 'category'] as const)
+                          .filter((field) => csvMapping[field] !== '')
+                          .map((field) => (
+                            <p key={field} style={{ margin: 0, fontSize: 12, color: T.text2, lineHeight: 1.4 }}>
+                              <strong style={{ color: T.text1 }}>{field === 'name' ? 'Description' : field[0].toUpperCase() + field.slice(1)}:</strong>{' '}
+                              {csvPreviewHeaders[Number(csvMapping[field])] ?? `Column ${Number(csvMapping[field]) + 1}`}
+                            </p>
+                          ))}
+                      </div>
+                      {csvPreviewRows.length > 0 ? (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <p style={{ margin: 0, fontSize: 12, color: T.text1, fontWeight: 700 }}>Preview</p>
+                          {csvPreviewRows.slice(0, 5).map((row, rowIndex) => (
+                            <p key={`csv-confirm-row-${rowIndex}`} style={{ margin: 0, fontSize: 11, color: T.text3, lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {row.slice(0, 4).filter(Boolean).join(' · ')}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                      <SecondaryBtn size="md" onClick={() => setCsvMappingMode('edit')}>
+                        Edit mappings
+                      </SecondaryBtn>
+                    </div>
+                  ) : null}
+                  {csvMappingMode === 'edit' ? (
                     <div
                       data-section="csv-column-mapping"
                       style={{
@@ -2069,9 +2827,18 @@ export function SmsImportClient() {
                       <p style={{ margin: 0, fontSize: 13, color: T.text1, fontWeight: 700 }}>
                         Match your CSV columns
                       </p>
-                      {(['date', 'name', 'amount', 'category', 'note'] as const).map((field) => (
+                      <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.45 }}>
+                        Choose a description and an amount source. Balance is ignored/reference only.
+                      </p>
+                      {(['date', 'name', 'amount', 'debit', 'credit', 'category', 'note', 'transactionType', 'balance'] as const).map((field) => (
                         <label key={field} style={{ display: 'grid', gap: 5, fontSize: 12, color: T.text2, fontWeight: 700 }}>
-                          {field === 'name' ? 'Name or description' : field[0].toUpperCase() + field.slice(1)}
+                          {field === 'name'
+                            ? 'Name or description'
+                            : field === 'transactionType'
+                              ? 'Transaction type'
+                              : field === 'balance'
+                                ? 'Balance (ignored/reference only)'
+                                : field[0].toUpperCase() + field.slice(1)}
                           <select
                             value={csvMapping[field]}
                             onChange={(event) => setCsvMapping((current) => ({ ...current, [field]: event.target.value }))}
@@ -2088,13 +2855,44 @@ export function SmsImportClient() {
                               outline: 'none',
                             }}
                           >
-                            <option value="">Do not import</option>
-                            {csvMappingRequired.headers.map((header, index) => (
-                              <option key={`${header}-${index}`} value={index}>{header || `Column ${index + 1}`}</option>
+                            <option value="">{field === 'balance' ? 'Ignore / reference only' : 'Ignore'}</option>
+                            {(csvMappingRequired?.headers ?? csvPreviewHeaders).map((header, index) => (
+                              <option
+                                key={`${field}-${header}-${index}`}
+                                value={index}
+                                disabled={csvMapping[field] !== String(index) && usedCsvMappingValues.has(String(index))}
+                              >
+                                {header || `Column ${index + 1}`}
+                              </option>
                             ))}
                           </select>
                         </label>
                       ))}
+                      {!csvHasRequiredMapping ? (
+                        <p style={{ margin: 0, fontSize: 12, color: T.redDark, lineHeight: 1.45 }}>
+                          Description and amount, debit, or credit are required.
+                        </p>
+                      ) : null}
+                      {csvProfile ? (
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          <p style={{ margin: 0, fontSize: 12, color: T.text1, fontWeight: 700 }}>
+                            {csvProfileLabel(csvProfile.profile)}
+                          </p>
+                          <p style={{ margin: 0, fontSize: 12, color: T.text3, lineHeight: 1.45 }}>
+                            {csvMappingRecommendationCopy(csvProfile.mappingRecommendation)}
+                          </p>
+                        </div>
+                      ) : null}
+                      {csvPreviewRows.length > 0 ? (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <p style={{ margin: 0, fontSize: 12, color: T.text1, fontWeight: 700 }}>CSV preview</p>
+                          {csvPreviewRows.slice(0, 5).map((row, rowIndex) => (
+                            <p key={`csv-map-row-${rowIndex}`} style={{ margin: 0, fontSize: 11, color: T.text3, lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {row.slice(0, 5).filter(Boolean).join(' · ')}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -2130,8 +2928,10 @@ export function SmsImportClient() {
               </p>
               <PrimaryBtn
                 size="lg"
-                onClick={isPastMode && pastInputMode === 'csv' ? handleCsvParse : handleParse}
-                disabled={parsing || (isPastMode && pastInputMode === 'csv' ? csvText.trim().length === 0 : rawText.trim().length === 0)}
+                onClick={isPastMode && pastInputMode === 'csv' ? handleCsvPrimaryAction : handleParse}
+                disabled={parsing || (isPastMode && pastInputMode === 'csv'
+                  ? csvText.trim().length === 0 || (csvMappingMode === 'edit' && !csvHasRequiredMapping)
+                  : rawText.trim().length === 0)}
                 style={{ marginTop: 12 }}
               >
                 {parsing ? 'Reading…' : 'Continue'}
@@ -2172,14 +2972,14 @@ export function SmsImportClient() {
                     {(() => {
                       if (!isPastMode) return null
                       const inheritedCount = rows.filter((row) => row.dateSource === 'default_month').length
-                      // CSV flow only surfaces the picker if some rows actually inherited.
-                      if (pastInputMode === 'csv' && inheritedCount === 0) return null
-                      // Subtle caption shows only when at least one row will use the
-                      // selected month as a fallback. The selector itself does the
-                      // primary talking — no “Importing for X” headline above it.
-                      const caption = inheritedCount > 0
-                        ? `Expenses without dates will be added to ${defaultImportMonthLabel}`
-                        : null
+                      // Only surface the fallback month selector when at least one row
+                      // actually depends on it. If every parsed row already has an
+                      // explicit date (CSV with a date column, paste with inline dates),
+                      // the selector would contradict the per-row month headings and
+                      // mislead the user — so hide it entirely.
+                      if (inheritedCount === 0) return null
+                      // Scoped caption: makes clear the picker only affects undated rows.
+                      const caption = `Rows without dates will be added to ${defaultImportMonthLabel}`
                       return (
                         <div
                           data-section="past-import-month-prompt"
@@ -2218,74 +3018,101 @@ export function SmsImportClient() {
                 )
               })()}
 
-              {isPastMode && rows.length > 0 && selectedPastRowIds.length > 0 ? (
-                <div
-                  data-section="past-import-bulk-toolbar"
-                  style={{
-                    background: 'var(--grey-50)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--space-sm) var(--space-md)',
-                    marginBottom: 'var(--space-sm)',
-                    display: 'grid',
-                    gap: 'var(--space-sm)',
-                  }}
-                >
-                  <p style={{
-                    margin: 0,
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--weight-medium)',
-                    color: T.text2,
-                  }}>
-                    {`${selectedPastRowIds.length} selected`}
-                  </p>
-
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
-                    <button
-                      type="button"
-                      onClick={openBulkCategoryPicker}
-                      style={{
-                        border: 'none',
-                        background: 'var(--chip-selected-bg)',
-                        color: 'var(--chip-selected-text)',
-                        fontSize: 'var(--text-sm)',
-                        fontWeight: 'var(--weight-medium)',
-                        padding: 'var(--space-2xs) var(--space-md)',
-                        borderRadius: 'var(--radius-full)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Apply category
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeRowsById(selectedPastRowIds)}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        color: T.redDark,
-                        fontSize: 'var(--text-sm)',
-                        fontWeight: 'var(--weight-medium)',
-                        padding: 'var(--space-2xs) var(--space-md)',
-                        borderRadius: 'var(--radius-full)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 'var(--space-md)',
-                    paddingTop: 'var(--space-sm)',
-                    borderTop: `var(--border-width) solid var(--border-subtle)`,
-                  }}>
-                    {selectedPastRowIds.length < rows.length ? (
+              {(() => {
+                // Reusable section-local selection bar. Renders inside its
+                // owning section/group so users keep spatial continuity with
+                // the rows they've selected.
+                interface InlineToolbarAction {
+                  label: string
+                  onClick: () => void
+                  tone: 'primary' | 'subtle' | 'destructive'
+                  disabled?: boolean
+                }
+                const renderInlineSelectionBar = (config: {
+                  scopeKey: string
+                  count: number
+                  totalAvailable: number
+                  onClear: () => void
+                  onSelectAll?: () => void
+                  actions: InlineToolbarAction[]
+                }) => (
+                  <div
+                    data-section="past-import-bulk-toolbar"
+                    data-scope={config.scopeKey}
+                    style={{
+                      background: 'var(--grey-50)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: 'var(--space-sm) var(--space-md)',
+                      marginBottom: 'var(--space-sm)',
+                      display: 'grid',
+                      gap: 'var(--space-sm)',
+                    }}
+                  >
+                    <p style={{
+                      margin: 0,
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color: T.text2,
+                    }}>
+                      {`${config.count} selected`}
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                      {config.actions.map((action) => {
+                        const baseStyle: React.CSSProperties = {
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 'var(--weight-medium)',
+                          padding: 'var(--space-2xs) var(--space-md)',
+                          borderRadius: 'var(--radius-full)',
+                          cursor: action.disabled ? 'not-allowed' : 'pointer',
+                          opacity: action.disabled ? 0.45 : 1,
+                          border: 'none',
+                        }
+                        const toneStyle: React.CSSProperties = action.tone === 'primary'
+                          ? { background: 'var(--chip-selected-bg)', color: 'var(--chip-selected-text)' }
+                          : action.tone === 'destructive'
+                            ? { background: 'transparent', color: T.redDark }
+                            : { background: 'transparent', color: T.brandDark }
+                        return (
+                          <button
+                            key={`${config.scopeKey}-${action.label}`}
+                            type="button"
+                            onClick={action.disabled ? undefined : action.onClick}
+                            disabled={action.disabled}
+                            style={{ ...baseStyle, ...toneStyle }}
+                          >
+                            {action.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 'var(--space-md)',
+                      paddingTop: 'var(--space-sm)',
+                      borderTop: `var(--border-width) solid var(--border-subtle)`,
+                    }}>
+                      {config.onSelectAll && config.count < config.totalAvailable ? (
+                        <button
+                          type="button"
+                          onClick={config.onSelectAll}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            color: T.text3,
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 'var(--weight-medium)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Select all
+                        </button>
+                      ) : <span />}
                       <button
                         type="button"
-                        onClick={() => setSelectedPastRowIds(rows.map((row) => row.id))}
+                        onClick={config.onClear}
                         style={{
                           border: 'none',
                           background: 'none',
@@ -2296,46 +3123,47 @@ export function SmsImportClient() {
                           cursor: 'pointer',
                         }}
                       >
-                        Select all
+                        Clear
                       </button>
-                    ) : <span />}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPastRowIds([])}
-                      style={{
-                        border: 'none',
-                        background: 'none',
-                        padding: 0,
-                        color: T.text3,
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 'var(--weight-medium)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Clear
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                )
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {rows.map((row, index) => {
+                const renderImportRow = (
+                  row: EditableRow,
+                  index: number,
+                  options?: {
+                    monthHeaderLabel?: string | null
+                    selection?: {
+                      checked: boolean
+                      onToggle: () => void
+                    }
+                  }
+                ) => {
                   const serverErrors = rowErrors[row.id] ?? []
                   const rowWarningMessages = rowWarnings[row.id] ?? []
                   const hasParserWarning = rowWarningMessages.some((warning) => warning !== DUPLICATE_MESSAGE)
                   const clientIssues = validateImportRow(row)
                   const hasHardError = serverErrors.length > 0 || clientIssues.some((i) => i !== 'Choose a category')
                   const isBlocked = isBlockedIncomeRow(row)
+                  const recoveryCopy = getRecoveryCopy(row)
+                  const isRecoveryResolved = row.recoveryAction === 'skip' || row.recoveryAction === 'income' || (row.importKind === 'debt_repayment' && !!row.debtId)
+                  const needsRecovery = !!recoveryCopy && !isRecoveryResolved
                   const needsCategory = !row.categoryType && !hasHardError
-                  const rowActionLabel = getReviewRowActionLabel({
-                    needsCategory,
-                    hasHardError,
-                    isBlocked,
-                    needsReview: hasParserWarning,
-                  })
-                  const cardBorder = hasHardError ? T.redBorder : hasParserWarning ? T.amberBorder : needsCategory ? T.border : T.borderSubtle
-                  const cardBg = hasHardError ? T.redLight : hasParserWarning ? T.amberLight : 'var(--white)'
-                  const monthGroupLabel = isPastMode ? getPastMonthGroupLabel(row.date) : null
+                  const rowActionLabel = needsRecovery
+                    // Cards in recovery groups (income / refund / transfer / unreadable /
+                    // needs-debt) carry their own attention copy below — suppress the status
+                    // pill so we don't show a misleading "Ready" check on a row the user
+                    // explicitly hasn't resolved yet.
+                    ? null
+                    : getReviewRowActionLabel({
+                      needsCategory,
+                      hasHardError: hasHardError && !needsRecovery,
+                      isBlocked,
+                      needsReview: hasParserWarning,
+                    })
+                  const cardBorder = hasHardError && !needsRecovery ? T.redBorder : needsRecovery || hasParserWarning ? T.amberBorder : needsCategory ? T.border : T.borderSubtle
+                  const cardBg = hasHardError && !needsRecovery ? T.redLight : needsRecovery || hasParserWarning ? T.amberLight : 'var(--white)'
                   const dateSourceLabel = isPastMode ? getPastDateSourceLabel(row) : null
                   const similarRowsCount = isPastMode && row.categoryType && row.categoryKey
                     ? rows.filter((candidate) =>
@@ -2349,14 +3177,11 @@ export function SmsImportClient() {
                       )
                     ).length
                     : 0
-                  const previousMonthGroupLabel = isPastMode && index > 0
-                    ? getPastMonthGroupLabel(rows[index - 1].date)
-                    : null
-                  const showMonthHeader = isPastMode && monthGroupLabel !== previousMonthGroupLabel
+                  const monthHeaderLabel = options?.monthHeaderLabel ?? null
 
                   return (
                   <div key={row.id} style={{ display: 'contents' }}>
-                  {showMonthHeader ? (
+                  {monthHeaderLabel ? (
                     <div
                       data-section="past-import-month-header"
                       style={{
@@ -2368,7 +3193,7 @@ export function SmsImportClient() {
                         fontWeight: 700,
                       }}
                     >
-                      {monthGroupLabel}
+                      {monthHeaderLabel}
                     </div>
                   ) : null}
                   <div
@@ -2386,12 +3211,12 @@ export function SmsImportClient() {
                         gap: 8,
                       }}
                     >
-                      {isPastMode ? (
+                      {isPastMode && options?.selection ? (
                         <input
                           type="checkbox"
                           aria-label={`Select ${row.label}`}
-                          checked={selectedPastRowIds.includes(row.id)}
-                          onChange={() => togglePastRowSelection(row.id)}
+                          checked={options.selection.checked}
+                          onChange={options.selection.onToggle}
                           disabled={isBlocked}
                           style={{ width: 16, height: 16, marginTop: 3, accentColor: T.brandDark, flexShrink: 0 }}
                         />
@@ -2510,7 +3335,52 @@ export function SmsImportClient() {
                         const warnings = rowWarningMessages
                         return (
                           <>
-                            {hardErrors.length > 0 && (
+                            {recoveryCopy && !isRecoveryResolved ? (
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4, fontWeight: 700 }}>
+                                  {recoveryCopy.title}
+                                </p>
+                                <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
+                                  {recoveryCopy.body}
+                                </p>
+                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (row.importKind === 'income' || row.importKind === 'refund') markRowAsIncome(row.id)
+                                      else if (row.importKind === 'transfer') markRowAsSkipped(row.id)
+                                      else if (row.importKind === 'debt_repayment') openEditRow(row)
+                                      else openEditRow(row)
+                                    }}
+                                    style={{ border: 'none', background: 'none', padding: 0, color: T.brandDark, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    {recoveryCopy.primary}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (row.importKind === 'unreadable') removeRowsById([row.id])
+                                      else if (row.importKind === 'transfer') openEditRow(row)
+                                      else markRowAsSkipped(row.id)
+                                    }}
+                                    style={{ border: 'none', background: 'none', padding: 0, color: T.textMuted, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    {recoveryCopy.secondary}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                            {row.recoveryAction === 'skip' ? (
+                              <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>
+                                This row will be skipped.
+                              </p>
+                            ) : null}
+                            {row.recoveryAction === 'income' ? (
+                              <p style={{ margin: 0, fontSize: 11, color: T.text2, lineHeight: 1.4, fontWeight: 700 }}>
+                                Will be added as income.
+                              </p>
+                            ) : null}
+                            {hardErrors.length > 0 && !needsRecovery && (
                               <div style={{ display: 'grid', gap: 4 }}>
                                 {hardErrors.map((issue, index) => (
                                   <p key={`${row.id}-issue-${index}`} style={{ margin: 0, fontSize: 11, color: T.redDark, lineHeight: 1.4 }}>
@@ -2618,8 +3488,189 @@ export function SmsImportClient() {
                   </div>
                   </div>
                   )
-                })}
-              </div>
+                }
+
+                const { readyRows, attentionGroups, attentionRowCount } = reviewPartition
+                const renderReadySection = () => {
+                  if (readyRows.length === 0) return null
+                  const readyRowIds = readyRows.map((row) => row.id)
+                  const scopedSelected = readySelectionIds.filter((id) => readyRowIds.includes(id))
+                  return (
+                    <section data-section="past-import-ready" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div>
+                        <p style={{
+                          margin: 0,
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 'var(--weight-semibold)',
+                          color: T.text1,
+                          letterSpacing: '-0.005em',
+                        }}>
+                          Ready to import
+                        </p>
+                        <p style={{
+                          margin: '2px 0 0',
+                          fontSize: 'var(--text-xs)',
+                          color: T.text3,
+                          lineHeight: 1.5,
+                        }}>
+                          {`${readyRows.length} ${readyRows.length === 1 ? 'item' : 'items'} ready`}
+                        </p>
+                      </div>
+                      {isPastMode && scopedSelected.length > 0
+                        ? renderInlineSelectionBar({
+                          scopeKey: 'ready',
+                          count: scopedSelected.length,
+                          totalAvailable: readyRows.length,
+                          onClear: () => setReadySelectionIds([]),
+                          onSelectAll: () => setReadySelectionIds(readyRowIds),
+                          actions: [
+                            { label: 'Apply category', onClick: openBulkCategoryPicker, tone: 'primary' },
+                            { label: 'Remove', onClick: () => removeRowsById(scopedSelected), tone: 'destructive' },
+                          ],
+                        })
+                        : null}
+                      {readyRows.map((row, index) => {
+                        const monthLabel = isPastMode ? getPastMonthGroupLabel(row.date) : null
+                        const previousMonth = isPastMode && index > 0
+                          ? getPastMonthGroupLabel(readyRows[index - 1].date)
+                          : null
+                        const showHeader = isPastMode && monthLabel !== previousMonth
+                        return renderImportRow(row, index, {
+                          monthHeaderLabel: showHeader ? monthLabel : null,
+                          selection: {
+                            checked: readySelectionIds.includes(row.id),
+                            onToggle: () => toggleReadySelection(row.id),
+                          },
+                        })
+                      })}
+                    </section>
+                  )
+                }
+
+                const renderAttentionSection = () => {
+                  if (attentionRowCount === 0) return null
+                  return (
+                    <section
+                      data-section="past-import-attention"
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        marginTop: readyRows.length > 0 ? 'var(--space-xl)' : 0,
+                      }}
+                    >
+                      <div style={{ marginBottom: 'var(--space-md)' }}>
+                        <p style={{
+                          margin: 0,
+                          fontSize: 'var(--text-base)',
+                          fontWeight: 'var(--weight-semibold)',
+                          color: T.text1,
+                          letterSpacing: '-0.01em',
+                        }}>
+                          Needs attention
+                        </p>
+                        <p style={{
+                          margin: '2px 0 0',
+                          fontSize: 'var(--text-sm)',
+                          color: T.text3,
+                          lineHeight: 1.5,
+                        }}>
+                          {`${attentionRowCount} ${attentionRowCount === 1 ? 'item needs review' : 'items need review'}`}
+                        </p>
+                      </div>
+                      {attentionGroups.map((group, groupIndex) => (
+                        <div
+                          key={group.key}
+                          data-section="past-import-attention-group"
+                          data-group={group.key}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 'var(--space-sm)',
+                            paddingTop: groupIndex === 0 ? 0 : 'var(--space-md)',
+                            marginTop: groupIndex === 0 ? 0 : 'var(--space-md)',
+                            borderTop: groupIndex === 0
+                              ? 'none'
+                              : `var(--border-width) solid var(--border-subtle)`,
+                          }}
+                        >
+                          <div>
+                            <p style={{
+                              margin: 0,
+                              fontSize: 'var(--text-sm)',
+                              fontWeight: 'var(--weight-semibold)',
+                              color: group.key === 'unreadable' ? T.redDark : T.text1,
+                              letterSpacing: '-0.005em',
+                            }}>
+                              {group.title}
+                            </p>
+                            <p style={{
+                              margin: '2px 0 0',
+                              fontSize: 'var(--text-sm)',
+                              color: T.text3,
+                              lineHeight: 1.5,
+                            }}>
+                              {group.helper}
+                            </p>
+                          </div>
+                          {(() => {
+                            const groupRowIds = group.rows.map((row) => row.id)
+                            const groupSelectedSet = new Set(
+                              (recoverySelectionByGroup[group.key] ?? []).filter((id) => groupRowIds.includes(id))
+                            )
+                            const groupSelected = Array.from(groupSelectedSet)
+                            if (!isPastMode || groupSelected.length === 0) return null
+                            // Per-group action set — what's destructive vs primary vs subtle
+                            // varies by what the user can usefully do to those rows.
+                            const actions: InlineToolbarAction[] = group.key === 'income' || group.key === 'refund'
+                              ? [
+                                { label: 'Add as income', onClick: () => bulkMarkGroupAsIncome(group.key), tone: 'primary' },
+                                { label: 'Skip', onClick: () => bulkMarkGroupAsSkipped(group.key), tone: 'subtle' },
+                                { label: 'Remove', onClick: () => bulkRemoveGroup(group.key), tone: 'destructive' },
+                              ]
+                              : group.key === 'transfer'
+                                ? [
+                                  { label: 'Skip', onClick: () => bulkMarkGroupAsSkipped(group.key), tone: 'primary' },
+                                  { label: 'Edit details', onClick: () => bulkOpenFirstInGroup(group.key), tone: 'subtle' },
+                                ]
+                                : group.key === 'unreadable'
+                                  ? [
+                                    { label: 'Edit details', onClick: () => bulkOpenFirstInGroup(group.key), tone: 'primary' },
+                                    { label: 'Remove', onClick: () => bulkRemoveGroup(group.key), tone: 'destructive' },
+                                  ]
+                                  : [
+                                    { label: 'Select debt', onClick: () => bulkOpenFirstInGroup(group.key), tone: 'primary' },
+                                    { label: 'Skip', onClick: () => bulkMarkGroupAsSkipped(group.key), tone: 'subtle' },
+                                  ]
+                            return renderInlineSelectionBar({
+                              scopeKey: `attention-${group.key}`,
+                              count: groupSelected.length,
+                              totalAvailable: group.rows.length,
+                              onClear: () => clearRecoverySelection(group.key),
+                              onSelectAll: () => selectAllInRecoveryGroup(group.key, groupRowIds),
+                              actions,
+                            })
+                          })()}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {group.rows.map((row, rowIndex) => renderImportRow(row, rowIndex, {
+                              selection: {
+                                checked: (recoverySelectionByGroup[group.key] ?? []).includes(row.id),
+                                onToggle: () => toggleRecoverySelection(group.key, row.id),
+                              },
+                            }))}
+                          </div>
+                        </div>
+                      ))}
+                    </section>
+                  )
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {renderReadySection()}
+                    {renderAttentionSection()}
+                  </div>
+                )
+              })()}
 
                     {error && (
                 <p style={{ margin: '10px 0 0', fontSize: 13, color: T.redDark, lineHeight: 1.45 }}>
@@ -2649,7 +3700,7 @@ export function SmsImportClient() {
                       Continue
                     </PrimaryBtn>
                   </>
-                ) : validSavableRows.length === 0 ? (
+                ) : validSavableRows.length === 0 && rows.every((row) => row.recoveryAction !== 'income') ? (
                   <PrimaryBtn
                     size="lg"
                     onClick={resetImportSession}
@@ -2681,11 +3732,15 @@ export function SmsImportClient() {
                     <PrimaryBtn
                       size="lg"
                       onClick={() => handleSave(false)}
-                      disabled={saving || validSavableRows.length === 0 || hasSavableClientValidationErrors || hasHardBlockedRows}
+                      disabled={saving || (validSavableRows.length === 0 && rows.every((row) => row.recoveryAction !== 'income')) || hasSavableClientValidationErrors || hasHardBlockedRows || unresolvedRecoveryRows.length > 0}
                     >
-                      {saving ? 'Saving…' : hasHardBlockedRows
-                        ? 'Remove blocked messages to continue'
-                        : `Save ${validSavableRows.length} ${validSavableRows.length === 1 ? 'expense' : 'expenses'}`}
+                      {saving ? 'Saving…' : unresolvedRecoveryRows.length > 0
+                        ? unresolvedRecoveryRows.length === 1 ? 'Review 1 item before saving' : `${unresolvedRecoveryRows.length} items need action before saving`
+                        : hasHardBlockedRows
+                        ? 'Review highlighted items before saving'
+                        : validSavableRows.length > 0
+                          ? `Save ${validSavableRows.length} ${validSavableRows.length === 1 ? 'expense' : 'expenses'}`
+                          : 'Save income'}
                     </PrimaryBtn>
                   </>
                 )}
@@ -3397,9 +4452,9 @@ export function SmsImportClient() {
                 fontWeight: 'var(--weight-medium)',
                 color: T.text1,
               }}>
-                {`Apply category to ${selectedPastRows.length} ${selectedPastRows.length === 1 ? 'expense' : 'expenses'}`}
+                {`Apply category to ${selectedReadyRows.length} ${selectedReadyRows.length === 1 ? 'expense' : 'expenses'}`}
               </p>
-              {selectedPastRows.length > 0 ? (
+              {selectedReadyRows.length > 0 ? (
                 <p style={{
                   margin: 0,
                   fontSize: 'var(--text-xs)',
@@ -3411,10 +4466,10 @@ export function SmsImportClient() {
                 }}>
                   {(() => {
                     const previewLimit = 3
-                    const labels = selectedPastRows
+                    const labels = selectedReadyRows
                       .slice(0, previewLimit)
                       .map((row) => row.label.trim() || 'Untitled')
-                    const remaining = selectedPastRows.length - labels.length
+                    const remaining = selectedReadyRows.length - labels.length
                     return remaining > 0
                       ? `${labels.join(', ')} and ${remaining} more`
                       : labels.join(', ')

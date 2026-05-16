@@ -96,9 +96,15 @@ describe('OverviewWithData new-user card states', () => {
   })
 
   it('does not let deferred secondary overview data wipe critical debt rows', () => {
-    expect(appClientSource).toContain('const activeDebts = (() => {')
+    // Reconciliation is now memoized so AppPageClient re-renders (sheets,
+    // navigation toggles, etc.) don't re-walk the debt list each time. The
+    // dedup-by-id logic is preserved: critical rows are seeded first, then
+    // secondary rows overwrite on the same id.
+    expect(appClientSource).toContain('const activeDebts = useMemo(() => {')
     expect(appClientSource).toContain('const byId = new Map(overview.activeDebts.map((debt) => [debt.id, debt]))')
     expect(appClientSource).toContain('for (const debt of secondaryOverview?.activeDebts ?? [])')
+    expect(appClientSource).toContain('}, [overview.activeDebts, secondaryOverview?.activeDebts])')
+    expect(appClientSource).toContain('const debtTotal = useMemo(')
     expect(appClientSource).toContain('activeDebts={activeDebts}')
     expect(appClientSource).toContain('debtTotal={debtTotal}')
   })

@@ -11,12 +11,29 @@ export interface ExpenseAddedSuccessEntry {
   hasMonthlyReminder?: boolean
 }
 
+export interface SmartRecurringPromptCandidate {
+  key: string
+  label: string
+  categoryType: 'everyday' | 'fixed'
+  categoryKey: string
+  amount: number
+  amountLabel: string
+}
+
 interface ExpenseAddedSuccessProps {
   entries: ExpenseAddedSuccessEntry[]
   onBack: () => void
   onAddAnother: () => void
   onImportPast?: () => void
   showPastImportPrompt?: boolean
+  showHistoricalIncomePrompt?: boolean
+  onAddHistoricalIncome?: () => void
+  historicalIncomePromptLoading?: boolean
+  historicalIncomePromptError?: string | null
+  smartRecurringCandidate?: SmartRecurringPromptCandidate | null
+  onTrackRecurring?: (candidate: SmartRecurringPromptCandidate) => Promise<void> | void
+  smartRecurringLoading?: boolean
+  smartRecurringError?: string | null
 }
 
 const T = {
@@ -56,11 +73,24 @@ export function ExpenseAddedSuccess({
   onAddAnother,
   onImportPast,
   showPastImportPrompt = false,
+  showHistoricalIncomePrompt = false,
+  onAddHistoricalIncome,
+  historicalIncomePromptLoading = false,
+  historicalIncomePromptError = null,
+  smartRecurringCandidate = null,
+  onTrackRecurring,
+  smartRecurringLoading = false,
+  smartRecurringError = null,
 }: ExpenseAddedSuccessProps) {
   const [pastImportPromptDismissed, setPastImportPromptDismissed] = useState(false)
+  const [historicalIncomePromptDismissed, setHistoricalIncomePromptDismissed] = useState(false)
+  const [smartRecurringPromptDismissed, setSmartRecurringPromptDismissed] = useState(false)
   const isSingleEntry = entries.length === 1
   const singleEntry = isSingleEntry ? entries[0] : null
   const showOlderExpensesPrompt = showPastImportPrompt && !pastImportPromptDismissed && !!onImportPast
+  const showHistoricalIncomeCard = showHistoricalIncomePrompt && !historicalIncomePromptDismissed && !!onAddHistoricalIncome
+  const showSmartRecurringCard =
+    !!smartRecurringCandidate && !smartRecurringPromptDismissed && !!onTrackRecurring
 
   return (
     <div>
@@ -194,6 +224,107 @@ export function ExpenseAddedSuccess({
           gap: 'var(--space-sm)',
           paddingTop: 'var(--space-sm)',
         }}>
+          {showHistoricalIncomeCard ? (
+            <div
+              style={{
+                border: `var(--border-width) solid ${T.borderSubtle}`,
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-md)',
+                display: 'grid',
+                gap: 'var(--space-sm)',
+              }}
+            >
+              <div>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+                  Add income for these months?
+                </p>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                  If you know what you earned, add it so your history shows what was left.
+                </p>
+              </div>
+              {historicalIncomePromptError ? (
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--red-dark)', lineHeight: 1.4 }}>
+                  {historicalIncomePromptError}
+                </p>
+              ) : null}
+              <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                <SecondaryBtn size="md" onClick={onAddHistoricalIncome} disabled={historicalIncomePromptLoading}>
+                  {historicalIncomePromptLoading ? 'Loading…' : 'Add income'}
+                </SecondaryBtn>
+                <button
+                  type="button"
+                  onClick={() => setHistoricalIncomePromptDismissed(true)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: T.textMuted,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
+                    cursor: 'pointer',
+                    padding: '8px',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  Skip
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {showSmartRecurringCard && smartRecurringCandidate ? (
+            <div
+              data-section="smart-recurring-prompt"
+              style={{
+                border: `var(--border-width) solid ${T.borderSubtle}`,
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-md)',
+                display: 'grid',
+                gap: 'var(--space-sm)',
+              }}
+            >
+              <div>
+                <p style={{ margin: '0 0 var(--space-xs)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: T.text1, lineHeight: 1.35 }}>
+                  This looks recurring.
+                </p>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: T.text3, lineHeight: 1.5 }}>
+                  {`${smartRecurringCandidate.label} keeps showing up around ${smartRecurringCandidate.amountLabel}. Track it monthly?`}
+                </p>
+              </div>
+              {smartRecurringError ? (
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--red-dark)', lineHeight: 1.4 }}>
+                  {smartRecurringError}
+                </p>
+              ) : null}
+              <div style={{ display: 'grid', gap: 'var(--space-xs)' }}>
+                <SecondaryBtn
+                  size="md"
+                  onClick={async () => {
+                    if (!onTrackRecurring || !smartRecurringCandidate) return
+                    await onTrackRecurring(smartRecurringCandidate)
+                  }}
+                  disabled={smartRecurringLoading}
+                >
+                  {smartRecurringLoading ? 'Saving…' : 'Track monthly'}
+                </SecondaryBtn>
+                <button
+                  type="button"
+                  onClick={() => setSmartRecurringPromptDismissed(true)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: T.textMuted,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
+                    cursor: 'pointer',
+                    padding: '8px',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                  disabled={smartRecurringLoading}
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          ) : null}
           {showOlderExpensesPrompt ? (
             <div
               style={{
