@@ -685,11 +685,25 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     'amount, category_type, category_key'
   )
 
+  // `hasProfileGoals` is derived from the profile snapshot — no DB needed — so
+  // the matching existence check (`goal_targets`) doesn't depend on batch 1's
+  // results. Folding it into batch 1 saves a full critical-path round-trip for
+  // returning users who have current-cycle data but no profile goals (the case
+  // where batch 2's only non-skipped read would have been this one).
+  // The other three existence checks are gated on batch-1 outcomes
+  // (transactions / income / debts presence) and must stay in batch 2.
+  const hasProfileGoals = (profile.goals?.length ?? 0) > 0
+  const skippedOnboardingRead = <T,>(step: string, data: T | null) => {
+    logPerfSpan(flow, step, Date.now(), { skipped: true })
+    return Promise.resolve({ data })
+  }
+
   const [
     { data: txns },
     { data: income },
     hasMonthlyStorage,
     { data: activeDebtRows },
+    { data: goalTargetExistsRow },
   ] = await Promise.all([
     timePerf(flow, 'current-cycle-transaction-read', async () => transactionSelection.query),
     timePerf(flow, 'income-planning-read', async () =>
@@ -707,6 +721,15 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
         .eq('status', 'active')
         .gt('current_balance', 0)
     ),
+    hasProfileGoals
+      ? skippedOnboardingRead('onboarding-goal-exists-read', { goal_id: 'profile-goal' })
+      : timePerf(flow, 'onboarding-goal-exists-read', async () =>
+          (supabase.from('goal_targets') as any)
+            .select('goal_id')
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle()
+        ),
   ])
 
   const transactionRows = (txns ?? []) as Array<Pick<OverviewTransactionRow, 'amount' | 'category_type' | 'category_key'>>
@@ -720,20 +743,14 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
     (sum, debt) => sum + Number(debt.current_balance),
     0
   )
-  const hasProfileGoals = (profile.goals?.length ?? 0) > 0
   const hasCurrentCycleTransactions = transactionRows.length > 0
   const hasCurrentCycleIncome = !!incomeRow
   const hasActiveDebtRows = activeDebts.length > 0
-  const skippedOnboardingRead = <T,>(step: string, data: T | null) => {
-    logPerfSpan(flow, step, Date.now(), { skipped: true })
-    return Promise.resolve({ data })
-  }
   const onboardingStartedAt = Date.now()
   const [
     { data: historicalTransactionRow },
     { data: historicalIncomeRow },
     { data: historicalDebtRow },
-    { data: goalTargetExistsRow },
   ] = await Promise.all([
     hasCurrentCycleTransactions
       ? skippedOnboardingRead('onboarding-transaction-exists-read', { id: 'current-cycle' })
@@ -758,15 +775,6 @@ export async function loadOverviewCriticalData(userId: string, profile: UserProf
       : timePerf(flow, 'onboarding-debt-exists-read', async () =>
           (supabase.from('debts') as any)
             .select('id')
-            .eq('user_id', userId)
-            .limit(1)
-            .maybeSingle()
-        ),
-    hasProfileGoals
-      ? skippedOnboardingRead('onboarding-goal-exists-read', { goal_id: 'profile-goal' })
-      : timePerf(flow, 'onboarding-goal-exists-read', async () =>
-          (supabase.from('goal_targets') as any)
-            .select('goal_id')
             .eq('user_id', userId)
             .limit(1)
             .maybeSingle()
