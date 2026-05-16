@@ -1,0 +1,31 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- transactions(user_id, date) covering index
+--
+-- Overview loaders (critical + secondary) and the previous-cycle recurring
+-- aggregation all use selectTransactionsInCycleDateRange, which filters with
+-- `where user_id = $1 and date between $2 and $3`. None of the existing
+-- transaction indexes match that exact prefix:
+--
+--   * transactions_user_month         (user_id, month)            ← month is a
+--       'YYYY-MM' text; cycle date ranges typically straddle two months and
+--       the planner cannot translate a date BETWEEN into a month equality.
+--   * transactions_user_category      (user_id, category_type, category_key)
+--   * transactions_user_cycle         (user_id, cycle_id)
+--   * transactions_user_cycle_category(user_id, cycle_id, category_key)
+--   * transactions_user_cycle_type    (user_id, cycle_id, category_type)
+--
+-- Without a (user_id, date) index the planner falls back to scanning the
+-- user's full transaction set and filtering the date range in memory. Cost
+-- grows linearly with stored history, which is the exact direction these
+-- loaders run against.
+--
+-- This index is the minimum addition that directly serves the existing query
+-- shape. We deliberately do NOT add (user_id, category_type, date) — the date
+-- prefix is already highly selective for one user's cycle window, so the
+-- in-memory category-type filter on top of it is cheap. Adding more composite
+-- indexes here would inflate write cost without a matching gain on the read
+-- side.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create index if not exists transactions_user_date
+  on public.transactions (user_id, date);
